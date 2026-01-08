@@ -1,0 +1,17 @@
+# 全局总控CMakeLists.txt
+
+cmake_minimum_required(VERSION 3.17)
+project(NexAur VERSION 0.1 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 编译输出目录
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE})
+
+# 子模块: 先编译依赖模块
+add_subdirectory(external) 
+add_subdirectory(source)
+
