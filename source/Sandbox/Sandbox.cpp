@@ -3,8 +3,8 @@
 #include "TempTest/TestWindow.h"
 
 int main() {
-    NexAur::Log::Init();
-    NA_CORE_INFO("Hello from NexAur Engine!");
+    NexAur::Engine *engine = new NexAur::Engine();
+    engine->startEngine();
     
     auto window = std::make_unique<NexAur::Window>(1280, 720, "NexAur Engine Test");
 
@@ -14,6 +14,7 @@ int main() {
         window->OnUpdate();
     }
 
-    NA_INFO("Sandbox Stopped!");
+    engine->shutdownEngine();
+    NX_CORE_INFO("Sandbox Stopped!");
     return 0;
 }

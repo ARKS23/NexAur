@@ -4,7 +4,7 @@
 
 ## 设计
 - 日志系统采用静态**单例模式**封装，确保在应用程序的任何位置都能直接访问，无需传递上下文。
-- 使用宏进行封装`NX_CORE_INFO`比直接用`NexAur::Log::GetLogger()->info`更方便.
+- 使用宏进行静态函数封装封装: 如`NX_CORE_INFO`比直接用`NexAur::Log::GetLogger()->info`更方便.
 
 
 ## API与用法
@@ -33,11 +33,11 @@ NX_CORE_INFO("Engine Initialized successfully.");
 // 2. 带参数格式化 
 int width = 1920;
 int height = 1080;
-NX_WARN("Window resized to: {0} x {1}", width, height);
+NX_CORE_WARN("Window resized to: {0} x {1}", width, height);
 
 // 3. 打印自定义对象 (需要重载 operator<<)
 glm::vec3 pos = {1.0f, 2.0f, 3.0f};
-NX_INFO("Player Position: {0}, {1}, {2}", pos.x, pos.y, pos.z);
+NX_CORE_INFO("Player Position: {0}, {1}, {2}", pos.x, pos.y, pos.z);
 ```
 
 ## 未来计划

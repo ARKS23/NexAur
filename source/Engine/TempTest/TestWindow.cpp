@@ -12,7 +12,7 @@ namespace NexAur {
         // 1. 初始化 GLFW
         if (!glfwInit())
         {
-            NA_CORE_FATAL("Failed to initialize GLFW!");
+            NX_CORE_FATAL("Failed to initialize GLFW!");
             return;
         }
 
@@ -20,7 +20,7 @@ namespace NexAur {
         m_Window = glfwCreateWindow(width, height, title, nullptr, nullptr);
         if (!m_Window)
         {
-            NA_CORE_FATAL("Failed to create GLFW window!");
+            NX_CORE_FATAL("Failed to create GLFW window!");
             glfwTerminate();
             return;
         }
@@ -33,15 +33,15 @@ namespace NexAur {
         int status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
         if (!status)
         {
-            NA_CORE_FATAL("Failed to initialize GLAD!");
+            NX_CORE_FATAL("Failed to initialize GLAD!");
             return;
         }
 
         // 5. 打印显卡信息 (验证是否真的拿到了 OpenGL 显卡句柄)
-        NA_CORE_INFO("OpenGL Info:");
-        NA_CORE_INFO("  Vendor: {0}", (const char*)glGetString(GL_VENDOR));
-        NA_CORE_INFO("  Renderer: {0}", (const char*)glGetString(GL_RENDERER));
-        NA_CORE_INFO("  Version: {0}", (const char*)glGetString(GL_VERSION));
+        NX_CORE_INFO("OpenGL Info:");
+        NX_CORE_INFO("  Vendor: {0}", (const char*)glGetString(GL_VENDOR));
+        NX_CORE_INFO("  Renderer: {0}", (const char*)glGetString(GL_RENDERER));
+        NX_CORE_INFO("  Version: {0}", (const char*)glGetString(GL_VERSION));
     }
 
     Window::~Window()

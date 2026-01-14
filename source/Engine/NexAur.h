@@ -1,1 +1,2 @@
-#include "Core/Log.h"
+#include "Core/Log/log_system.h"
+#include "engine.h"
