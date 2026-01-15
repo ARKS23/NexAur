@@ -17,7 +17,12 @@ if (NEXAUR_BUILD_SHARED)
     target_compile_definitions(NexAurEngine PRIVATE NX_BUILD_DLL)
     message(STATUS "NexAur Engine: Building SHARED Library (DLL)")
 else()
-    add_library(NexAurEngine STATIC ${engine_sources})
+    add_library(NexAurEngine STATIC ${engine_sources}
+            Core/Time/TimeStep.h
+            Core/Time/Clock.cpp
+            Core/Time/Clock.h
+            Function/Renderer/window_system.cpp
+            Function/Renderer/window_system.h)
     target_compile_definitions(NexAurEngine PUBLIC NEXAUR_STATIC_LINK)
     message(STATUS "NexAur Engine: Building STATIC Library (LIB)")
 endif()

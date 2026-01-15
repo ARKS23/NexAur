@@ -3,6 +3,7 @@
 #include <string>
 #include <chrono>
 
+#include "Core/Time/Clock.h"
 #include "Core/Base.h"
 
 namespace NexAur {
@@ -18,19 +19,22 @@ namespace NexAur {
 
         bool isRunning() const { return m_is_running; }
         void run();
-        bool tickOneFrame(float delta_time);
+        bool tickOneFrame(TimeStep delta_time);
 
         int getFPS() const { return m_fps; }
 
     protected:
-        void logicalTick(float delta_time);
-        void rendererTick(float delta_time);
-        void calculateFPS(float delta_time);
-        float calculateDeltaTime();
+        void logicalTick(TimeStep delta_time);
+        void rendererTick(TimeStep delta_time);
+        void calculateFPS(TimeStep delta_time);
+        TimeStep calculateDeltaTime();
         
     private:
         bool m_is_running = false;
-        std::chrono::steady_clock::time_point m_last_tick_time_point{std::chrono::steady_clock::now()};
+        Clock m_clock;
+
+        int m_frame_count_accumulator = 0;  // 累计帧数
+        TimeStep m_fps_timer{0.0};  // 累计时间
         int m_fps = 0;
     };
 } // namespace NexAur

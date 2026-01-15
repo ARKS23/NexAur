@@ -6,14 +6,15 @@
 
 namespace NexAur {
     // 前置声明
+    class WindowSystem;
 
     class NEXAUR_API RunTimeGlobalContext {
     public:
         void startSystems();
         void shutdownSystems();
 
-    private:
-        // TODO: 各系统模块
+    public:
+        std::shared_ptr<WindowSystem> m_window_system;
     };
 
     extern RunTimeGlobalContext g_runtime_global_context;
