@@ -27,6 +27,10 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
+// 输入
+#include "Function/Input/KeyCode/key_codes.h"
+#include "Function/Input/KeyCode/mouse_codes.h"
+
 // Windows库处理
 #ifdef NX_PLATFORM_WINDOWS
     // 必须定义 NOMINMAX，否则 Windows.h 里的 min/max 宏会和 std::min/max 冲突

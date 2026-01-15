@@ -22,7 +22,12 @@ else()
             Core/Time/Clock.cpp
             Core/Time/Clock.h
             Function/Renderer/window_system.cpp
-            Function/Renderer/window_system.h)
+            Function/Renderer/window_system.h
+            Function/Input/input_system.h
+            Function/Input/KeyCode/key_codes.h
+            Function/Input/KeyCode/mouse_codes.h
+            Function/Input/input_system_glfw.cpp
+            Function/Input/input_system_glfw.h)
     target_compile_definitions(NexAurEngine PUBLIC NEXAUR_STATIC_LINK)
     message(STATUS "NexAur Engine: Building STATIC Library (LIB)")
 endif()

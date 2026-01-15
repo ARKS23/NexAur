@@ -2,6 +2,7 @@
 #include "engine.h"
 
 #include "Function/Global/global_context.h"
+#include "Function/Input/input_system.h"
 #include "Function/Renderer/window_system.h"
 
 namespace NexAur {
