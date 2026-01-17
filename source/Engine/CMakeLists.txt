@@ -27,7 +27,9 @@ else()
             Function/Input/KeyCode/key_codes.h
             Function/Input/KeyCode/mouse_codes.h
             Function/Input/input_system_glfw.cpp
-            Function/Input/input_system_glfw.h)
+            Function/Input/input_system_glfw.h
+            Core/Events/event.h
+            Core/Events/key_event.h)
     target_compile_definitions(NexAurEngine PUBLIC NEXAUR_STATIC_LINK)
     message(STATUS "NexAur Engine: Building STATIC Library (LIB)")
 endif()

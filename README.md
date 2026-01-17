@@ -1,5 +1,5 @@
 # NexAur
-本项目用于学习游戏引擎开发, NexAur致力面向长期维护的、以工程质量与系统架构为核心的现代游戏引擎项目。
+本项目用于学习和研究游戏引擎开发, NexAur是长期开发和维护的个人小型游戏引擎项目。
 
 ## 编程规范
 - [编程规范文档](./docs/CodingGuideLines/CodingGuideLines.md)

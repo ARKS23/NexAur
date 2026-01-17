@@ -96,19 +96,11 @@ setProjectionMatrix();
 ```
 
 ### 枚举命名
-- 枚举的命名应当和 常量 或 宏 一致: `kEnumName` 或是 `ENUM_NAME`.
-- 单独的枚举值应该优先采用 常量 的命名方式. 但 宏 方式的命名也可以接受. 
+- 枚举命名大写开头的驼峰式命名，枚举成员按照驼峰式命名
 ```C++
-enum UrlTableErrors {
-    kOK = 0,
-    kErrorOutOfMemory,
-    kErrorMalformedInput,
-};
-
-enum AlternateUrlTableErrors {
-    OK = 0,
-    OUT_OF_MEMORY = 1,
-    MALFORMED_INPUT = 2,
+enum class KeyType {
+    mouseButton,
+    keyButton
 };
 ```
 

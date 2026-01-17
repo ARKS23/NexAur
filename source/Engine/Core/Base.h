@@ -18,17 +18,16 @@
 // 处理 DLL 导出/导入逻辑
 #ifdef NX_PLATFORM_WINDOWS
     #if defined(NEXAUR_DYNAMIC_LINK)
-        // 如果定义了 NX_BUILD_DLL (意味着正在编译引擎本身) -> 导出
         #ifdef NX_BUILD_DLL
             #define NEXAUR_API __declspec(dllexport)
-        // 否则 (意味着正在使用引擎，如 Sandbox) -> 导入
         #else
             #define NEXAUR_API __declspec(dllimport)
         #endif
-    #else
-        // 静态链接模式，不需要任何修饰符
+    #else // 静态链接模式，不需要任何修饰符
         #define NEXAUR_API
     #endif
 #else
     #define NEXAUR_API
 #endif
+
+#define BIT(x) (1 << x)
