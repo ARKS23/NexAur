@@ -4,23 +4,23 @@
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_system.h"
 #include "Function/Renderer/window_system.h"
+#include "Core/Events/window_event.h"
 
 namespace NexAur {
     void Engine::startEngine() {
         g_runtime_global_context.startSystems();
-
+        g_runtime_global_context.m_window_system->setEventCallback(NX_BIND_EVENT_FN(Engine::onEvent));
         NX_CORE_INFO("NexAur Engine started.");
     }
 
     void Engine::shutdownEngine() {
         g_runtime_global_context.shutdownSystems();
-
         NX_CORE_INFO("NexAur Engine shut down.");
     }
 
     void Engine::run() {
         std::shared_ptr<WindowSystem> window_system = g_runtime_global_context.m_window_system;
-        while (!window_system->shouldClose()) {
+        while (m_is_running) {
             TimeStep delta_time = calculateDeltaTime();
             tickOneFrame(delta_time);
         }
@@ -62,5 +62,30 @@ namespace NexAur {
 
     TimeStep Engine::calculateDeltaTime() {
         return m_clock.restart();
+    }
+
+    void Engine::onEvent(Event& event) {
+        EventDispatcher dispatcher(event);
+        dispatcher.dispatch<WindowCloseEvent>(NX_BIND_EVENT_FN(Engine::onWindowClose));
+        dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(Engine::onWindowResize));
+
+        // 事件拦截测试
+        if (!event.handled)
+            NX_CORE_INFO("havn't handled event: {}\n", event.toString());
+        else
+            NX_CORE_INFO("event handled: {}\n", event.toString());
+
+        // TODO: 子系统事件分发显式调用链
+    }
+
+    bool Engine::onWindowClose(WindowCloseEvent& event) {
+        NX_CORE_INFO("Window close event received. Shutting down engine.");
+        m_is_running = false;
+        return true;
+    }
+
+    bool Engine::onWindowResize(WindowResizeEvent& event) {
+        NX_CORE_INFO("Window resize event received: {}x{}", event.GetWidth(), event.GetHeight());
+        return false;
     }
 } // namespace NexAur

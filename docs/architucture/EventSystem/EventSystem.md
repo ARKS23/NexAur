@@ -22,10 +22,33 @@ NexAur中的事件系统目前采用的是立即模式和责任链模式设计�
 - 它负责把Event基类安全地转换为具体地子类，并调用对应的处理函数
 
 ### 3. 数据流向
-编码完成后补充
+```
+window_system::callback_function -> engine::onEvent -> callback & subsystem
+```
 
 ## 用法
-待编码完成后补充
+- engine.cpp
+```C++
+ g_runtime_global_context.m_window_system->setEventCallback(NX_BIND_EVENT_FN(Engine::onEvent));
+ 
+ //...
+
+
+ void Engine::onEvent(Event& event) {
+        EventDispatcher dispatcher(event);
+        dispatcher.dispatch<WindowCloseEvent>(NX_BIND_EVENT_FN(Engine::onWindowClose));
+        dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(Engine::onWindowResize));
+
+        // 事件拦截测试
+        if (!event.handled)
+            NX_CORE_INFO("havn't handled event: {}\n", event.toString());
+        else
+            NX_CORE_INFO("event handled: {}\n", event.toString());
+
+        // TODO: 子系统事件分发显式调用链
+    }
+
+```
 
 
 ## 未来计划

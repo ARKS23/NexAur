@@ -19,6 +19,7 @@ namespace NexAur {
     }
 
     void RunTimeGlobalContext::shutdownSystems() {
+        m_window_system->shutdown();
         m_window_system.reset();
     }
 } // namespace NexAur

@@ -44,7 +44,7 @@ namespace NexAur {
         friend class EventDispatcher;
 
     public:
-        virtual  ~Event();
+        virtual  ~Event() = default;
 
     public:
         virtual EventType getEventType() const = 0; // 获取具体的类型
@@ -59,7 +59,7 @@ namespace NexAur {
     };
 
     // 事件分发器
-    class EventDispatcher {
+    class NEXAUR_API EventDispatcher {
         template<typename T>
         using event_fn = std::function<bool(T&)>;   // 定义一个函数指针，返回值为bool，参数T&.  （解释:OnEvent函数都接收一个事件参数返回是否拦截）
 

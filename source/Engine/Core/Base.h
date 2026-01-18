@@ -30,4 +30,7 @@
     #define NEXAUR_API
 #endif
 
+// 位操作宏定义，事件分类中需要用到
 #define BIT(x) (1 << x)
+// 绑定事件回调宏
+#define NX_BIND_EVENT_FN(fn) std::bind(&fn, this, std::placeholders::_1)
