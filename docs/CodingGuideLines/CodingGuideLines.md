@@ -1,4 +1,4 @@
-# CodingGuideLines
+# 编程规范
 ## 目的
 本文档定义了 NexAur 引擎的编码规范，参考[Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html)，以工程可**维护性**优先编写。旨在提高代码的一致性、可读性与长期可维护性，降低模块间耦合，并减少随着项目规模增长而产生的技术债务。
 

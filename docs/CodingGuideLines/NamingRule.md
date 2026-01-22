@@ -87,6 +87,11 @@ struct UrlTableProperties {
 const int kDaysInAWeek = 7;
 ```
 
+### 用作全局常量的用`下环线 + 大写`的形式
+```C++
+constexpr int MAX_NUM = 100;
+```
+
 ### 函数命名
 - 常规函数使用大小写混合(驼峰式命名), 取值和设值函数则要求与变量名匹配: `MyExcitingFunction()`, `MyExcitingMethod()`, `my_exciting_member_variable()`, `set_my_exciting_member_variable()`.
 - 本项目要求函数采用小**写开头的驼峰式命名**
