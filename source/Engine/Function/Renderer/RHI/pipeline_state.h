@@ -4,14 +4,46 @@
 #include "depth_stencil_state.h"
 #include "blend_state.h"
 #include "input_layout.h"
+#include "render_pass.h"
 
-/* 
-    TODO: 
-    GraphicsPipelineDesc
-    GraphicsPipelineStateCreateInfo
-    RHI_PipelineState
-*/
 namespace NexAur {
+    // 可变着色率枚举(RTX20系之后的功能)
+    enum class PipelineShadingRateFlags : uint8_t {
+        // 不使用VRS
+        None = 0,
+
+        // 按图元指定
+        Primitive = 1u << 0u,
+
+        // 按图片指定
+        TextureBased = 1u << 1u,
+
+        // 
+        Last = TextureBased
+    };
+
+    // 多重采样参数结构体
+    struct SampleDesc {
+        // sample count
+        uint8_t count = 1;
+
+        // sample quality
+        uint8_t quality = 0;
+
+        constexpr SampleDesc() noexcept {}
+
+        constexpr SampleDesc(uint8_t _count, uint8_t _quality) noexcept : 
+            count{_count}, quality(_quality) {}
+
+        constexpr bool operator==(const SampleDesc& rhs) const {
+            return count == rhs.count && quality == rhs.quality;
+        }
+
+        constexpr bool operator!=(const SampleDesc& rhs) const {
+            return !(*this == rhs);
+        }
+    };
+
     struct GraphicsPipelineDesc {
         // 光栅化信息
         RasterizerStateDesc rasterizer_desc;
@@ -43,23 +75,62 @@ namespace NexAur {
         // 深度只读开关
         bool read_only_DSV = false;
 
-        // TODO: 多重采样描述
-        // SampleDesc SmplDesc;
+        // 多重采样描述
+        SampleDesc sample_desc;
 
-        // TODO: 可变着色率VRS
-        // PIPELINE_SHADING_RATE_FLAGS ShadingRateFlags DEFAULT_INITIALIZER(PIPELINE_SHADING_RATE_FLAG_NONE);
+        // 可变着色率VRS
+        PipelineShadingRateFlags shading_rate_flag{PipelineShadingRateFlags::None};
 
-        // TODO
-        // uint8_t subpass_index = 0;
+        // vulkan专用: 一个pass可以包含多个sub pass
+        uint8_t subpass_index = 0;
 
-        // TODO: 采样掩码，控制高阶抗锯齿
-        // uint32_t SampleMask = 0xFFFFFFFF;
+        // 采样掩码，控制高阶抗锯齿
+        uint32_t sample_mask = 0xFFFFFFFF;
 
-        // TODO: 显示Render Pass指针
-        // IRenderPass* pRenderPass     DEFAULT_INITIALIZER(nullptr);
+        // TODO: 显式Render Pass指针，vulkan风格API，使用这个回忽略掉num_render_targets和RTV_formats，直接使用这里面的信息
+        IRenderPass* p_render_pass = nullptr;
 
-        // TODO: 多卡交互
-        // uint32_t node_mask;
+        // 多显卡交互
+        uint32_t node_mask;
+
+        bool operator==(const GraphicsPipelineDesc& rhs) const noexcept {
+            if (!(rasterizer_desc == rhs.rasterizer_desc &&
+                    privitive_topology == rhs.privitive_topology &&
+                    depth_stencil_desc == rhs.depth_stencil_desc &&
+                    blend_desc == rhs.blend_desc && 
+                    num_viewports == rhs.num_viewports &&
+                    num_render_targets == rhs.num_render_targets &&
+                    input_layout == rhs.input_layout &&
+                    read_only_DSV == rhs.read_only_DSV && 
+                    sample_desc == rhs.sample_desc && 
+                    shading_rate_flag == rhs.shading_rate_flag &&
+                    subpass_index == rhs.subpass_index && 
+                    sample_mask == rhs.sample_mask && 
+                    node_mask == rhs.node_mask )) {
+                return false;
+            }
+
+            for (uint32_t i = 0; i < num_render_targets; ++i) {
+                if (RTV_formats[i] != rhs.RTV_formats[i])
+                    return false;
+            }
+
+            if ((p_render_pass != nullptr) != (p_render_pass != nullptr))
+                return false;
+
+            /*
+            if (pRenderPass != nullptr) {
+                if (!(pRenderPass->GetDesc() == Rhs.pRenderPass->GetDesc()))
+                    return false;
+            }
+            */
+
+            return true;
+        }
+
+        bool operator!=(const GraphicsPipelineDesc& rhs) const noexcept {
+            return !(*this == rhs);
+        }
     };
     
 } // namespace NexAur

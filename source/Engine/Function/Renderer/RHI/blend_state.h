@@ -116,7 +116,7 @@ namespace NexAur {
         /// \return
         /// - True if all members of the two structures are equal.
         /// - False otherwise
-        constexpr bool operator == (const RenderTargetBlendDesc& rhs)const
+        constexpr bool operator == (const RenderTargetBlendDesc& rhs) const
         {
             return blend_enable           == rhs.blend_enable    &&
                 logic_operation_enable  == rhs.logic_operation_enable &&
@@ -130,7 +130,7 @@ namespace NexAur {
                 render_target_write_mask == rhs.render_target_write_mask;
         }
 
-        bool operator==(const RenderTargetBlendDesc& rhs) {
+        bool operator==(const RenderTargetBlendDesc& rhs) const {
             return blend_enable == rhs.blend_enable &&
                     logic_operation_enable == rhs.logic_operation_enable &&
                     src_blend == rhs.src_blend && 
@@ -143,7 +143,7 @@ namespace NexAur {
                     render_target_write_mask == rhs.render_target_write_mask;
         }
 
-        bool operator!=(const RenderTargetBlendDesc& rhs) {
+        bool operator!=(const RenderTargetBlendDesc& rhs) const {
             return !(*this == rhs);
         }
     };
@@ -168,7 +168,7 @@ namespace NexAur {
             render_targets           {RT0}
         {}
 
-        bool operator==(const BlendStateDesc& rhs) {
+        bool operator==(const BlendStateDesc& rhs) const {
             bool b_enbale_equal = alpha_to_coverage_enable == rhs.alpha_to_coverage_enable &&
                         independent_blend_enable == rhs.independent_blend_enable;
 
@@ -183,8 +183,8 @@ namespace NexAur {
             return b_enbale_equal && b_RTS_equal;
         }
 
-        bool operator!=(const BlendStateDesc& rhs) {
+        bool operator!=(const BlendStateDesc& rhs) const {
             return !(*this == rhs);
         }
     };
-}
+} // namespace NexAur

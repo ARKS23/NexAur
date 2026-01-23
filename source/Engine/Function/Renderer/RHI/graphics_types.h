@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "flag_enum_micro.h"
 
 namespace NexAur {
     // 图元拓扑结构枚举
@@ -38,6 +39,98 @@ namespace NexAur {
         Float32,
         Float64,
         NumTypes
+    };
+
+    // 着色器类型，位标识符
+    enum class ShaderType : uint32_t {
+        Unknown          = 0x0000, ///< Unknown shader type
+        Vertex           = 0x0001, ///< Vertex shader
+        Pixel            = 0x0002, ///< Pixel (fragment) shader
+        Geometry         = 0x0004, ///< Geometry shader
+        Hull             = 0x0008, ///< Hull (tessellation control) shader
+        Domain           = 0x0010, ///< Domain (tessellation evaluation) shader
+        Compute          = 0x0020, ///< Compute shader
+        Amplification    = 0x0040, ///< Amplification (task) shader
+        Mesh             = 0x0080, ///< Mesh shader
+        RayGen           = 0x0100, ///< Ray generation shader
+        RayMiss          = 0x0200, ///< Ray miss shader
+        RayClosestHit    = 0x0400, ///< Ray closest hit shader
+        RayAnyHit        = 0x0800, ///< Ray any hit shader
+        RayIntersection  = 0x1000, ///< Ray intersection shader
+        Callable         = 0x2000, ///< Callable shader
+        Tile             = 0x4000, ///< Tile shader (Only for Metal backend)
+        Last             = Tile,   ///< Last shader type
+
+        /// Vertex and pixel shader stages
+        VsPs             = Vertex | Pixel,
+
+        /// All graphics pipeline shader stages
+        AllGraphics      = Vertex | Pixel | Geometry | Hull | Domain,
+
+        /// All mesh shading pipeline stages
+        AllMesh          = Amplification | Mesh | Pixel,
+
+        /// All ray-tracing pipeline shader stages
+        AllRayTracing    = RayGen | RayMiss | RayClosestHit | RayAnyHit | RayIntersection | Callable,
+
+        /// All shader stages
+        All              = Last * 2 - 1
+    };
+    ENABLE_ENUM_BITMASK(ShaderType); // 为枚举生成位运算
+
+    // 版本信息结构体
+    struct Version {
+        uint32_t major = 0;
+        uint32_t minor = 0;
+
+        constexpr Version() noexcept
+        {}
+
+        constexpr Version(uint32_t _Major, uint32_t _Minor) noexcept :
+            major{_Major},
+            minor{_Minor}
+        {}
+
+        constexpr bool operator==(const Version& rhs) const {
+            return major == rhs.major && minor == rhs.minor;
+        }
+        constexpr bool operator!=(const Version& rhs) const {
+            return !(*this == rhs);
+        }
+
+        constexpr bool operator>(const Version& rhs) const {
+            return major == rhs.major ? minor > rhs.minor : major > rhs.major;
+        }
+
+        constexpr bool operator>=(const Version& rhs) const {
+            return major == rhs.major ? minor >= rhs.minor : major >= rhs.major;
+        }
+
+        constexpr bool operator<(const Version& rhs) const {
+            return !(*this >= rhs);
+        }
+
+        constexpr bool operator<=(const Version& rhs) const {
+            return !(*this > rhs);
+        }
+
+        static constexpr Version Min(const Version& V1, const Version& V2) {
+            return V1 < V2 ? V1 : V2;
+        }
+
+        static constexpr Version Max(const Version& V1, const Version& V2) {
+            return V1 > V2 ? V1 : V2;
+        }
+    };
+
+    // 描述device对象的共同特征
+    struct DeviceObjectAttribs {
+        // 对象名称
+        const char* name = nullptr;
+
+        constexpr DeviceObjectAttribs() noexcept {}
+
+        explicit constexpr DeviceObjectAttribs(const char* _name) : name(_name) {}
     };
 
     enum class TextureFormat : uint16_t {
