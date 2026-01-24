@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 
 #ifdef _WIN32
     // Windows 平台需要处理 dllexport/dllimport
