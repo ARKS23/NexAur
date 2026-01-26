@@ -9,6 +9,8 @@
 #include "material.h"
 #include "buffer.h"
 
+#include "TempTest/triangle_test.h"
+
 namespace NexAur {
     // 渲染模块资源工厂
     class NEXAUR_API RendererFactory {
@@ -39,7 +41,7 @@ namespace NexAur {
         static std::shared_ptr<VertexBuffer> createVertexBuffer(float* vertices, uint32_t size);
 
         // EBO
-        static std::shared_ptr<VertexBuffer> createIndexBuffer(uint32_t* indices, uint32_t count);
+        static std::shared_ptr<IndexBuffer> createIndexBuffer(uint32_t* indices, uint32_t count);
 
         // Unifrom Buffer
         static std::shared_ptr<UniformBuffer> createUniformBuffer(uint32_t size, uint32_t binding);
@@ -60,5 +62,8 @@ namespace NexAur {
 
     private:
         void onWindowResize(WindowResizeEvent& e);
+
+    private:
+        
     };
 } // namespace NexAur

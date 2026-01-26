@@ -2,10 +2,70 @@
 #include "renderer_system.h"
 #include "renderer.h"
 
+#include "renderer_command.h"
+
+// 工厂函数实现
+namespace NexAur {
+    std::shared_ptr<Framebuffer> RendererFactory::createFramebuffer(const FramebufferSpecification& spec) {
+        return Framebuffer::create(spec);
+    }
+
+    std::shared_ptr<Material> RendererFactory::createMaterial(const std::shared_ptr<Shader>& shader) {
+        return std::make_shared<Material>(shader);
+    }
+
+    std::shared_ptr<Shader> RendererFactory::createShader(const std::string& filepath) {
+        return Shader::create(filepath);
+    }
+
+    std::shared_ptr<Shader> RendererFactory::createShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
+        return Shader::create(name, vertexSrc, fragmentSrc);
+    }
+
+    std::shared_ptr<TextureCubeMap> RendererFactory::createTextureCube(const TextureSpecification& specification) {
+        return TextureCubeMap::create(specification);
+    }
+
+    std::shared_ptr<TextureCubeMap> RendererFactory::createTextureCube(const std::string& path) {
+        return TextureCubeMap::create(path);
+    }
+
+    std::shared_ptr<Texture2D> RendererFactory::createTexture2D(const TextureSpecification& specification) {
+        return Texture2D::create(specification);
+    }
+
+    std::shared_ptr<Texture2D> RendererFactory::createTexture2D(const std::string& path) {
+        return Texture2D::create(path);
+    }
+
+    std::shared_ptr<VertexArray> RendererFactory::createVertexArray() {
+        return VertexArray::create();
+    }
+
+    std::shared_ptr<VertexBuffer> RendererFactory::createVertexBuffer(uint32_t size) {
+        return VertexBuffer::create(size);
+    }
+
+    std::shared_ptr<VertexBuffer> RendererFactory::createVertexBuffer(float* vertices, uint32_t size) {
+        return VertexBuffer::create(vertices, size);
+    }
+
+    std::shared_ptr<IndexBuffer> RendererFactory::createIndexBuffer(uint32_t* indices, uint32_t count) {
+        return IndexBuffer::create(indices, count);
+    }
+
+    std::shared_ptr<UniformBuffer> RendererFactory::createUniformBuffer(uint32_t size, uint32_t binding) {
+        return UniformBuffer::create(size, binding);
+    }
+} // namespace NexAur
+
+
 namespace NexAur {
     void RendererSystem::init() {
         // 初始化底层渲染器
         Renderer::init();
+        
+        RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
     }
 
     void RendererSystem::shutdown() {
@@ -15,6 +75,7 @@ namespace NexAur {
 
     void RendererSystem::tick(TimeStep ts) {
         // 每帧更新渲染逻辑
+        RendererCommand::clear();
     }
 
     void RendererSystem::onEvent(Event& e) {

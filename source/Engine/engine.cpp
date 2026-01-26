@@ -4,6 +4,7 @@
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_system.h"
 #include "Function/Renderer/window_system.h"
+#include "Function/Renderer/RHI/renderer_system.h"
 #include "Core/Events/window_event.h"
 
 namespace NexAur {
@@ -45,8 +46,9 @@ namespace NexAur {
     }
 
     void Engine::rendererTick(TimeStep delta_time) {
-        // 测试
-        g_runtime_global_context.m_window_system->update();
+        g_runtime_global_context.m_renderer_system->tick(delta_time); // 渲染
+
+        g_runtime_global_context.m_window_system->update(); // 目前版本是window_system负责交换缓冲区
     }
 
     void Engine::calculateFPS(TimeStep delta_time) {

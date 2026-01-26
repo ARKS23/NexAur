@@ -57,6 +57,7 @@ namespace NexAur {
 
     void OpenGLVertexArray::addVertexBuffer(const std::shared_ptr<VertexBuffer>& vertexBuffer) {
         NX_CORE_ASSERT(vertexBuffer->getLayout().getElements().size(), "Vertex Buffer has no layout!");
+        
         this->bind();
         vertexBuffer->bind();
 

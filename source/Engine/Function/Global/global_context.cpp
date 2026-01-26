@@ -22,8 +22,8 @@ namespace NexAur {
         m_input_system = std::make_shared<InputSystemGLFW>();
 
         // 渲染系统
-        //m_renderer_system =  std::make_shared<RendererSystem>();
-        //m_renderer_system->init();
+        m_renderer_system =  std::make_shared<RendererSystem>();
+        m_renderer_system->init();
 
         // 物理系统
     }
@@ -34,7 +34,7 @@ namespace NexAur {
 
         m_input_system.reset();
 
-        //m_renderer_system->shutdown();
-        //m_renderer_system.reset();
+        m_renderer_system->shutdown();
+        m_renderer_system.reset();
     }
 } // namespace NexAur
