@@ -3,7 +3,7 @@
 
 #include<string>
 
-#include"Core/Base.h"
+#include "Core/Base.h"
 #include "definitions.h"
 
 namespace NexAur {
@@ -12,6 +12,8 @@ namespace NexAur {
         uint32_t width = 1;
         uint32_t height = 1;
         ImageFormat format = ImageFormat::RGBA8;
+        TextureFilter filter = TextureFilter::Linear;
+        TextureWrap wrap = TextureWrap::Repeat;
         bool generate_mips = true;	// 是否开启Mipmaps
     };
 

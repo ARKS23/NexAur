@@ -35,3 +35,6 @@
 #define BIT(x) (1 << x)
 // 绑定事件回调宏
 #define NX_BIND_EVENT_FN(fn) std::bind(&fn, this, std::placeholders::_1)
+
+// 断言
+#define NX_CORE_ASSERT(x, ...) { if(!(x)) { NX_CORE_ERROR("Assertion Failed: {0}", __VA_ARGS__); __debugbreak(); } }

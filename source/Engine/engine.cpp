@@ -75,7 +75,8 @@ namespace NexAur {
         else
             NX_CORE_INFO("event handled: {}\n", event.toString());
 
-        // TODO: 子系统事件分发显式调用链
+        // 子系统事件分发显式调用链
+        
     }
 
     bool Engine::onWindowClose(WindowCloseEvent& event) {
@@ -85,7 +86,7 @@ namespace NexAur {
     }
 
     bool Engine::onWindowResize(WindowResizeEvent& event) {
-        NX_CORE_INFO("Window resize event received: {}x{}", event.GetWidth(), event.GetHeight());
+        NX_CORE_INFO("Window resize event received: {}x{}", event.getWidth(), event.getHeight());
         return false;
     }
 } // namespace NexAur

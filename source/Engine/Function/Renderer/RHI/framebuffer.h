@@ -4,7 +4,7 @@
 #include "definitions.h"
 
 namespace NexAur {
-    // 纹理对象信息描述结构体
+    // 帧缓冲纹理对象信息描述结构体
     struct FramebufferTextureSpecification {
         FramebufferTextureSpecification() = default;
 
@@ -20,19 +20,10 @@ namespace NexAur {
     };
 
 
-    // 对TextureSpecification的列表封装，支持MRT多目标渲染
-	struct FramebufferAttachmentSpecification {
-		FramebufferAttachmentSpecification() = default;
-		FramebufferAttachmentSpecification(std::initializer_list<FramebufferTextureSpecification> attachments) : Attachments(attachments) {}
-
-		std::vector<FramebufferTextureSpecification> Attachments;
-	};
-
-
     // 配置结构体
 	struct FramebufferSpecification {
 		uint32_t Width = 0, Height = 0;					// 帧缓冲的分辨率
-		FramebufferAttachmentSpecification Attachments;	// 附件列表
+		std::vector<FramebufferTextureSpecification> Attachments;	// 附件列表, MRT多目标渲染
 		uint32_t samples = 1;							// MSAA
 
 		bool SwapChainTarget = false;					// 是否直接画到屏幕上，用来控制离屏渲染

@@ -1,5 +1,7 @@
 #pragma once
 #include "Core/Base.h"
+#include "Core/Time/TimeStep.h"
+#include "Core/Events/window_event.h"
 #include "vertex_array.h"
 #include "uniform_buffer.h"
 #include "framebuffer.h"
@@ -47,8 +49,16 @@ namespace NexAur {
     // 渲染模块总线
     class NEXAUR_API RendererSystem {
     public:
+        RendererSystem() = default;
+        ~RendererSystem() = default;
+
+        void init();
+        void shutdown();
+
+        void tick(TimeStep ts);
+        void onEvent(Event& e);
 
     private:
-        
+        void onWindowResize(WindowResizeEvent& e);
     };
 } // namespace NexAur

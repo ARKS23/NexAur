@@ -20,7 +20,7 @@ namespace NexAur {
         m_renderer_API->clear();
     }
 
-    void RendererCommand::drawIndexed(const std::shared_ptr<VertexArray>& vertex_array, uint32_t index_count = 0) {
+    void RendererCommand::drawIndexed(const std::shared_ptr<VertexArray>& vertex_array, uint32_t index_count) {
         m_renderer_API->drawIndex(vertex_array, index_count);
     }
 

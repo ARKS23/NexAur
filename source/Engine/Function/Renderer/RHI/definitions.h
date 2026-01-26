@@ -74,6 +74,17 @@ namespace NexAur {
         MirroredRepeat  // 镜像重复 AB BA AB BA
     };
 
+    
+    // 立方体贴图六个面的枚举
+    enum class CubeMapFace {
+        Right = 0,
+        Left,
+        Top,
+        Bottom,
+        Front,
+        Back
+    };
+
 
     // 深度比较枚举
     enum class DepthFunc {
@@ -83,7 +94,7 @@ namespace NexAur {
         Equal, 
         Lequal, 
         Greater, 
-        Notequal, 
+        NotEqual, 
         Gequal, 
         Always
     };

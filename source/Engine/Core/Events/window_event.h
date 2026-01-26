@@ -6,8 +6,8 @@ namespace NexAur {
     class NEXAUR_API WindowResizeEvent : public Event {
     public:
         WindowResizeEvent(unsigned int width, unsigned int height) : m_Width(width), m_Height(height) {}
-        inline unsigned int GetWidth() const { return m_Width; }
-        inline unsigned int GetHeight() const { return m_Height; }
+        inline unsigned int getWidth() const { return m_Width; }
+        inline unsigned int getHeight() const { return m_Height; }
 
         std::string toString() const override {
             std::string str = "WindowResizeEvent: " + std::to_string(m_Width) + ", " + std::to_string(m_Height);

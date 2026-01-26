@@ -14,6 +14,8 @@
 
 namespace NexAur
 {
+    class GraphicsContext;
+
     struct WindowSpecification {
         int width{1920};
         int height{1080};
@@ -27,7 +29,7 @@ namespace NexAur
         using EventCallbackFn = std::function<void(Event&)>;
 
     public:
-        WindowSystem() = default;
+        WindowSystem();
         ~WindowSystem();
 
     public:
@@ -48,6 +50,7 @@ namespace NexAur
 
     private:
         GLFWwindow* m_window{nullptr};
+        std::unique_ptr<GraphicsContext> m_context;
         int m_width{1920};
         int m_height{1080};
 

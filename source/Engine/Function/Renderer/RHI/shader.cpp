@@ -1,19 +1,20 @@
 #include "pch.h"
 #include "shader.h"
 #include "Core/Log/log_system.h"
+#include "Function/Renderer/Platform/OpenGL/opengl_shader.h"
 
 namespace NexAur {
     std::shared_ptr<Shader> Shader::create(const std::string& filepath) {
-        return nullptr;
+        return OpenGLShader::create(filepath);
     }
 
     std::shared_ptr<Shader> Shader::create(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
-        return nullptr;
+        return OpenGLShader::create(name, vertexSrc, fragmentSrc);
     }
 
     /* ---------------------------------- ShaderLibrary -----------------------------------------  */
     void ShaderLibrary::add(const std::string& name, const std::shared_ptr<Shader>& shader) {
-        if (!exists(name)) {
+        if (exists(name)) {
             NX_CORE_WARN("Shader already exists!");
             return;
         }
@@ -40,7 +41,7 @@ namespace NexAur {
 
     std::shared_ptr<NexAur::Shader> ShaderLibrary::get(const std::string& name) {
         if (!exists(name)) {
-            NX_CORE_WARN("Shader already exists!");
+            NX_CORE_WARN("Shader not found!");
             return nullptr;
         }
 

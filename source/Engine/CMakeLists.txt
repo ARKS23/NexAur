@@ -17,19 +17,7 @@ if (NEXAUR_BUILD_SHARED)
     target_compile_definitions(NexAurEngine PRIVATE NX_BUILD_DLL)
     message(STATUS "NexAur Engine: Building SHARED Library (DLL)")
 else()
-    add_library(NexAurEngine STATIC ${engine_sources}
-            Core/Time/TimeStep.h
-            Core/Time/Clock.cpp
-            Core/Time/Clock.h
-            Function/Renderer/window_system.cpp
-            Function/Renderer/window_system.h
-            Function/Input/input_system.h
-            Function/Input/KeyCode/key_codes.h
-            Function/Input/KeyCode/mouse_codes.h
-            Function/Input/input_system_glfw.cpp
-            Function/Input/input_system_glfw.h
-            Core/Events/event.h
-            Core/Events/key_event.h)
+    add_library(NexAurEngine STATIC ${engine_sources})
     target_compile_definitions(NexAurEngine PUBLIC NEXAUR_STATIC_LINK)
     message(STATUS "NexAur Engine: Building STATIC Library (LIB)")
 endif()
@@ -45,6 +33,7 @@ target_include_directories(NexAurEngine PUBLIC
     "${CMAKE_SOURCE_DIR}/external/spdlog/include"
     "${CMAKE_SOURCE_DIR}/external/glfw/include"
     "${CMAKE_SOURCE_DIR}/external/glad/include"
+    "${CMAKE_SOURCE_DIR}/external/stb"
 )
 
 # 链接第三方库
@@ -54,4 +43,5 @@ target_link_libraries(NexAurEngine PUBLIC
     glfw
     glm
     spdlog
+    stb
 )

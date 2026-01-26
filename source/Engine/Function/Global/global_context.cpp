@@ -4,6 +4,7 @@
 #include "Core/Log/log_system.h"
 #include "Function/Renderer/window_system.h"
 #include "Function/Input/input_system_glfw.h"
+#include "Function/Renderer/RHI/renderer_system.h"
 
 namespace NexAur {
     RunTimeGlobalContext g_runtime_global_context; // 全局运行时上下文实例
@@ -21,7 +22,8 @@ namespace NexAur {
         m_input_system = std::make_shared<InputSystemGLFW>();
 
         // 渲染系统
-        
+        //m_renderer_system =  std::make_shared<RendererSystem>();
+        //m_renderer_system->init();
 
         // 物理系统
     }
@@ -29,5 +31,10 @@ namespace NexAur {
     void RunTimeGlobalContext::shutdownSystems() {
         m_window_system->shutdown();
         m_window_system.reset();
+
+        m_input_system.reset();
+
+        //m_renderer_system->shutdown();
+        //m_renderer_system.reset();
     }
 } // namespace NexAur

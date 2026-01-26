@@ -10,8 +10,11 @@
 #include "Core/Events/window_event.h"
 #include "Core/Events/key_event.h"
 #include "Core/Events/mouse_event.h"
+#include "Function/Renderer/Platform/OpenGL/opengl_graphics_context.h"
 
 namespace NexAur {
+    WindowSystem::WindowSystem() = default;
+
     WindowSystem::~WindowSystem() {
         glfwDestroyWindow(m_window);
         glfwTerminate();
@@ -38,18 +41,9 @@ namespace NexAur {
             return;
         }
 
-        glfwMakeContextCurrent(m_window);
-        int status = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-        if (!status) {
-            NX_CORE_FATAL("Failed to initialize GLAD!");
-            return;
-        }
-
-        // 5. 打印显卡信息 (验证是否真的拿到了 OpenGL 显卡句柄)
-        NX_CORE_INFO("OpenGL Info:");
-        NX_CORE_INFO("  Vendor: {0}", (const char*)glGetString(GL_VENDOR));
-        NX_CORE_INFO("  Renderer: {0}", (const char*)glGetString(GL_RENDERER));
-        NX_CORE_INFO("  Version: {0}", (const char*)glGetString(GL_VERSION));
+        // 创建图形上下文管理对象
+        m_context = std::make_unique<OpenGLGraphicsContext>(m_window);
+        m_context->init();
     }
 
     void WindowSystem::pollEvents() {
@@ -78,15 +72,7 @@ namespace NexAur {
 
     void WindowSystem::update() {
         // 交换缓冲区 (这一步才会把画的东西显示到屏幕上)
-        glfwSwapBuffers(m_window);
-
-        // 随机数花屏效果
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-
-        glClearColor(dis(gen), dis(gen), dis(gen), 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        m_context->swapBuffers();
     }
 
     void WindowSystem::bindEvents() {

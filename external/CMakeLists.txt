@@ -16,3 +16,6 @@ add_subdirectory(spdlog)
 
 # EnTT
 add_subdirectory(entt)
+
+# stb
+add_subdirectory(stb)
