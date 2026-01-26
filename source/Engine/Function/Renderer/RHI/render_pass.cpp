@@ -16,6 +16,7 @@ namespace NexAur {
             m_specification.target_framebuffer->bind();
         } 
         else {
+            RendererCommand::bindDefaultFramebuffer();
             auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
             RendererCommand::setViewport(0, 0, width, height);
         }

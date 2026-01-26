@@ -20,6 +20,8 @@ namespace NexAur {
         static void setDepthFunc(DepthFunc func); // 设置深度比较偏序关系
         static void setDepthMask(bool writable); // 设置深度是否写入
 
+        static void bindDefaultFramebuffer();
+
     private:
         static std::shared_ptr<RendererAPI> m_renderer_API;
     };

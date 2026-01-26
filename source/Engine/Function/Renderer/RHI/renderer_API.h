@@ -25,6 +25,8 @@ namespace NexAur{
         virtual void setDepthFunc(DepthFunc depth_func) = 0; // 设置深度比较函数
         virtual void setDepthMask(bool writable) = 0;   // 设置深度是否写入
 
+        virtual void bindDefaultFramebuffer() = 0;  // 绑定默认帧缓冲区
+
         static std::shared_ptr<RendererAPI> getAPI();
 
     private:

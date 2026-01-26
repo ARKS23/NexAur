@@ -44,4 +44,8 @@ namespace NexAur {
         m_renderer_API->setDepthMask(writable);
     }
 
+    void RendererCommand::bindDefaultFramebuffer() {
+        m_renderer_API->bindDefaultFramebuffer();
+    }
+
 } // namespace NexAur

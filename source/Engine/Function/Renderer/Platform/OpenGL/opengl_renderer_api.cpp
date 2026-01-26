@@ -91,4 +91,8 @@ namespace NexAur {
     void OpenGLRendererAPI::setDepthMask(bool writable) {
         glDepthMask(writable ? GL_TRUE : GL_FALSE);
     }
+
+    void OpenGLRendererAPI::bindDefaultFramebuffer() {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 } // namespace NexAur

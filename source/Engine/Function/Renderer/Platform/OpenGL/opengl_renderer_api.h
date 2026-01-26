@@ -18,5 +18,7 @@ namespace NexAur {
         virtual void setLineWidth(float width) override;
         virtual void setDepthFunc(DepthFunc depth_func) override;
         virtual void setDepthMask(bool writable) override;
+
+        virtual void bindDefaultFramebuffer() override;
     };
 } // namespace NexAur
