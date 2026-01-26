@@ -26,8 +26,8 @@ namespace NexAur {
             return;
         }
 
-        m_width = specification.width;
-        m_height = specification.height;
+        m_data.width = specification.width;
+        m_data.height = specification.height;
 
         // OpenGL 4.6 核心模式 （后期拓展Vulkan时修改）
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -67,7 +67,7 @@ namespace NexAur {
     }
 
     std::array<int, 2> WindowSystem::getWindowSize() const {
-        return {m_width, m_height};
+        return {m_data.width, m_data.height};
     }
 
     void WindowSystem::update() {

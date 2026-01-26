@@ -144,7 +144,7 @@ namespace NexAur {
                 GLenum internalFormat = framebufferTextureFormatToGLInternalFormat(format);
                 GLenum dataFormat = framebufferTextureFormatToGLDataFormat(format);
 
-                attachColorTexture(m_ColorAttachments[i], m_Specification.samples, m_Specification.Width, m_Specification.Height, (int)i, m_ColorAttachmentSpecifications[i]);
+                attachColorTexture(m_ColorAttachments[i], m_Specification.samples, m_Specification.width, m_Specification.height, (int)i, m_ColorAttachmentSpecifications[i]);
             }
         }
 
@@ -156,7 +156,7 @@ namespace NexAur {
             FramebufferTextureFormat format = m_DepthAttachmentSpecification.framebuffer_texture_format;
             GLenum glFormat = framebufferTextureFormatToGLInternalFormat(format);
 
-            attachDepthTexture(m_DepthAttachment, m_Specification.samples, glFormat, GL_DEPTH_STENCIL_ATTACHMENT, m_Specification.Width, m_Specification.Height, m_DepthAttachmentSpecification);
+            attachDepthTexture(m_DepthAttachment, m_Specification.samples, glFormat, GL_DEPTH_STENCIL_ATTACHMENT, m_Specification.width, m_Specification.height, m_DepthAttachmentSpecification);
         }
 
         // 设置绘制缓冲
@@ -198,7 +198,7 @@ namespace NexAur {
 
     void OpenGLFramebuffer::bind() {
         glBindFramebuffer(GL_FRAMEBUFFER, m_ID);
-        glViewport(0, 0, m_Specification.Width, m_Specification.Height);
+        glViewport(0, 0, m_Specification.width, m_Specification.height);
     }
 
     void OpenGLFramebuffer::unbind() {
@@ -211,8 +211,8 @@ namespace NexAur {
             return;
         }
 
-        m_Specification.Width = width;
-        m_Specification.Height = height;
+        m_Specification.width = width;
+        m_Specification.height = height;
         invalidate();
     }
 

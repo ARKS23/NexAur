@@ -13,7 +13,7 @@ namespace NexAur{
         virtual void init() = 0;
         virtual void setViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) = 0;
         virtual void setClearColor(const glm::vec4& color) = 0;
-        virtual void clear() = 0;
+        virtual void clear(ClearBufferFlag flags = ClearBufferFlag::ColorDepth) = 0;
 
         // 核心绘制指令
 		virtual void drawIndex(const std::shared_ptr<VertexArray>& vertex_array, uint32_t index_count = 0) = 0;	// 用索引来绘制，默认传入0表示绘制整个EBO

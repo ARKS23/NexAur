@@ -22,7 +22,7 @@ namespace NexAur {
 
     // 配置结构体
 	struct FramebufferSpecification {
-		uint32_t Width = 0, Height = 0;					// 帧缓冲的分辨率
+		uint32_t width = 0, height = 0;					// 帧缓冲的分辨率
 		std::vector<FramebufferTextureSpecification> Attachments;	// 附件列表, MRT多目标渲染
 		uint32_t samples = 1;							// MSAA
 

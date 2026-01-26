@@ -3,6 +3,21 @@
 #include "Function/Renderer/RHI/definitions.h"
 
 namespace NexAur {
+    // 缓冲清除标志转换
+    static GLbitfield GLClearBufferFlag(ClearBufferFlag flags) {
+        GLbitfield gl_flags = 0;
+        if (static_cast<uint8_t>(flags) & static_cast<uint8_t>(ClearBufferFlag::Color)) {
+            gl_flags |= GL_COLOR_BUFFER_BIT;
+        }
+        if (static_cast<uint8_t>(flags) & static_cast<uint8_t>(ClearBufferFlag::Depth)) {
+            gl_flags |= GL_DEPTH_BUFFER_BIT;
+        }
+        if (static_cast<uint8_t>(flags) & static_cast<uint8_t>(ClearBufferFlag::Stencil)) {
+            gl_flags |= GL_STENCIL_BUFFER_BIT;
+        }
+        return gl_flags;
+    }
+
     void OpenGLRendererAPI::init() {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -17,8 +32,8 @@ namespace NexAur {
         glClearColor(color.r, color.g, color.b, color.a);
     }
 
-    void OpenGLRendererAPI::clear() {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    void OpenGLRendererAPI::clear(ClearBufferFlag flags) {
+        glClear(GLClearBufferFlag(flags));
     }
 
     void OpenGLRendererAPI::drawIndex(const std::shared_ptr<VertexArray>& vertex_array, uint32_t index_count) {

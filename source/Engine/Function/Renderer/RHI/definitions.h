@@ -98,4 +98,35 @@ namespace NexAur {
         Gequal, 
         Always
     };
+
+    // 清除缓冲标志位
+    enum class ClearBufferFlag : uint8_t {
+        None = 0,
+        Color = 1 << 0,             // 清除颜色缓冲
+        Depth = 1 << 1,             // 清除深度缓冲
+        Stencil = 1 << 2,           // 清除模板缓冲
+
+        // 组合
+        ColorDepth = Color | Depth,
+        All        = Color | Depth | Stencil
+    };
+
+    // 位运算重载
+    inline ClearBufferFlag operator|(ClearBufferFlag a, ClearBufferFlag b) {
+        return static_cast<ClearBufferFlag>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+    }
+
+    inline ClearBufferFlag& operator|=(ClearBufferFlag& a, ClearBufferFlag b) {
+        a = a | b;
+        return a;
+    }
+
+    inline ClearBufferFlag operator&(ClearBufferFlag a, ClearBufferFlag b) {
+        return static_cast<ClearBufferFlag>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
+    }
+
+    inline ClearBufferFlag& operator&=(ClearBufferFlag& a, ClearBufferFlag b) {
+        a = a & b;
+        return a;
+    }
 } // namespace NexAur

@@ -16,8 +16,8 @@ namespace NexAur {
         m_renderer_API->setClearColor(color);
     }
 
-    void RendererCommand::clear() {
-        m_renderer_API->clear();
+    void RendererCommand::clear(ClearBufferFlag flags) {
+        m_renderer_API->clear(flags);
     }
 
     void RendererCommand::drawIndexed(const std::shared_ptr<VertexArray>& vertex_array, uint32_t index_count) {
