@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "renderer_system.h"
 #include "renderer.h"
-
 #include "renderer_command.h"
+#include "render_forward_pipeline.h"
 
 // 工厂函数实现
 namespace NexAur {
@@ -66,6 +66,11 @@ namespace NexAur {
         Renderer::init();
         
         RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
+
+        // 初始化RenderPipline
+        m_forward_pipeline = std::make_shared<RenderForwardPipeline>();
+        m_forward_pipeline->init();
+        NX_CORE_ASSERT(m_forward_pipeline, "Failed to create RenderForwardPipeline in RendererSystem!");
     }
 
     void RendererSystem::shutdown() {
@@ -75,7 +80,7 @@ namespace NexAur {
 
     void RendererSystem::tick(TimeStep ts) {
         // 每帧更新渲染逻辑
-        RendererCommand::clear();
+        m_forward_pipeline->render();
     }
 
     void RendererSystem::onEvent(Event& e) {

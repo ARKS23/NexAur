@@ -12,6 +12,11 @@
 #include "TempTest/triangle_test.h"
 
 namespace NexAur {
+    class RenderForwardPipeline;
+} // namespace NexAur
+
+
+namespace NexAur {
     // 渲染模块资源工厂
     class NEXAUR_API RendererFactory {
     public:
@@ -64,6 +69,6 @@ namespace NexAur {
         void onWindowResize(WindowResizeEvent& e);
 
     private:
-        
+        std::shared_ptr<RenderForwardPipeline> m_forward_pipeline;  // 前向渲染管线
     };
 } // namespace NexAur

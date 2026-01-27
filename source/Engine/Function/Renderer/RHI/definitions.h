@@ -111,7 +111,7 @@ namespace NexAur {
         All        = Color | Depth | Stencil
     };
 
-    // 位运算重载
+    // 掩码运算,映射到底层API的标志位时需要使用
     inline ClearBufferFlag operator|(ClearBufferFlag a, ClearBufferFlag b) {
         return static_cast<ClearBufferFlag>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
     }

@@ -4,14 +4,12 @@
 ## 编程规范
 - [编程规范文档](./docs/CodingGuideLines/CodingGuideLines.md)
 
-## 笔记
-
-
-## 第三方库测试
-- glad/glfw : done
-- spdlog: done
-- glm: done
-- entt: done
+## 进度
+- 日志系统：v1版本全局日志系统开发完成
+- 输入系统: v1版本轮询模式事件系统设计完成
+- 渲染模块: OpenGL后端实现的分支开发中
+- 事件系统: v1版本总线事件派发结构编写完成
+- 编辑器：未开发
 
 ## 技术栈
 ![C++](https://img.shields.io/badge/Language-C%2B%2B17-00599C?style=flat-square&logo=c%2B%2B)

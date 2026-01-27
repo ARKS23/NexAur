@@ -19,8 +19,6 @@ namespace NexAur {
         RenderPass(const RenderPassSpecification& spec) : m_specification(spec) {}
         virtual ~RenderPass() = default;
 
-        virtual void init() = 0;
-        
         void run();
 
     protected:
