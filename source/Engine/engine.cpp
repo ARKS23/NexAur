@@ -42,7 +42,7 @@ namespace NexAur {
     }
 
     void Engine::logicalTick(TimeStep delta_time) {
-
+        
     }
 
     void Engine::rendererTick(TimeStep delta_time) {

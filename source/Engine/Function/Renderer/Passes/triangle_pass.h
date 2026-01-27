@@ -5,6 +5,7 @@
 #include "Function/Renderer/RHI/vertex_array.h"
 #include "Function/Renderer/RHI/shader.h"
 #include "Function/Renderer/RHI/buffer.h"
+#include "Core/Time/Clock.h"
 
 namespace NexAur {
     class TrianglePass : public RenderPass {
