@@ -10,7 +10,8 @@
     #endif
 #elif defined(__linux__)
     #define NX_PLATFORM_LINUX
-    // Linux 默认导出符号，通常不需要特殊处理，但保留宏定义是个好习惯
+#elif defined(__APPLE__)
+    #define NX_PLATFORM_MACOS
 #else
     #error "Unknown platform!"
 #endif
