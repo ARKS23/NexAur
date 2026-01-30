@@ -20,6 +20,7 @@ namespace NexAur {
         virtual void clearAttachment(uint32_t attachmentIndex, int value) override; // 清空某个特定的附件
 
         virtual uint32_t getColorAttachmentRendererID(uint32_t index = 0) const override; // 返回某个纹理ID
+        virtual uint32_t getDepthAttachmentRendererID() const override { return m_DepthAttachment; } // 返回深度纹理
 
         virtual const FramebufferSpecification& getSpecification() const override;	// 返回配置结构体
 

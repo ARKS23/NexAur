@@ -19,6 +19,7 @@ namespace NexAur {
         RenderPass(const RenderPassSpecification& spec) : m_specification(spec) {}
         virtual ~RenderPass() = default;
 
+        std::shared_ptr<Framebuffer> getTargetFramebuffer() const { return m_specification.target_framebuffer; }
         void run();
 
     protected:
