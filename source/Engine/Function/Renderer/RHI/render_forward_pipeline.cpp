@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/Passes/triangle_pass.h"
+#include "Function/Renderer/editor_camera.h"
+#include "Function/Renderer/RHI/Renderer.h"
 
 namespace NexAur {
     void RenderForwardPipeline::init() {
@@ -13,7 +15,10 @@ namespace NexAur {
         m_triangle_pass = std::make_shared<TrianglePass>(spec);
     }
 
-    void RenderForwardPipeline::render() {
+    void RenderForwardPipeline::render(std::shared_ptr<Camera> camera) {
+        // 设置vp矩阵
+        Renderer::setCameraMatrix(camera->getViewProjection());
+
         // 执行前向渲染流程
         m_triangle_pass->run();
     }
