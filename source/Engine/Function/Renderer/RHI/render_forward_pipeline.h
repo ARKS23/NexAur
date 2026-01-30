@@ -5,6 +5,7 @@
 
 namespace NexAur {
     class TrianglePass;
+    class SpherePass;
 
     class NEXAUR_API RenderForwardPipeline : public RenderPipeline {
     public:
@@ -15,6 +16,6 @@ namespace NexAur {
         //virtual void onWindowResize(uint32_t width, uint32_t height) override;
 
     private:
-        std::shared_ptr<TrianglePass> m_triangle_pass;
+        std::shared_ptr<SpherePass> m_sphere_pass;
     };
 } // namespace NexAur

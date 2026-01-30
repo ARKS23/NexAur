@@ -161,13 +161,16 @@ namespace NexAur {
 
         // 设置绘制缓冲
         if (m_ColorAttachments.size() > 1) {
-            NX_CORE_ASSERT(m_ColorAttachments.size() <= 4, "OpenGL supports up to 4 color attachments!");
-            GLenum buffers[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+            NX_CORE_ASSERT(m_ColorAttachments.size() <= 8, "OpenGL supports up to 8 color attachments!");
+            GLenum buffers[8] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, 
+                                    GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4, GL_COLOR_ATTACHMENT5,
+                                    GL_COLOR_ATTACHMENT6, GL_COLOR_ATTACHMENT7 };
             glDrawBuffers((GLsizei)m_ColorAttachments.size(), buffers);
         }
         else if (m_ColorAttachments.empty()) {
             // 没有颜色附件时禁用绘制缓冲
             glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
         }
         else {
             glDrawBuffer(GL_COLOR_ATTACHMENT0);

@@ -71,12 +71,6 @@ namespace NexAur {
         dispatcher.dispatch<WindowCloseEvent>(NX_BIND_EVENT_FN(Engine::onWindowClose));
         dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(Engine::onWindowResize));
 
-        // 事件拦截测试
-        if (!event.handled)
-            NX_CORE_INFO("havn't handled event: {}\n", event.toString());
-        else
-            NX_CORE_INFO("event handled: {}\n", event.toString());
-
         // 子系统事件分发显式调用链
         
     }

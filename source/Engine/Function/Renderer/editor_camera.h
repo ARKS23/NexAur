@@ -32,6 +32,7 @@ namespace NexAur {
     private:
         void updateProjection();
         void updateView();
+        void updateViewProjection();
 
         bool onWindowResize(WindowResizeEvent& event);
         bool onMouseScroll(MouseScrolledEvent& event);
