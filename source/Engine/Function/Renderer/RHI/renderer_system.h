@@ -30,6 +30,7 @@ namespace NexAur {
         // Shader
         static std::shared_ptr<Shader> createShader(const std::string& filepath);
         static std::shared_ptr<Shader> createShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
+        static std::shared_ptr<Shader> createShaderByPaths(const std::string& name, const std::string& vertexSrcPath, const std::string& fragmentSrcPath);
 
         // TexutreCubeMap
         static std::shared_ptr<TextureCubeMap> createTextureCube(const TextureSpecification& specification);

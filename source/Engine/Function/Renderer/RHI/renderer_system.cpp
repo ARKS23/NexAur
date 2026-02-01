@@ -23,6 +23,10 @@ namespace NexAur {
         return Shader::create(name, vertexSrc, fragmentSrc);
     }
 
+    std::shared_ptr<Shader> RendererFactory::createShaderByPaths(const std::string& name, const std::string& vertexSrcPath, const std::string& fragmentSrcPath) {
+        return Shader::createByPaths(name, vertexSrcPath, fragmentSrcPath);
+    }
+
     std::shared_ptr<TextureCubeMap> RendererFactory::createTextureCube(const TextureSpecification& specification) {
         return TextureCubeMap::create(specification);
     }

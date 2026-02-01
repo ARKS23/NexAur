@@ -17,6 +17,9 @@ namespace NexAur {
     }
 
     void RendererCommand::clear(ClearBufferFlag flags) {
+        if (flags == ClearBufferFlag::None)
+            return;
+
         m_renderer_API->clear(flags);
     }
 

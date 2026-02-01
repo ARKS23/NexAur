@@ -29,6 +29,7 @@ namespace NexAur {
         /* 全局静态工厂方法 */
         static std::shared_ptr<Shader> create(const std::string& filepath);
         static std::shared_ptr<Shader> create(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
+        static std::shared_ptr<Shader> createByPaths(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
     };
 
     //ShaderLibrary集中管理Shader

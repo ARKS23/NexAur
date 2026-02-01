@@ -28,10 +28,17 @@ namespace NexAur {
         m_name = filepath.substr(last_slash, count);
     }
 
-    OpenGLShader::OpenGLShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) : m_name(name) {
-        m_openGLShaderSources[GL_VERTEX_SHADER] = vertexSrc;
-        m_openGLShaderSources[GL_FRAGMENT_SHADER] = fragmentSrc;
-        createProgram();
+    OpenGLShader::OpenGLShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc, bool is_path) : m_name(name) {
+        if (!is_path) {
+            m_openGLShaderSources[GL_VERTEX_SHADER] = vertexSrc;
+            m_openGLShaderSources[GL_FRAGMENT_SHADER] = fragmentSrc;
+            createProgram();
+        }
+        else {
+            m_openGLShaderSources[GL_VERTEX_SHADER] = readFile(vertexSrc);
+            m_openGLShaderSources[GL_FRAGMENT_SHADER] = readFile(fragmentSrc);
+            createProgram();
+        }
     }
 
     OpenGLShader::~OpenGLShader() {

@@ -9,7 +9,11 @@ namespace NexAur {
     }
 
     std::shared_ptr<Shader> Shader::create(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
-        return std::make_shared<OpenGLShader>(name, vertexSrc, fragmentSrc);
+        return std::make_shared<OpenGLShader>(name, vertexSrc, fragmentSrc, false);
+    }
+
+    std::shared_ptr<Shader> Shader::createByPaths(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
+        return std::make_shared<OpenGLShader>(name, vertexSrc, fragmentSrc, true);
     }
 
     /* ---------------------------------- ShaderLibrary -----------------------------------------  */

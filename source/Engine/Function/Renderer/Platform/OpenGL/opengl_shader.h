@@ -9,7 +9,7 @@ namespace NexAur {
     class OpenGLShader : public Shader {
     public:
         OpenGLShader(const std::string& filepath);
-        OpenGLShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
+        OpenGLShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc, bool is_path = false);
         virtual ~OpenGLShader() override;
 
         virtual void bind() const override;
