@@ -7,6 +7,7 @@ namespace NexAur {
     class ContainerPass;
     class SpherePass;
     class SkyboxPass;
+    class FloorPass;
 
     class NEXAUR_API RenderForwardPipeline : public RenderPipeline {
     public:
@@ -19,6 +20,7 @@ namespace NexAur {
     private:
         std::shared_ptr<SpherePass> m_sphere_pass;
         std::shared_ptr<ContainerPass> m_container_pass;
+        std::shared_ptr<FloorPass> m_floor_pass;
         std::shared_ptr<SkyboxPass> m_skybox_pass;
     };
 } // namespace NexAur
