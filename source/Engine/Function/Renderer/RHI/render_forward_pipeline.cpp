@@ -4,6 +4,7 @@
 #include "Function/Renderer/Passes/sphere_pass.h"
 #include "Function/Renderer/Passes/skybox_pass.h"
 #include "Function/Renderer/Passes/floor_pass.h"
+#include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/editor_camera.h"
 #include "Function/Renderer/RHI/Renderer.h"
 
@@ -44,7 +45,24 @@ namespace NexAur {
         m_floor_pass->run();
 
         // 天空盒
-        //m_skybox_pass->setCamera(camera);
-        //m_skybox_pass->run();
+        m_skybox_pass->setCamera(camera);
+        m_skybox_pass->run();
+    }
+
+    void RenderForwardPipeline::renderScene(std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera) {
+        RendererCommand::clear(ClearBufferFlag::Depth | ClearBufferFlag::Color);
+        
+        // vp矩阵
+        Renderer::setCameraMatrix(camera->getViewProjection());
+
+        // 绘制场景物体
+        if (!scene) return;
+        for (const RenderEntity& entity : scene->getEntities()) {
+            Renderer::submit(entity.material, entity.mesh, entity.transform);
+        }
+
+        // 天空盒
+        m_skybox_pass->setCamera(camera);
+        m_skybox_pass->run();
     }
 } // namespace NexAur

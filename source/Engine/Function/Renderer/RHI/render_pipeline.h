@@ -2,6 +2,7 @@
 
 #include "Core/Base.h"
 #include "Function/Renderer/camera.h"
+#include "Function/Scene/scene.h"
 
 namespace NexAur {
     class NEXAUR_API RenderPipeline {
@@ -11,6 +12,8 @@ namespace NexAur {
         virtual void init() = 0;    // 初始化pass资源
 
         virtual void render(std::shared_ptr<Camera> camera) = 0;
+
+        virtual void renderScene(std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera) = 0;
 
         //virtual void onWindowResize(uint32_t width, uint32_t height) = 0;
     };

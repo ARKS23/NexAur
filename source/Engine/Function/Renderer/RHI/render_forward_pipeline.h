@@ -15,6 +15,7 @@ namespace NexAur {
 
         virtual void render(std::shared_ptr<Camera> camera) override;
 
+        virtual void renderScene(std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera) override;
         //virtual void onWindowResize(uint32_t width, uint32_t height) override;
 
     private:

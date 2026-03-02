@@ -14,6 +14,7 @@
 namespace NexAur {
     class RenderForwardPipeline;
     class EditorCamera;
+    class Scene;
 } // namespace NexAur
 
 
@@ -73,5 +74,6 @@ namespace NexAur {
     private:
         std::shared_ptr<RenderForwardPipeline> m_forward_pipeline;  // 前向渲染管线
         std::shared_ptr<EditorCamera> m_editor_camera;              // 编辑器摄像机(暂时先放这里)
+        std::shared_ptr<Scene> m_scene;                             // 场景(暂时先放这里)
     };
 } // namespace NexAur

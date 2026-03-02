@@ -4,6 +4,7 @@
 #include "renderer_command.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/editor_camera.h"
+#include "Function/Scene/scene.h"
 
 // 工厂函数实现
 namespace NexAur {
@@ -75,6 +76,9 @@ namespace NexAur {
         // 初始化摄像机
         m_editor_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
 
+        // 初始化场景(测试)
+        m_scene = std::make_shared<Scene>();
+
         // 初始化RenderPipline
         m_forward_pipeline = std::make_shared<RenderForwardPipeline>();
         m_forward_pipeline->init();
@@ -91,7 +95,10 @@ namespace NexAur {
         m_editor_camera->onUpdate(ts);
 
         // 每帧更新渲染逻辑
-        m_forward_pipeline->render(m_editor_camera);
+        // m_forward_pipeline->render(m_editor_camera);
+
+        // 场景渲染
+        m_forward_pipeline->renderScene(m_scene, m_editor_camera);
     }
 
     void RendererSystem::onEvent(Event& e) {
