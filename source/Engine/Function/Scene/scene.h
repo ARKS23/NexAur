@@ -64,6 +64,7 @@ namespace NexAur {
 
         // 获取点光源列表
         const std::vector<PointLight>& getPointLights() const { return m_point_lights; }
+        const std::vector<RenderEntity>& getLightsEntities() const { return m_lights_entities; }
         int getPointLightMax() const { return point_light_max; }
 
         // 是否启用天空盒
@@ -74,6 +75,7 @@ namespace NexAur {
 
     private:
         std::vector<RenderEntity> m_entities;   // 场景中的所有物体
+        std::vector<RenderEntity> m_lights_entities;     // 场景中的光源物体
         DirectionalLight m_directional_light;   // 场景定向光
         std::vector<PointLight> m_point_lights; // 场景点光源列表
         int point_light_max = 4; // 点光源最大数量

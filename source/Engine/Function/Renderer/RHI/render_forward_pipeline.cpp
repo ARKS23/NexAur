@@ -91,6 +91,11 @@ namespace NexAur {
             Renderer::submit(entity.material, entity.mesh, entity.transform);
         }
 
+        // 绘制点光源
+        for (const RenderEntity& entity : scene->getLightsEntities()) {
+            Renderer::submit(entity.material, entity.mesh, entity.transform);
+        }
+
         // 天空盒
         if (scene->isSkyboxEnabled()) {
             m_skybox_pass->setCamera(camera);

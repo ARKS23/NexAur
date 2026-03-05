@@ -112,6 +112,11 @@ namespace NexAur {
                 m_data_format = GL_RGB;
                 m_Specification.format = ImageFormat::RGB8;
             }
+            else if (channels == 1) {
+                m_internal_format = GL_R8;
+                m_data_format = GL_RED;
+                m_Specification.format = ImageFormat::R8;
+            }
             else {
                 NX_CORE_ERROR("Unsupported number of channels: {0} in texture: {1}", channels, path);
                 stbi_set_flip_vertically_on_load(false);
