@@ -1,7 +1,9 @@
 #include "pch.h"
+#include <string>
 #include "scene.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Global/global_context.h"
+#include "Function/File/file_system.h"
 #include "Function/Input/input_system.h"
 
 namespace NexAur {
@@ -11,7 +13,7 @@ namespace NexAur {
         // 光源立方体
         std::shared_ptr<VertexArray> cube_vertex_array = MeshFactory::createCubeMesh();
         std::shared_ptr<Shader> light_shader = RendererFactory::createShaderByPaths("light cube shader", 
-        "E:/ComputerGraphics/NexAur/assets/shaders/lightCube/light_cube.vs", "E:/ComputerGraphics/NexAur/assets/shaders/lightCube/light_cube.fs");
+        NX_ASSET("assets/shaders/lightCube/light_cube.vs"), NX_ASSET("assets/shaders/lightCube/light_cube.fs"));
         
         std::shared_ptr<Material> light_material = RendererFactory::createMaterial(light_shader);
         light_material->setFloat3("u_Color", color);
@@ -30,11 +32,11 @@ namespace NexAur {
         // blling-phong Cube
         std::shared_ptr<VertexArray> cube_vertex_array = MeshFactory::createCubeMesh();
         std::shared_ptr<Shader> phong_shader = RendererFactory::createShaderByPaths("container phong shader", 
-        "E:/ComputerGraphics/NexAur/assets/shaders/phong/phong.vs", "E:/ComputerGraphics/NexAur/assets/shaders/phong/phong.fs");
+        NX_ASSET("assets/shaders/phong/phong.vs"), NX_ASSET("assets/shaders/phong/phong.fs"));
         
         std::shared_ptr<Material> phong_material = RendererFactory::createMaterial(phong_shader);
-        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/container/container2.png");
-        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/container/container2_specular.png");
+        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/container/container2.png"));
+        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/container/container2_specular.png"));
         phong_material->setTexture("u_Material.diffuse", diffuse_texture);
         phong_material->setTexture("u_Material.specular", specular_texture);
         phong_material->setFloat("u_Material.shininess", 32.0f);
@@ -52,11 +54,11 @@ namespace NexAur {
         // blling-phong Sphere
         std::shared_ptr<VertexArray> sphere_vertex_array = MeshFactory::createSphereMesh();
         std::shared_ptr<Shader> phong_shader = RendererFactory::createShaderByPaths("sphere phong shader", 
-        "E:/ComputerGraphics/NexAur/assets/shaders/phong/phong.vs", "E:/ComputerGraphics/NexAur/assets/shaders/phong/phong.fs");
+        NX_ASSET("assets/shaders/phong/phong.vs"), NX_ASSET("assets/shaders/phong/phong.fs"));
         std::shared_ptr<Material> phong_material = RendererFactory::createMaterial(phong_shader);
 
-        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/PBR/plastic/albedo.png");
-        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/PBR/plastic/roughness.png");
+        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/plastic/albedo.png"));
+        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/plastic/roughness.png"));
         phong_material->setTexture("u_Material.diffuse", diffuse_texture);
         phong_material->setTexture("u_Material.specular", specular_texture);
         phong_material->setFloat("u_Material.shininess", 32.0f);

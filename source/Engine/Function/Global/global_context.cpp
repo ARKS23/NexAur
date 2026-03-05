@@ -5,6 +5,11 @@
 #include "Function/Renderer/window_system.h"
 #include "Function/Input/input_system_glfw.h"
 #include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/File/file_system.h"
+
+#ifndef ENGINE_ROOT_DIR
+#define ENGINE_ROOT_DIR "."
+#endif
 
 namespace NexAur {
     RunTimeGlobalContext g_runtime_global_context; // 全局运行时上下文实例
@@ -12,6 +17,9 @@ namespace NexAur {
     void RunTimeGlobalContext::startSystems() {
         // 初始化全局静态单例日志系统
         LogSystem::init();
+
+        // 文件系统
+        m_file_system = std::make_shared<FileSystem>(ENGINE_ROOT_DIR);
 
         // 窗口系统
         m_window_system = std::make_shared<WindowSystem>();
@@ -29,6 +37,8 @@ namespace NexAur {
     }
 
     void RunTimeGlobalContext::shutdownSystems() {
+        m_file_system.reset();
+
         m_window_system->shutdown();
         m_window_system.reset();
 

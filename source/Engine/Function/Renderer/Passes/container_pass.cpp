@@ -2,12 +2,14 @@
 #include "container_pass.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/RHI/renderer.h"
+#include "Function/Global/global_context.h"
+#include "Function/File/file_system.h"
 
 namespace NexAur {
     void ContainerPass::initResources() {
         m_vertex_array = RendererFactory::createVertexArray();
         m_shader = RendererFactory::createShaderByPaths("container shader", 
-        "E:/ComputerGraphics/NexAur/assets/shaders/container.vs", "E:/ComputerGraphics/NexAur/assets/shaders/container.fs");
+        NX_ASSET("assets/shaders/container.vs"), NX_ASSET("assets/shaders/container.fs"));
 
         float vertices[] = {
 		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
@@ -67,7 +69,7 @@ namespace NexAur {
         m_vertex_array->addVertexBuffer(vbo);
         m_vertex_array->setIndexBuffer(ebo);
 
-        m_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/container/container.jpg");
+        m_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/container/container.jpg"));
 
         m_material = RendererFactory::createMaterial(m_shader);
         m_material->setTexture("u_DiffuseMap", m_texture);

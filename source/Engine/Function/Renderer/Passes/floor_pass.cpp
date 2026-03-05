@@ -2,13 +2,15 @@
 #include "floor_pass.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/RHI/renderer.h"
+#include "Function/Global/global_context.h"
+#include "Function/File/file_system.h"
 
 namespace NexAur {
     void FloorPass::initResources() {
         m_vertex_array = RendererFactory::createVertexArray();
         m_shader = RendererFactory::createShaderByPaths("floor shader", 
-        "E:/ComputerGraphics/NexAur/assets/shaders/floor/floor.vs", "E:/ComputerGraphics/NexAur/assets/shaders/floor/floor.fs");
-        m_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/wood/wood.png");
+        NX_ASSET("assets/shaders/floor/floor.vs"), NX_ASSET("assets/shaders/floor/floor.fs"));
+        m_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/wood/wood.png"));
 
         float vertices[] = {
 		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,

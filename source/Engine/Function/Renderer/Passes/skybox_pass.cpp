@@ -2,6 +2,8 @@
 #include "skybox_pass.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/RHI/renderer_command.h"
+#include "Function/Global/global_context.h"
+#include "Function/File/file_system.h"
 #include "Function/Renderer/camera.h"
 
 namespace NexAur {
@@ -21,9 +23,9 @@ namespace NexAur {
     }
 
     void SkyboxPass::initResources() {
-        m_skybox_texture = RendererFactory::createTextureCube("E:/ComputerGraphics/NexAur/assets/textures/skybox/Scene_Lake");
+        m_skybox_texture = RendererFactory::createTextureCube(NX_ASSET("assets/textures/skybox/Scene_Lake"));
         m_shader = RendererFactory::createShaderByPaths("skybox shader", 
-            "E:\\ComputerGraphics\\NexAur\\assets\\shaders\\skybox\\skybox.vs", "E:\\ComputerGraphics\\NexAur\\assets\\shaders\\skybox\\skybox.fs");
+            NX_ASSET("assets/shaders/skybox/skybox.vs"), NX_ASSET("assets/shaders/skybox/skybox.fs"));
 
         float skyboxVertices[] = {
             // positions          
