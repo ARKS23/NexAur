@@ -98,6 +98,7 @@ namespace NexAur {
         // m_forward_pipeline->render(m_editor_camera);
 
         // 场景渲染
+        m_scene->onUpdate(ts);
         m_forward_pipeline->renderScene(m_scene, m_editor_camera);
     }
 

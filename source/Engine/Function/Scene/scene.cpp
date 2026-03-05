@@ -1,23 +1,42 @@
 #include "pch.h"
 #include "scene.h"
 #include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Global/global_context.h"
+#include "Function/Input/input_system.h"
 
 namespace NexAur {
     Scene::Scene() {
+        // 初始化光源
+        initLight();
+
         // 初始化场景
-        RenderEntity cube_mesh;
+        RenderEntity cube_mesh_phong;
         //RenderEntity sphere_mesh;
 
         std::shared_ptr<VertexArray> cube_vertex_array = MeshFactory::createCubeMesh();
-        std::shared_ptr<Shader> shader = RendererFactory::createShaderByPaths("container shader", 
-        "E:/ComputerGraphics/NexAur/assets/shaders/container.vs", "E:/ComputerGraphics/NexAur/assets/shaders/container.fs");
-        std::shared_ptr<Texture2D> texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/container/container.jpg");
-        std::shared_ptr<Material> material = RendererFactory::createMaterial(shader);
-        material->setTexture("u_DiffuseMap", texture);
-        cube_mesh.mesh = cube_vertex_array;
-        cube_mesh.material = material;
-        cube_mesh.name = "cube_test";
-        m_entities.push_back(cube_mesh);
+        std::shared_ptr<Shader> phong_shader = RendererFactory::createShaderByPaths("container phong shader", 
+        "E:/ComputerGraphics/NexAur/assets/shaders/phong/phong.vs", "E:/ComputerGraphics/NexAur/assets/shaders/phong/phong.fs");
+        std::shared_ptr<Material> phong_material = RendererFactory::createMaterial(phong_shader);
+        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/container/container2.png");
+        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D("E:/ComputerGraphics/NexAur/assets/textures/container/container2_specular.png");
+        phong_material->setTexture("u_Material.diffuse", diffuse_texture);
+        phong_material->setTexture("u_Material.specular", specular_texture);
+        phong_material->setFloat("u_Material.shininess", 32.0f);
+        cube_mesh_phong.mesh = cube_vertex_array;
+        cube_mesh_phong.material = phong_material;
+        cube_mesh_phong.name = "cube_test_phong";
+        cube_mesh_phong.transform = glm::translate(cube_mesh_phong.transform, glm::vec3(1.5f, 0.0f, 0.0f));
+        m_entities.push_back(cube_mesh_phong);
+
+        for (int i = 0; i < 10; ++i) {
+            RenderEntity entity = cube_mesh_phong;
+            if (i < 5)
+                entity.transform = glm::translate(entity.transform, glm::vec3(i * 2.0f, 0.0f, 0.0f));
+            else
+                entity.transform = glm::translate(entity.transform, glm::vec3(0.0f, (i - 5) * 2.0f, 0.0f));
+            entity.name = "cube_" + std::to_string(i);
+            m_entities.push_back(entity);
+        }
     }
 
     void Scene::addEntity(const RenderEntity& entity) {
@@ -25,7 +44,33 @@ namespace NexAur {
     }
 
     void Scene::onUpdate(float deltaTime) {
-        // 更新场景逻辑，例如动画、物理等
+        // 天空盒查询更新(临时方案)
+        std::shared_ptr<InputSystem> input_system = g_runtime_global_context.m_input_system;
+        static bool z_key_pressed_last_frame = false;
+        bool z_key_pressed = input_system->isKeyPressed(KeyCode::Z);
+        if (z_key_pressed && !z_key_pressed_last_frame) {
+            m_skybox_enabled = !m_skybox_enabled;
+        }
+        z_key_pressed_last_frame = z_key_pressed;
+
+        // 定向光绕X 轴旋转，模拟日出日落
+        float rotationSpeed = glm::radians(30.0f * deltaTime);
+        
+        glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(1.0f, 0.0f, 0.0f));
+        
+        m_directional_light.direction = glm::vec3(lightRotation * glm::vec4(m_directional_light.direction, 0.0f));
+        m_directional_light.direction = glm::normalize(m_directional_light.direction);
+    }
+
+    void Scene::initLight() {
+
+
+        // 定向光
+        m_directional_light = DirectionalLight();
+        m_directional_light.direction = glm::normalize(glm::vec3(0.2f, -1.0f, 0.3f));
+        m_directional_light.color = glm::vec3(1.0f, 1.0f, 1.0f);
+
+        m_point_lights.push_back(PointLight());
     }
 
     std::shared_ptr<VertexArray> MeshFactory::createCubeMesh() {

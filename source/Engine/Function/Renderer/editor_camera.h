@@ -24,7 +24,7 @@ namespace NexAur {
         glm::vec3 getUpDirection() const;
         glm::vec3 getRightDirection() const;
         glm::vec3 getForwardDirection() const;
-        const glm::vec3& getPosition() const { return m_position; }
+        //const glm::vec3& getPosition() const { return m_position; }
 
         float getPitch() const { return m_pitch; }
         float getYaw() const { return m_yaw; }
@@ -51,7 +51,7 @@ namespace NexAur {
         float m_near_clip = 0.1f;
         float m_far_clip = 1000.0f;
 
-        glm::vec3 m_position = { 0.0f, 0.0f, 0.0f };
+        //glm::vec3 m_position = { 0.0f, 0.0f, 0.0f };
         glm::vec2 m_init_mouse_position = { 0.0f, 0.0f };
 
         float m_pitch = 0.0f;

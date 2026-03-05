@@ -55,14 +55,46 @@ namespace NexAur {
         // vp矩阵
         Renderer::setCameraMatrix(camera->getViewProjection());
 
+        // 光源信息
+        const DirectionalLight& dir_light = scene->getDirectionalLight();
+        const std::vector<PointLight>& point_lights = scene->getPointLights();
+
         // 绘制场景物体
         if (!scene) return;
         for (const RenderEntity& entity : scene->getEntities()) {
+            std::shared_ptr<Shader> shader = entity.material->getShader();
+            shader->bind();
+
+            shader->setFloat3("u_CameraPos", camera->getPosition());
+            shader->setFloat3("u_AmbientLight", glm::vec3(0.1f, 0.1f, 0.1f));
+
+
+            // 定向光
+            shader->setFloat3("u_DirLight.direction", dir_light.direction);
+            shader->setFloat3("u_DirLight.color", dir_light.color);
+            shader->setFloat("u_DirLight.intensity", dir_light.intensity);
+
+            // 点光源
+            int point_light_count = std::min(static_cast<int>(point_lights.size()), scene->getPointLightMax());
+            shader->setInt("u_NumPointLights", point_light_count);
+            for (size_t i = 0; i < point_light_count; ++i) {
+                const PointLight& pl = point_lights[i];
+                std::string index_str = std::to_string(i);
+                shader->setFloat3("u_PointLights[" + index_str + "].position", pl.position);
+                shader->setFloat3("u_PointLights[" + index_str + "].color", pl.color);
+                shader->setFloat("u_PointLights[" + index_str + "].intensity", pl.intensity);
+                shader->setFloat("u_PointLights[" + index_str + "].constant", pl.constant);
+                shader->setFloat("u_PointLights[" + index_str + "].linear", pl.linear);
+                shader->setFloat("u_PointLights[" + index_str + "].quadratic", pl.quadratic);
+            }
+
             Renderer::submit(entity.material, entity.mesh, entity.transform);
         }
 
         // 天空盒
-        m_skybox_pass->setCamera(camera);
-        m_skybox_pass->run();
+        if (scene->isSkyboxEnabled()) {
+            m_skybox_pass->setCamera(camera);
+            m_skybox_pass->run();
+        }
     }
 } // namespace NexAur
