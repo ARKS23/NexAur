@@ -41,6 +41,7 @@ uniform DirLight u_DirLight;
 uniform PointLight u_PointLights[MAX_POINT_LIGHTS];
 uniform vec3 u_AmbientLight;
 uniform sampler2D u_ShadowMap; // 阴影贴图
+uniform float u_Exposure = 0.52; // 曝光控制
 
 // 控制实际启用的点光源数量
 uniform int u_NumPointLights;
@@ -56,7 +57,8 @@ void main() {
     vec3 viewDir = normalize(u_CameraPos - v_FragPos);
 
     // 1. 计算全局环境光 (Ambient)
-    vec3 ambient = u_AmbientLight * vec3(texture(u_Material.diffuse, v_TexCoord));
+    vec3 albedo = pow(vec3(texture(u_Material.diffuse, v_TexCoord)), vec3(2.2)); // 从漫反射贴图获取基础颜色
+    vec3 ambient = u_AmbientLight * albedo;
     
     // 2. 累加所有光源的直接光照
     vec3 result = ambient;
@@ -74,9 +76,13 @@ void main() {
     int pointLightCount = min(u_NumPointLights, MAX_POINT_LIGHTS);
     for(int i = 0; i < pointLightCount; i++) {
         result += CalculatePointLight(u_PointLights[i], norm, v_FragPos, viewDir);    
-    }    
+    }
+
+    // HDR色调映射和Gamma校正
+    vec3 mapped = vec3(1.0) - exp(-result * u_Exposure); // 色调映射
+    mapped = pow(mapped, vec3(1.0/2.2)); // Gamma    
     
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(mapped, 1.0);
 }
 
 vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir) {
@@ -87,7 +93,8 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir) {
 
     // 漫反射 (Diffuse)
     float diff = max(dot(normal, lightDir), 0.0);
-    vec3 diffuse = diff * radiance * vec3(texture(u_Material.diffuse, v_TexCoord));
+    vec3 texColor = pow(vec3(texture(u_Material.diffuse, v_TexCoord)), vec3(2.2));
+    vec3 diffuse = diff * radiance * texColor;
     
     // 镜面高光 (Specular)
     vec3 halfwayDir = normalize(lightDir + viewDir);  
@@ -109,7 +116,8 @@ vec3 CalculatePointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewD
     
     // 漫反射
     float diff = max(dot(normal, lightDir), 0.0);
-    vec3 diffuse = diff * radiance * vec3(texture(u_Material.diffuse, v_TexCoord));
+    vec3 texColor = pow(vec3(texture(u_Material.diffuse, v_TexCoord)), vec3(2.2));
+    vec3 diffuse = diff * radiance * texColor;
     
     // 镜面高光
     vec3 halfwayDir = normalize(lightDir + viewDir);  
@@ -133,18 +141,18 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     // 表面角度越陡，偏移量需要越大
     float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
     
-    // 5. PCF (Percentage-Closer Filtering) 软阴影采样
+    // 5. PCF软阴影采样
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(u_ShadowMap, 0);
     float sampleRadius = 1.3;  // 采样半径
-    // 对周围 3x3 个像素进行采样求平均
-    for(int x = -1; x <= 1; ++x) {
-        for(int y = -1; y <= 1; ++y) {
+    // 对周围 5x5 个像素进行采样求平均
+    for(int x = -2; x <= 2; ++x) {
+        for(int y = -2; y <= 2; ++y) {
             float pcfDepth = texture(u_ShadowMap, projCoords.xy + vec2(x, y) * texelSize * sampleRadius).r; 
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
         }    
     }
-    shadow /= 9.0;
+    shadow /= 25.0;
     
     // 6. 强制处理视锥体远平面之外的区域（超出直射光范围的算作无阴影）
     if(projCoords.z > 1.0)

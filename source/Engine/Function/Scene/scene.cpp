@@ -125,7 +125,7 @@ namespace NexAur {
         bool z_key_pressed = input_system->isKeyPressed(KeyCode::Z);
         if (z_key_pressed && !z_key_pressed_last_frame) {
             m_skybox_enabled = !m_skybox_enabled;
-            m_directional_light.intensity = m_skybox_enabled ? 1.0f : 0.0f; // 启用天空盒时增加定向光强度，模拟白天效果
+            m_directional_light.intensity = m_skybox_enabled ? 3.0f : 0.0f; // 启用天空盒时增加定向光强度，模拟白天效果
         }
         z_key_pressed_last_frame = z_key_pressed;
 
@@ -174,6 +174,7 @@ namespace NexAur {
         PointLight point_light1;
         point_light1.position = glm::vec3(-5.0f, 0.0f, 0.0f);
         point_light1.color = glm::vec3(0.3f, 0.2f, 0.66f);
+        point_light1.intensity = 20.0f;
         m_point_lights.push_back(point_light1);
         RenderEntity light_cube1 = createLightCube(point_light1.position, point_light1.color);
         m_lights_entities.push_back(light_cube1);
