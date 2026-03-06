@@ -10,6 +10,7 @@ namespace NexAur {
     public:
         OpenGLTexture2D(const TextureSpecification& specification);
         OpenGLTexture2D(const std::string& path);
+        OpenGLTexture2D(uint32_t renderer_id, uint32_t width, uint32_t height);
         virtual ~OpenGLTexture2D() override;
 
         virtual uint32_t getWidth() const override;

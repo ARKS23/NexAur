@@ -11,6 +11,10 @@ namespace NexAur {
         return std::make_shared<OpenGLTexture2D>(path);
     }
 
+    std::shared_ptr<Texture2D> Texture2D::create(uint32_t renderer_id, uint32_t width, uint32_t height) {
+        return std::make_shared<OpenGLTexture2D>(renderer_id, width, height);
+    }
+
     std::shared_ptr<TextureCubeMap> TextureCubeMap::create(const TextureSpecification& specification) {
         return std::make_shared<OpenGLTextureCubeMap>(specification);
     }

@@ -89,6 +89,14 @@ namespace NexAur {
         glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GLWrapFromTextureWrap(specification.wrap));
     }
 
+    OpenGLTexture2D::OpenGLTexture2D(uint32_t renderer_id, uint32_t width, uint32_t height)
+        : m_RendererID(renderer_id), m_width(width), m_height(height), m_Path(""), m_IsLoaded(true) {
+        // TODO: 后续修改
+        m_Specification.width = width;
+        m_Specification.height = height;
+        m_Specification.format = ImageFormat::RGBA8; // 默认格式，实际使用时可能不正确
+    }
+
     OpenGLTexture2D::OpenGLTexture2D(const std::string& path)
         : m_Path(path), m_IsLoaded(false) { 
         int width, height, channels;

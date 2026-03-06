@@ -79,7 +79,7 @@ namespace NexAur {
         DirectionalLight m_directional_light;   // 场景定向光
         std::vector<PointLight> m_point_lights; // 场景点光源列表
         int point_light_max = 4; // 点光源最大数量
-        bool m_skybox_enabled = true; // 是否启用天空盒
+        bool m_skybox_enabled = false; // 是否启用天空盒
     };
     
 } // namespace NexAur

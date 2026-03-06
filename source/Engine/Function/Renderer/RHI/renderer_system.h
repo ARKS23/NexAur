@@ -40,7 +40,8 @@ namespace NexAur {
         // Texutre2D
         static std::shared_ptr<Texture2D> createTexture2D(const TextureSpecification& specification); 
 		static std::shared_ptr<Texture2D> createTexture2D(const std::string& path);
-
+        static std::shared_ptr<Texture2D> createTexture2D(uint32_t renderer_id, uint32_t width, uint32_t height);
+        
         // VAO
         static std::shared_ptr<VertexArray> createVertexArray();
 

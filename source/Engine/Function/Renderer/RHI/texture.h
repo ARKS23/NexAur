@@ -43,6 +43,7 @@ namespace NexAur {
 	public:
 		static std::shared_ptr<Texture2D> create(const TextureSpecification& specification); // 创建指定参数的纹理，然后通过SetData程序化填充
 		static std::shared_ptr<Texture2D> create(const std::string& path); // 从系统加载纹理
+        static std::shared_ptr<Texture2D> create(uint32_t renderer_id, uint32_t width, uint32_t height); // 从纹理id创建纹理
 	};
 
 

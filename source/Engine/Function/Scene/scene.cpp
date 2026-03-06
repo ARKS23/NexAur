@@ -48,6 +48,28 @@ namespace NexAur {
         return cube_mesh_phong;
     }
 
+    static RenderEntity createFloorEntity() {
+        RenderEntity floor_entity;
+
+        // 地面
+        std::shared_ptr<VertexArray> floor_vertex_array = MeshFactory::createCubeMesh();
+        std::shared_ptr<Shader> floor_shader = RendererFactory::createShaderByPaths("floor shader", 
+        NX_ASSET("assets/shaders/phong/phong.vs"), NX_ASSET("assets/shaders/phong/phong.fs"));
+        std::shared_ptr<Material> floor_material = RendererFactory::createMaterial(floor_shader);
+        std::shared_ptr<Texture2D> floor_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/wood/wood.png"));
+        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/gold/roughness.png"));
+        floor_material->setTexture("u_Material.diffuse", floor_texture);
+        floor_material->setTexture("u_Material.specular", specular_texture);
+        floor_entity.mesh = floor_vertex_array;
+        floor_entity.material = floor_material;
+        floor_entity.name = "floor";
+        floor_entity.transform = glm::translate(floor_entity.transform, glm::vec3(0.0f, -5.0f, 0.0f));
+        floor_entity.transform = glm::rotate(floor_entity.transform, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        floor_entity.transform = glm::scale(floor_entity.transform, glm::vec3(50.0f, 50.f, 1.0f));
+
+        return floor_entity;
+    }
+
     static RenderEntity createPhongSphereEntity() {
         RenderEntity sphere_mesh_phong;
 
@@ -81,7 +103,8 @@ namespace NexAur {
         m_entities.push_back(cube_mesh_phong);
         RenderEntity sphere_mesh_phong = createPhongSphereEntity();
         m_entities.push_back(sphere_mesh_phong);
-
+        RenderEntity floor_entity = createFloorEntity();
+        m_entities.push_back(floor_entity);
 
         for (int i = 0; i < 5; ++i) {
             RenderEntity entity = cube_mesh_phong;
@@ -102,6 +125,7 @@ namespace NexAur {
         bool z_key_pressed = input_system->isKeyPressed(KeyCode::Z);
         if (z_key_pressed && !z_key_pressed_last_frame) {
             m_skybox_enabled = !m_skybox_enabled;
+            m_directional_light.intensity = m_skybox_enabled ? 1.0f : 0.0f; // 启用天空盒时增加定向光强度，模拟白天效果
         }
         z_key_pressed_last_frame = z_key_pressed;
 
@@ -142,7 +166,7 @@ namespace NexAur {
     void Scene::initLight() {
         // 定向光
         m_directional_light = DirectionalLight();
-        m_directional_light.direction = glm::normalize(glm::vec3(0.2f, -1.0f, 0.3f));
+        m_directional_light.direction = glm::normalize(glm::vec3(0.2f, -1.0f, -0.3f));
         m_directional_light.color = glm::vec3(1.0f, 1.0f, 1.0f);
         m_directional_light.intensity = 0.0f;
 

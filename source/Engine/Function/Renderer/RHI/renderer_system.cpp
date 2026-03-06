@@ -44,6 +44,10 @@ namespace NexAur {
         return Texture2D::create(path);
     }
 
+    std::shared_ptr<Texture2D> RendererFactory::createTexture2D(uint32_t renderer_id, uint32_t width, uint32_t height) {
+        return Texture2D::create(renderer_id, width, height);
+    }
+
     std::shared_ptr<VertexArray> RendererFactory::createVertexArray() {
         return VertexArray::create();
     }
