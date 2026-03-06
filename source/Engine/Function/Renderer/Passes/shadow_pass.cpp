@@ -26,6 +26,7 @@ namespace NexAur {
         framebuffer_spec.width = SHADOW_WIDTH;
         framebuffer_spec.height = SHADOW_HEIGHT;
         FramebufferTextureSpecification depth_attachment_spec(FramebufferTextureFormat::Depth);
+        depth_attachment_spec.texture_wrap = TextureWrap::ClampToBorder; // 超出部分使用纯色
         framebuffer_spec.Attachments.push_back(depth_attachment_spec);
         m_framebuffer = RendererFactory::createFramebuffer(framebuffer_spec);
 

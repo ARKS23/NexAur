@@ -136,10 +136,11 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     // 5. PCF (Percentage-Closer Filtering) 软阴影采样
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(u_ShadowMap, 0);
+    float sampleRadius = 1.3;  // 采样半径
     // 对周围 3x3 个像素进行采样求平均
     for(int x = -1; x <= 1; ++x) {
         for(int y = -1; y <= 1; ++y) {
-            float pcfDepth = texture(u_ShadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
+            float pcfDepth = texture(u_ShadowMap, projCoords.xy + vec2(x, y) * texelSize * sampleRadius).r; 
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
         }    
     }

@@ -101,6 +101,7 @@ namespace NexAur {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GLFilterFromTextureFilter(fb_format_spec.texture_filiter));
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GLWarpFromTextureWrap(fb_format_spec.texture_wrap));
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GLWarpFromTextureWrap(fb_format_spec.texture_wrap));
+            // TODO: 边缘纯色的情况颜色设置
         }
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, attachmentType, textureTarget(multisampled), id, 0);
