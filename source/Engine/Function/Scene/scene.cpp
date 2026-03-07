@@ -94,6 +94,37 @@ namespace NexAur {
         return sphere_mesh_phong;
     }
 
+    static RenderEntity createPBRSphereEntity(std::string material_type) {
+        RenderEntity sphere_mesh_pbr;
+        static float position_offset = 0.0f;
+
+        std::shared_ptr<VertexArray> sphere_vertex_array = MeshFactory::createSphereMesh();
+        std::shared_ptr<Shader> pbr_shader = RendererFactory::createShaderByPaths("sphere pbr shader",
+            NX_ASSET("assets/shaders/pbr/pbr.vs"), NX_ASSET("assets/shaders/pbr/pbr.fs"));
+        std::shared_ptr<Material> pbr_material = RendererFactory::createMaterial(pbr_shader);
+
+        // 材质设置
+        std::shared_ptr<Texture2D> albedo_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/albedo.png"));
+        std::shared_ptr<Texture2D> metallic_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/metallic.png"));
+        std::shared_ptr<Texture2D> roughness_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/roughness.png"));
+        std::shared_ptr<Texture2D> ao_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/ao.png"));
+        std::shared_ptr<Texture2D> normal_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/normal.png"));
+        pbr_material->setTexture("u_Material.albedoMap", albedo_texture);
+        pbr_material->setTexture("u_Material.metallicMap", metallic_texture);
+        pbr_material->setTexture("u_Material.roughnessMap", roughness_texture);
+        pbr_material->setTexture("u_Material.aoMap", ao_texture);
+        pbr_material->setTexture("u_Material.normalMap", normal_texture);
+
+        sphere_mesh_pbr.mesh = sphere_vertex_array;
+        sphere_mesh_pbr.material = pbr_material;
+        sphere_mesh_pbr.name = "sphere_test_pbr_" + material_type;
+        sphere_mesh_pbr.transform = glm::translate(sphere_mesh_pbr.transform, glm::vec3(1.5f + position_offset, 0.0f, -2.0f));
+        sphere_mesh_pbr.transform = glm::scale(sphere_mesh_pbr.transform, glm::vec3(0.7f));
+        position_offset += 2.0f; // 每次创建一个PBR球体时，增加位置偏移，避免重叠
+
+        return sphere_mesh_pbr;
+    }
+
     Scene::Scene() {
         // 初始化光源
         initLight();
@@ -105,6 +136,16 @@ namespace NexAur {
         m_entities.push_back(sphere_mesh_phong);
         RenderEntity floor_entity = createFloorEntity();
         m_entities.push_back(floor_entity);
+        // PBR材质球体
+        for (std::string material_type : {"gold", "grass", "plastic", "wall", "rusted_iron"}) {
+            RenderEntity sphere_mesh_pbr = createPBRSphereEntity(material_type);
+            m_entities.push_back(sphere_mesh_pbr);
+            for (int i = 3; i <= 12; i += 3) {
+                RenderEntity sphere_mesh_pbr_cpy = sphere_mesh_pbr;
+                sphere_mesh_pbr_cpy.transform = glm::translate(sphere_mesh_pbr_cpy.transform, glm::vec3(0.0f, i + 0.0f, 0.0f));
+                m_entities.push_back(sphere_mesh_pbr_cpy);
+            }
+        }
 
         for (int i = 0; i < 5; ++i) {
             RenderEntity entity = cube_mesh_phong;
@@ -166,7 +207,7 @@ namespace NexAur {
     void Scene::initLight() {
         // 定向光
         m_directional_light = DirectionalLight();
-        m_directional_light.direction = glm::normalize(glm::vec3(0.2f, -1.0f, -0.3f));
+        m_directional_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, 1.0f));
         m_directional_light.color = glm::vec3(1.0f, 1.0f, 1.0f);
         m_directional_light.intensity = 0.0f;
 
