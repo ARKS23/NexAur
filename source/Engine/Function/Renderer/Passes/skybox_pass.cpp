@@ -23,7 +23,6 @@ namespace NexAur {
     }
 
     void SkyboxPass::initResources() {
-        m_skybox_texture = RendererFactory::createTextureCube(NX_ASSET("assets/textures/skybox/Scene_Lake"));
         m_shader = RendererFactory::createShaderByPaths("skybox shader", 
             NX_ASSET("assets/shaders/skybox/skybox.vs"), NX_ASSET("assets/shaders/skybox/skybox.fs"));
 

@@ -10,6 +10,8 @@
 #include "Function/Renderer/RHI/vertex_array.h"
 
 namespace NexAur {
+    class TextureCubeMap;
+
     // 场景中的一个基础可视物体
     struct RenderEntity {
         std::shared_ptr<VertexArray> mesh;
@@ -67,11 +69,13 @@ namespace NexAur {
         const std::vector<RenderEntity>& getLightsEntities() const { return m_lights_entities; }
         int getPointLightMax() const { return point_light_max; }
 
-        // 是否启用天空盒
+        // 天空盒
         bool isSkyboxEnabled() const { return m_skybox_enabled; }
+        std::shared_ptr<TextureCubeMap> getSkyboxTexture() const { return m_skybox_texture; }
     
     private:
         void initLight();
+        void initSkybox();
 
     private:
         std::vector<RenderEntity> m_entities;   // 场景中的所有物体
@@ -80,6 +84,7 @@ namespace NexAur {
         std::vector<PointLight> m_point_lights; // 场景点光源列表
         int point_light_max = 4; // 点光源最大数量
         bool m_skybox_enabled = false; // 是否启用天空盒
+        std::shared_ptr<TextureCubeMap> m_skybox_texture; // 天空盒纹理
     };
     
 } // namespace NexAur

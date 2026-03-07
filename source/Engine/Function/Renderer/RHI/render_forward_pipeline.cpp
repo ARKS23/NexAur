@@ -106,6 +106,7 @@ namespace NexAur {
 
         // 天空盒
         if (scene->isSkyboxEnabled()) {
+            m_skybox_pass->setSkyboxTexture(scene->getSkyboxTexture());
             m_skybox_pass->setCamera(camera);
             m_skybox_pass->run();
         }

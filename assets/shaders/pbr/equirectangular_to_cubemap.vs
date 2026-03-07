@@ -3,9 +3,7 @@ layout (location = 0) in vec3 a_Pos;
 
 out vec3 v_LocalPos; // 传出局部坐标，作为采样方向向量
 
-layout(std140, binding = 0) uniform Camera {
-    mat4 u_ViewProjection;
-};
+uniform mat4 u_ViewProjection;
 
 void main() {
     v_LocalPos = a_Pos;

@@ -2,7 +2,9 @@
 #include <string>
 #include "scene.h"
 #include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Global/global_context.h"
+#include "Function/Renderer/window_system.h"
 #include "Function/File/file_system.h"
 #include "Function/Input/input_system.h"
 
@@ -129,6 +131,9 @@ namespace NexAur {
         // 初始化光源
         initLight();
 
+        // 初始化天空盒
+        initSkybox();
+
         // 初始化场景
         RenderEntity cube_mesh_phong = createPhongCubeEntity();
         m_entities.push_back(cube_mesh_phong);
@@ -170,11 +175,12 @@ namespace NexAur {
         }
         z_key_pressed_last_frame = z_key_pressed;
 
-        // 定向光绕X轴旋转，模拟日出日落
+        // 定向光绕Y轴旋转
         float rotationSpeed = glm::radians(30.0f * deltaTime);
-        // glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(1.0f, 0.0f, 0.0f));
+        // glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(0.0f, 1.0f, 0.0f));
         // m_directional_light.direction = glm::vec3(lightRotation * glm::vec4(m_directional_light.direction, 0.0f));
         // m_directional_light.direction = glm::normalize(m_directional_light.direction);
+        // NX_CORE_INFO("Directional Light Direction: ({:.2f}, {:.2f}, {:.2f})", m_directional_light.direction.x, m_directional_light.direction.y, m_directional_light.direction.z);
 
         // 点光源绕Y轴旋转，模拟灯光旋转效果
         float deltaAngle = glm::radians(30.0f * deltaTime); 
@@ -207,7 +213,7 @@ namespace NexAur {
     void Scene::initLight() {
         // 定向光
         m_directional_light = DirectionalLight();
-        m_directional_light.direction = glm::normalize(glm::vec3(1.0f, -1.0f, 1.0f));
+        m_directional_light.direction = glm::normalize(glm::vec3(-0.6f, -0.6f, 0.6f));
         m_directional_light.color = glm::vec3(1.0f, 1.0f, 1.0f);
         m_directional_light.intensity = 0.0f;
 
@@ -219,6 +225,71 @@ namespace NexAur {
         m_point_lights.push_back(point_light1);
         RenderEntity light_cube1 = createLightCube(point_light1.position, point_light1.color);
         m_lights_entities.push_back(light_cube1);
+    }
+
+    void Scene::initSkybox() {
+        // 1. 加载 2D HDR 贴图
+        std::shared_ptr<Texture2D> hdrTexture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr"));
+        std::shared_ptr<Shader> equiToCubeShader = RendererFactory::createShaderByPaths("equiToCube", 
+                NX_ASSET("assets/shaders/pbr/equirectangular_to_cubemap.vs"), 
+                NX_ASSET("assets/shaders/pbr/equirectangular_to_cubemap.fs"));
+
+        // 2. 创建一个作为目标的空 Cubemap
+        TextureSpecification envCubeSpec;
+        envCubeSpec.width = 1024;
+        envCubeSpec.height = 1024;
+        envCubeSpec.format = ImageFormat::RGB16F;
+        envCubeSpec.generate_mips = true;
+        envCubeSpec.filter = TextureFilter::LinearMipmapLinear;
+        m_skybox_texture = RendererFactory::createTextureCube(envCubeSpec);
+
+        // 3. 创建预处理用的离屏 FBO (仅需要深度附件)
+        FramebufferSpecification captureFBO_spec;
+        captureFBO_spec.width = 1024;
+        captureFBO_spec.height = 1024;
+        captureFBO_spec.Attachments = { FramebufferTextureFormat::DEPTH24STENCIL8 };
+        std::shared_ptr<Framebuffer> captureFBO = Framebuffer::create(captureFBO_spec);
+
+        // 4. 设置 6 个面对应的视图投影矩阵
+        glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+        glm::mat4 captureViews[] = {
+            glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)), // Right
+            glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)), // Left
+            glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)), // Top
+            glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)), // Bottom
+            glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)), // Front
+            glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))  // Back
+        };
+
+        // 5. 开始渲染：将HDR图像渲染到Cubemap的6个面上
+        equiToCubeShader->bind();
+        equiToCubeShader->setInt("u_EquirectangularMap", 0);
+        hdrTexture->bind(0);
+
+        // 立方网格题当底布
+        std::shared_ptr<VertexArray> cubeMesh = MeshFactory::createCubeMesh(); 
+
+        RendererCommand::setViewport(0, 0, 1024, 1024);
+
+        for (unsigned int i = 0; i < 6; ++i) {
+            equiToCubeShader->setMat4("u_ViewProjection", captureProjection * captureViews[i]);
+            
+            captureFBO->attachTextureCubeFace(0, m_skybox_texture, i, 0);
+            captureFBO->bind();
+            
+            RendererCommand::clear(ClearBufferFlag::ColorDepth);
+            
+            // 渲染立方体
+            cubeMesh->bind();
+            RendererCommand::drawIndexed(cubeMesh);
+        }
+
+        captureFBO->unbind();
+
+        m_skybox_texture->generateMips();
+
+        auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
+        RendererCommand::setViewport(0, 0, width, height);
     }
 
     std::shared_ptr<VertexArray> MeshFactory::createCubeMesh() {

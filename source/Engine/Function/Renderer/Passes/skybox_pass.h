@@ -23,6 +23,7 @@ namespace NexAur {
         virtual void execute() override;
 
         void setCamera(const std::shared_ptr<Camera>& camera) { m_camera = camera; }
+        void setSkyboxTexture(const std::shared_ptr<TextureCubeMap>& texture) { m_skybox_texture = texture; }
 
     private:
         void initResources();
