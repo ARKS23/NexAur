@@ -193,9 +193,9 @@ namespace NexAur {
 
         // 定向光绕Y轴旋转
         float rotationSpeed = glm::radians(30.0f * deltaTime);
-        glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(0.0f, 1.0f, 0.0f));
-        m_directional_light.direction = glm::vec3(lightRotation * glm::vec4(m_directional_light.direction, 0.0f));
-        m_directional_light.direction = glm::normalize(m_directional_light.direction);
+        // glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(0.0f, 1.0f, 0.0f));
+        // m_directional_light.direction = glm::vec3(lightRotation * glm::vec4(m_directional_light.direction, 0.0f));
+        // m_directional_light.direction = glm::normalize(m_directional_light.direction);
         // NX_CORE_INFO("Directional Light Direction: ({:.2f}, {:.2f}, {:.2f})", m_directional_light.direction.x, m_directional_light.direction.y, m_directional_light.direction.z);
 
         // 点光源绕Y轴旋转，模拟灯光旋转效果

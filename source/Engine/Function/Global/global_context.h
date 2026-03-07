@@ -26,6 +26,10 @@ namespace NexAur {
     extern RunTimeGlobalContext g_runtime_global_context;
 
     // 资源路径宏定义，方便使用
+#if defined(NDEBUG) || defined(NX_DIST)
+    #define NX_ASSET(relative_path) (std::string(relative_path))
+#else
     #define NX_ASSET(relative_path) \
         (NexAur::g_runtime_global_context.m_file_system->getAssetPath(relative_path).string())
+#endif
 } // namespace NexAur
