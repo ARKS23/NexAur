@@ -72,8 +72,9 @@ namespace NexAur {
         return floor_entity;
     }
 
-    static RenderEntity createPhongSphereEntity() {
+    static RenderEntity createPhongSphereEntity(std::string material_type = "plastic") {
         RenderEntity sphere_mesh_phong;
+        static float position_offset = 0.0f;
 
         // blling-phong Sphere
         std::shared_ptr<VertexArray> sphere_vertex_array = MeshFactory::createSphereMesh();
@@ -81,8 +82,8 @@ namespace NexAur {
         NX_ASSET("assets/shaders/phong/phong.vs"), NX_ASSET("assets/shaders/phong/phong.fs"));
         std::shared_ptr<Material> phong_material = RendererFactory::createMaterial(phong_shader);
 
-        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/plastic/albedo.png"));
-        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/plastic/roughness.png"));
+        std::shared_ptr<Texture2D> diffuse_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/albedo.png"));
+        std::shared_ptr<Texture2D> specular_texture = RendererFactory::createTexture2D(NX_ASSET("assets/textures/PBR/" + material_type + "/roughness.png"));
         phong_material->setTexture("u_Material.diffuse", diffuse_texture);
         phong_material->setTexture("u_Material.specular", specular_texture);
         phong_material->setFloat("u_Material.shininess", 32.0f);
@@ -90,8 +91,9 @@ namespace NexAur {
         sphere_mesh_phong.mesh = sphere_vertex_array;
         sphere_mesh_phong.material = phong_material;
         sphere_mesh_phong.name = "sphere_test_phong";
-        sphere_mesh_phong.transform = glm::translate(sphere_mesh_phong.transform, glm::vec3(1.5f, 0.0f, 2.0f));
+        sphere_mesh_phong.transform = glm::translate(sphere_mesh_phong.transform, glm::vec3(1.5f + position_offset, 0.0f, 2.0f));
         sphere_mesh_phong.transform = glm::scale(sphere_mesh_phong.transform, glm::vec3(0.7f));
+        position_offset += 2.0f;
 
         return sphere_mesh_phong;
     }
@@ -137,10 +139,20 @@ namespace NexAur {
         // 初始化场景
         RenderEntity cube_mesh_phong = createPhongCubeEntity();
         m_entities.push_back(cube_mesh_phong);
-        RenderEntity sphere_mesh_phong = createPhongSphereEntity();
-        m_entities.push_back(sphere_mesh_phong);
         RenderEntity floor_entity = createFloorEntity();
         m_entities.push_back(floor_entity);
+
+        // Phong光照模型球体
+        for (std::string material_type : {"gold", "grass", "plastic", "wall", "rusted_iron"}) {
+            RenderEntity sphere_mesh_phong = createPhongSphereEntity(material_type);
+            m_entities.push_back(sphere_mesh_phong);
+            for (int i = 3; i <= 12; i += 3) {
+                RenderEntity sphere_mesh_phong_cpy = sphere_mesh_phong;
+                sphere_mesh_phong_cpy.transform = glm::translate(sphere_mesh_phong_cpy.transform, glm::vec3(0.0f, i + 0.0f, 0.0f));
+                m_entities.push_back(sphere_mesh_phong_cpy);
+            }
+        }
+
         // PBR材质球体
         for (std::string material_type : {"gold", "grass", "plastic", "wall", "rusted_iron"}) {
             RenderEntity sphere_mesh_pbr = createPBRSphereEntity(material_type);
@@ -181,9 +193,9 @@ namespace NexAur {
 
         // 定向光绕Y轴旋转
         float rotationSpeed = glm::radians(30.0f * deltaTime);
-        // glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(0.0f, 1.0f, 0.0f));
-        // m_directional_light.direction = glm::vec3(lightRotation * glm::vec4(m_directional_light.direction, 0.0f));
-        // m_directional_light.direction = glm::normalize(m_directional_light.direction);
+        glm::mat4 lightRotation = glm::rotate(glm::mat4(1.0f), rotationSpeed, glm::vec3(0.0f, 1.0f, 0.0f));
+        m_directional_light.direction = glm::vec3(lightRotation * glm::vec4(m_directional_light.direction, 0.0f));
+        m_directional_light.direction = glm::normalize(m_directional_light.direction);
         // NX_CORE_INFO("Directional Light Direction: ({:.2f}, {:.2f}, {:.2f})", m_directional_light.direction.x, m_directional_light.direction.y, m_directional_light.direction.z);
 
         // 点光源绕Y轴旋转，模拟灯光旋转效果
