@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "opengl_framebuffer.h"
+#include "Function/Renderer/RHI/texture.h"
 
 namespace NexAur {
     static const uint32_t MAX_WIDTH = 8192;
@@ -241,6 +242,34 @@ namespace NexAur {
     uint32_t OpenGLFramebuffer::getColorAttachmentRendererID(uint32_t index) const {
         NX_CORE_ASSERT(index < m_ColorAttachments.size(), "Attachment index out of bounds!");
         return m_ColorAttachments[index];
+    }
+
+    void OpenGLFramebuffer::attachTexture2D(uint32_t attachmentIndex, std::shared_ptr<Texture> texture, uint32_t mip_level) {
+        NX_CORE_ASSERT(texture != nullptr, "Attempted to attach a null texture!");
+
+        glBindFramebuffer(GL_FRAMEBUFFER, m_ID);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachmentIndex, GL_TEXTURE_2D, texture->getRendererID(), (int)mip_level);
+        // 因为IBL的离屏FBO往往初始没有颜色附件，导致被设为 GL_NONE，这里挂载了就必须告诉机器开启读写
+        glDrawBuffer(GL_COLOR_ATTACHMENT0 + attachmentIndex);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void OpenGLFramebuffer::attachTextureCubeFace(uint32_t attachmentIndex, std::shared_ptr<Texture> texture, uint32_t cube_face_index, uint32_t mip_level) {
+        NX_CORE_ASSERT(texture != nullptr, "Attempted to attach a null texture!");
+        NX_CORE_ASSERT(cube_face_index < 6, "Cubemap face index bounds between 0 and 5!");
+
+        glBindFramebuffer(GL_FRAMEBUFFER, m_ID);
+        
+        // GL_TEXTURE_CUBE_MAP_POSITIVE_X 的枚举值为 0x8515，后续的面恰好依次 +1
+        GLenum faceTarget = GL_TEXTURE_CUBE_MAP_POSITIVE_X + cube_face_index;
+        
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachmentIndex, faceTarget, texture->getRendererID(), mip_level);
+        
+        glDrawBuffer(GL_COLOR_ATTACHMENT0 + attachmentIndex);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     const FramebufferSpecification& OpenGLFramebuffer::getSpecification() const {

@@ -4,6 +4,8 @@
 #include "definitions.h"
 
 namespace NexAur {
+    class Texture;
+
     // 帧缓冲纹理对象信息描述结构体
     struct FramebufferTextureSpecification {
         FramebufferTextureSpecification() = default;
@@ -44,6 +46,11 @@ namespace NexAur {
 
 		virtual uint32_t getColorAttachmentRendererID(uint32_t index = 0) const = 0; // 返回某个纹理ID
         virtual uint32_t getDepthAttachmentRendererID() const = 0;
+
+        // IBL需要的接口
+        virtual void attachTexture2D(uint32_t attachmentIndex, std::shared_ptr<Texture> texture, uint32_t mip_level = 0) = 0; // 纹理对象挂载到帧缓冲
+        virtual void attachTextureCubeFace(uint32_t attachmentIndex, std::shared_ptr<Texture> texture, uint32_t cube_face_index, uint32_t mip_level = 0) = 0; // 立方体贴图挂载到帧缓冲
+
 
 		virtual const FramebufferSpecification& getSpecification() const = 0;	// 返回配置结构体
 

@@ -22,6 +22,9 @@ namespace NexAur {
         virtual uint32_t getColorAttachmentRendererID(uint32_t index = 0) const override; // 返回某个纹理ID
         virtual uint32_t getDepthAttachmentRendererID() const override { return m_DepthAttachment; } // 返回深度纹理
 
+        virtual void attachTexture2D(uint32_t attachmentIndex, std::shared_ptr<Texture> texture, uint32_t mip_level = 0) override; // 纹理对象挂载到帧缓冲
+        virtual void attachTextureCubeFace(uint32_t attachmentIndex, std::shared_ptr<Texture> texture, uint32_t cube_face_index, uint32_t mip_level = 0) override; // 立方体贴图挂载到帧缓冲
+
         virtual const FramebufferSpecification& getSpecification() const override;	// 返回配置结构体
 
     private:
