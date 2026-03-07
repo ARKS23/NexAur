@@ -23,6 +23,8 @@ namespace NexAur {
         virtual void bind(uint32_t slot = 0) const override;
         virtual bool isLoaded() const override;
 
+        virtual void generateMips() override;
+
         virtual bool operator==(const Texture& other) const override;
 
     private:
@@ -57,6 +59,8 @@ namespace NexAur {
         virtual void setData(void* data, uint32_t size) override;
         virtual void bind(uint32_t slot = 0) const override;
         virtual bool isLoaded() const override;
+        
+        virtual void generateMips() override;
 
         virtual bool operator==(const Texture& other) const override;
 

@@ -103,7 +103,12 @@ namespace NexAur {
 
         stbi_set_flip_vertically_on_load(true); // OpenGL的纹理坐标系是左下角为原点，而图片通常是右上角为原点，所以需要翻转
 
-        stbi_uc* data = stbi_load(path.c_str(), &width, &height, &channels, 0);
+        bool is_HDR = stbi_is_hdr(path.c_str());
+        void* data = nullptr;
+        if (is_HDR)
+            data = stbi_loadf(path.c_str(), &width, &height, &channels, 0);
+        else
+            data = stbi_load(path.c_str(), &width, &height, &channels, 0);
 
         if (data) {
             m_width = width;
@@ -111,17 +116,17 @@ namespace NexAur {
 
             // 根据通道数设置格式
             if (channels == 4) {
-                m_internal_format = GL_RGBA8;
+                m_internal_format = is_HDR ? GL_RGBA16F : GL_RGBA8;
                 m_data_format = GL_RGBA;
-                m_Specification.format = ImageFormat::RGBA8;
+                m_Specification.format = is_HDR ? ImageFormat::RGBA16F : ImageFormat::RGBA8;
             }
             else if (channels == 3) {
-                m_internal_format = GL_RGB8;
+                m_internal_format = is_HDR ? GL_RGB16F : GL_RGB8;
                 m_data_format = GL_RGB;
-                m_Specification.format = ImageFormat::RGB8;
+                m_Specification.format = is_HDR ? ImageFormat::RGB16F : ImageFormat::RGB8;
             }
             else if (channels == 1) {
-                m_internal_format = GL_R8;
+                m_internal_format = GL_R8;  // HDR一般不是单通道，暂时不处理
                 m_data_format = GL_RED;
                 m_Specification.format = ImageFormat::R8;
             }
@@ -146,7 +151,8 @@ namespace NexAur {
             glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
             // 上传数据
-            glTextureSubImage2D(m_RendererID, 0, 0, 0, m_width, m_height, m_data_format, GL_UNSIGNED_BYTE, data);
+            GLenum data_type = is_HDR ? GL_FLOAT : GL_UNSIGNED_BYTE;
+            glTextureSubImage2D(m_RendererID, 0, 0, 0, m_width, m_height, m_data_format, data_type, data);
 
             stbi_image_free(data);
             m_IsLoaded = true;
@@ -204,6 +210,10 @@ namespace NexAur {
         return m_RendererID == other.getRendererID();
     }
 
+    void OpenGLTexture2D::generateMips() {
+        glGenerateTextureMipmap(m_RendererID);
+    }
+
     /* -------------------------- OpenGLTextureCubeMap --------------------------*/
     OpenGLTextureCubeMap::OpenGLTextureCubeMap(const TextureSpecification& specification)
         : m_Specification(specification), m_width(specification.width), m_height(specification.height), m_Path(""), m_IsLoaded(false) {
@@ -211,7 +221,9 @@ namespace NexAur {
         m_data_format = GLDataFormatFromImageFormat(specification.format);
 
         glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &m_RendererID);
-        glTextureStorage2D(m_RendererID, 1, m_internal_format, m_width, m_height);
+
+        GLsizei levels = specification.generate_mips ? static_cast<GLsizei>(std::floor(std::log2(std::max(m_width, m_height)))) + 1 : 1;
+        glTextureStorage2D(m_RendererID, levels, m_internal_format, m_width, m_height);
 
         // 设置过滤和环绕方式
         glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, GLFilterFromTextureFilter(specification.filter));
@@ -272,6 +284,10 @@ namespace NexAur {
 
     bool OpenGLTextureCubeMap::isLoaded() const {
         return m_IsLoaded;
+    }
+
+    void OpenGLTextureCubeMap::generateMips() {
+        glGenerateTextureMipmap(m_RendererID);
     }
 
     bool OpenGLTextureCubeMap::operator==(const Texture& other) const {
