@@ -96,6 +96,9 @@ namespace NexAur {
                 shader->setFloat("u_PointLights[" + index_str + "].quadratic", pl.quadratic);
             }
 
+            // 天空盒显示影响IBL
+            shader->setInt("u_SkyboxEnabled", scene->isSkyboxEnabled() ? 1 : 0);
+
             Renderer::submit(entity.material, entity.mesh, entity.transform);
         }
 

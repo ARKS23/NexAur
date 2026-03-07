@@ -90,7 +90,7 @@ namespace NexAur {
         sphere_mesh_phong.mesh = sphere_vertex_array;
         sphere_mesh_phong.material = phong_material;
         sphere_mesh_phong.name = "sphere_test_phong";
-        sphere_mesh_phong.transform = glm::translate(sphere_mesh_phong.transform, glm::vec3(1.5f, -2.0f, 0.0f));
+        sphere_mesh_phong.transform = glm::translate(sphere_mesh_phong.transform, glm::vec3(1.5f, 0.0f, 2.0f));
         sphere_mesh_phong.transform = glm::scale(sphere_mesh_phong.transform, glm::vec3(0.7f));
 
         return sphere_mesh_phong;
@@ -144,6 +144,10 @@ namespace NexAur {
         // PBR材质球体
         for (std::string material_type : {"gold", "grass", "plastic", "wall", "rusted_iron"}) {
             RenderEntity sphere_mesh_pbr = createPBRSphereEntity(material_type);
+            // IBL测试绑定
+            sphere_mesh_pbr.material->setTexture("u_IrradianceMap", this->getIrradianceMap());
+            sphere_mesh_pbr.material->setTexture("u_PrefilterMap", this->getPrefilterMap());
+            sphere_mesh_pbr.material->setTexture("u_BrdfLUT", this->getBRDFLUTMap());
             m_entities.push_back(sphere_mesh_pbr);
             for (int i = 3; i <= 12; i += 3) {
                 RenderEntity sphere_mesh_pbr_cpy = sphere_mesh_pbr;
@@ -285,8 +289,123 @@ namespace NexAur {
         }
 
         captureFBO->unbind();
-
         m_skybox_texture->generateMips();
+
+        // =========================== 生成Irradiance Map ============================
+        TextureSpecification irradianceSpec;
+        irradianceSpec.width = 32;
+        irradianceSpec.height = 32;
+        irradianceSpec.format = ImageFormat::RGB16F;
+        irradianceSpec.generate_mips = false; // Irradiance 不需要 Mipmap
+        irradianceSpec.filter = TextureFilter::Linear;
+        m_irradiance_map = RendererFactory::createTextureCube(irradianceSpec);
+
+        // 专门创建一个 32x32 的离屏 FBO，杜绝尺寸不匹配引发的黑屏
+        FramebufferSpecification irradianceFBOSpec;
+        irradianceFBOSpec.width = 32;
+        irradianceFBOSpec.height = 32;
+        irradianceFBOSpec.Attachments = { FramebufferTextureFormat::DEPTH24STENCIL8 };
+        std::shared_ptr<Framebuffer> irradianceFBO = Framebuffer::create(irradianceFBOSpec);
+
+        std::shared_ptr<Shader> irradianceShader = RendererFactory::createShaderByPaths("irradiance_conv", 
+                NX_ASSET("assets/shaders/pbr/irradiance_convolution.vs"), 
+                NX_ASSET("assets/shaders/pbr/irradiance_convolution.fs"));
+
+        irradianceShader->bind();
+        irradianceShader->setInt("u_EnvironmentMap", 0);
+        m_skybox_texture->bind(0);
+
+        RendererCommand::setViewport(0, 0, 32, 32); 
+
+        for (unsigned int i = 0; i < 6; ++i) {
+            irradianceShader->setMat4("u_ViewProjection", captureProjection * captureViews[i]);
+            
+            irradianceFBO->attachTextureCubeFace(0, m_irradiance_map, i, 0);
+            irradianceFBO->bind();
+
+            RendererCommand::clear(ClearBufferFlag::ColorDepth);
+            
+            cubeMesh->bind();
+            RendererCommand::drawIndexed(cubeMesh);
+        }
+        irradianceFBO->unbind();
+
+        // ============================= Prefilter Map =============================
+        TextureSpecification prefilterSpec;
+        prefilterSpec.width = 128; // IBL 高光通常 128x128 足够起步
+        prefilterSpec.height = 128;
+        prefilterSpec.format = ImageFormat::RGB16F;
+        prefilterSpec.generate_mips = true; // 【极其关键】必须由显卡提前划出多个级别的空间！
+        prefilterSpec.filter = TextureFilter::LinearMipmapLinear; // 三线性插值
+        m_prefilter_map = RendererFactory::createTextureCube(prefilterSpec);
+
+        std::shared_ptr<Shader> prefilterShader = RendererFactory::createShaderByPaths("prefilter", 
+                NX_ASSET("assets/shaders/pbr/prefilter.vs"), 
+                NX_ASSET("assets/shaders/pbr/prefilter.fs"));
+
+        prefilterShader->bind();
+        prefilterShader->setInt("u_EnvironmentMap", 0);
+        m_skybox_texture->bind(0); // 同样采用最原始的高清天空盒做输入
+
+        unsigned int maxMipLevels = 5;
+        for (unsigned int mip = 0; mip < maxMipLevels; ++mip) {
+            // 每下一层 Mip，宽高缩小一半 (128 -> 64 -> 32 -> 16 -> 8)
+            unsigned int mipWidth  = static_cast<unsigned int>(128 * std::pow(0.5, mip));
+            unsigned int mipHeight = static_cast<unsigned int>(128 * std::pow(0.5, mip));
+
+            // 【防止黑屏】：为当前的尺寸专属创建一个 FBO
+            FramebufferSpecification mipFBOSpec;
+            mipFBOSpec.width = mipWidth;
+            mipFBOSpec.height = mipHeight;
+            mipFBOSpec.Attachments = { FramebufferTextureFormat::DEPTH24STENCIL8 };
+            std::shared_ptr<Framebuffer> mipFBO = Framebuffer::create(mipFBOSpec);
+            
+            RendererCommand::setViewport(0, 0, mipWidth, mipHeight);
+
+            // 越模糊的层，传入的粗糙度越大
+            float roughness = (float)mip / (float)(maxMipLevels - 1);
+            prefilterShader->setFloat("u_Roughness", roughness);
+
+            for (unsigned int i = 0; i < 6; ++i) {
+                prefilterShader->setMat4("u_ViewProjection", captureProjection * captureViews[i]);
+                
+                // 之前设计的 attach 接口带有 mip 参数，在此发挥作用
+                mipFBO->attachTextureCubeFace(0, m_prefilter_map, i, mip);
+                mipFBO->bind();
+
+                RendererCommand::clear(ClearBufferFlag::ColorDepth);
+                
+                cubeMesh->bind(); // 绑定盒子模型
+                RendererCommand::drawIndexed(cubeMesh);
+            }
+            mipFBO->unbind();
+        }
+
+        // ============================= BRDF LUT =============================
+        FramebufferSpecification brdfSpec;
+        brdfSpec.width = 512;
+        brdfSpec.height = 512;
+        // BRDFLUT 是2D的红绿色图像，使用普通的颜色附件
+        brdfSpec.Attachments = { FramebufferTextureSpecification(FramebufferTextureFormat::RGBA16F) }; 
+        std::shared_ptr<Framebuffer> brdfFBO = Framebuffer::create(brdfSpec);
+
+        std::shared_ptr<Shader> brdfShader = RendererFactory::createShaderByPaths("brdf_shader", 
+                NX_ASSET("assets/shaders/pbr/brdf.vs"), 
+                NX_ASSET("assets/shaders/pbr/brdf.fs"));
+
+        brdfFBO->bind();
+        RendererCommand::setViewport(0, 0, 512, 512);
+        RendererCommand::clear(ClearBufferFlag::ColorDepth);
+
+        brdfShader->bind();
+        std::shared_ptr<VertexArray> quadMesh = MeshFactory::createQuadMesh();
+        quadMesh->bind();
+        RendererCommand::drawIndexed(quadMesh);
+
+        brdfFBO->unbind();
+
+        m_brdf_lut_map = RendererFactory::createTexture2D(brdfFBO->getColorAttachmentRendererID(0), 512, 512);
+
 
         auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
         RendererCommand::setViewport(0, 0, width, height);
@@ -425,6 +544,32 @@ namespace NexAur {
         vertex_array->addVertexBuffer(vbo);
 
         auto ebo = RendererFactory::createIndexBuffer(indices.data(), indices.size());
+        vertex_array->setIndexBuffer(ebo);
+
+        return vertex_array;
+    }
+
+    std::shared_ptr<VertexArray> MeshFactory::createQuadMesh() {
+        auto vertex_array = RendererFactory::createVertexArray();
+
+        // 顶点：位置 (x,y,z), 法线 (nx,ny,nz), UV (u,v)
+        float quadVertices[] = {
+            -1.0f,  1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
+             1.0f,  1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 1.0f,
+             1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+        };
+        unsigned int indices[] = { 0, 1, 2, 1, 3, 2 };
+
+        auto vbo = RendererFactory::createVertexBuffer(quadVertices, sizeof(quadVertices));
+        vbo->setLayout({
+            { ShaderDataType::Float3, "a_Pos" },
+            { ShaderDataType::Float3, "a_Normal" },
+            { ShaderDataType::Float2, "a_TexCoord" }
+        });
+        vertex_array->addVertexBuffer(vbo);
+
+        auto ebo = RendererFactory::createIndexBuffer(indices, 6);
         vertex_array->setIndexBuffer(ebo);
 
         return vertex_array;

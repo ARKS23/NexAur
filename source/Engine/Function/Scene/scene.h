@@ -25,7 +25,7 @@ namespace NexAur {
     public:
         static std::shared_ptr<VertexArray> createCubeMesh();
         static std::shared_ptr<VertexArray> createSphereMesh();
-        //static std::shared_ptr<VertexArray> createPlaneMesh();
+        static std::shared_ptr<VertexArray> createQuadMesh();
     };
 
     // 定向光结构体
@@ -72,19 +72,27 @@ namespace NexAur {
         // 天空盒
         bool isSkyboxEnabled() const { return m_skybox_enabled; }
         std::shared_ptr<TextureCubeMap> getSkyboxTexture() const { return m_skybox_texture; }
-    
+        std::shared_ptr<TextureCubeMap> getIrradianceMap() const { return m_irradiance_map; }
+        std::shared_ptr<TextureCubeMap> getPrefilterMap() const { return m_prefilter_map; }
+        std::shared_ptr<Texture2D> getBRDFLUTMap() const { return m_brdf_lut_map; }
+
     private:
         void initLight();
         void initSkybox();
 
     private:
         std::vector<RenderEntity> m_entities;   // 场景中的所有物体
+
         std::vector<RenderEntity> m_lights_entities;     // 场景中的光源物体
         DirectionalLight m_directional_light;   // 场景定向光
         std::vector<PointLight> m_point_lights; // 场景点光源列表
         int point_light_max = 4; // 点光源最大数量
+
         bool m_skybox_enabled = false; // 是否启用天空盒
         std::shared_ptr<TextureCubeMap> m_skybox_texture; // 天空盒纹理
+        std::shared_ptr<TextureCubeMap> m_irradiance_map; // 辐照度贴图
+        std::shared_ptr<TextureCubeMap> m_prefilter_map; // 预过滤环境贴图
+        std::shared_ptr<Texture2D> m_brdf_lut_map; // BRDF LUT贴图
     };
     
 } // namespace NexAur

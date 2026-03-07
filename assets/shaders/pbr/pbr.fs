@@ -42,9 +42,12 @@ uniform vec3 u_CameraPos;
 uniform Material u_Material;
 uniform DirLight u_DirLight;
 uniform PointLight u_PointLights[MAX_POINT_LIGHTS];
-uniform vec3 u_AmbientLight;
 uniform sampler2D u_ShadowMap; // 阴影贴图
-uniform float u_Exposure = 0.5; // 曝光控制
+uniform float u_Exposure = 0.55; // 曝光控制
+uniform samplerCube u_IrradianceMap;
+uniform samplerCube u_PrefilterMap;
+uniform sampler2D   u_BrdfLUT;
+uniform int u_SkyboxEnabled = 0; // 是否启用天空盒
 
 // 余切坐标系法线计算函数
 vec3 getNormalFromMap() {
@@ -132,6 +135,11 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// 环境光的菲涅尔
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
 // ======================= 光源计算封装 =======================
 // 计算定向光 PBR
 vec3 CalculateDirLightPBR(DirLight light, vec3 N, vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0) {
@@ -213,9 +221,34 @@ void main() {
     }
 
     // ===================================
-    // 5. 组合与后处理
+    // 环境光IBL
     // ===================================
-    vec3 ambient = u_AmbientLight * albedo * ao; // 简单环境光模型(TODO: IBL)
+    vec3 F_IBL = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+
+    vec3 kS_IBL = F_IBL;
+    vec3 kD_IBL = 1.0 - kS_IBL;
+    kD_IBL *= 1.0 - metallic;
+
+    vec3 irradiance = texture(u_IrradianceMap, N).rgb;
+    vec3 diffuse    = irradiance * albedo;
+
+    vec3 R = reflect(-V, N); // 视角碰到法线后的反射向量
+    // 根据粗糙度在 0 到 4.0 级的 Mipmap 中进行三线性插值采样
+    const float MAX_REFLECTION_LOD = 4.0; 
+    vec3 prefilteredColor = textureLod(u_PrefilterMap, R, roughness * MAX_REFLECTION_LOD).rgb;
+
+    // 结合 BRDF LUT
+    vec2 envBRDF  = texture(u_BrdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+    vec3 specular = prefilteredColor * (F_IBL * envBRDF.x + envBRDF.y);
+
+    vec3 ambient = (kD_IBL * diffuse + specular) * ao; 
+
+    // 天空盒影响IBL
+    if (u_SkyboxEnabled == 0) {
+        ambient = 0.35 * albedo * ao;
+    }
+
+    // 颜色合成
     vec3 color = ambient + Lo;
 
     // HDR 色调映射 (曝光) 和 Gamma 校正

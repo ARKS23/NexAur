@@ -15,9 +15,9 @@ namespace NexAur {
                                     TextureWrap wrap = TextureWrap::Repeat) 
         : framebuffer_texture_format(format), texture_filiter(filter), texture_wrap(wrap) {}
 
-        FramebufferTextureFormat framebuffer_texture_format;
-        TextureFilter texture_filiter;
-        TextureWrap texture_wrap;
+        FramebufferTextureFormat framebuffer_texture_format = FramebufferTextureFormat::None;
+        TextureFilter texture_filiter = TextureFilter::Linear;
+        TextureWrap texture_wrap = TextureWrap::Repeat;
         float AnisotropyLevel = 1.0f;   // 各向异性过滤,1.0表示关闭，16.0最高
     };
 
