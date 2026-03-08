@@ -19,3 +19,6 @@ add_subdirectory(entt)
 
 # stb
 add_subdirectory(stb)
+
+# assimp
+add_subdirectory(assimp)

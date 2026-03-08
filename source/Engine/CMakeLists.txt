@@ -34,6 +34,7 @@ target_include_directories(NexAurEngine PUBLIC
     "${CMAKE_SOURCE_DIR}/external/glfw/include"
     "${CMAKE_SOURCE_DIR}/external/glad/include"
     "${CMAKE_SOURCE_DIR}/external/stb"
+    "${CMAKE_SOURCE_DIR}/external/assimp/include"
 )
 
 # 链接第三方库
@@ -44,4 +45,5 @@ target_link_libraries(NexAurEngine PUBLIC
     glm
     spdlog
     stb
+    assimp
 )
