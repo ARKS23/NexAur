@@ -35,6 +35,8 @@ target_include_directories(NexAurEngine PUBLIC
     "${CMAKE_SOURCE_DIR}/external/glad/include"
     "${CMAKE_SOURCE_DIR}/external/stb"
     "${CMAKE_SOURCE_DIR}/external/assimp/include"
+    "${CMAKE_SOURCE_DIR}/external/imgui"
+    "${CMAKE_SOURCE_DIR}/external/imgui/backends"
 )
 
 # 链接第三方库
@@ -46,4 +48,5 @@ target_link_libraries(NexAurEngine PUBLIC
     spdlog
     stb
     assimp
+    imgui
 )

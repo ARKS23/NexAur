@@ -4,7 +4,7 @@
 add_subdirectory(glad)
 
 # GLFW
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE) #以此为例，关闭不必要的文档编译，加快速度
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE) # 关闭不必要的文档编译，加快速度
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(glfw)
 
@@ -22,3 +22,6 @@ add_subdirectory(stb)
 
 # assimp
 add_subdirectory(assimp)
+
+# imgui
+add_subdirectory(imgui)

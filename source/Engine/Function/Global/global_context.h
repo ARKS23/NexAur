@@ -23,7 +23,7 @@ namespace NexAur {
         std::shared_ptr<RendererSystem> m_renderer_system;
     };
 
-    extern RunTimeGlobalContext g_runtime_global_context;
+    extern NEXAUR_API RunTimeGlobalContext g_runtime_global_context;
 
     // 资源路径宏定义，方便使用
 #if defined(NDEBUG) || defined(NX_DIST)
