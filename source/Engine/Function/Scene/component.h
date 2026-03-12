@@ -6,8 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Core/Base.h"
-#include "Function/Renderer/RHI/material.h"
-#include "Function/Renderer/RHI/vertex_array.h"
+#include "Core/UUID.h"
 
 namespace NexAur {
     // 标签组件: 识别实体名称
@@ -54,10 +53,10 @@ namespace NexAur {
         float intensity = 1.0f;
     };
 
-    // TODO: 网格渲染组件,替代原来的 mesh 和 material 组合, 后期优化
+    // TODO: 网格体组件
     struct MeshRendererComponent {
-        std::shared_ptr<VertexArray> Mesh;
-        std::shared_ptr<Material> Material;
+        UUID mesh = INVALID_UUID;
+        UUID material = INVALID_UUID;
 
         MeshRendererComponent() = default;
         MeshRendererComponent(const MeshRendererComponent&) = default;
@@ -65,10 +64,10 @@ namespace NexAur {
 
     // TODO: 环境/天空盒组件,后期优化
     struct EnvironmentComponent {
-        bool Enabled = false;
-        std::shared_ptr<TextureCubeMap> SkyboxTexture;
-        std::shared_ptr<TextureCubeMap> IrradianceMap;
-        std::shared_ptr<TextureCubeMap> PrefilterMap;
-        std::shared_ptr<Texture2D> BRDFLUTMap;
+        bool enabled = false;
+        UUID skyboxTexture = INVALID_UUID;
+        UUID irradianceMap = INVALID_UUID;
+        UUID prefilterMap = INVALID_UUID;
+        UUID bRDFLUTMap = INVALID_UUID;
     };
 } // namespace NexAur

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "asset_manager.h"
+#include "Function/Resource/model.h"
 
 namespace NexAur {
     void AssetManager::init() {
@@ -12,32 +13,50 @@ namespace NexAur {
         NX_CORE_INFO("AssetManager Shutdown.");
     }
 
-    std::shared_ptr<Model> AssetManager::getModel(const std::string& path) {
-        // 检查缓存
-        auto it = m_model_cache.find(path);
-        if (it != m_model_cache.end()) {
-            return it->second;
+    UUID AssetManager::loadModel(const std::string& path) {
+        // 已经加载过，返回对应UUID
+        if (m_path_registry.find(path) != m_path_registry.end()) {
+            return m_path_registry[path];
         }
 
-        // 不在缓存中，加载模型
+        // 没加载过，硬盘读取
         std::shared_ptr<Model> model = std::make_shared<Model>(path);
         if (model->isLoaded()) {
-            m_model_cache[path] = model; // 加入缓存
-            return model;
+            UUID new_uuid; // 随机生成一个新的UUID
+            m_path_registry[path] = new_uuid; // 路径到UUID的映射
+            m_uuid_model_cache[new_uuid] = model; // UUID到模型的映射
+            return new_uuid;
         }
         else {
             NX_CORE_ERROR("Failed to load model: {}", path);
-            return nullptr;
+            return INVALID_UUID;
         }
     }
 
+    std::shared_ptr<Model> AssetManager::getModel(const UUID& handle) {
+        if (handle == INVALID_UUID) {
+            NX_CORE_WARN("Attempted to get model with invalid UUID.");
+            return nullptr;
+        }
+
+        auto it = m_uuid_model_cache.find(handle);
+        if (it != m_uuid_model_cache.end()) {
+            return it->second;
+        }
+
+        return nullptr;
+    }
+
     void AssetManager::clearUnusedAssets() {
-        // 遍历缓存，如果某个资源的引用计数为1，说明只有AssetManager持有它，可以安全删除
-        for (auto it = m_model_cache.begin(); it != m_model_cache.end(); ) {
-            if (it->second.use_count() == 1) 
-                it = m_model_cache.erase(it); // 删除并获取下一个迭代器
-            else 
-                ++it; // 继续检查下一个
+        // 这里需要双重清理：从资源缓存清理，并对应从 path 缓存清理
+        for (auto it = m_uuid_model_cache.begin(); it != m_uuid_model_cache.end(); ) {
+            // 引用计数为 1 表示只有 AssetManager 拿着指针了
+            if (it->second.use_count() == 1) {
+                // 未作uuid到路径的反向映射，后续优化
+                it = m_uuid_model_cache.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 } // namespace NexAur
