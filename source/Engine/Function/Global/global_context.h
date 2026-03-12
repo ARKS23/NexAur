@@ -10,6 +10,7 @@ namespace NexAur {
     class InputSystem;
     class RendererSystem;
     class FileSystem;
+    class SceneManager;
 
     class NEXAUR_API RunTimeGlobalContext {
     public:
@@ -20,6 +21,7 @@ namespace NexAur {
         std::shared_ptr<FileSystem> m_file_system;
         std::shared_ptr<WindowSystem> m_window_system;
         std::shared_ptr<InputSystem> m_input_system;
+        std::shared_ptr<SceneManager> m_scene_manager;
         std::shared_ptr<RendererSystem> m_renderer_system;
     };
 
