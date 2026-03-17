@@ -14,6 +14,9 @@ namespace NexAur {
         template<typename T, typename... Args>
         T& addComponent(Args&&... args);
 
+        template<typename T, typename... Args>
+        T& addOrReplaceComponent(Args&&... args);
+
         // 获取组件
         template<typename T>
         T& getComponent() const;
@@ -46,6 +49,11 @@ namespace NexAur {
     T& Entity::addComponent(Args&&... args) {
         NX_CORE_ASSERT(!hasComponent<T>(), "Entity already has component!");
         return m_Scene->m_Registry.emplace<T>(m_EntityHandle, std::forward<Args>(args)...);
+    }
+
+    template<typename T, typename... Args>
+    T& Entity::addOrReplaceComponent(Args&&... args) {
+        return m_Scene->m_Registry.emplace_or_replace<T>(m_EntityHandle, std::forward<Args>(args)...);
     }
 
     template<typename T>

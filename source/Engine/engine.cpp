@@ -4,6 +4,8 @@
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_system.h"
 #include "Function/Renderer/window_system.h"
+#include "Function/Scene/scene_manager.h"
+#include "Function/Scene/scene_v2.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Core/Events/window_event.h"
 
@@ -31,7 +33,13 @@ namespace NexAur {
         logicalTick(delta_time);
         calculateFPS(delta_time);
 
-        //TODO: 同步渲染数据
+        // ===============================
+        // TODO: 后期多线程同步渲染数据
+        // ===============================
+
+        auto active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
+        active_scene->tick(delta_time);
+        // TODO: 数据打包
 
         rendererTick(delta_time);
 
