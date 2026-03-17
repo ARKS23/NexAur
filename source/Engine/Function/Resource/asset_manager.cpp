@@ -42,6 +42,38 @@ namespace NexAur {
         }
     }
 
+    UUID AssetManager::loadTexture(const std::string& path) {
+        if (m_path_registry.find(path) != m_path_registry.end()) {
+            return m_path_registry[path];
+        }
+
+        std::shared_ptr<Texture2D> texture = Texture2D::create(path);
+        if (texture->isLoaded()) {
+            UUID new_uuid; 
+
+            m_path_registry[path] = new_uuid;
+            m_uuid_texture_cache[new_uuid] = texture;
+
+            return new_uuid;
+        }
+        else {
+            NX_CORE_ERROR("Failed to load texture: {}", path);
+            return INVALID_UUID;
+        }
+    }
+
+    UUID AssetManager::loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path) {
+        std::string combined_path = name + ": " + vertex_path + "|" + fragment_path; // 组合路径作为唯一标识
+        if (m_path_registry.find(combined_path) != m_path_registry.end()) {
+            return m_path_registry[combined_path];
+        }
+
+        std::shared_ptr<Shader> shader = Shader::create(name, vertex_path, fragment_path);
+        UUID new_uuid;
+        m_uuid_shader_cache[new_uuid] = shader;
+        return new_uuid;
+    }
+
     std::shared_ptr<Model> AssetManager::getModel(const UUID& handle) {
         if (handle == INVALID_UUID) {
             NX_CORE_WARN("Attempted to get model with invalid UUID.");
@@ -64,6 +96,34 @@ namespace NexAur {
 
         auto it = m_uuid_gpu_model_cache.find(handle);
         if (it != m_uuid_gpu_model_cache.end()) {
+            return it->second;
+        }
+
+        return nullptr;
+    }
+
+    std::shared_ptr<Texture2D> AssetManager::getTexture(const UUID& handle) {
+        if (handle == INVALID_UUID) {
+            NX_CORE_WARN("Attempted to get texture with invalid UUID.");
+            return nullptr;
+        }
+
+        auto it = m_uuid_texture_cache.find(handle);
+        if (it != m_uuid_texture_cache.end()) {
+            return it->second;
+        }
+
+        return nullptr;
+    }
+
+    std::shared_ptr<Shader> AssetManager::getShader(const UUID& handle) {
+        if (handle == INVALID_UUID) {
+            NX_CORE_WARN("Attempted to get shader with invalid UUID.");
+            return nullptr;
+        }
+
+        auto it = m_uuid_shader_cache.find(handle);
+        if (it != m_uuid_shader_cache.end()) {
             return it->second;
         }
 

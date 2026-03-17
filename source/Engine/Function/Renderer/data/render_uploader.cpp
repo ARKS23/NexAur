@@ -12,7 +12,7 @@ namespace NexAur {
             return nullptr;
         }
 
-        auto render_model = std::make_shared<RenderModelData>();
+        std::shared_ptr<RenderModelData> render_model = std::make_shared<RenderModelData>();
         for (const Mesh& mesh : cpu_model->getMeshes()) {
             render_model->meshes.push_back(uploadSingleMesh(mesh, cpu_model->getDirectory()));
         }
@@ -43,8 +43,19 @@ namespace NexAur {
 
         // 处理材质
         const MaterialData& material_data = cpu_mesh.GetMaterialData();
-        // TODO: AssetManager加载贴图
-        
+        // AssetManager加载材质
+        AssetManager& asset_manager = AssetManager::getInstance();
+        UUID albedo_uuid = asset_manager.loadTexture(material_data.albedo_path);
+        UUID normal_uuid = asset_manager.loadTexture(material_data.normal_path);
+        UUID metallic_uuid = asset_manager.loadTexture(material_data.metallic_path);
+        UUID roughness_uuid = asset_manager.loadTexture(material_data.roughness_path);
+        UUID ao_uuid = asset_manager.loadTexture(material_data.ao_path);
+
+        gpu_mesh.material.albedo_map = albedo_uuid == INVALID_UUID ? nullptr : asset_manager.getTexture(albedo_uuid);
+        gpu_mesh.material.normal_map = normal_uuid == INVALID_UUID ? nullptr : asset_manager.getTexture(normal_uuid);
+        gpu_mesh.material.metallic_map = metallic_uuid == INVALID_UUID ? nullptr : asset_manager.getTexture(metallic_uuid);
+        gpu_mesh.material.roughness_map = roughness_uuid == INVALID_UUID ? nullptr : asset_manager.getTexture(roughness_uuid);
+        gpu_mesh.material.ao_map = ao_uuid == INVALID_UUID ? nullptr : asset_manager.getTexture(ao_uuid);
 
         return gpu_mesh;
     }
