@@ -7,6 +7,7 @@
 #include "Function/Scene/scene_manager.h"
 #include "Function/Scene/scene_v2.h"
 #include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Renderer/data/render_context.h"
 #include "Core/Events/window_event.h"
 
 namespace NexAur {
@@ -35,10 +36,10 @@ namespace NexAur {
 
         // TODO: 数据同步，后期改成多线程
         std::shared_ptr<SceneV2> active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
-        // 场景数据写入缓冲区
-        
-        // 交换双缓冲
-
+        std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
+        RenderDataPacket* write_packet = &render_context->getWriteData();
+        active_scene->extractSceneData(write_packet); // 从场景提取数据到渲染数据包写入缓冲区
+        render_context->swapBuffers();  // 交换双缓冲
 
         rendererTick(delta_time);
 

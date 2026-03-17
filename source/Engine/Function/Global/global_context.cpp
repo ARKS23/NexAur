@@ -6,6 +6,7 @@
 #include "Function/Input/input_system_glfw.h"
 #include "Function/Scene/scene_manager.h"
 #include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Renderer/data/render_context.h"
 #include "Function/File/file_system.h"
 
 #ifndef ENGINE_ROOT_DIR
@@ -30,6 +31,9 @@ namespace NexAur {
         // 输入系统
         m_input_system = std::make_shared<InputSystemGLFW>();
 
+        // 渲染数据上下文
+        m_render_context = std::make_shared<RenderContext>();
+
         // 场景管理系统
         m_scene_manager = std::make_shared<SceneManager>();
         m_scene_manager->init();
@@ -51,6 +55,8 @@ namespace NexAur {
 
         m_renderer_system->shutdown();
         m_renderer_system.reset();
+
+        m_render_context.reset();
 
         m_scene_manager->shutdown();
         m_scene_manager.reset();
