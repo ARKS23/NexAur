@@ -17,17 +17,18 @@ namespace NexAur {
 
     UUID AssetManager::loadModel(const std::string& path) {
         // 已经加载过，返回对应UUID
-        if (m_path_registry.find(path) != m_path_registry.end()) {
-            return m_path_registry[path];
+        if (m_path_to_uuid.find(path) != m_path_to_uuid.end()) {
+            return m_path_to_uuid[path];
         }
 
         // 没加载过，硬盘读取
         std::shared_ptr<Model> model = std::make_shared<Model>(path);
         if (model->isLoaded()) {
             UUID new_uuid; // 随机生成一个新的UUID
+            m_path_to_uuid[path] = new_uuid; // 路径到UUID的映射
+            m_uuid_to_path[new_uuid] = path; // UUID到路径的反向映射
 
             // CPU数据缓存
-            m_path_registry[path] = new_uuid; // 路径到UUID的映射
             m_uuid_cpu_model_cache[new_uuid] = model; // UUID到模型的映射
 
             // GPU数据生成
@@ -43,15 +44,16 @@ namespace NexAur {
     }
 
     UUID AssetManager::loadTexture(const std::string& path) {
-        if (m_path_registry.find(path) != m_path_registry.end()) {
-            return m_path_registry[path];
+        if (m_path_to_uuid.find(path) != m_path_to_uuid.end()) {
+            return m_path_to_uuid[path];
         }
 
         std::shared_ptr<Texture2D> texture = Texture2D::create(path);
-        if (texture->isLoaded()) {
+        if (texture && texture->isLoaded()) {
             UUID new_uuid; 
-
-            m_path_registry[path] = new_uuid;
+            m_path_to_uuid[path] = new_uuid;
+            m_uuid_to_path[new_uuid] = path;
+            
             m_uuid_texture_cache[new_uuid] = texture;
 
             return new_uuid;
@@ -62,14 +64,41 @@ namespace NexAur {
         }
     }
 
-    UUID AssetManager::loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path) {
-        std::string combined_path = name + ": " + vertex_path + "|" + fragment_path; // 组合路径作为唯一标识
-        if (m_path_registry.find(combined_path) != m_path_registry.end()) {
-            return m_path_registry[combined_path];
+    UUID AssetManager::loadTextureCube(const std::string& path) {
+        if (m_path_to_uuid.find(path) != m_path_to_uuid.end()) {
+            return m_path_to_uuid[path];
         }
 
-        std::shared_ptr<Shader> shader = Shader::create(name, vertex_path, fragment_path);
+        std::shared_ptr<TextureCubeMap> texture_cube = TextureCubeMap::create(path);
+        if (texture_cube && texture_cube->isLoaded()) {
+            UUID new_uuid; 
+            m_path_to_uuid[path] = new_uuid;
+            m_uuid_to_path[new_uuid] = path;
+            
+            m_uuid_texture_cube_cache[new_uuid] = texture_cube;
+
+            return new_uuid;
+        }
+        else {
+            NX_CORE_ERROR("Failed to load cube texture: {}", path);
+            return INVALID_UUID;
+        }
+    }
+
+
+    UUID AssetManager::loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path) {
+        std::string combined_path = name + ": " + vertex_path + "|" + fragment_path; // 组合路径作为唯一标识
+        if (m_path_to_uuid.find(combined_path) != m_path_to_uuid.end()) {
+            return m_path_to_uuid[combined_path];
+        }
+
         UUID new_uuid;
+        m_path_to_uuid[combined_path] = new_uuid;
+        m_uuid_to_path[new_uuid] = combined_path;
+
+        // 未进行合法性检查，后续优化
+        std::shared_ptr<Shader> shader = Shader::create(name, vertex_path, fragment_path);
+
         m_uuid_shader_cache[new_uuid] = shader;
         return new_uuid;
     }
@@ -116,6 +145,20 @@ namespace NexAur {
         return nullptr;
     }
 
+    std::shared_ptr<TextureCubeMap> AssetManager::getTextureCube(const UUID& handle) {
+        if (handle == INVALID_UUID) {
+            NX_CORE_WARN("Attempted to get cube texture with invalid UUID.");
+            return nullptr;
+        }
+
+        auto it = m_uuid_texture_cube_cache.find(handle);
+        if (it != m_uuid_texture_cube_cache.end()) {
+            return it->second;
+        }
+
+        return nullptr;
+    }
+
     std::shared_ptr<Shader> AssetManager::getShader(const UUID& handle) {
         if (handle == INVALID_UUID) {
             NX_CORE_WARN("Attempted to get shader with invalid UUID.");
@@ -131,16 +174,6 @@ namespace NexAur {
     }
 
     void AssetManager::clearUnusedAssets() {
-        // 这里需要双重清理：从资源缓存清理，并对应从 path 缓存清理
-        for (auto it = m_uuid_cpu_model_cache.begin(); it != m_uuid_cpu_model_cache.end(); ) {
-            // 引用计数为 1 表示只有 AssetManager 拿着指针了
-            if (it->second.use_count() == 1) {
-                // TODO: 未作uuid到路径的反向映射，后续优化
-                it = m_uuid_cpu_model_cache.erase(it);
-            } 
-            else {
-                ++it;
-            }
-        }
+        
     }
 } // namespace NexAur

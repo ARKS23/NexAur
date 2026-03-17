@@ -1,13 +1,14 @@
 #pragma once
 #include "Core/Base.h"
 #include <memory>
-#include "Function/Resource/model.h"
+#include "Function/Resource/mesh.h"
 
 namespace NexAur {
-    class RenderMeshData;
-    class RenderModelData;
+    class Model;
+    struct RenderMeshData;
+    struct RenderModelData;
 
-    class RenderResourceUploader {
+    class NEXAUR_API RenderResourceUploader {
     public:
         // cpu数据转gpu数据
         static std::shared_ptr<RenderModelData> uploadModelData(const std::shared_ptr<Model>& cpu_model);

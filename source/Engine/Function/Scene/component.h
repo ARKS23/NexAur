@@ -37,6 +37,14 @@ namespace NexAur {
         }
     };
 
+    // 摄像机组件
+    struct CameraComponent {
+        glm::mat4 viewMatrix{ 1.0f };
+        glm::mat4 projectionMatrix{ 1.0f };
+        glm::mat4 viewProjectionMatrix{ 1.0f }; // 缓存VP, shader中无需再次计算
+        glm::vec3 position{ 0.0f };             // 摄像机世界坐标，用于高光/PBR计算
+    };
+
     // 点光源组件
     struct PointLightComponent {
         glm::vec3 color{ 1.0f, 1.0f, 1.0f };
@@ -53,21 +61,32 @@ namespace NexAur {
         float intensity = 1.0f;
     };
 
-    // TODO: 网格体组件
+    // 网格体组件
     struct MeshRendererComponent {
-        UUID mesh = INVALID_UUID;
-        UUID material = INVALID_UUID;
+        UUID model_id = INVALID_UUID;
+        bool is_transparent = false; // 是否为透明物体
 
         MeshRendererComponent() = default;
         MeshRendererComponent(const MeshRendererComponent&) = default;
+        MeshRendererComponent(UUID model_uuid) : model_id(model_uuid) {}
     };
 
-    // TODO: 环境/天空盒组件,后期优化
-    struct EnvironmentComponent {
-        bool enabled = false;
-        UUID skyboxTexture = INVALID_UUID;
-        UUID irradianceMap = INVALID_UUID;
-        UUID prefilterMap = INVALID_UUID;
-        UUID bRDFLUTMap = INVALID_UUID;
+    struct SkyboxComponent {
+        UUID skybox_texture_id = INVALID_UUID;
+
+        SkyboxComponent() = default;
+        SkyboxComponent(const SkyboxComponent&) = default;
+        SkyboxComponent(UUID texture_uuid) : skybox_texture_id(texture_uuid) {}
+    };
+
+    struct IBLComponent {
+        UUID irradiance_map_id = INVALID_UUID;
+        UUID prefilter_map_id = INVALID_UUID;
+        UUID brdf_lut_map_id = INVALID_UUID;
+
+        IBLComponent() = default;
+        IBLComponent(const IBLComponent&) = default;
+        IBLComponent(UUID irradiance_uuid, UUID prefilter_uuid, UUID brdf_lut_uuid)
+            : irradiance_map_id(irradiance_uuid), prefilter_map_id(prefilter_uuid), brdf_lut_map_id(brdf_lut_uuid) {}
     };
 } // namespace NexAur

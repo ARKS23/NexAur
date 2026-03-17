@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "render_uploader.h"
+#include "Function/Resource/model.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/RHI/vertex_array.h"
 #include "Function/Renderer/RHI/buffer.h"
@@ -35,7 +36,7 @@ namespace NexAur {
             { ShaderDataType::Float3, "a_Bitangent" }
         });
         const std::vector<unsigned int>& indices = cpu_mesh.GetIndices();
-        auto ebo = IndexBuffer::create(reinterpret_cast<uint32_t*>(const_cast<unsigned int*>(indices.data())), indices.size() * sizeof(unsigned int)); // EBO
+        auto ebo = IndexBuffer::create(reinterpret_cast<uint32_t*>(const_cast<unsigned int*>(indices.data())), indices.size()); // EBO
         gpu_mesh.index_count = indices.size();
 
         gpu_mesh.vertex_array->addVertexBuffer(vbo);
@@ -43,7 +44,6 @@ namespace NexAur {
 
         // 处理材质
         const MaterialData& material_data = cpu_mesh.GetMaterialData();
-        // AssetManager加载材质
         AssetManager& asset_manager = AssetManager::getInstance();
         UUID albedo_uuid = asset_manager.loadTexture(material_data.albedo_path);
         UUID normal_uuid = asset_manager.loadTexture(material_data.normal_path);

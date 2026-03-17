@@ -30,16 +30,15 @@ namespace NexAur {
     }
 
     bool Engine::tickOneFrame(TimeStep delta_time) {
-        logicalTick(delta_time);
         calculateFPS(delta_time);
+        logicalTick(delta_time);
 
-        // ===============================
-        // TODO: 后期多线程同步渲染数据
-        // ===============================
+        // TODO: 数据同步，后期改成多线程
+        std::shared_ptr<SceneV2> active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
+        // 场景数据写入缓冲区
+        
+        // 交换双缓冲
 
-        auto active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
-        active_scene->tick(delta_time);
-        // TODO: 数据打包
 
         rendererTick(delta_time);
 
@@ -50,7 +49,8 @@ namespace NexAur {
     }
 
     void Engine::logicalTick(TimeStep delta_time) {
-        
+        std::shared_ptr<SceneV2> active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
+        active_scene->tick(delta_time);
     }
 
     void Engine::rendererTick(TimeStep delta_time) {

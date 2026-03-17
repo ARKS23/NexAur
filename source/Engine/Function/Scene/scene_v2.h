@@ -4,6 +4,7 @@
 
 namespace NexAur {
     class Entity;
+    class RenderDataPacket;
 
     class NEXAUR_API SceneV2 {
     public:
@@ -21,6 +22,9 @@ namespace NexAur {
 
         // 获取底层注册表, 可供渲染器使用
         entt::registry& getRegistry() { return m_Registry; }
+
+        // 数据打包
+        void extractSceneData(RenderDataPacket* render_packet);
 
     private:
         entt::registry m_Registry;

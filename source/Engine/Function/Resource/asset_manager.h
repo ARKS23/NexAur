@@ -12,7 +12,7 @@
 namespace NexAur {
     class Model;
 
-    class AssetManager {
+    class NEXAUR_API AssetManager {
     public:
         // 单例获取实例
         static AssetManager& getInstance() {
@@ -31,12 +31,14 @@ namespace NexAur {
         // 贴图
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
         std::shared_ptr<Texture2D> getTexture(const UUID& handle); // 通过UUID获取贴图
+        UUID loadTextureCube(const std::string& path); 
+        std::shared_ptr<TextureCubeMap> getTextureCube(const UUID& handle);
 
         // 着色器
         UUID loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path); // 加载着色器并返回UUID
         std::shared_ptr<Shader> getShader(const UUID& handle); // 通过UUID获取着色器
 
-        // TODO：清理不再使用的资源，这个函数待完善
+        // TODO：暂时不使用该函数
         void clearUnusedAssets();
 
     private:
@@ -46,7 +48,8 @@ namespace NexAur {
         AssetManager& operator=(const AssetManager&) = delete;
 
     private:
-        std::unordered_map<std::string, UUID> m_path_registry; // 防止重复加载: 路径到UUID的映射,方便资源管理和引用
+        std::unordered_map<std::string, UUID> m_path_to_uuid; // 防止重复加载: 路径到UUID的映射, 用于资源管理和引用
+        std::unordered_map<UUID, std::string> m_uuid_to_path; // UUID到路径的反向映射: 用于资源卸载和调试
 
         // ================================== 缓存记录 ==================================
         // 模型管理
@@ -55,6 +58,7 @@ namespace NexAur {
 
         // 材质管理
         std::unordered_map<UUID, std::shared_ptr<Texture2D>> m_uuid_texture_cache;
+        std::unordered_map<UUID, std::shared_ptr<TextureCubeMap>> m_uuid_texture_cube_cache;
 
         // 着色器管理
         std::unordered_map<UUID, std::shared_ptr<Shader>> m_uuid_shader_cache;
