@@ -94,7 +94,7 @@ namespace NexAur {
         Renderer::shutdown();
     }
 
-    void RendererSystem::tick(TimeStep ts) {
+    void RendererSystem::tick(TimeStep ts, const RenderDataPacket& render_data) {
         // 更新摄像机
         m_editor_camera->onUpdate(ts);
 

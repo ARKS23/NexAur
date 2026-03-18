@@ -5,6 +5,8 @@
 #include "Function/Scene/scene.h"
 
 namespace NexAur {
+    struct RenderDataPacket;
+
     class NEXAUR_API RenderPipeline {
     public:
         virtual ~RenderPipeline() = default;
@@ -14,6 +16,8 @@ namespace NexAur {
         virtual void render(std::shared_ptr<Camera> camera) = 0;
 
         virtual void renderScene(std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera) = 0;
+
+        virtual void render(const RenderDataPacket& render_data) = 0;
 
         //virtual void onWindowResize(uint32_t width, uint32_t height) = 0;
     };

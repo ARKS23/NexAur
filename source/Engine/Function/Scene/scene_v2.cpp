@@ -35,9 +35,9 @@ namespace NexAur {
         auto view_camera = m_Registry.view<CameraComponent>();
         for (auto entity : view_camera) {
             const auto& cam_comp = view_camera.get<CameraComponent>(entity);
-            render_packet->camera_data.viewMatrix = cam_comp.viewMatrix;
-            render_packet->camera_data.projectionMatrix = cam_comp.projectionMatrix;
-            render_packet->camera_data.viewProjectionMatrix = cam_comp.viewProjectionMatrix;
+            render_packet->camera_data.view_matrix = cam_comp.viewMatrix;
+            render_packet->camera_data.projection_matrix = cam_comp.projectionMatrix;
+            render_packet->camera_data.view_projection_matrix = cam_comp.viewProjectionMatrix;
             render_packet->camera_data.position = cam_comp.position;
         }
 
@@ -63,7 +63,7 @@ namespace NexAur {
             point_light_data.linear = point_light_comp.linear;
             point_light_data.quadratic = point_light_comp.quadratic;
 
-            render_packet->point_light_data.push_back(point_light_data);
+            render_packet->point_lights_data.push_back(point_light_data);
         });
 
         // 天空盒数据
@@ -71,7 +71,7 @@ namespace NexAur {
         for (auto entity : view_skybox) {
             const auto& skybox_comp = view_skybox.get<SkyboxComponent>(entity);
             if (skybox_comp.skybox_texture_id == INVALID_UUID) break; // 防御性判断
-            render_packet->skybox_data.skyboxTexture = asset_manager.getTextureCube(skybox_comp.skybox_texture_id);
+            render_packet->skybox_data.skybox_texture = asset_manager.getTextureCube(skybox_comp.skybox_texture_id);
             break; // 目前版本只支持一个天空盒
         }
 
@@ -82,9 +82,9 @@ namespace NexAur {
             if (ibl_comp.irradiance_map_id == INVALID_UUID) break; // 防御性判断
             if (ibl_comp.prefilter_map_id == INVALID_UUID) break; // 防御性判断
             if (ibl_comp.brdf_lut_map_id == INVALID_UUID) break; // 防御性判断
-            render_packet->ibl_data.irradianceMap = asset_manager.getTextureCube(ibl_comp.irradiance_map_id);
-            render_packet->ibl_data.prefilterMap = asset_manager.getTextureCube(ibl_comp.prefilter_map_id);
-            render_packet->ibl_data.brdfLutMap = asset_manager.getTexture(ibl_comp.brdf_lut_map_id);
+            render_packet->ibl_data.irradiance_map = asset_manager.getTextureCube(ibl_comp.irradiance_map_id);
+            render_packet->ibl_data.prefilter_map = asset_manager.getTextureCube(ibl_comp.prefilter_map_id);
+            render_packet->ibl_data.brdf_lut_map = asset_manager.getTexture(ibl_comp.brdf_lut_map_id);
             break; // 目前版本只支持一个IBL设置
         }
 

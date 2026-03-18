@@ -7,9 +7,9 @@
 
 namespace NexAur {
     struct RendererCameraData {
-        glm::mat4 viewMatrix{ 1.0f };
-        glm::mat4 projectionMatrix{ 1.0f };
-        glm::mat4 viewProjectionMatrix{ 1.0f }; // 缓存VP, shader中无需再次计算
+        glm::mat4 view_matrix{ 1.0f };
+        glm::mat4 projection_matrix{ 1.0f };
+        glm::mat4 view_projection_matrix{ 1.0f }; // 缓存VP, shader中无需再次计算
         glm::vec3 position{ 0.0f };             // 摄像机世界坐标，用于高光/PBR计算
     };
 
@@ -29,13 +29,13 @@ namespace NexAur {
     };
 
     struct RendererSkyboxData {
-        std::shared_ptr<TextureCubeMap> skyboxTexture = nullptr;
+        std::shared_ptr<TextureCubeMap> skybox_texture = nullptr;
     };
 
     struct RendererIBLData{
-        std::shared_ptr<TextureCubeMap> irradianceMap = nullptr;
-        std::shared_ptr<TextureCubeMap> prefilterMap = nullptr;
-        std::shared_ptr<Texture2D> brdfLutMap = nullptr;
+        std::shared_ptr<TextureCubeMap> irradiance_map = nullptr;
+        std::shared_ptr<TextureCubeMap> prefilter_map = nullptr;
+        std::shared_ptr<Texture2D> brdf_lut_map = nullptr;
     };
 
     struct RendererMaterialData {
@@ -74,7 +74,7 @@ namespace NexAur {
         RendererCameraData camera_data;
 
         RendererDirectionalLightData directional_light_data;
-        std::vector<RendererPointLightData> point_light_data;
+        std::vector<RendererPointLightData> point_lights_data;
 
         RendererSkyboxData skybox_data;
         RendererIBLData ibl_data;
@@ -83,7 +83,7 @@ namespace NexAur {
         std::vector<RenderObjectData> transparent_objects; // 透明物体
 
         void clear() {
-            point_light_data.clear();
+            point_lights_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
         }

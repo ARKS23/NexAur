@@ -8,6 +8,7 @@
 #include "texture.h"
 #include "material.h"
 #include "buffer.h"
+#include "Function/Renderer/data/render_data.h"
 
 #include "TempTest/triangle_test.h"
 
@@ -66,7 +67,7 @@ namespace NexAur {
         void init();
         void shutdown();
 
-        void tick(TimeStep ts);
+        void tick(TimeStep ts, const RenderDataPacket& render_data); // 每帧调用，传入渲染数据包
         void onEvent(Event& e);
 
     private:

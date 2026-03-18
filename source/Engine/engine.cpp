@@ -35,10 +35,7 @@ namespace NexAur {
         logicalTick(delta_time);
 
         // TODO: 数据同步，后期改成多线程
-        std::shared_ptr<SceneV2> active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
         std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
-        RenderDataPacket* write_packet = &render_context->getWriteData();
-        active_scene->extractSceneData(write_packet); // 从场景提取数据到渲染数据包写入缓冲区
         render_context->swapBuffers();  // 交换双缓冲
 
         rendererTick(delta_time);
@@ -52,10 +49,15 @@ namespace NexAur {
     void Engine::logicalTick(TimeStep delta_time) {
         std::shared_ptr<SceneV2> active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
         active_scene->tick(delta_time);
+
+        std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
+        RenderDataPacket* write_packet = &render_context->getWriteData();
+        active_scene->extractSceneData(write_packet); // 从场景提取数据到渲染数据包写入缓冲区
     }
 
     void Engine::rendererTick(TimeStep delta_time) {
-        g_runtime_global_context.m_renderer_system->tick(delta_time); // 渲染
+        const RenderDataPacket& render_data = g_runtime_global_context.m_render_context->getReadData();
+        g_runtime_global_context.m_renderer_system->tick(delta_time, render_data); // 将渲染数据包传给渲染系统进行渲染
 
         g_runtime_global_context.m_window_system->update(); // 目前版本是window_system负责交换缓冲区
     }

@@ -1,27 +1,15 @@
 #include "pch.h"
 #include "render_forward_pipeline.h"
-#include "Function/Renderer/Passes/container_pass.h"
-#include "Function/Renderer/Passes/sphere_pass.h"
 #include "Function/Renderer/Passes/skybox_pass.h"
-#include "Function/Renderer/Passes/floor_pass.h"
 #include "Function/Renderer/Passes/shadow_pass.h"
 #include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/editor_camera.h"
 #include "Function/Renderer/RHI/Renderer.h"
+#include "Function/Renderer/data/render_data.h"
 
 namespace NexAur {
     void RenderForwardPipeline::init() {
         // 初始化前向渲染管线所需的资源，如渲染通道、着色器等        
-        RenderPassSpecification containerSpec;
-        containerSpec.debug_name = "Container Pass";
-        containerSpec.clear_buffer_flags = ClearBufferFlag::None;
-        m_container_pass = std::make_shared<ContainerPass>(containerSpec);
-
-        RenderPassSpecification floorSpec;
-        floorSpec.debug_name = "Floor pass";
-        floorSpec.clear_buffer_flags = ClearBufferFlag::None;
-        m_floor_pass = std::make_shared<FloorPass>(floorSpec);
-
         RenderPassSpecification skyboxSpec;
         skyboxSpec.debug_name = "Skybox Pass";
         skyboxSpec.clear_buffer_flags = ClearBufferFlag::None;
@@ -37,10 +25,6 @@ namespace NexAur {
     void RenderForwardPipeline::render(std::shared_ptr<Camera> camera) {
         // 设置vp矩阵
         Renderer::setCameraMatrix(camera->getViewProjection());
-
-        // 执行前向渲染流程
-        m_container_pass->run();
-        m_floor_pass->run();
 
         // 天空盒
         m_skybox_pass->setCamera(camera);
@@ -111,6 +95,145 @@ namespace NexAur {
         if (scene->isSkyboxEnabled()) {
             m_skybox_pass->setSkyboxTexture(scene->getSkyboxTexture());
             m_skybox_pass->setCamera(camera);
+            m_skybox_pass->run();
+        }
+    }
+
+    void RenderForwardPipeline::render(const RenderDataPacket& render_data) {
+        RendererCommand::clear(ClearBufferFlag::Depth | ClearBufferFlag::Color);
+
+        // TODO: shadow pass
+        // m_shadow_pass->execute(render_data); 
+
+        // 获取shader
+        if (!m_pbr_shader) return;
+        m_pbr_shader->bind();
+
+        // 摄像机相关设置
+        // m_pbr_shader->setMat4("u_ViewProjection", render_data.camera_data.view_projection_matrix);
+        Renderer::setCameraMatrix(render_data.camera_data.view_projection_matrix);
+        m_pbr_shader->setFloat3("u_CameraPos", render_data.camera_data.position);
+
+        // 全局常量设置
+        m_pbr_shader->setFloat3("u_AmbientLight", glm::vec3(0.1f, 0.1f, 0.1f));
+
+        // 定向光
+        m_pbr_shader->setFloat3("u_DirLight.direction", render_data.directional_light_data.direction);
+        m_pbr_shader->setFloat3("u_DirLight.color", render_data.directional_light_data.color);
+        m_pbr_shader->setFloat("u_DirLight.intensity", render_data.directional_light_data.intensity);
+
+        // 点光源
+        m_pbr_shader->setInt("u_NumPointLights", static_cast<int>(render_data.point_lights_data.size()));
+        for (size_t i = 0; i < render_data.point_lights_data.size(); ++i) {
+            const auto& pl = render_data.point_lights_data[i];
+            std::string index_str = std::to_string(i);
+            m_pbr_shader->setFloat3("u_PointLights[" + index_str + "].position", pl.position);
+            m_pbr_shader->setFloat3("u_PointLights[" + index_str + "].color", pl.color);
+            m_pbr_shader->setFloat("u_PointLights[" + index_str + "].intensity", pl.intensity);
+            m_pbr_shader->setFloat("u_PointLights[" + index_str + "].constant", pl.constant);
+            m_pbr_shader->setFloat("u_PointLights[" + index_str + "].linear", pl.linear);
+            m_pbr_shader->setFloat("u_PointLights[" + index_str + "].quadratic", pl.quadratic);
+        }
+
+        // 纹理单元槽
+        const int SLOT_ALBEDO    = 0;
+        const int SLOT_NORMAL    = 1;
+        const int SLOT_METALLIC  = 2;
+        const int SLOT_ROUGHNESS = 3;
+        const int SLOT_AO        = 4;
+        const int SLOT_SHADOW    = 5;
+        const int SLOT_IRRADIANCE= 6;
+        const int SLOT_PREFILTER = 7;
+        const int SLOT_BRDF_LUT  = 8;
+
+        // TODO: 绑定阴影贴图
+        // glm::mat4 light_space_matrix = m_shadow_pass->getLightSpaceMatrix();
+        // std::shared_ptr<Texture2D> shadow_map = m_shadow_pass->getDepthMapTexture();
+        // if (shadow_map) {
+        //     shadow_map->bind(SLOT_SHADOW);
+        //     m_pbr_shader->setInt("u_ShadowMap", SLOT_SHADOW);
+        // }
+        // m_pbr_shader->setMat4("u_LightSpaceMatrix", light_space_matrix);
+
+        // TODO: IBL贴图绑定
+        // bool has_ibl = render_data.ibl_data.irradianceMap != nullptr;
+        // m_pbr_shader->setInt("u_SkyboxEnabled", has_ibl ? 1 : 0);
+        // if (has_ibl) {
+        //     render_data.ibl_data.irradianceMap->bind(SLOT_IRRADIANCE);
+        //     m_pbr_shader->setInt("u_IrradianceMap", SLOT_IRRADIANCE);
+
+        //     if (render_data.ibl_data.prefilterMap) {
+        //         render_data.ibl_data.prefilterMap->bind(SLOT_PREFILTER);
+        //         m_pbr_shader->setInt("u_PrefilterMap", SLOT_PREFILTER);
+        //     }
+        //     if (render_data.ibl_data.brdfLutMap) {
+        //         render_data.ibl_data.brdfLutMap->bind(SLOT_BRDF_LUT);
+        //         m_pbr_shader->setInt("u_BrdfLUT", SLOT_BRDF_LUT);
+        //     }
+        // }
+        
+        // 绘制不透明物体
+        for (const RenderObjectData& obj : render_data.opaque_objects) {
+            if (!obj.model_data) continue;
+            // 设置模型矩阵
+            m_pbr_shader->setMat4("u_Transform", obj.transform);
+
+            // 遍历模型内所有网格体部分
+            for (const RenderMeshData& mesh : obj.model_data->meshes) {
+                // 绑定 PBR 材质贴图, 没有贴图的话就传递常量 （常量部分未完成）
+                if (mesh.material.albedo_map) {
+                    mesh.material.albedo_map->bind(SLOT_ALBEDO);
+                    m_pbr_shader->setInt("u_Material.albedoMap", SLOT_ALBEDO);
+                    m_pbr_shader->setInt("u_Material.useAlbedoMap", 1);
+                } else {
+                    m_pbr_shader->setInt("u_Material.useAlbedoMap", 0);
+                    m_pbr_shader->setFloat3("u_Material.albedo", mesh.material.albedo);
+                }
+
+                if (mesh.material.normal_map) {
+                    mesh.material.normal_map->bind(SLOT_NORMAL);
+                    m_pbr_shader->setInt("u_Material.normalMap", SLOT_NORMAL);
+                    m_pbr_shader->setInt("u_Material.useNormalMap", 1);
+                } else {
+                    m_pbr_shader->setInt("u_Material.useNormalMap", 0);
+                }
+
+                if (mesh.material.metallic_map) {
+                    mesh.material.metallic_map->bind(SLOT_METALLIC);
+                    m_pbr_shader->setInt("u_Material.metallicMap", SLOT_METALLIC);
+                    m_pbr_shader->setInt("u_Material.useMetallicMap", 1);
+                } else {
+                    m_pbr_shader->setInt("u_Material.useMetallicMap", 0);
+                    m_pbr_shader->setFloat("u_Material.metallic", mesh.material.metallic);
+                }
+
+                if (mesh.material.roughness_map) {
+                    mesh.material.roughness_map->bind(SLOT_ROUGHNESS);
+                    m_pbr_shader->setInt("u_Material.roughnessMap", SLOT_ROUGHNESS);
+                    m_pbr_shader->setInt("u_Material.useRoughnessMap", 1);
+                } else {
+                    m_pbr_shader->setInt("u_Material.useRoughnessMap", 0);
+                    m_pbr_shader->setFloat("u_Material.roughness", mesh.material.roughness);
+                }
+
+                if (mesh.material.ao_map) {
+                    mesh.material.ao_map->bind(SLOT_AO);
+                    m_pbr_shader->setInt("u_Material.aoMap", SLOT_AO);
+                    m_pbr_shader->setInt("u_Material.useAOMap", 1);
+                } else {
+                    m_pbr_shader->setInt("u_Material.useAOMap", 0);
+                    m_pbr_shader->setFloat("u_Material.ao", mesh.material.ao);
+                }
+
+                mesh.vertex_array->bind();
+                RendererCommand::drawIndexed(mesh.vertex_array, mesh.index_count);
+            }
+        }
+
+        // 绘制天空盒
+        if (render_data.skybox_data.skybox_texture) {
+            m_skybox_pass->setSkyboxTexture(render_data.skybox_data.skybox_texture);
+            // m_skybox_pass->setCamera(camera); 改成接收矩阵
             m_skybox_pass->run();
         }
     }
