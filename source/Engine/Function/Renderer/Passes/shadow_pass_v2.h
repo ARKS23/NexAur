@@ -21,7 +21,7 @@ namespace NexAur {
     private:
         void initResources();
 
-        virtual void execute(const RenderDataPacket& render_data) override {}
+        virtual void execute(const RenderDataPacket& render_data) override {} // 不走默认管线流程，单独调用run_without_begin_end
 
     private:
         std::shared_ptr<Shader> m_shader;
@@ -31,5 +31,13 @@ namespace NexAur {
 
         const uint32_t SHADOW_WIDTH = 4096;
         const uint32_t SHADOW_HEIGHT = 4096;
+
+        // 正交投影参数
+        const float ORTHO_LEFT = -70.0f;
+        const float ORTHO_RIGHT = 70.0f;
+        const float ORTHO_BOTTOM = -70.0f;
+        const float ORTHO_TOP = 70.0f;
+        const float ORTHO_NEAR = 1.0f;
+        const float ORTHO_FAR = 100.0f;
     };
 } // namespace NexAur
