@@ -3,6 +3,7 @@
 #include "Function/Renderer/Passes/skybox_pass.h"
 #include "Function/Renderer/Passes/skybox_pass_v2.h"
 #include "Function/Renderer/Passes/shadow_pass.h"
+#include "Function/Renderer/Passes/shadow_pass_v2.h"
 #include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/editor_camera.h"
 #include "Function/Renderer/RHI/Renderer.h"
@@ -27,6 +28,12 @@ namespace NexAur {
         skyboxSpecV2.debug_name = "Skybox Pass V2";
         skyboxSpecV2.clear_buffer_flags = ClearBufferFlag::None;
         m_skybox_pass_v2 = std::make_shared<SkyboxPassV2>(skyboxSpecV2);
+
+        // 新版本阴影Pass
+        RenderPassSpecificationV2 shadowSpecV2;
+        shadowSpecV2.debug_name = "Shadow Pass V2";
+        shadowSpecV2.clear_buffer_flags = ClearBufferFlag::Depth;
+        m_shadow_pass_v2 = std::make_shared<ShadowPassV2>(shadowSpecV2);
     }
 
     void RenderForwardPipeline::render(std::shared_ptr<Camera> camera) {
@@ -109,8 +116,8 @@ namespace NexAur {
     void RenderForwardPipeline::render(const RenderDataPacket& render_data) {
         RendererCommand::clear(ClearBufferFlag::Depth | ClearBufferFlag::Color);
 
-        // TODO: shadow pass
-        // m_shadow_pass->execute(render_data); 
+        // shadow pass
+        m_shadow_pass_v2->run_without_begin_end(render_data);
 
         // 获取shader
         if (!m_pbr_shader) return;
@@ -153,14 +160,14 @@ namespace NexAur {
         const int SLOT_PREFILTER = 7;
         const int SLOT_BRDF_LUT  = 8;
 
-        // TODO: 绑定阴影贴图
-        // glm::mat4 light_space_matrix = m_shadow_pass->getLightSpaceMatrix();
-        // std::shared_ptr<Texture2D> shadow_map = m_shadow_pass->getDepthMapTexture();
-        // if (shadow_map) {
-        //     shadow_map->bind(SLOT_SHADOW);
-        //     m_pbr_shader->setInt("u_ShadowMap", SLOT_SHADOW);
-        // }
-        // m_pbr_shader->setMat4("u_LightSpaceMatrix", light_space_matrix);
+        // 绑定阴影贴图
+        glm::mat4 light_space_matrix = m_shadow_pass_v2->getLightSpaceMatrix();
+        std::shared_ptr<Texture2D> shadow_map = m_shadow_pass_v2->getDepthMapTexture();
+        if (shadow_map) {
+            shadow_map->bind(SLOT_SHADOW);
+            m_pbr_shader->setInt("u_ShadowMap", SLOT_SHADOW);
+        }
+        m_pbr_shader->setMat4("u_LightSpaceMatrix", light_space_matrix);
 
         // TODO: IBL贴图绑定
         // bool has_ibl = render_data.ibl_data.irradianceMap != nullptr;

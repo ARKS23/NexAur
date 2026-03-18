@@ -7,6 +7,7 @@ namespace NexAur {
     class SkyboxPass;
     class SkyboxPassV2;
     class ShadowPass;
+    class ShadowPassV2;
     class Shader;
 
     class NEXAUR_API RenderForwardPipeline : public RenderPipeline {
@@ -26,5 +27,6 @@ namespace NexAur {
         std::shared_ptr<SkyboxPass> m_skybox_pass;
         std::shared_ptr<SkyboxPassV2> m_skybox_pass_v2;
         std::shared_ptr<ShadowPass> m_shadow_pass;
+        std::shared_ptr<ShadowPassV2> m_shadow_pass_v2;
     };
 } // namespace NexAur

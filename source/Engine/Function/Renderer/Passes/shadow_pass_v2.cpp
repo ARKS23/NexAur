@@ -32,6 +32,9 @@ namespace NexAur {
 
     void ShadowPassV2::run_without_begin_end(const RenderDataPacket& render_data) {
         glm::vec3 dir_light_direction = render_data.directional_light_data.direction;
+        if (glm::length(dir_light_direction) < 0.001f) 
+            dir_light_direction = glm::vec3(0.0f, -1.0f, 0.0f);
+        dir_light_direction = glm::normalize(dir_light_direction);
 
         // 计算光源空间矩阵: 正交投影
         glm::mat4 light_projection = glm::ortho(ORTHO_LEFT, ORTHO_RIGHT, ORTHO_BOTTOM, ORTHO_TOP, ORTHO_NEAR, ORTHO_FAR);
@@ -62,6 +65,6 @@ namespace NexAur {
         m_framebuffer->unbind();
         auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
         RendererCommand::setViewport(0, 0, width, height);
-        RendererCommand::clear(ClearBufferFlag::Depth);
+        // RendererCommand::clear(ClearBufferFlag::Depth);
     }
 } // namespace NexAur
