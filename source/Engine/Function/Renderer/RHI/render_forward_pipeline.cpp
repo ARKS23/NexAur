@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/Passes/skybox_pass.h"
+#include "Function/Renderer/Passes/skybox_pass_v2.h"
 #include "Function/Renderer/Passes/shadow_pass.h"
 #include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/editor_camera.h"
@@ -20,6 +21,12 @@ namespace NexAur {
         shadowSpec.debug_name = "Shadow Pass";
         shadowSpec.clear_buffer_flags = ClearBufferFlag::Depth;
         m_shadow_pass = std::make_shared<ShadowPass>(shadowSpec);
+
+        // 新版本天空盒Pass
+        RenderPassSpecificationV2 skyboxSpecV2;
+        skyboxSpecV2.debug_name = "Skybox Pass V2";
+        skyboxSpecV2.clear_buffer_flags = ClearBufferFlag::None;
+        m_skybox_pass_v2 = std::make_shared<SkyboxPassV2>(skyboxSpecV2);
     }
 
     void RenderForwardPipeline::render(std::shared_ptr<Camera> camera) {
@@ -231,10 +238,6 @@ namespace NexAur {
         }
 
         // 绘制天空盒
-        if (render_data.skybox_data.skybox_texture) {
-            m_skybox_pass->setSkyboxTexture(render_data.skybox_data.skybox_texture);
-            // m_skybox_pass->setCamera(camera); 改成接收矩阵
-            m_skybox_pass->run();
-        }
+        if (render_data.skybox_data.skybox_texture) m_skybox_pass_v2->run(render_data);
     }
 } // namespace NexAur

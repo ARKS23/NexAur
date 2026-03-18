@@ -5,6 +5,7 @@
 
 namespace NexAur {
     class SkyboxPass;
+    class SkyboxPassV2;
     class ShadowPass;
     class Shader;
 
@@ -23,6 +24,7 @@ namespace NexAur {
         std::shared_ptr<Shader> m_pbr_shader;
 
         std::shared_ptr<SkyboxPass> m_skybox_pass;
+        std::shared_ptr<SkyboxPassV2> m_skybox_pass_v2;
         std::shared_ptr<ShadowPass> m_shadow_pass;
     };
 } // namespace NexAur
