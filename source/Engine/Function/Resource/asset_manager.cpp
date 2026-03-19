@@ -2,6 +2,7 @@
 #include "asset_manager.h"
 #include "Function/Resource/model.h"
 #include "Function/Renderer/data/render_uploader.h"
+#include "Function/Resource/ibl_builder.h"
 
 
 namespace NexAur {
@@ -103,6 +104,24 @@ namespace NexAur {
         return new_uuid;
     }
 
+    UUID AssetManager::loadEnvironmentMap(const std::string& hdr_path) {
+        if (m_path_to_uuid.find(hdr_path) != m_path_to_uuid.end()) 
+            return m_path_to_uuid[hdr_path];
+
+        std::shared_ptr<EnvironmentMap> env_map = IBLBuilder::bakeIBLFromHDR(hdr_path);
+        if (!env_map) {
+            NX_CORE_ERROR("Failed to load environment map: {}", hdr_path);
+            return INVALID_UUID;
+        }
+
+        UUID new_uuid;
+        m_path_to_uuid[hdr_path] = new_uuid;
+        m_uuid_to_path[new_uuid] = hdr_path;
+        m_uuid_environment_map_cache[new_uuid] = env_map;
+
+        return new_uuid;
+    }
+
     std::shared_ptr<Model> AssetManager::getModel(const UUID& handle) {
         if (handle == INVALID_UUID) {
             NX_CORE_WARN("Attempted to get model with invalid UUID.");
@@ -155,6 +174,18 @@ namespace NexAur {
         if (it != m_uuid_texture_cube_cache.end()) {
             return it->second;
         }
+
+        return nullptr;
+    }
+
+    std::shared_ptr<EnvironmentMap> AssetManager::getEnvironmentMap(const UUID& handle) {
+        if (handle == INVALID_UUID) {
+            NX_CORE_WARN("Attempted to get EnvironmentMap with invalid UUID.");
+            return nullptr;
+        }
+
+        if (m_uuid_environment_map_cache.find(handle) != m_uuid_environment_map_cache.end())
+            return m_uuid_environment_map_cache[handle];
 
         return nullptr;
     }

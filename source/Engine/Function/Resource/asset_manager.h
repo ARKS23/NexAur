@@ -11,6 +11,7 @@
 
 namespace NexAur {
     class Model;
+    struct EnvironmentMap;
 
     class NEXAUR_API AssetManager {
     public:
@@ -38,6 +39,10 @@ namespace NexAur {
         UUID loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path); // 加载着色器并返回UUID
         std::shared_ptr<Shader> getShader(const UUID& handle); // 通过UUID获取着色器
 
+        // 环境光照
+        UUID loadEnvironmentMap(const std::string& hdr_path); // 加载环境光照并返回UUID
+        std::shared_ptr<EnvironmentMap> getEnvironmentMap(const UUID& handle); // 通过UUID获取环境光照
+
         // TODO：暂时不使用该函数
         void clearUnusedAssets();
 
@@ -62,5 +67,8 @@ namespace NexAur {
 
         // 着色器管理
         std::unordered_map<UUID, std::shared_ptr<Shader>> m_uuid_shader_cache;
+
+        // 环境光照缓存
+        std::unordered_map<UUID, std::shared_ptr<EnvironmentMap>> m_uuid_environment_map_cache;
     };
 } // namespace NexAur
