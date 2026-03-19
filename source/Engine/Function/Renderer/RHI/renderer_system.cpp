@@ -101,14 +101,17 @@ namespace NexAur {
         // 每帧更新渲染逻辑
         // m_forward_pipeline->render(m_editor_camera);
 
-        // 场景渲染
-        m_scene->onUpdate(ts);
-        m_forward_pipeline->renderScene(m_scene, m_editor_camera);
+        // 场景渲染v1
+        //m_scene->onUpdate(ts);
+        //m_forward_pipeline->renderScene(m_scene, m_editor_camera);
+
+        // 场景渲染v2
+        m_forward_pipeline->render(render_data);
     }
 
     void RendererSystem::onEvent(Event& e) {
         m_editor_camera->onEvent(e);
-
+        
         // 事件处理补充
     }
 

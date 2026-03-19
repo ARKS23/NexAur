@@ -5,6 +5,7 @@
 namespace NexAur {
     class Entity;
     class RenderDataPacket;
+    class EditorCamera;
 
     class NEXAUR_API SceneV2 {
     public:
@@ -29,5 +30,8 @@ namespace NexAur {
     private:
         entt::registry m_Registry;
         friend class Entity;
+
+    private:
+        std::shared_ptr<EditorCamera> m_editor_camera;  // 测试摄像机，该摄像机用于跑通流程，后期删除
     };
 } // namespace NexAur

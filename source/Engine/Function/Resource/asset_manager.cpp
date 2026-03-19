@@ -104,6 +104,17 @@ namespace NexAur {
         return new_uuid;
     }
 
+    UUID AssetManager::registerRenderModel(const std::shared_ptr<RenderModelData>& gpu_model) {
+        if (!gpu_model) {
+            NX_CORE_ERROR("Attempted to register null GPU model.");
+            return INVALID_UUID;
+        }
+        
+        UUID new_uuid;
+        m_uuid_gpu_model_cache[new_uuid] = gpu_model; // 直接放入GPU模型缓存
+        return new_uuid;
+    }
+
     UUID AssetManager::loadEnvironmentMap(const std::string& hdr_path) {
         if (m_path_to_uuid.find(hdr_path) != m_path_to_uuid.end()) 
             return m_path_to_uuid[hdr_path];

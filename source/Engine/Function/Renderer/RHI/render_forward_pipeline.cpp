@@ -8,6 +8,9 @@
 #include "Function/Renderer/editor_camera.h"
 #include "Function/Renderer/RHI/Renderer.h"
 #include "Function/Renderer/data/render_data.h"
+#include "Function/Global/global_context.h"
+#include "Function/File/file_system.h"
+#include "Function/Renderer/RHI/renderer_system.h"
 
 namespace NexAur {
     void RenderForwardPipeline::init() {
@@ -22,6 +25,10 @@ namespace NexAur {
         shadowSpec.debug_name = "Shadow Pass";
         shadowSpec.clear_buffer_flags = ClearBufferFlag::Depth;
         m_shadow_pass = std::make_shared<ShadowPass>(shadowSpec);
+
+        // PBR着色器
+        m_pbr_shader = RendererFactory::createShaderByPaths("sphere pbr shader",
+        NX_ASSET("assets/shaders/pbr/pbr.vs"), NX_ASSET("assets/shaders/pbr/pbr.fs"));
 
         // 新版本天空盒Pass
         RenderPassSpecificationV2 skyboxSpecV2;

@@ -29,6 +29,9 @@ namespace NexAur {
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
         std::shared_ptr<RenderModelData> getRenderModel(const UUID& handle); // 通过UUID获取GPU模型数据
 
+        // 用于测试用的直接放入GPU模型数据
+        UUID registerRenderModel(const std::shared_ptr<RenderModelData>& gpu_model);
+
         // 贴图
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
         std::shared_ptr<Texture2D> getTexture(const UUID& handle); // 通过UUID获取贴图

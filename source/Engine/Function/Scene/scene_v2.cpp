@@ -2,13 +2,43 @@
 #include "entity.h"
 #include "scene_v2.h"
 #include "component.h"
+#include "Function/Global/global_context.h"
+#include "Function/File/file_system.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/ibl_builder.h"
 
+#include "Function/Renderer/editor_camera.h" // 测试用
+
 namespace NexAur {
     SceneV2::SceneV2() {
-        // 后续补充场景初始化逻辑
+        AssetManager& asset_manager = AssetManager::getInstance();
+
+        // 测试摄像机
+        m_editor_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
+
+        // 设置主相机
+        Entity camera_entity = createEntity("MainCamera");
+        CameraComponent& camera_component = camera_entity.addComponent<CameraComponent>();
+        camera_component.position = { 0.0f, 0.0f, 5.0f };
+        camera_component.viewMatrix = glm::translate(glm::mat4(1.0f), -camera_component.position); 
+        camera_component.projectionMatrix = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
+        camera_component.viewProjectionMatrix = camera_component.projectionMatrix * camera_component.viewMatrix;
+
+        // 环境光
+        Entity env_entity = createEntity("Environment");
+        UUID env_map_id = asset_manager.loadEnvironmentMap(NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr"));
+        if (env_map_id != INVALID_UUID) {
+            env_entity.addComponent<EnvironmentComponent>(env_map_id);
+            env_entity.getComponent<EnvironmentComponent>().intensity = 1.0f;
+        }
+
+        // 方向光
+        Entity dir_light_entity = createEntity("DirectionalLight");
+        DirectionalLightComponent& dir_light_comp = dir_light_entity.addComponent<DirectionalLightComponent>();
+        dir_light_comp.direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.5f));
+        dir_light_comp.color = glm::vec3(1.0f, 1.0f, 1.0f);
+        dir_light_comp.intensity = 1.5f;
     }
 
     SceneV2::~SceneV2() {
@@ -84,7 +114,6 @@ namespace NexAur {
             }
             break;
         }
-        // ----------------------------------------------------------------
 
         // 网格体数据处理
         auto view_meshes = m_Registry.view<MeshRendererComponent, TransformComponent>();
@@ -112,6 +141,15 @@ namespace NexAur {
     }
 
     void SceneV2::tick(float deltaTime) {
-        // 后续补充场景更新逻辑,如系统更新等
+        m_editor_camera->onUpdate(TimeStep(deltaTime)); // 目前是测试相机
+        auto view = m_Registry.view<CameraComponent>();
+        for (auto entity : view) {
+            auto& cam_comp = view.get<CameraComponent>(entity);
+            cam_comp.position = m_editor_camera->getPosition();
+            cam_comp.viewMatrix = m_editor_camera->getView();
+            cam_comp.projectionMatrix = m_editor_camera->getProjection();
+            cam_comp.viewProjectionMatrix = m_editor_camera->getViewProjection();
+            break;  // 只设置主相机
+        }
     }
 } // namespace NexAur
