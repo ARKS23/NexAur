@@ -169,22 +169,23 @@ namespace NexAur {
         }
         m_pbr_shader->setMat4("u_LightSpaceMatrix", light_space_matrix);
 
-        // TODO: IBL贴图绑定
-        // bool has_ibl = render_data.ibl_data.irradianceMap != nullptr;
-        // m_pbr_shader->setInt("u_SkyboxEnabled", has_ibl ? 1 : 0);
-        // if (has_ibl) {
-        //     render_data.ibl_data.irradianceMap->bind(SLOT_IRRADIANCE);
-        //     m_pbr_shader->setInt("u_IrradianceMap", SLOT_IRRADIANCE);
-
-        //     if (render_data.ibl_data.prefilterMap) {
-        //         render_data.ibl_data.prefilterMap->bind(SLOT_PREFILTER);
-        //         m_pbr_shader->setInt("u_PrefilterMap", SLOT_PREFILTER);
-        //     }
-        //     if (render_data.ibl_data.brdfLutMap) {
-        //         render_data.ibl_data.brdfLutMap->bind(SLOT_BRDF_LUT);
-        //         m_pbr_shader->setInt("u_BrdfLUT", SLOT_BRDF_LUT);
-        //     }
-        // }
+        // 环境光
+        bool has_ibl = render_data.environment_data.irradiance_map != nullptr;
+        m_pbr_shader->setInt("u_SkyboxEnabled", has_ibl ? 1 : 0);
+        if (has_ibl) {
+            if (render_data.environment_data.irradiance_map) {
+                render_data.environment_data.irradiance_map->bind(SLOT_IRRADIANCE);
+                m_pbr_shader->setInt("u_IrradianceMap", SLOT_IRRADIANCE);
+            }
+            if (render_data.environment_data.prefilter_map) {
+                render_data.environment_data.prefilter_map->bind(SLOT_PREFILTER);
+                m_pbr_shader->setInt("u_PrefilterMap", SLOT_PREFILTER);
+            }
+            if (render_data.environment_data.brdf_lut_map) {
+                render_data.environment_data.brdf_lut_map->bind(SLOT_BRDF_LUT);
+                m_pbr_shader->setInt("u_BrdfLUT", SLOT_BRDF_LUT);
+            }
+        }
         
         // 绘制不透明物体
         for (const RenderObjectData& obj : render_data.opaque_objects) {
@@ -245,6 +246,6 @@ namespace NexAur {
         }
 
         // 绘制天空盒
-        if (render_data.skybox_data.skybox_texture) m_skybox_pass_v2->run(render_data);
+        if (render_data.environment_data.skybox_texture) m_skybox_pass_v2->run(render_data);
     }
 } // namespace NexAur

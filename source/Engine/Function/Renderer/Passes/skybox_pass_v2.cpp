@@ -11,7 +11,7 @@ namespace NexAur {
         glm::mat4 projection = render_data.camera_data.projection_matrix;
         glm::mat4 vp = projection * view;
         
-        this->setSkyboxTexture(render_data.skybox_data.skybox_texture);
+        this->setSkyboxTexture(render_data.environment_data.skybox_texture);
 
         RendererCommand::setDepthFunc(DepthFunc::Lequal); // 设置深度函数为小于等于，确保天空盒绘制在最远处
         m_shader->bind();

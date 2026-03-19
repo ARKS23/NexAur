@@ -4,6 +4,7 @@
 #include "component.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Resource/ibl_builder.h"
 
 namespace NexAur {
     SceneV2::SceneV2() {
@@ -66,27 +67,24 @@ namespace NexAur {
             render_packet->point_lights_data.push_back(point_light_data);
         });
 
-        // 天空盒数据
-        auto view_skybox = m_Registry.view<SkyboxComponent>();
-        for (auto entity : view_skybox) {
-            const auto& skybox_comp = view_skybox.get<SkyboxComponent>(entity);
-            if (skybox_comp.skybox_texture_id == INVALID_UUID) break; // 防御性判断
-            render_packet->skybox_data.skybox_texture = asset_manager.getTextureCube(skybox_comp.skybox_texture_id);
-            break; // 目前版本只支持一个天空盒
-        }
 
-        // IBL数据
-        auto view_ibl = m_Registry.view<IBLComponent>();
-        for (auto entity : view_ibl) {
-            const auto& ibl_comp = view_ibl.get<IBLComponent>(entity);
-            if (ibl_comp.irradiance_map_id == INVALID_UUID) break; // 防御性判断
-            if (ibl_comp.prefilter_map_id == INVALID_UUID) break; // 防御性判断
-            if (ibl_comp.brdf_lut_map_id == INVALID_UUID) break; // 防御性判断
-            render_packet->ibl_data.irradiance_map = asset_manager.getTextureCube(ibl_comp.irradiance_map_id);
-            render_packet->ibl_data.prefilter_map = asset_manager.getTextureCube(ibl_comp.prefilter_map_id);
-            render_packet->ibl_data.brdf_lut_map = asset_manager.getTexture(ibl_comp.brdf_lut_map_id);
-            break; // 目前版本只支持一个IBL设置
+        // IBL
+        auto view_env = m_Registry.view<EnvironmentComponent>();
+        for (auto entity : view_env) {
+            const auto& env_comp = view_env.get<EnvironmentComponent>(entity);
+            if (env_comp.environment_map_id == INVALID_UUID) break;
+
+            std::shared_ptr<EnvironmentMap> env_map = asset_manager.getEnvironmentMap(env_comp.environment_map_id);
+            if (env_map) {
+                render_packet->environment_data.skybox_texture = env_map->skybox_texture;
+                render_packet->environment_data.irradiance_map = env_map->irradiance_map;
+                render_packet->environment_data.prefilter_map = env_map->prefilter_map;
+                render_packet->environment_data.brdf_lut_map = env_map->brdf_lut_map;
+                render_packet->environment_data.intensity = env_comp.intensity;
+            }
+            break;
         }
+        // ----------------------------------------------------------------
 
         // 网格体数据处理
         auto view_meshes = m_Registry.view<MeshRendererComponent, TransformComponent>();

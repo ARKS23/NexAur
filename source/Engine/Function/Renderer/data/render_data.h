@@ -28,14 +28,12 @@ namespace NexAur {
         float quadratic = 0.032f;
     };
 
-    struct RendererSkyboxData {
+    struct RendererEnvironmentData {
         std::shared_ptr<TextureCubeMap> skybox_texture = nullptr;
-    };
-
-    struct RendererIBLData{
         std::shared_ptr<TextureCubeMap> irradiance_map = nullptr;
         std::shared_ptr<TextureCubeMap> prefilter_map = nullptr;
         std::shared_ptr<Texture2D> brdf_lut_map = nullptr;
+        float intensity = 1.0f;
     };
 
     struct RendererMaterialData {
@@ -76,8 +74,7 @@ namespace NexAur {
         RendererDirectionalLightData directional_light_data;
         std::vector<RendererPointLightData> point_lights_data;
 
-        RendererSkyboxData skybox_data;
-        RendererIBLData ibl_data;
+        RendererEnvironmentData environment_data;
 
         std::vector<RenderObjectData> opaque_objects;   // 不透明物体
         std::vector<RenderObjectData> transparent_objects; // 透明物体

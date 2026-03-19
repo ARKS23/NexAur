@@ -71,22 +71,12 @@ namespace NexAur {
         MeshRendererComponent(UUID model_uuid) : model_id(model_uuid) {}
     };
 
-    struct SkyboxComponent {
-        UUID skybox_texture_id = INVALID_UUID;
+    struct EnvironmentComponent {
+        UUID environment_map_id = INVALID_UUID; // 对应 AssetManager 里的 EnvironmentMap
+        float intensity = 1.0f; // 环境光亮度控制
 
-        SkyboxComponent() = default;
-        SkyboxComponent(const SkyboxComponent&) = default;
-        SkyboxComponent(UUID texture_uuid) : skybox_texture_id(texture_uuid) {}
-    };
-
-    struct IBLComponent {
-        UUID irradiance_map_id = INVALID_UUID;
-        UUID prefilter_map_id = INVALID_UUID;
-        UUID brdf_lut_map_id = INVALID_UUID;
-
-        IBLComponent() = default;
-        IBLComponent(const IBLComponent&) = default;
-        IBLComponent(UUID irradiance_uuid, UUID prefilter_uuid, UUID brdf_lut_uuid)
-            : irradiance_map_id(irradiance_uuid), prefilter_map_id(prefilter_uuid), brdf_lut_map_id(brdf_lut_uuid) {}
+        EnvironmentComponent() = default;
+        EnvironmentComponent(const EnvironmentComponent&) = default;
+        EnvironmentComponent(UUID env_id) : environment_map_id(env_id) {}
     };
 } // namespace NexAur
