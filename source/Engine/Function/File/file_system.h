@@ -3,7 +3,7 @@
 #include <string>
 
 namespace NexAur {
-    class FileSystem {
+    class NEXAUR_API FileSystem {
     public:
         FileSystem(const std::filesystem::path& root_dir);
         ~FileSystem() = default;

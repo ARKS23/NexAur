@@ -39,6 +39,18 @@ namespace NexAur {
         dir_light_comp.direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.5f));
         dir_light_comp.color = glm::vec3(1.0f, 1.0f, 1.0f);
         dir_light_comp.intensity = 1.5f;
+
+        // 点光源
+        Entity point_light_entity = createEntity("PointLight");
+        PointLightComponent& point_light_comp = point_light_entity.addComponent<PointLightComponent>();
+        point_light_comp.color = glm::vec3(1.0f, 1.0f, 1.0f);
+        point_light_comp.intensity = 1.0f;
+        point_light_comp.constant = 1.0f;
+        point_light_comp.linear = 0.09f;
+        point_light_comp.quadratic = 0.032f;
+        TransformComponent& point_light_transform = point_light_entity.getComponent<TransformComponent>();
+        point_light_transform.translation = glm::vec3(-5.0f, 0.0f, 0.0f);
+        
     }
 
     SceneV2::~SceneV2() {

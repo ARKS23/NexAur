@@ -1,10 +1,11 @@
 #pragma once
+#include "Core/Base.h"
 #include <cstdint>
 #include <random>
 
 namespace NexAur {
     // UUID作为资源的唯一识别码
-    class UUID {
+    class NEXAUR_API UUID {
     public:
         UUID(); // 默认随机生成64位无符号整数
         UUID(uint64_t uuid);
