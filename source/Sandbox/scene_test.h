@@ -13,8 +13,8 @@ namespace NexAur {
         SceneTestClass();
         ~SceneTestClass() = default;
 
-        Entity addSphereEntity();
-        Entity addCubeEntity();
+        Entity addSphereEntity(std::string name = "Sphere", std::string material_type = "gold", glm::vec3 position = glm::vec3(0.0f));
+        Entity addCubeEntity(std::string name = "Cube", std::string material_type = "gold", glm::vec3 position = glm::vec3(0.0f));
 
     private:
         void setMaterial(RendererMaterialData& materail_data, const std::string& material_type);

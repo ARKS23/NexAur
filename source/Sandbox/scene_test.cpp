@@ -9,35 +9,35 @@ namespace NexAur {
         m_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
     }
 
-    Entity SceneTestClass::addSphereEntity() {
+    Entity SceneTestClass::addSphereEntity(std::string name, std::string material_type, glm::vec3 position) {
         std::shared_ptr<RenderModelData> sphere_model = ProceduralModelFactory::createSphereModel(64, 64);
 
-        setMaterial(sphere_model->meshes[0].material, "gold");
+        setMaterial(sphere_model->meshes[0].material, material_type);
 
         UUID procedual_id = m_asset_manager.registerRenderModel(sphere_model);
 
-        Entity sphere_entity = m_scene->createEntity("Sphere");
+        Entity sphere_entity = m_scene->createEntity(name);
         sphere_entity.addComponent<MeshRendererComponent>(procedual_id);
 
         TransformComponent& transform = sphere_entity.getComponent<TransformComponent>();
-        transform.translation = glm::vec3(1.5f, 0.0f, -2.0f);
+        transform.translation = position;
         transform.scale = glm::vec3(0.5f);
 
         return sphere_entity;
     }
 
-    Entity SceneTestClass::addCubeEntity() {
+    Entity SceneTestClass::addCubeEntity(std::string name, std::string material_type, glm::vec3 position) {
         std::shared_ptr<RenderModelData> cube_model = ProceduralModelFactory::createCubeModel();
 
-        // cube_model->meshes[0].material.albedo_map; // // TODO: 材质处理
+        setMaterial(cube_model->meshes[0].material, material_type);
 
         UUID procedual_id = m_asset_manager.registerRenderModel(cube_model);
 
-        Entity cube_entity = m_scene->createEntity("Cube");
+        Entity cube_entity = m_scene->createEntity(name);
         cube_entity.addComponent<MeshRendererComponent>(procedual_id);
 
         TransformComponent& transform = cube_entity.getComponent<TransformComponent>();
-        transform.translation = glm::vec3(1.0f, 0.0f, 0.0f);
+        transform.translation = position;
         transform.scale = glm::vec3(0.5f);
 
         return cube_entity;

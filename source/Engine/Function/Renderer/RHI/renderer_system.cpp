@@ -78,10 +78,10 @@ namespace NexAur {
         RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
 
         // 初始化摄像机
-        m_editor_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
+        //m_editor_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
 
         // 初始化场景(测试)
-        m_scene = std::make_shared<Scene>();
+        //m_scene = std::make_shared<Scene>();
 
         // 初始化RenderPipline
         m_forward_pipeline = std::make_shared<RenderForwardPipeline>();
@@ -96,7 +96,7 @@ namespace NexAur {
 
     void RendererSystem::tick(TimeStep ts, const RenderDataPacket& render_data) {
         // 更新摄像机
-        m_editor_camera->onUpdate(ts);
+        //m_editor_camera->onUpdate(ts);
 
         // 每帧更新渲染逻辑
         // m_forward_pipeline->render(m_editor_camera);
