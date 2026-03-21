@@ -1,6 +1,8 @@
 # NexAur
 本项目用于学习和研究游戏引擎开发, NexAur是长期开发和维护的个人小型游戏引擎项目。
 
+![](./docs/architucture/images/scenev2.png)
+
 ## 编程规范
 - [编程规范文档](./docs/CodingGuideLines/CodingGuideLines.md)
 
