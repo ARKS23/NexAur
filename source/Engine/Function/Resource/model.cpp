@@ -18,7 +18,7 @@ namespace NexAur {
         const aiScene* scene = importer.ReadFile(path,
             aiProcess_Triangulate|      // 保证所有面是三角形
             aiProcess_GenSmoothNormals| // 没法线就生成平滑法线
-            aiProcess_FlipUVs|          // 图片坐标常常和Y轴相反，进行反转
+            //aiProcess_FlipUVs|          // 图片坐标常常和Y轴相反，进行反转
             aiProcess_CalcTangentSpace);// 生成切线和副切线
 
         // 检查加载错误
@@ -101,7 +101,7 @@ namespace NexAur {
         if (mesh->mMaterialIndex >= 0) {
             aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
             material.name = mat->GetName().C_Str();
-            material.albedo_path = loadMaterialTexturePath(mat, aiTextureType_DIFFUSE);
+            material.albedo_path = loadMaterialTexturePath(mat, aiTextureType_BASE_COLOR);
             material.normal_path = loadMaterialTexturePath(mat, aiTextureType_NORMALS);
             material.metallic_path = loadMaterialTexturePath(mat, aiTextureType_METALNESS);
             material.roughness_path = loadMaterialTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);

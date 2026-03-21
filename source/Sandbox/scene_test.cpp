@@ -9,7 +9,7 @@ namespace NexAur {
         m_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
     }
 
-    Entity SceneTestClass::addSphereEntity(std::string name, std::string material_type, glm::vec3 position) {
+    Entity SceneTestClass::addSphereEntity(std::string name, std::string material_type, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
         std::shared_ptr<RenderModelData> sphere_model = ProceduralModelFactory::createSphereModel(64, 64);
 
         setMaterial(sphere_model->meshes[0].material, material_type);
@@ -21,12 +21,13 @@ namespace NexAur {
 
         TransformComponent& transform = sphere_entity.getComponent<TransformComponent>();
         transform.translation = position;
-        transform.scale = glm::vec3(0.5f);
+        transform.rotation = rotation;
+        transform.scale = scale;
 
         return sphere_entity;
     }
 
-    Entity SceneTestClass::addCubeEntity(std::string name, std::string material_type, glm::vec3 position) {
+    Entity SceneTestClass::addCubeEntity(std::string name, std::string material_type, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
         std::shared_ptr<RenderModelData> cube_model = ProceduralModelFactory::createCubeModel();
 
         setMaterial(cube_model->meshes[0].material, material_type);
@@ -38,9 +39,26 @@ namespace NexAur {
 
         TransformComponent& transform = cube_entity.getComponent<TransformComponent>();
         transform.translation = position;
-        transform.scale = glm::vec3(0.5f);
+        transform.rotation = rotation;
+        transform.scale = scale;
 
         return cube_entity;
+    }
+
+    Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
+        UUID model_id = m_asset_manager.loadModel(model_path);
+        if (model_id == INVALID_UUID) {
+            NX_CORE_ERROR("Failed to load model: {0}", model_path);
+            return Entity();
+        }
+
+        Entity model_entity = m_scene->createEntity(name);
+        model_entity.addComponent<MeshRendererComponent>(model_id);
+
+        TransformComponent& transform = model_entity.getComponent<TransformComponent>();
+        transform.translation = position;
+
+        return model_entity;
     }
 
     void SceneTestClass::setMaterial(RendererMaterialData& material_data, const std::string& material_type) {

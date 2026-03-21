@@ -36,9 +36,9 @@ namespace NexAur {
         // 方向光
         Entity dir_light_entity = createEntity("DirectionalLight");
         DirectionalLightComponent& dir_light_comp = dir_light_entity.addComponent<DirectionalLightComponent>();
-        dir_light_comp.direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.5f));
+        dir_light_comp.direction = glm::normalize(glm::vec3(-0.6f, -0.6f, 0.6f));
         dir_light_comp.color = glm::vec3(1.0f, 1.0f, 1.0f);
-        dir_light_comp.intensity = 1.5f;
+        dir_light_comp.intensity = 3.3f;
 
         // 点光源
         Entity point_light_entity = createEntity("PointLight");
