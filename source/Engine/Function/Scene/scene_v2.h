@@ -1,6 +1,7 @@
 #pragma once
 #include <entt/entt.hpp>
 #include "Core/Base.h"
+#include "Core/UUID.h"
 
 namespace NexAur {
     class Entity;
@@ -17,6 +18,10 @@ namespace NexAur {
 
         // 销毁实体及组件
         void destroyEntity(Entity entity);
+
+        // 查找接口
+        Entity findEntityByName(const std::string& name);
+        // Entity findEntityByUUID(UUID uuid);
 
         // 场景更新
         void tick(float deltaTime);

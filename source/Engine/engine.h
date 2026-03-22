@@ -2,6 +2,7 @@
 
 #include <string>
 #include <chrono>
+#include <functional>
 
 #include "Core/Events/event.h"
 #include "Core/Time/Clock.h"
@@ -23,6 +24,7 @@ namespace NexAur {
         bool isRunning() const { return m_is_running; }
         void run();
         bool tickOneFrame(TimeStep delta_time);
+        void enableEditorMode(bool enable) { m_is_edtior_mode = enable; }
 
         void onEvent(Event& event);
 
@@ -32,6 +34,7 @@ namespace NexAur {
         void logicalTick(TimeStep delta_time);
         void rendererTick(TimeStep delta_time);
         void calculateFPS(TimeStep delta_time);
+        void editorTest();
         TimeStep calculateDeltaTime();
 
     private:
@@ -40,6 +43,7 @@ namespace NexAur {
         
     private:
         bool m_is_running = true;
+        bool m_is_edtior_mode = false;
         Clock m_clock;
 
         int m_frame_count_accumulator = 0;  // 累计帧数

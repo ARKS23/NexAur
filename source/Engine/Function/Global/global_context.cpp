@@ -8,6 +8,7 @@
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/File/file_system.h"
+#include "Function/UI/ui_system.h"
 
 #ifndef ENGINE_ROOT_DIR
 #define ENGINE_ROOT_DIR "."
@@ -42,11 +43,19 @@ namespace NexAur {
         m_renderer_system =  std::make_shared<RendererSystem>();
         m_renderer_system->init();
 
+        // UI系统
+        m_ui_system = std::make_shared<UISystem>();
+        m_ui_system->init();
+
+
         // 物理系统
     }
 
     void RunTimeGlobalContext::shutdownSystems() {
         m_file_system.reset();
+
+        m_ui_system->shutdown();
+        m_ui_system.reset();
 
         m_window_system->shutdown();
         m_window_system.reset();

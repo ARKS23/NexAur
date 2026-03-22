@@ -44,6 +44,8 @@ namespace NexAur {
         // 创建图形上下文管理对象
         m_context = std::make_unique<OpenGLGraphicsContext>(m_window);
         m_context->init();
+
+        bindEvents(); // 绑定事件回调放这里，在ImGui初始化好之前绑定引擎回调,避免覆盖
     }
 
     void WindowSystem::pollEvents() {

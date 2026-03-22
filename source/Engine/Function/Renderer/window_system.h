@@ -40,7 +40,12 @@ namespace NexAur
         void setTitle(const char* title);
         GLFWwindow* getNativeWindow() const;    // 得到原生GLFW窗口
         std::array<int, 2> getWindowSize() const;   // 返回宽高
-        inline void setEventCallback(const EventCallbackFn& callback) { m_data.event_callback = callback; bindEvents();} // 设置事件回调
+
+        // 设置事件回调
+        inline void setEventCallback(const EventCallbackFn& callback) { 
+            m_data.event_callback = callback; 
+            // bindEvents(); 该函数在Window_system子系统初始化后调用，bindEvents放这会覆盖ImGui的事件
+        }
 
         // 测试
         void update();

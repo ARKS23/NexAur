@@ -69,6 +69,17 @@ namespace NexAur {
         return newEntity;
     }
 
+    Entity SceneV2::findEntityByName(const std::string& name) {
+        auto view = m_Registry.view<TagComponent>();
+        for (auto entity : view) {
+            const auto& tag = view.get<TagComponent>(entity);
+            if (tag.name == name) {
+                return Entity(entity, this);
+            }
+        }
+        return Entity(entt::null, this); // 返回无效实体
+    }
+
     void SceneV2::extractSceneData(RenderDataPacket* render_packet) {
         render_packet->clear();
 
