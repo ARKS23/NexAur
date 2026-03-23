@@ -150,7 +150,7 @@ namespace NexAur {
         // 子系统事件分发显式调用链
         g_runtime_global_context.m_ui_system->onEvent(event);
         if (g_runtime_global_context.m_ui_system->isConsumeingInput()) {
-            NX_CORE_INFO("Event consumed: True");
+            // NX_CORE_INFO("Event consumed: True");
         }
     }
 
