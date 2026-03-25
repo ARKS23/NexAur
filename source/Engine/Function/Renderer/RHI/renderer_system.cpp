@@ -87,6 +87,14 @@ namespace NexAur {
         m_forward_pipeline = std::make_shared<RenderForwardPipeline>();
         m_forward_pipeline->init();
         NX_CORE_ASSERT(m_forward_pipeline, "Failed to create RenderForwardPipeline in RendererSystem!");
+
+        // Viewport Framebuffer 用于离屏渲染给编辑器窗口
+        FramebufferSpecification fb_spec;
+        fb_spec.width = m_viewport_width;
+        fb_spec.height = m_viewport_height;
+        fb_spec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::DEPTH24STENCIL8 };
+        m_viewport_framebuffer = RendererFactory::createFramebuffer(fb_spec);
+        NX_CORE_ASSERT(m_viewport_framebuffer, "Failed to create viewport framebuffer in RendererSystem!");
     }
 
     void RendererSystem::shutdown() {
@@ -105,14 +113,40 @@ namespace NexAur {
         //m_scene->onUpdate(ts);
         //m_forward_pipeline->renderScene(m_scene, m_editor_camera);
 
+        if (m_viewport_framebuffer) {
+            m_viewport_framebuffer->bind();
+            RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
+            RendererCommand::clear(ClearBufferFlag::ColorDepth); 
+        }
+
         // 场景渲染v2
         m_forward_pipeline->render(render_data);
+
+        if (m_viewport_framebuffer) {
+            m_viewport_framebuffer->unbind();
+        }
     }
 
     void RendererSystem::onEvent(Event& e) {
-        m_editor_camera->onEvent(e);
+        // m_editor_camera->onEvent(e);
         
         // 事件处理补充
+    }
+
+    void RendererSystem::setViewportSize(uint32_t width, uint32_t height) {
+        width = std::max(1u, width);
+        height = std::max(1u, height);
+
+        if (width == m_viewport_width && height == m_viewport_height) {
+            return; // 尺寸未改变，无需处理
+        }
+
+        m_viewport_width = width;
+        m_viewport_height = height;
+
+        if (m_viewport_framebuffer) {
+            m_viewport_framebuffer->resize(width, height);
+        }
     }
 
     void RendererSystem::onWindowResize(WindowResizeEvent& e) {

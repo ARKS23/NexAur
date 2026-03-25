@@ -61,9 +61,15 @@ namespace NexAur {
             }
         }
         
-        // 恢复默认的缓冲和视口
+        // 恢复帧缓冲和视口
         m_framebuffer->unbind();
         auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
+        std::shared_ptr<Framebuffer> viewport_fb = g_runtime_global_context.m_renderer_system->getViewportFramebuffer();
+        if (viewport_fb) {
+            viewport_fb->bind();
+            width = viewport_fb->getSpecification().width;
+            height = viewport_fb->getSpecification().height;
+        }
         RendererCommand::setViewport(0, 0, width, height);
         RendererCommand::clear(ClearBufferFlag::Depth);
     }

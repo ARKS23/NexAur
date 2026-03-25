@@ -5,6 +5,8 @@
 
 // 测试
 #include "Function/Scene/component.h"
+#include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Global/global_context.h"
 
 namespace NexAur {
     EditorLayer::EditorLayer() {
@@ -63,6 +65,36 @@ namespace NexAur {
             ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
         }
+
+        // viewport
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 }); // 让画面完全贴合面板边缘，无黑边
+        ImGui::Begin("Scene Viewport");
+        
+        // 检查 Viewport 是否发生缩放
+        ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
+        std::shared_ptr<RendererSystem> renderer_system = g_runtime_global_context.m_renderer_system;
+        
+        auto [current_w, current_h] = renderer_system->getViewportSize();
+        if (viewportPanelSize.x > 0.0f && viewportPanelSize.y > 0.0f && // 不能缩成负数
+            (viewportPanelSize.x != current_w || viewportPanelSize.y != current_h)) {
+            
+            // 通知 RendererSystem 调整 FBO 尺寸
+            renderer_system->setViewportSize((uint32_t)viewportPanelSize.x, (uint32_t)viewportPanelSize.y);
+            
+            // TODO: 也要通知 EditorCamera 修改宽高比
+        }
+
+        // 获取渲染结果贴图 ID
+        uint32_t textureID = renderer_system->getViewportColorAttachment();
+        
+        // 渲染画面到 ImGui 窗口
+        // 强转指针以适配 ImGui 接口类型；注意 OpenGL 的纹理 UV Y 轴是上下颠倒的，所以我们要 (0,1) 到 (1,0)
+        ImGui::Image(reinterpret_cast<void*>((intptr_t)textureID), 
+                     ImVec2{viewportPanelSize.x, viewportPanelSize.y}, 
+                     ImVec2{0, 1}, ImVec2{1, 0});
+                     
+        ImGui::End();
+        ImGui::PopStyleVar();
 
         // 测试Transform控制
         ImGui::Begin("Properties", &m_show_properties_panel);

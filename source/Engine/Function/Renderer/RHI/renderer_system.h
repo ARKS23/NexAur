@@ -10,8 +10,6 @@
 #include "buffer.h"
 #include "Function/Renderer/data/render_data.h"
 
-#include "TempTest/triangle_test.h"
-
 namespace NexAur {
     class RenderForwardPipeline;
     class EditorCamera;
@@ -70,6 +68,11 @@ namespace NexAur {
         void tick(TimeStep ts, const RenderDataPacket& render_data); // 每帧调用，传入渲染数据包
         void onEvent(Event& e);
 
+        void setViewportSize(uint32_t width, uint32_t height);
+        std::pair<uint32_t, uint32_t> getViewportSize() const { return { m_viewport_width, m_viewport_height }; }
+        uint32_t getViewportColorAttachment() const { return m_viewport_framebuffer ? m_viewport_framebuffer->getColorAttachmentRendererID(0) : 0; }
+        std::shared_ptr<Framebuffer> getViewportFramebuffer() const { return m_viewport_framebuffer; }
+
     private:
         void onWindowResize(WindowResizeEvent& e);
 
@@ -77,5 +80,8 @@ namespace NexAur {
         std::shared_ptr<RenderForwardPipeline> m_forward_pipeline;  // 前向渲染管线
         std::shared_ptr<EditorCamera> m_editor_camera;              // 编辑器摄像机(暂时先放这里)
         std::shared_ptr<Scene> m_scene;                             // 场景(暂时先放这里)
+
+        std::shared_ptr<Framebuffer> m_viewport_framebuffer;
+        uint32_t m_viewport_width = 1280, m_viewport_height = 720;
     };
 } // namespace NexAur
