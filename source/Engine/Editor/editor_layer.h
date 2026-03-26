@@ -2,14 +2,18 @@
 #include "Core/Base.h"
 #include "Core/Events/event.h"
 #include "Core/Time/TimeStep.h"
-// #include "Function/Scene/scene_v2.h"
 #include "Function/Scene/entity.h"
 
 #include <memory>
+#include <vector>
 
 namespace NexAur {
     class SceneV2;
+    class EditorPanel;
+} // namespace NexAur
 
+
+namespace NexAur {
     class NEXAUR_API EditorLayer {
     public:
         EditorLayer();
@@ -26,10 +30,13 @@ namespace NexAur {
     private:
         void init();
         void shutdown();
+        void beginDockSpace();
+        void endDockSpace();
         
     private:
-        std::shared_ptr<SceneV2> m_active_scene;
         Entity m_selected_entity;
-        bool m_show_properties_panel = true;
+        std::shared_ptr<SceneV2> m_active_scene;
+        std::vector<std::shared_ptr<EditorPanel>> m_panels; // TODO: 编辑器控制面板列表, 后续OnUIRender更新
+        bool m_show_properties_panel = true; // 测试变量
     };
 } // namespace NexAur
