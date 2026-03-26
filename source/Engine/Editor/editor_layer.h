@@ -3,6 +3,7 @@
 #include "Core/Events/event.h"
 #include "Core/Time/TimeStep.h"
 #include "Function/Scene/entity.h"
+#include "Editor/editor_context.h"
 
 #include <memory>
 #include <vector>
@@ -32,11 +33,14 @@ namespace NexAur {
         void shutdown();
         void beginDockSpace();
         void endDockSpace();
+        void synPanelContext();
         
     private:
-        Entity m_selected_entity;
-        std::shared_ptr<SceneV2> m_active_scene;
+        Entity m_selected_entity;   // 后期替换成context
+        std::shared_ptr<SceneV2> m_active_scene; // 后期替换成context
         std::vector<std::shared_ptr<EditorPanel>> m_panels; // TODO: 编辑器控制面板列表, 后续OnUIRender更新
         bool m_show_properties_panel = true; // 测试变量
+
+        EditorContext m_context;    // 编辑器上下文，各个面板需要共享的数据
     };
 } // namespace NexAur

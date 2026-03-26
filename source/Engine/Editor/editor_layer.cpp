@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "editor_layer.h"
+#include "Editor/Panels/editor_panel.h"
 
 #include <imgui.h>
 
@@ -9,7 +10,7 @@
 #include "Function/Global/global_context.h"
 #include "Function/Scene/scene_manager.h"
 #include "Function/Renderer/editor_camera.h"
-#include "Imguizmo.h"
+#include "ImGuizmo.h"
 
 namespace NexAur {
     EditorLayer::EditorLayer() {
@@ -23,6 +24,9 @@ namespace NexAur {
     }
 
     void EditorLayer::init() {
+        m_context.active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
+        m_context.selected_entity = Entity();
+        m_context.renderer_system = g_runtime_global_context.m_renderer_system;
         NX_CORE_INFO("EditorLayer initialized.");
     }
 
@@ -32,10 +36,18 @@ namespace NexAur {
 
     void EditorLayer::onUpdate(TimeStep delta_time) {
         // TODO: 更新editor camera的逻辑
+        synPanelContext();
+
+        for (auto& panel : m_panels) {
+            if (panel->isOpen()) panel->onUpdate(delta_time);
+        }
     }
 
     void EditorLayer::onEvent(Event& event) {
-        // TODO: 处理事件
+        for (auto& panel : m_panels) {
+            if (panel->isOpen()) panel->onEvent(event);
+            if (event.handled) break;
+        }
     }
 
     void EditorLayer::onUIRender() {
@@ -193,5 +205,11 @@ namespace NexAur {
 
     void EditorLayer::endDockSpace() {
         ImGui::End();
+    }
+
+    void EditorLayer::synPanelContext() {
+        for (auto& panel : m_panels) {
+            panel->synPanelContext(m_context);
+        }
     }
 } // namespace NexAur

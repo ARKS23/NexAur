@@ -2,6 +2,7 @@
 #include "Core/Base.h"
 #include "Core/Events/event.h"
 #include "Core/Time/TimeStep.h"
+#include "Editor/editor_context.h"
 
 #include <memory>
 #include <string>
@@ -21,7 +22,7 @@ namespace NexAur {
         virtual void onUIRender() = 0;
         virtual void onEvent(Event& event) {};
 
-        void setContext(std::shared_ptr<SceneV2> context) { m_active_context = context; }
+        void synPanelContext(const EditorContext& context) { m_context = context; }
 
         const std::string& getName() const { return m_name; }
 
@@ -32,7 +33,7 @@ namespace NexAur {
 
     protected:
         std::string m_name;
-        std::shared_ptr<SceneV2> m_active_context;
+        EditorContext m_context;
         bool m_is_open = true;
     };
 } // namespace NexAur
