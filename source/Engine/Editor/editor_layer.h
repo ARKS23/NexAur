@@ -41,6 +41,6 @@ namespace NexAur {
         std::vector<std::shared_ptr<EditorPanel>> m_panels; // TODO: 编辑器控制面板列表, 后续OnUIRender更新
         bool m_show_properties_panel = true; // 测试变量
 
-        EditorContext m_context;    // 编辑器上下文，各个面板需要共享的数据
+        std::shared_ptr<EditorContext> m_context;    // 编辑器上下文，各个面板需要共享的数据
     };
 } // namespace NexAur

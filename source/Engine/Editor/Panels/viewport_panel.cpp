@@ -1,8 +1,9 @@
 #include "pch.h"
 #include "viewport_panel.h"
-
-#include <imgui.h>
-#include <ImGuizmo.h>
+#include "Function/Scene/component.h"
+#include "Function/Scene/scene_v2.h"
+#include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Renderer/editor_camera.h"
 
 namespace NexAur {
     ViewportPanel::ViewportPanel() {
@@ -14,89 +15,178 @@ namespace NexAur {
     }
 
     void ViewportPanel::onUIRender() {
-        // // viewport
-        // ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 }); // 让画面完全贴合面板边缘，无黑边
-        // ImGui::Begin("Scene Viewport");
-        
-        // // 检查 Viewport 是否发生缩放
-        // ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
-        // std::shared_ptr<RendererSystem> renderer_system = g_runtime_global_context.m_renderer_system;
-        
-        // auto [current_w, current_h] = renderer_system->getViewportSize();
-        // if (viewportPanelSize.x > 0.0f && viewportPanelSize.y > 0.0f && // 不能缩成负数
-        //     (viewportPanelSize.x != current_w || viewportPanelSize.y != current_h)) {
-            
-        //     // 通知 RendererSystem 调整 FBO 尺寸
-        //     renderer_system->setViewportSize((uint32_t)viewportPanelSize.x, (uint32_t)viewportPanelSize.y);
-            
-        //     // 通知 EditorCamera 修改宽高比，临时方案，camera目前设计有问题
-        //     auto editor_camera = g_runtime_global_context.m_scene_manager->getActiveScene()->getEditorCamera();
-        //     editor_camera->setViewportSize(viewportPanelSize.x, viewportPanelSize.y);
-        // }
+        beginViewportWindow();
 
-        // // 获取渲染结果贴图 ID
-        // uint32_t textureID = renderer_system->getViewportColorAttachment();
-        
-        // // 渲染画面到 ImGui 窗口
-        // // 强转指针以适配 ImGui 接口类型；注意 OpenGL 的纹理 UV Y 轴是上下颠倒的，所以我们要 (0,1) 到 (1,0)
-        // ImGui::Image(reinterpret_cast<void*>((intptr_t)textureID), 
-        //              ImVec2{viewportPanelSize.x, viewportPanelSize.y}, 
-        //              ImVec2{0, 1}, ImVec2{1, 0});
-
-        // {
-        //     // 测试ImGuizmo
-        //     auto active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
-        //     if (active_scene) {
-        //         // 测试gold Cube0
-        //         Entity selected_entity = active_scene->findEntityByName("gold Cube0");
-        //         auto editor_camera = active_scene->getEditorCamera();
-
-        //         if (selected_entity && selected_entity.hasComponent<TransformComponent>() && editor_camera) {
-        //             // 1. 设置 ImGuizmo 的基本环境
-        //             ImGuizmo::SetOrthographic(false);
-        //             ImGuizmo::SetDrawlist();
-
-        //             //  将操作区限制在当前的 ImGui Window 内,防止乱飘
-        //             ImVec2 windowPos = ImGui::GetWindowPos();
-        //             ImVec2 windowSize = ImGui::GetWindowSize();
-        //             ImGuizmo::SetRect(windowPos.x, windowPos.y, windowSize.x, windowSize.y);
-
-        //             //  准备 Camera 数据
-        //             const glm::mat4& cameraProjection = editor_camera->getProjection();
-        //             glm::mat4 cameraView = editor_camera->getView();
-
-        //             //  准备和转换 Entity 的 Transform 数据
-        //             auto& tc = selected_entity.getComponent<TransformComponent>();
-        //             glm::mat4 transform = tc.getTransform(); // 获取实体的 mat4 变换矩阵
-
-        //             // 调用 ImGuizmo 绘制 Manipulator 轴，这里暂时固定只测试 平移（TRANSLATE）
-        //             //  可以把 ImGuizmo::TRANSLATE 换成 ImGuizmo::ROTATE 或 ImGuizmo::SCALE
-        //             ImGuizmo::Manipulate(glm::value_ptr(cameraView), 
-        //                                 glm::value_ptr(cameraProjection),
-        //                                 ImGuizmo::TRANSLATE, 
-        //                                 ImGuizmo::WORLD, 
-        //                                 glm::value_ptr(transform));
-
-        //             // 在此帧内拖拽了 Gizmo 轴，则立刻反算并写回组件的平移/旋转/缩放
-        //             if (ImGuizmo::IsUsing()) {
-        //                 // 解析 ImGuizmo 修改后的矩阵，重写赋值给 TransformComponent
-        //                 float translation[3], rotation[3], scale[3];
-        //                 ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), translation, rotation, scale);
-
-        //                 tc.translation = glm::vec3(translation[0], translation[1], translation[2]);
-        //                 // ImGuizmo 出来的 rotation 是角度(Degrees)，需要转成弧度赋值给现有的结构
-        //                 tc.rotation = glm::radians(glm::vec3(rotation[0], rotation[1], rotation[2])); 
-        //                 tc.scale = glm::vec3(scale[0], scale[1], scale[2]);
-        //             }
-        //         }
-        //     }
-        // }
+        updateViewportWindowState();
+        syncViewportResize();
+        drawSceneTexture();
+        handleGizmoHotkeys();
+        drawGizmo();
                      
-        // ImGui::End();
-        // ImGui::PopStyleVar();
+        endViewportWindow();
     }
 
     void ViewportPanel::onEvent(Event& event) {
     
+    }
+
+    void ViewportPanel::beginViewportWindow() {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 }); // 让画面完全贴合面板边缘，无黑边
+        ImGui::Begin("Scene Viewport");
+    }
+
+    void ViewportPanel::updateViewportWindowState() {
+        m_viewport_focused = ImGui::IsWindowFocused();
+        m_viewport_hovered = ImGui::IsWindowHovered();
+
+        const ImVec2 window_pos = ImGui::GetWindowPos();
+        const ImVec2 content_min = ImGui::GetWindowContentRegionMin();
+        const ImVec2 content_max = ImGui::GetWindowContentRegionMax();
+
+        m_viewport_bounds[0] = { window_pos.x + content_min.x, window_pos.y + content_min.y };
+        m_viewport_bounds[1] = { window_pos.x + content_max.x, window_pos.y + content_max.y };
+        m_viewport_size = {
+            m_viewport_bounds[1].x - m_viewport_bounds[0].x,
+            m_viewport_bounds[1].y - m_viewport_bounds[0].y
+        };
+    }
+
+    void ViewportPanel::syncViewportResize() {
+        if (!m_context || !m_context->renderer_system || !m_context->active_scene) return;
+        if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) return;
+
+        auto renderer_system = m_context->renderer_system;
+        auto editor_camera = m_context->active_scene->getEditorCamera();
+        if (!editor_camera) return;
+
+        auto [current_w, current_h] = renderer_system->getViewportSize();
+        const uint32_t target_w = static_cast<uint32_t>(m_viewport_size.x);
+        const uint32_t target_h = static_cast<uint32_t>(m_viewport_size.y);
+
+        if (target_w == 0 || target_h == 0) return;
+        if (target_w == current_w && target_h == current_h) return;
+
+        renderer_system->setViewportSize(target_w, target_h);
+        editor_camera->setViewportSize(static_cast<float>(target_w), static_cast<float>(target_h));
+    }
+
+    void ViewportPanel::drawSceneTexture() {
+        if (!m_context || !m_context->renderer_system) return;
+        if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) return;
+
+        const uint32_t texture_id = m_context->renderer_system->getViewportColorAttachment();
+        ImGui::Image(
+            reinterpret_cast<void*>((intptr_t)texture_id),
+            ImVec2(m_viewport_size.x, m_viewport_size.y),
+            ImVec2(0.0f, 1.0f),
+            ImVec2(1.0f, 0.0f)
+        );
+    }
+
+    void ViewportPanel::handleGizmoHotkeys() {
+        if (!m_viewport_focused) return;
+        if (ImGui::GetIO().WantTextInput) return;
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Q)) m_show_gizmo = !m_show_gizmo;
+        if (ImGui::IsKeyPressed(ImGuiKey_W)) m_gizmo_operation = ImGuizmo::TRANSLATE;
+        if (ImGui::IsKeyPressed(ImGuiKey_E)) m_gizmo_operation = ImGuizmo::ROTATE;
+        if (ImGui::IsKeyPressed(ImGuiKey_R)) m_gizmo_operation = ImGuizmo::SCALE;
+        if (ImGui::IsKeyPressed(ImGuiKey_T)) {
+            m_gizmo_mode = (m_gizmo_mode == ImGuizmo::WORLD) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+        }
+    }
+
+    void ViewportPanel::drawGizmo() {
+        if (!m_show_gizmo) return;
+        if (!m_context || !m_context->active_scene) return;
+        if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) return;
+
+        Entity selected = m_context->selected_entity;
+        if (!selected || !selected.hasComponent<TransformComponent>()) return;
+
+        std::shared_ptr<EditorCamera> editor_camera = m_context->active_scene->getEditorCamera();
+        if (!editor_camera) return;
+
+        ImGuizmo::SetOrthographic(false);
+        ImGuizmo::SetDrawlist();
+        ImGuizmo::SetRect(
+            m_viewport_bounds[0].x,
+            m_viewport_bounds[0].y,
+            m_viewport_size.x,
+            m_viewport_size.y
+        );
+
+        glm::mat4 view = editor_camera->getView();
+        const glm::mat4& projection = editor_camera->getProjection();
+
+        auto& tc = selected.getComponent<TransformComponent>();
+        glm::mat4 transform = tc.getTransform();
+
+        // 数值步长设置
+        float snap_values[3] = { m_translate_snap, m_translate_snap, m_translate_snap };
+        if (m_gizmo_operation == ImGuizmo::ROTATE) {
+            snap_values[0] = m_rotate_snap;
+            snap_values[1] = m_rotate_snap;
+            snap_values[2] = m_rotate_snap;
+        } 
+        else if (m_gizmo_operation == ImGuizmo::SCALE) {
+            snap_values[0] = m_scale_snap;
+            snap_values[1] = m_scale_snap;
+            snap_values[2] = m_scale_snap;
+        }
+
+        ImGuizmo::Manipulate(
+            glm::value_ptr(view),
+            glm::value_ptr(projection),
+            m_gizmo_operation,
+            m_gizmo_mode,
+            glm::value_ptr(transform),
+            nullptr,
+            m_use_snap ? snap_values : nullptr
+        );
+
+        const bool using_now = ImGuizmo::IsUsing();
+        if (using_now) applyGizmoToSelectedEntity(transform);
+
+        if (m_was_using_gizmo_last_frame && !using_now) {
+            // TODO
+        }
+        if (!m_was_using_gizmo_last_frame && using_now) {
+            // TODO
+        }
+        
+        m_was_using_gizmo_last_frame = using_now;
+    }
+
+    void ViewportPanel::applyGizmoToSelectedEntity(const glm::mat4& transform) {
+        if (!m_context || !m_context->selected_entity) return;
+
+        Entity selected = m_context->selected_entity;
+        if (!selected.hasComponent<TransformComponent>()) return;
+
+        auto& tc = selected.getComponent<TransformComponent>();
+
+        float translation[3], rotation[3], scale[3];
+        ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), translation, rotation, scale);
+
+        if (m_gizmo_operation == ImGuizmo::TRANSLATE) {
+            tc.translation = glm::vec3(translation[0], translation[1], translation[2]);
+            return;
+        }
+
+        if (m_gizmo_operation == ImGuizmo::ROTATE) {
+            tc.rotation = glm::radians(glm::vec3(rotation[0], rotation[1], rotation[2]));
+            return;
+        }
+
+        if (m_gizmo_operation == ImGuizmo::SCALE) {
+            tc.scale = glm::vec3(scale[0], scale[1], scale[2]);
+            return;
+        }
+    }
+
+    void ViewportPanel::endViewportWindow() {
+        ImGui::End();
+        ImGui::PopStyleVar();
     }
 } // namespace NexAur
