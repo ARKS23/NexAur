@@ -26,6 +26,7 @@ namespace NexAur {
         void drawGizmo();
         void endViewportWindow();
 
+        void setGizmoStyle();
         void applyGizmoToSelectedEntity(const glm::mat4& transform);
 
         bool onMouseButtonPressed(MouseButtonPressedEvent& e);

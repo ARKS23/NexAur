@@ -112,6 +112,7 @@ namespace NexAur {
         std::shared_ptr<EditorCamera> editor_camera = m_context->active_scene->getEditorCamera();
         if (!editor_camera) return;
 
+        setGizmoStyle();
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::SetDrawlist();
         ImGuizmo::SetRect(
@@ -161,6 +162,12 @@ namespace NexAur {
         }
         
         m_was_using_gizmo_last_frame = using_now;
+    }
+
+    void ViewportPanel::setGizmoStyle() {
+        ImGuizmo::Style& style = ImGuizmo::GetStyle();
+        style.RotationLineThickness = 10.0f;
+        style.ScaleLineThickness = 3.0f;
     }
 
     void ViewportPanel::applyGizmoToSelectedEntity(const glm::mat4& transform) {
@@ -231,7 +238,7 @@ namespace NexAur {
             return;
         }
 
-         NX_CORE_WARN("Mouse Pick at ({}, {}), picked ID: {}", pixel_x, pixel_y, picked_id);
+        NX_CORE_WARN("Mouse Pick at ({}, {}), picked ID: {}", pixel_x, pixel_y, picked_id);
         auto& registry = m_context->active_scene->getRegistry();
         entt::entity handle = static_cast<entt::entity>(picked_id);
         if (!registry.valid(handle)) {
