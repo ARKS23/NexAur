@@ -1,6 +1,7 @@
 #version 450 core
 
-out vec4 FragColor;
+layout (location = 0) out vec4 FragColor;
+layout (location = 1) out int EntityID; // 输出实体ID到额外的附件
 
 in vec3 v_FragPos;
 in vec3 v_Normal;
@@ -48,6 +49,7 @@ uniform samplerCube u_IrradianceMap;
 uniform samplerCube u_PrefilterMap;
 uniform sampler2D   u_BrdfLUT;
 uniform int u_SkyboxEnabled = 0; // 是否启用天空盒
+uniform int u_EntityID;
 
 // 余切坐标系法线计算函数
 vec3 getNormalFromMap() {
@@ -265,4 +267,5 @@ void main() {
     color = pow(color, vec3(1.0/2.2));
 
     FragColor = vec4(color, 1.0);
+    EntityID = u_EntityID; // 输出实体ID到额外的附件
 }

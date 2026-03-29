@@ -1,4 +1,6 @@
 #pragma once
+#include "Core/Base.h"
+#include "Core/Events/mouse_event.h"
 #include "editor_panel.h"
 
 #include <glm/glm.hpp>
@@ -26,13 +28,16 @@ namespace NexAur {
 
         void applyGizmoToSelectedEntity(const glm::mat4& transform);
 
+        bool onMouseButtonPressed(MouseButtonPressedEvent& e);
+        void pickEntityAtMouse();
+
     private:
         glm::vec2 m_viewport_size{ 1280, 720 };
         glm::vec2 m_viewport_bounds[2];
         bool m_viewport_focused = false;
         bool m_viewport_hovered = false;
         
-        bool m_show_gizmo = false;
+        bool m_show_gizmo = true;
         ImGuizmo::OPERATION m_gizmo_operation = ImGuizmo::TRANSLATE;
         ImGuizmo::MODE m_gizmo_mode = ImGuizmo::WORLD;
 

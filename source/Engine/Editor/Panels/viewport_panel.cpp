@@ -4,6 +4,8 @@
 #include "Function/Scene/scene_v2.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/editor_camera.h"
+#include "Function/Global/global_context.h"
+#include "Function/Input/input_system.h"
 
 namespace NexAur {
     ViewportPanel::ViewportPanel() {
@@ -27,7 +29,10 @@ namespace NexAur {
     }
 
     void ViewportPanel::onEvent(Event& event) {
-    
+        EventDispatcher dispatcher(event);
+
+        // 派发鼠标点击事件，响应物体选中
+        dispatcher.dispatch<MouseButtonPressedEvent>(NX_BIND_EVENT_FN(ViewportPanel::onMouseButtonPressed));
     }
 
     void ViewportPanel::beginViewportWindow() {
@@ -87,7 +92,7 @@ namespace NexAur {
         if (!m_viewport_focused) return;
         if (ImGui::GetIO().WantTextInput) return;
 
-        if (ImGui::IsKeyPressed(ImGuiKey_Q)) m_show_gizmo = !m_show_gizmo;
+        // if (ImGui::IsKeyPressed(ImGuiKey_Q)) m_show_gizmo = !m_show_gizmo;
         if (ImGui::IsKeyPressed(ImGuiKey_W)) m_gizmo_operation = ImGuizmo::TRANSLATE;
         if (ImGui::IsKeyPressed(ImGuiKey_E)) m_gizmo_operation = ImGuizmo::ROTATE;
         if (ImGui::IsKeyPressed(ImGuiKey_R)) m_gizmo_operation = ImGuizmo::SCALE;
@@ -188,5 +193,53 @@ namespace NexAur {
     void ViewportPanel::endViewportWindow() {
         ImGui::End();
         ImGui::PopStyleVar();
+    }
+
+    bool ViewportPanel::onMouseButtonPressed(MouseButtonPressedEvent& e) {
+        if (e.GetMouseButton() != static_cast<int>(MouseCode::ButtonLeft)) return false;
+        if (!m_viewport_hovered) return false;
+        if (ImGuizmo::IsUsing()) return false; // 鼠标在操作Gizmo时不响应选中
+        pickEntityAtMouse();
+        return false;
+    }
+
+    void ViewportPanel::pickEntityAtMouse() {
+        if (!m_context || !m_context->renderer_system || !m_context->active_scene) return;
+
+        auto [mx, my] = g_runtime_global_context.m_input_system->getMousePosition();
+
+        if (mx < m_viewport_bounds[0].x || mx > m_viewport_bounds[1].x ||
+            my < m_viewport_bounds[0].y || my > m_viewport_bounds[1].y) {
+            return;
+        }
+
+        float local_x = mx - m_viewport_bounds[0].x;
+        float local_y = my - m_viewport_bounds[0].y;
+
+        int pixel_x = static_cast<int>(local_x);
+        int pixel_y = static_cast<int>(m_viewport_size.y - local_y); // Y翻转
+
+        auto fb = m_context->renderer_system->getViewportFramebuffer();
+        if (!fb) return;
+
+        fb->bind();
+        int picked_id = fb->readPixel(1, pixel_x, pixel_y); // 对应 RED_INTEGER
+        fb->unbind();
+
+        if (picked_id < 0) {
+            m_context->selected_entity = Entity();
+            return;
+        }
+
+         NX_CORE_WARN("Mouse Pick at ({}, {}), picked ID: {}", pixel_x, pixel_y, picked_id);
+        auto& registry = m_context->active_scene->getRegistry();
+        entt::entity handle = static_cast<entt::entity>(picked_id);
+        if (!registry.valid(handle)) {
+            m_context->selected_entity = Entity();
+            NX_CORE_FATAL("Picked invalid entity handle: {}", picked_id);
+            return;
+        }
+
+        m_context->selected_entity = Entity(handle, m_context->active_scene.get());
     }
 } // namespace NexAur

@@ -92,7 +92,12 @@ namespace NexAur {
         FramebufferSpecification fb_spec;
         fb_spec.width = m_viewport_width;
         fb_spec.height = m_viewport_height;
-        fb_spec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::DEPTH24STENCIL8 };
+        fb_spec.Attachments = {
+            FramebufferTextureFormat::RGBA8, 
+            FramebufferTextureFormat::RED_INTEGER,     // 额外的ID附件，用于编辑器物体选中
+            FramebufferTextureFormat::DEPTH24STENCIL8
+        };
+        
         m_viewport_framebuffer = RendererFactory::createFramebuffer(fb_spec);
         NX_CORE_ASSERT(m_viewport_framebuffer, "Failed to create viewport framebuffer in RendererSystem!");
     }
@@ -116,7 +121,8 @@ namespace NexAur {
         if (m_viewport_framebuffer) {
             m_viewport_framebuffer->bind();
             RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
-            RendererCommand::clear(ClearBufferFlag::ColorDepth); 
+            RendererCommand::clear(ClearBufferFlag::ColorDepth);
+            m_viewport_framebuffer->clearAttachment(1, -1); // ID附件清除为-1，表示没有选中任何物体
         }
 
         // 场景渲染v2

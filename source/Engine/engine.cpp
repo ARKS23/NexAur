@@ -102,6 +102,9 @@ namespace NexAur {
         if (g_runtime_global_context.m_ui_system->isConsumeingInput()) {
             // NX_CORE_INFO("Event consumed: True");
         }
+
+        // 编辑器事件分发
+        if (m_is_edtior_mode && m_editor_layer) m_editor_layer->onEvent(event);
     }
 
     bool Engine::onWindowClose(WindowCloseEvent& event) {

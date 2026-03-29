@@ -65,6 +65,7 @@ namespace NexAur {
     struct RenderObjectData {
         std::shared_ptr<RenderModelData> model_data = nullptr; // 模型数据
         glm::mat4 transform{ 1.0f };
+        int entity_id = -1; // 用于标记实体ID，编辑器选中时需要
     };
     
     // 渲染数据包: 每帧从场景收集的数据,供渲染器使用

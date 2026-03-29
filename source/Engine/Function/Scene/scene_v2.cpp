@@ -150,6 +150,7 @@ namespace NexAur {
             RenderObjectData object_data;
             object_data.model_data = gpu_model; // 直接复用刚才获取的指针
             object_data.transform = transform_comp.getTransform();
+            object_data.entity_id = static_cast<int>(static_cast<uint32_t>(entity)); // 标记实体ID，编辑器选中时需要
 
             // 分流推入不同的数组
             if (mesh_renderer_comp.is_transparent) 

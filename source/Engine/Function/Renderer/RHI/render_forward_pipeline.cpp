@@ -199,6 +199,7 @@ namespace NexAur {
             if (!obj.model_data) continue;
             // 设置模型矩阵
             m_pbr_shader->setMat4("u_Transform", obj.transform);
+            m_pbr_shader->setInt("u_EntityID", obj.entity_id); // 传递实体ID，供编辑器选中使用
 
             // 遍历模型内所有网格体部分
             for (const RenderMeshData& mesh : obj.model_data->meshes) {
