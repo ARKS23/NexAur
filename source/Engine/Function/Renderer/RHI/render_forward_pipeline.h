@@ -14,19 +14,12 @@ namespace NexAur {
     public:
         virtual void init() override;
 
-        virtual void render(std::shared_ptr<Camera> camera) override;
-
-        virtual void renderScene(std::shared_ptr<Scene> scene, std::shared_ptr<Camera> camera) override;
-
         virtual void render(const RenderDataPacket& render_data) override;
         //virtual void onWindowResize(uint32_t width, uint32_t height) override;
 
     private:
         std::shared_ptr<Shader> m_pbr_shader;
-
-        std::shared_ptr<SkyboxPass> m_skybox_pass;
         std::shared_ptr<SkyboxPassV2> m_skybox_pass_v2;
-        std::shared_ptr<ShadowPass> m_shadow_pass;
         std::shared_ptr<ShadowPassV2> m_shadow_pass_v2;
     };
 } // namespace NexAur

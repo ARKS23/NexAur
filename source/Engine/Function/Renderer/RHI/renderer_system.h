@@ -78,8 +78,6 @@ namespace NexAur {
 
     private:
         std::shared_ptr<RenderForwardPipeline> m_forward_pipeline;  // 前向渲染管线
-        std::shared_ptr<EditorCamera> m_editor_camera;              // 编辑器摄像机(暂时先放这里)
-        std::shared_ptr<Scene> m_scene;                             // 场景(暂时先放这里)
 
         std::shared_ptr<Framebuffer> m_viewport_framebuffer;
         uint32_t m_viewport_width = 1280, m_viewport_height = 720;
