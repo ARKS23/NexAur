@@ -10,7 +10,7 @@
 namespace NexAur {
     class ViewportPanel : public EditorPanel {
     public:
-        ViewportPanel();
+        ViewportPanel(const std::string& name = "Viewport") : EditorPanel(name) {}
         ~ViewportPanel() override = default;
 
         virtual void onUpdate(TimeStep delta_time) override;

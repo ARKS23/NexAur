@@ -26,8 +26,6 @@ namespace NexAur {
 
         void onEvent(Event& event);
 
-        void setActiveScene(std::shared_ptr<SceneV2> scene) { m_active_scene = scene; }
-
     private:
         void init();
         void shutdown();
@@ -36,8 +34,6 @@ namespace NexAur {
         void synPanelContext();
         
     private:
-        Entity m_selected_entity;   // 后期替换成context
-        std::shared_ptr<SceneV2> m_active_scene; // 后期替换成context
         std::vector<std::shared_ptr<EditorPanel>> m_panels; // TODO: 编辑器控制面板列表, 后续OnUIRender更新
         bool m_show_properties_panel = true; // 测试变量
 

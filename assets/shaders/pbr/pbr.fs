@@ -44,7 +44,7 @@ uniform Material u_Material;
 uniform DirLight u_DirLight;
 uniform PointLight u_PointLights[MAX_POINT_LIGHTS];
 uniform sampler2D u_ShadowMap; // 阴影贴图
-uniform float u_Exposure = 0.55; // 曝光控制
+uniform float u_Exposure = 0.35; // 曝光控制
 uniform samplerCube u_IrradianceMap;
 uniform samplerCube u_PrefilterMap;
 uniform sampler2D   u_BrdfLUT;

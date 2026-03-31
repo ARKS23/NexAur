@@ -8,10 +8,6 @@
 #include "Function/Input/input_system.h"
 
 namespace NexAur {
-    ViewportPanel::ViewportPanel() {
-        NX_CORE_INFO("ViewportPanel created.");
-    }
-
     void ViewportPanel::onUpdate(TimeStep delta_time) {
         
     }
@@ -248,5 +244,6 @@ namespace NexAur {
         }
 
         m_context->selected_entity = Entity(handle, m_context->active_scene.get());
+        m_context->selection_source = this->getName();
     }
 } // namespace NexAur

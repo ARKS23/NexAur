@@ -40,7 +40,6 @@ namespace NexAur {
         logicalTick(delta_time);
 
         if (m_is_edtior_mode && m_editor_layer) {
-            m_editor_layer->setActiveScene(g_runtime_global_context.m_scene_manager->getActiveScene());
             m_editor_layer->onUpdate(delta_time);
         }
 
