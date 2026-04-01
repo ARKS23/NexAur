@@ -137,18 +137,32 @@ namespace NexAur {
             snap_values[2] = m_scale_snap;
         }
 
+        ImGuizmo::MODE mode = (m_gizmo_operation == ImGuizmo::ROTATE) ? ImGuizmo::LOCAL : m_gizmo_mode;
+        glm::mat4 delta(1.0f);
+
         ImGuizmo::Manipulate(
             glm::value_ptr(view),
             glm::value_ptr(projection),
             m_gizmo_operation,
-            m_gizmo_mode,
+            mode,
             glm::value_ptr(transform),
-            nullptr,
+            glm::value_ptr(delta),
             m_use_snap ? snap_values : nullptr
         );
 
+        if (ImGuizmo::IsUsing()) {
+            if (m_gizmo_operation == ImGuizmo::ROTATE) {
+                // 用增量四元数叠加，避免欧拉分解跳变
+                glm::quat q_current = glm::quat(tc.rotation);
+                glm::quat q_delta = glm::normalize(glm::quat_cast(glm::mat3(delta)));
+                glm::quat q_new = glm::normalize(q_delta * q_current);
+                tc.rotation = glm::eulerAngles(q_new);
+            } else {
+                applyGizmoToSelectedEntity(transform);
+            }
+        }
+
         const bool using_now = ImGuizmo::IsUsing();
-        if (using_now) applyGizmoToSelectedEntity(transform);
 
         if (m_was_using_gizmo_last_frame && !using_now) {
             // TODO
@@ -162,7 +176,7 @@ namespace NexAur {
 
     void ViewportPanel::setGizmoStyle() {
         ImGuizmo::Style& style = ImGuizmo::GetStyle();
-        style.RotationLineThickness = 10.0f;
+        style.RotationLineThickness = 15.0f;
         style.ScaleLineThickness = 3.0f;
     }
 
@@ -201,7 +215,7 @@ namespace NexAur {
     bool ViewportPanel::onMouseButtonPressed(MouseButtonPressedEvent& e) {
         if (e.GetMouseButton() != static_cast<int>(MouseCode::ButtonLeft)) return false;
         if (!m_viewport_hovered) return false;
-        if (ImGuizmo::IsUsing()) return false; // 鼠标在操作Gizmo时不响应选中
+        if (ImGuizmo::IsUsing() || ImGuizmo::IsOver()) return false; // 鼠标在操作Gizmo时不响应选中
         pickEntityAtMouse();
         return false;
     }

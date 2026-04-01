@@ -2,6 +2,7 @@
 #include "editor_layer.h"
 #include "Editor/Panels/viewport_panel.h"
 #include "Editor/Panels/scene_hierachy_panel.h"
+#include "Editor/Panels/properties_panel.h"
 
 #include <imgui.h>
 
@@ -35,6 +36,7 @@ namespace NexAur {
         // 子面板注册
         m_panels.push_back(std::make_shared<ViewportPanel>("Viewport Panel"));
         m_panels.push_back(std::make_shared<SceneHierarchyPanel>("Scene Hierarchy Panel"));
+        m_panels.push_back(std::make_shared<PropertiesPanel>("Properties Panel"));
         NX_CORE_INFO("EditorLayer initialized.");
     }
 
