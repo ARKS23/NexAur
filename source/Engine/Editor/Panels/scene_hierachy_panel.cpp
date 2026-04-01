@@ -27,7 +27,12 @@ namespace NexAur {
         }
 
         // 空白处点击检测: 在面板上没有点击到任何实体上
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && ImGui::IsWindowHovered()) {
+        const bool clicked_on_blank = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+            !ImGui::IsAnyItemHovered() &&
+            !ImGui::IsAnyItemActive();
+
+        if (clicked_on_blank) {
             m_context->selected_entity = Entity(); // 取消选中
             m_context->selection_source = this->getName();
         }
