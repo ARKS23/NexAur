@@ -23,6 +23,7 @@ namespace NexAur {
     }
 
     void Engine::shutdownEngine() {
+        m_editor_layer.reset();
         g_runtime_global_context.shutdownSystems();
         NX_CORE_INFO("NexAur Engine shut down.");
     }

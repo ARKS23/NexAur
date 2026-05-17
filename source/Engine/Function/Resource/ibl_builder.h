@@ -15,6 +15,7 @@ namespace NexAur {
     class NEXAUR_API IBLBuilder {
     public:
         static std::shared_ptr<EnvironmentMap> bakeIBLFromHDR(const std::string& hdr_path);
+        static void shutdown();
 
     private:
         static std::shared_ptr<TextureCubeMap> generateSkybox(std::shared_ptr<Texture2D> hdr_texture);

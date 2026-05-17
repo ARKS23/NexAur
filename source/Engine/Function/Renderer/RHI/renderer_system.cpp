@@ -97,6 +97,9 @@ namespace NexAur {
     }
 
     void RendererSystem::shutdown() {
+        m_viewport_framebuffer.reset();
+        m_forward_pipeline.reset();
+
         // 关闭底层渲染器
         Renderer::shutdown();
     }

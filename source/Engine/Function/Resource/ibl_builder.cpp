@@ -111,6 +111,10 @@ namespace NexAur {
 
     std::shared_ptr<Texture2D> IBLBuilder::s_brdf_lut_map = nullptr;
 
+    void IBLBuilder::shutdown() {
+        s_brdf_lut_map.reset();
+    }
+
     std::shared_ptr<EnvironmentMap> IBLBuilder::bakeIBLFromHDR(const std::string& hdr_path) {
         std::shared_ptr<EnvironmentMap> env_map = std::make_shared<EnvironmentMap>();
 

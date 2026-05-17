@@ -12,7 +12,18 @@ namespace NexAur {
     }
 
     void AssetManager::shutdown() {
-        // TODO
+        m_uuid_environment_map_cache.clear();
+        IBLBuilder::shutdown();
+
+        m_uuid_gpu_model_cache.clear();
+        m_uuid_texture_cube_cache.clear();
+        m_uuid_texture_cache.clear();
+        m_uuid_shader_cache.clear();
+
+        m_uuid_cpu_model_cache.clear();
+        m_uuid_to_path.clear();
+        m_path_to_uuid.clear();
+
         NX_CORE_INFO("AssetManager Shutdown.");
     }
 
