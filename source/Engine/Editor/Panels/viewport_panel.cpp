@@ -168,7 +168,7 @@ namespace NexAur {
             // TODO
         }
         if (!m_was_using_gizmo_last_frame && using_now) {
-            // TODO
+            // /TODO
         }
         
         m_was_using_gizmo_last_frame = using_now;
