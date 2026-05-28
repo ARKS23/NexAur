@@ -22,7 +22,8 @@
 | PR 2：移出 Engine 内实验代码 | 已完成 | `45573a5` | 已删除无主线引用的 `source/Engine/TempTest`。 |
 | PR 3：清理低风险空文件和拼写 | 已完成 | `3f7746a` | 已删除空文件，并修正文件名、变量名和 include 大小写。 |
 | PR 4：隔离旧 Scene 和旧 Pass | 已完成 | `801742c` | 已删除旧 `Scene`、旧 Pass，并清理残留 include/声明。 |
-| PR 5：资源目录分级 | 已完成 | 本次提交 | 已新增资产清单，删除旧 demo 资产，并把本地 sample model 改为可选加载。 |
+| PR 5：资源目录分级 | 已完成 | `a07565a` | 已新增资产清单，删除旧 demo 资产，并把本地 sample model 改为可选加载。 |
+| PR 6：第三方库构建瘦身 | 已完成 | 本次提交 | 已统一关闭第三方测试/样例/安装目标，并把 GLM 改为 header-only 目标。 |
 
 ## 当前盘点结论
 
@@ -150,7 +151,9 @@ PR 5 前现状：
 
 ### 7. 第三方库体积明显偏大
 
-当前粗略体积：
+状态：已在 PR 6 完成构建目标瘦身；第三方源码目录暂不物理删除。
+
+PR 6 前粗略体积：
 
 - `external/assimp`：约 234.78MB，其中 `test` 目录约 208.72MB。
 - `external/glm`：约 29.01MB，其中 `doc` 目录约 25.63MB。
@@ -158,17 +161,16 @@ PR 5 前现状：
 
 建议：
 
-- 短期不要手动乱删第三方源码，先通过 CMake 关闭无用构建：
-  - `ASSIMP_BUILD_TESTS OFF`
-  - `ASSIMP_BUILD_ASSIMP_TOOLS OFF`
-  - `ASSIMP_INSTALL OFF`
-  - `GLM_TEST_ENABLE OFF` 或对应选项
-  - `SPDLOG_BUILD_TESTS OFF`
-  - `SPDLOG_BUILD_EXAMPLE OFF`
-- 如果确定采用 vendored 精简副本，再删除 `assimp/test`、`glm/doc` 等目录。
+- 已在 `external/CMakeLists.txt` 里集中设置第三方库选项，关闭 tests/examples/bench/tools/install。
+- 已关闭 `ASSIMP_BUILD_TESTS`、`ASSIMP_BUILD_ASSIMP_TOOLS`、`ASSIMP_BUILD_SAMPLES`、`ASSIMP_INSTALL`、`ASSIMP_INSTALL_PDB`，并关闭当前不需要的 exporter 代码。
+- 已关闭 `SPDLOG_BUILD_EXAMPLE*`、`SPDLOG_BUILD_TESTS*`、`SPDLOG_BUILD_BENCH`、`SPDLOG_INSTALL`。
+- 已关闭 `GLM_BUILD_TESTS`、`GLM_BUILD_INSTALL`，并将 GLM 改为 header-only interface 目标，避免生成独立 `glm` 库目标。
+- 已确认重新配置后解决方案不再出现 `INSTALL`、`uninstall`、assimp `unit` 和独立 `glm` 库目标。
+- Assimp 仍会由 vendored CMake 生成一个 MSVC 拷贝辅助目标 `UpdateAssimpLibsDebugSymbolsAndDLLs`，本 PR 不修改第三方源码，只在总控 CMake 中将其排除出默认构建。
+- 暂不删除 `assimp/test`、`glm/doc` 等 vendored 源码目录；如果后续决定采用 vendor-minimal，再单独做物理瘦身 PR。
 - 更长期可以改成 git submodule、FetchContent、vcpkg 或手动 vendor-minimal，但个人项目不必现在引入太重的包管理流程。
 
-风险：中到高。第三方目录清理需要先确认 CMake 不依赖被删文件。
+风险：已降低。PR 6 只调整 CMake 配置，不删除第三方源码目录。
 
 ### 8. 文档目录拼写和计划文件归属
 
@@ -269,21 +271,23 @@ PR 5 前现状：
 
 风险：中。
 
-### PR 6：第三方库构建瘦身
+### PR 6：第三方库构建瘦身（已完成）
 
 内容：
 
-- 在 `external/CMakeLists.txt` 中为 assimp/glm/spdlog 等设置关闭 tests/examples/tools/install 的选项。
+- 在 `external/CMakeLists.txt` 中为 assimp/glm/spdlog/glfw/entt 等设置关闭 tests/examples/tools/install 的选项。
 - 重新配置 CMake。
-- 如果确认无影响，再考虑删除第三方库的 tests/docs 大目录。
+- GLM 使用 header-only 目标，不再生成独立库。
+- 不在本 PR 删除第三方库的 tests/docs 大目录，避免误删 vendored 源码。
 
 验收：
 
 - `cmake -S . -B build` 重新配置成功。
 - Engine/Sandbox 构建通过。
-- Visual Studio 解决方案中不再出现大量第三方测试/工具目标。
+- Visual Studio 解决方案中不再出现 `INSTALL`、`uninstall`、assimp `unit` 和独立 `glm` 库目标。
+- `UpdateAssimpLibsDebugSymbolsAndDLLs` 若仍由 assimp 生成，应被排除出默认构建。
 
-风险：中。
+风险：已降低。
 
 ### PR 7：CMake 源文件控制
 
@@ -343,8 +347,8 @@ PR 5 前现状：
 | `assets/textures/HDR` 未用 HDR | 已删除未引用 HDR，仅保留默认环境图 | 已完成 | 中 |
 | `assets/textures/skybox` | 已删除旧 jpg skybox | 已完成 | 中 |
 | `assets/models` ignore 与 Sandbox 引用冲突 | 已改为可选加载，并写入资产清单 | 已完成 | 中 |
-| `external/assimp/test` | 先关闭构建，再考虑删除 | 中 | 中高 |
-| `external/glm/doc` | 可考虑 vendor 瘦身 | 低 | 中 |
+| `external/assimp/test` | 已关闭构建，源码目录暂保留 | 已完成 | 中 |
+| `external/glm/doc` | 已关闭安装/测试，物理瘦身留到后续 | 低 | 中 |
 | `docs/architucture` | 重命名并修 README | 低 | 低 |
 | `plans/` 被 ignore | 决定是否纳入版本管理 | 中 | 低 |
 
