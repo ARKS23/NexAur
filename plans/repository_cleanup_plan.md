@@ -23,7 +23,8 @@
 | PR 3：清理低风险空文件和拼写 | 已完成 | `3f7746a` | 已删除空文件，并修正文件名、变量名和 include 大小写。 |
 | PR 4：隔离旧 Scene 和旧 Pass | 已完成 | `801742c` | 已删除旧 `Scene`、旧 Pass，并清理残留 include/声明。 |
 | PR 5：资源目录分级 | 已完成 | `a07565a` | 已新增资产清单，删除旧 demo 资产，并把本地 sample model 改为可选加载。 |
-| PR 6：第三方库构建瘦身 | 已完成 | 本次提交 | 已统一关闭第三方测试/样例/安装目标，并把 GLM 改为 header-only 目标。 |
+| PR 6：第三方库构建瘦身 | 已完成 | `73743fc` | 已统一关闭第三方测试/样例/安装目标，并把 GLM 改为 header-only 目标。 |
+| PR 7：CMake 源文件控制 | 已完成 | 本次提交 | 已把 Engine 源文件从递归 glob 改为按模块维护的显式清单。 |
 
 ## 当前盘点结论
 
@@ -289,20 +290,20 @@ PR 6 前粗略体积：
 
 风险：已降低。
 
-### PR 7：CMake 源文件控制
+### PR 7：CMake 源文件控制（已完成）
 
 内容：
 
-- 逐步替换 `file(GLOB_RECURSE engine_sources ...)`。
-- 用模块化 `target_sources` 或每个目录一个 source list 管理主线文件。
+- 已替换 `source/Engine/CMakeLists.txt` 中的 `file(GLOB_RECURSE engine_sources ...)`。
+- 已按 Root/Core/Editor/Function/Renderer 模块显式维护 Engine 文件清单，并用 `source_group(TREE ...)` 保持 IDE 分组。
 - legacy/实验文件不再因为放在 `source/Engine` 下就自动进入 Engine。
 
 验收：
 
-- 新增一个实验 cpp 不会自动编进 Engine。
+- 已临时新增带 `#error` 的 `source/Engine/pr7_cmake_guard.cpp`，重新配置并构建 Engine 通过，确认实验 cpp 不会自动编进 Engine；测试后已删除临时文件。
 - Engine/Sandbox 构建通过。
 
-风险：中。改动面较大，但长期收益高。
+风险：已降低。后续新增 Engine 主线文件时需要同步维护 `source/Engine/CMakeLists.txt`。
 
 ### PR 8：文档路径整理
 
@@ -349,6 +350,7 @@ PR 6 前粗略体积：
 | `assets/models` ignore 与 Sandbox 引用冲突 | 已改为可选加载，并写入资产清单 | 已完成 | 中 |
 | `external/assimp/test` | 已关闭构建，源码目录暂保留 | 已完成 | 中 |
 | `external/glm/doc` | 已关闭安装/测试，物理瘦身留到后续 | 低 | 中 |
+| Engine `file(GLOB_RECURSE)` | 已替换为按模块维护的显式源文件清单 | 已完成 | 中 |
 | `docs/architucture` | 重命名并修 README | 低 | 低 |
 | `plans/` 被 ignore | 决定是否纳入版本管理 | 中 | 低 |
 
