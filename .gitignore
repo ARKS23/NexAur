@@ -4,6 +4,8 @@ bin/
 cmake-build-debug/
 .idea/
 .DS_Store
+
+# 可选本地模型资产；Sandbox 会在缺失时跳过，详见 assets/asset_manifest.md。
 assets/models/
 
 plans/

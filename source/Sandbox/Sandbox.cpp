@@ -1,4 +1,5 @@
 #include <iostream>
+#include <filesystem>
 #include "NexAur.h"
 #include "Function/File/file_system.h"
 #include "scene_test.h"
@@ -35,8 +36,13 @@ void setupScene() {
 
     scene_test.addCubeEntity("Floor", "plastic", glm::vec3(5.0f, -3.5f, -5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(50.0f, 0.1f, 50.0f));
 
-    // 模型加载测试
-    scene_test.addModelEntity("DamagedHelmet", NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"), glm::vec3(5.0f, 0.0f, 4.0f));
+    // DamagedHelmet 是本地可选样例资产，缺失时跳过，避免新克隆仓库启动 Sandbox 时报错。
+    const std::string damaged_helmet_path = NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf");
+    if (std::filesystem::exists(damaged_helmet_path)) {
+        scene_test.addModelEntity("DamagedHelmet", damaged_helmet_path, glm::vec3(5.0f, 0.0f, 4.0f));
+    } else {
+        NX_CORE_WARN("Optional sample model missing: {0}. See assets/asset_manifest.md.", damaged_helmet_path);
+    }
 }
 
 int main() {

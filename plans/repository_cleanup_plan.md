@@ -21,7 +21,8 @@
 | PR 1：移除空壳 Editor 目标 | 已完成 | `a12d1f4` | 已移除 `source/Editor` 独立目标和空壳目录。 |
 | PR 2：移出 Engine 内实验代码 | 已完成 | `45573a5` | 已删除无主线引用的 `source/Engine/TempTest`。 |
 | PR 3：清理低风险空文件和拼写 | 已完成 | `3f7746a` | 已删除空文件，并修正文件名、变量名和 include 大小写。 |
-| PR 4：隔离旧 Scene 和旧 Pass | 已完成 | 本次提交 | 已删除旧 `Scene`、旧 Pass，并清理残留 include/声明。 |
+| PR 4：隔离旧 Scene 和旧 Pass | 已完成 | `801742c` | 已删除旧 `Scene`、旧 Pass，并清理残留 include/声明。 |
+| PR 5：资源目录分级 | 已完成 | 本次提交 | 已新增资产清单，删除旧 demo 资产，并把本地 sample model 改为可选加载。 |
 
 ## 当前盘点结论
 
@@ -127,7 +128,9 @@ PR 3 前现状：
 
 ### 6. 资源目录中有 legacy/demo 资产
 
-现状：
+状态：已在 PR 5 完成第一轮分级，当前仓库只保留主线和 Sandbox 必需资产。
+
+PR 5 前现状：
 
 - 当前 `SceneV2` 使用 `assets/textures/HDR/warm_restaurant_8k.hdr`。
 - Sandbox 材质测试使用 `assets/textures/PBR/*`，并引用 `assets/models/DamagedHelmet/DamagedHelmet.gltf`。
@@ -138,12 +141,12 @@ PR 3 前现状：
 
 建议：
 
-- 先建立 `assets/README.md` 或 `assets/asset_manifest.md`，列明哪些资产是 runtime 必需、Sandbox 必需、legacy demo。
-- 旧 `Scene` 删除后，把 container/wood/phong/floor/lightCube/skybox jpg 放入 legacy 或删除。
-- HDR 只保留一个默认环境图；另外两个移动到本地素材库或单独下载包。
-- 处理 `assets/models/`：要么把 Sandbox 的 DamagedHelmet 改成可选加载，要么把模型纳入明确的 sample asset 包，不要一边引用一边 ignore。
+- 已建立 `assets/asset_manifest.md`，明确 runtime、Sandbox、可选 sample model 和 legacy/demo 资产边界。
+- 已删除只服务旧 `Scene` 的 `container`、`wood`、jpg skybox、Phong/Floor/LightCube/Container shader。
+- HDR 当前只保留默认环境图 `warm_restaurant_8k.hdr`；另外两个未引用 HDR 已移出仓库。
+- `assets/models/` 继续保持本地忽略，但 Sandbox 会在 `DamagedHelmet` 缺失时跳过加载，并在资产清单里说明可选样例策略。
 
-风险：中。资源清理容易造成运行时加载失败，需要配合 Sandbox 验证。
+风险：已降低。后续如果把 sample model 纳入仓库，建议单独做小型样例资产包，并明确许可证。
 
 ### 7. 第三方库体积明显偏大
 
@@ -249,20 +252,20 @@ PR 3 前现状：
 
 风险：中。
 
-### PR 5：资源目录分级
+### PR 5：资源目录分级（已完成）
 
 内容：
 
 - 新增 `assets/asset_manifest.md`。
-- 标记 runtime、sandbox、legacy 资产。
-- 删除或移动只服务旧 Scene 的 demo assets。
-- 对 HDR 资产做保留策略：默认保留一个，其他改为外部下载或本地忽略素材。
-- 处理 `assets/models/` 被 ignore 但 Sandbox 引用的问题。
+- 标记 runtime、Sandbox、legacy 资产。
+- 删除只服务旧 Scene 的 demo assets。
+- 对 HDR 资产做保留策略：默认保留 `warm_restaurant_8k.hdr`，删除未引用 HDR。
+- 处理 `assets/models/` 被 ignore 但 Sandbox 引用的问题：改为本地可选加载。
 
 验收：
 
-- Sandbox 启动时没有缺失资产错误。
-- 新克隆仓库能明确知道 sample model 是否需要额外下载。
+- Sandbox 启动时不会因为缺失 `DamagedHelmet` 报错。
+- 新克隆仓库能通过 `assets/asset_manifest.md` 明确知道 sample model 是本地可选资产。
 
 风险：中。
 
@@ -337,9 +340,9 @@ PR 3 前现状：
 | 旧 `scene.*` | 已删除 | 已完成 | 中 |
 | 旧 `shadow_pass.*` / `skybox_pass.*` | 已删除 | 已完成 | 中 |
 | 旧 `RHI/render_pass.*` | 已删除 | 已完成 | 中 |
-| `assets/textures/HDR` 未用 HDR | 移出仓库或外部下载 | 中 | 中 |
-| `assets/textures/skybox` | 若旧 Scene 删除则 legacy/delete | 中 | 中 |
-| `assets/models` ignore 与 Sandbox 引用冲突 | 明确 sample asset 策略 | 高 | 中 |
+| `assets/textures/HDR` 未用 HDR | 已删除未引用 HDR，仅保留默认环境图 | 已完成 | 中 |
+| `assets/textures/skybox` | 已删除旧 jpg skybox | 已完成 | 中 |
+| `assets/models` ignore 与 Sandbox 引用冲突 | 已改为可选加载，并写入资产清单 | 已完成 | 中 |
 | `external/assimp/test` | 先关闭构建，再考虑删除 | 中 | 中高 |
 | `external/glm/doc` | 可考虑 vendor 瘦身 | 低 | 中 |
 | `docs/architucture` | 重命名并修 README | 低 | 低 |
