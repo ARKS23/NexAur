@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "render_forward_pipeline.h"
-#include "Function/Renderer/Passes/skybox_pass.h"
 #include "Function/Renderer/Passes/skybox_pass_v2.h"
-#include "Function/Renderer/Passes/shadow_pass.h"
 #include "Function/Renderer/Passes/shadow_pass_v2.h"
 #include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/editor_camera.h"

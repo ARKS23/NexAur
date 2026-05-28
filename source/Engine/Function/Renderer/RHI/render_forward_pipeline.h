@@ -4,9 +4,7 @@
 #include "render_pipeline.h"
 
 namespace NexAur {
-    class SkyboxPass;
     class SkyboxPassV2;
-    class ShadowPass;
     class ShadowPassV2;
     class Shader;
 

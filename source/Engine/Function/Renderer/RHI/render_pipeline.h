@@ -1,8 +1,6 @@
 #pragma once
 
 #include "Core/Base.h"
-#include "Function/Renderer/camera.h"
-#include "Function/Scene/scene.h"
 
 namespace NexAur {
     struct RenderDataPacket;

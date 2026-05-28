@@ -19,8 +19,9 @@
 | PR | 状态 | 提交 | 说明 |
 | --- | --- | --- | --- |
 | PR 1：移除空壳 Editor 目标 | 已完成 | `a12d1f4` | 已移除 `source/Editor` 独立目标和空壳目录。 |
-| PR 2：移出 Engine 内实验代码 | 已完成 | 本次提交 | 已删除无主线引用的 `source/Engine/TempTest`。 |
-| PR 3：清理低风险空文件和拼写 | 已完成 | 本次提交 | 已删除空文件，并修正文件名、变量名和 include 大小写。 |
+| PR 2：移出 Engine 内实验代码 | 已完成 | `45573a5` | 已删除无主线引用的 `source/Engine/TempTest`。 |
+| PR 3：清理低风险空文件和拼写 | 已完成 | `3f7746a` | 已删除空文件，并修正文件名、变量名和 include 大小写。 |
+| PR 4：隔离旧 Scene 和旧 Pass | 已完成 | 本次提交 | 已删除旧 `Scene`、旧 Pass，并清理残留 include/声明。 |
 
 ## 当前盘点结论
 
@@ -63,7 +64,9 @@ PR 2 前现状：
 
 ### 3. 旧 `Scene` 与当前 `SceneV2` 并存
 
-现状：
+状态：已在 PR 4 完成清理，当前主线只保留 `SceneV2`。
+
+PR 4 前现状：
 
 - 当前主线使用 `SceneV2`、`SceneManager`、ECS 组件。
 - `source/Engine/Function/Scene/scene.*` 是旧渲染实体式 Scene，里面包含大量 `RendererFactory`、`RendererCommand`、IBL、Phong/PBR demo 逻辑。
@@ -72,15 +75,17 @@ PR 2 前现状：
 
 建议：
 
-- 第一阶段先把 `SceneV2` 明确标为主线，旧 `Scene` 标记为 legacy。
-- 移除 `render_pipeline.h` 中不必要的 `#include "Function/Scene/scene.h"`。
-- 确认旧 `shadow_pass.*` 不再参与主线后，连同旧 `Scene` 一起删除或移动到 legacy。
+- 已把 `SceneV2` 作为当前唯一 active scene。
+- 已移除 `render_pipeline.h` 中不必要的 `#include "Function/Scene/scene.h"`。
+- 已删除旧 `scene.*`，旧 demo 逻辑不再进入 Engine 编译图。
 
-风险：中。旧代码仍被一些头文件 include，需要先断 include。
+风险：已处理。本次清理只删除无主线引用代码，未触碰资源目录。
 
 ### 4. Pass 系统有旧版与 V2 两套
 
-现状：
+状态：已在 PR 4 完成清理，当前主线只保留 `IRenderPass`、`ShadowPassV2`、`SkyboxPassV2`。
+
+PR 4 前现状：
 
 - 旧版：`RHI/render_pass.*`、`Passes/shadow_pass.*`、`Passes/skybox_pass.*`。
 - V2：`Passes/interface_render_pass.*`、`Passes/shadow_pass_v2.*`、`Passes/skybox_pass_v2.*`。
@@ -90,13 +95,13 @@ PR 2 前现状：
 
 建议：
 
-- 删除或隔离旧 `shadow_pass.*`、`skybox_pass.*`。
-- 删除旧 `RHI/render_pass.*`，前提是没有其他 active code 使用。
-- 清理 `render_forward_pipeline.h` 里旧 pass 的 forward declaration。
+- 已删除旧 `shadow_pass.*`、`skybox_pass.*`。
+- 已删除旧 `RHI/render_pass.*`。
+- 已清理 `render_forward_pipeline.h` 里旧 pass 的 forward declaration。
 - 修正 `skybox_pass_v2.h` 的路径大小写。
 - 后续把 V2 后缀去掉：`IRenderPass` -> `RenderPass`，`ShadowPassV2` -> `ShadowPass`，`SkyboxPassV2` -> `SkyboxPass`。
 
-风险：中。建议和旧 `Scene` 清理放在同一个或相邻 PR。
+风险：已处理。V2 后缀统一命名留到后续 renderer 内部边界整理时再做。
 
 ### 5. 空头文件和命名不规整文件
 
@@ -227,18 +232,18 @@ PR 3 前现状：
 
 风险：低。
 
-### PR 4：隔离旧 Scene 和旧 Pass
+### PR 4：隔离旧 Scene 和旧 Pass（已完成）
 
 内容：
 
 - 移除 `render_pipeline.h` 对 `scene.h` 的 include。
-- 删除或 legacy 化 `scene.*`。
-- 删除或 legacy 化旧 `shadow_pass.*`、`skybox_pass.*`、`RHI/render_pass.*`。
+- 删除 `scene.*`。
+- 删除旧 `shadow_pass.*`、`skybox_pass.*`、`RHI/render_pass.*`。
 - 清理 `render_forward_pipeline.h` 中旧 Pass forward declaration。
 
 验收：
 
-- `rg "Function/Scene/scene.h|RenderEntity|std::shared_ptr<Scene>|ShadowPass\\b|SkyboxPass\\b"` 不再命中主线代码。
+- `rg "Function/Scene/scene.h|RenderEntity|std::shared_ptr<Scene>|ShadowPass\\b|SkyboxPass\\b" source` 不再命中主线代码。
 - `SceneV2` 是唯一 active scene。
 - Sandbox 仍能展示当前 PBR/IBL 场景。
 
@@ -329,9 +334,9 @@ PR 3 前现状：
 | `material.h.cpp` | 已重命名为 `material.cpp` | 已完成 | 低 |
 | `m_is_edtior_mode` | 已重命名为 `m_is_editor_mode` | 已完成 | 低 |
 | `scene_hierachy_panel.*` | 已重命名为 `scene_hierarchy_panel.*` | 已完成 | 中 |
-| 旧 `scene.*` | 先断 include，再删除/legacy | 高 | 中 |
-| 旧 `shadow_pass.*` / `skybox_pass.*` | 随旧 Scene 清理 | 高 | 中 |
-| 旧 `RHI/render_pass.*` | 确认无引用后删除 | 中 | 中 |
+| 旧 `scene.*` | 已删除 | 已完成 | 中 |
+| 旧 `shadow_pass.*` / `skybox_pass.*` | 已删除 | 已完成 | 中 |
+| 旧 `RHI/render_pass.*` | 已删除 | 已完成 | 中 |
 | `assets/textures/HDR` 未用 HDR | 移出仓库或外部下载 | 中 | 中 |
 | `assets/textures/skybox` | 若旧 Scene 删除则 legacy/delete | 中 | 中 |
 | `assets/models` ignore 与 Sandbox 引用冲突 | 明确 sample asset 策略 | 高 | 中 |

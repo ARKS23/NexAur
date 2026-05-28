@@ -4,7 +4,6 @@
 #include "renderer_command.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/editor_camera.h"
-#include "Function/Scene/scene.h"
 
 // 工厂函数实现
 namespace NexAur {

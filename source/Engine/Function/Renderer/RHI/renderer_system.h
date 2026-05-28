@@ -13,7 +13,6 @@
 namespace NexAur {
     class RenderForwardPipeline;
     class EditorCamera;
-    class Scene;
 } // namespace NexAur
 
 
