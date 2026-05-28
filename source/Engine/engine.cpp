@@ -17,7 +17,7 @@ namespace NexAur {
         g_runtime_global_context.startSystems();
         g_runtime_global_context.m_window_system->setEventCallback(NX_BIND_EVENT_FN(Engine::onEvent));
 
-        if (m_is_edtior_mode) m_editor_layer = std::make_shared<EditorLayer>();
+        if (m_is_editor_mode) m_editor_layer = std::make_shared<EditorLayer>();
 
         NX_CORE_INFO("NexAur Engine started.");
     }
@@ -40,13 +40,13 @@ namespace NexAur {
         calculateFPS(delta_time);
         logicalTick(delta_time);
 
-        if (m_is_edtior_mode && m_editor_layer) {
+        if (m_is_editor_mode && m_editor_layer) {
             m_editor_layer->onUpdate(delta_time);
         }
 
         g_runtime_global_context.m_ui_system->beginFrame();
 
-        if (m_is_edtior_mode && m_editor_layer) m_editor_layer->onUIRender();
+        if (m_is_editor_mode && m_editor_layer) m_editor_layer->onUIRender();
 
         // TODO: 数据同步，后期改成多线程
         std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
@@ -104,7 +104,7 @@ namespace NexAur {
         }
 
         // 编辑器事件分发
-        if (m_is_edtior_mode && m_editor_layer) m_editor_layer->onEvent(event);
+        if (m_is_editor_mode && m_editor_layer) m_editor_layer->onEvent(event);
     }
 
     bool Engine::onWindowClose(WindowCloseEvent& event) {

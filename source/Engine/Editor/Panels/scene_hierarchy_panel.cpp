@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "scene_hierachy_panel.h"
+#include "scene_hierarchy_panel.h"
 #include "Function/Scene/component.h"
 
 #include <imgui.h>

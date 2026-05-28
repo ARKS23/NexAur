@@ -20,6 +20,7 @@
 | --- | --- | --- | --- |
 | PR 1：移除空壳 Editor 目标 | 已完成 | `a12d1f4` | 已移除 `source/Editor` 独立目标和空壳目录。 |
 | PR 2：移出 Engine 内实验代码 | 已完成 | 本次提交 | 已删除无主线引用的 `source/Engine/TempTest`。 |
+| PR 3：清理低风险空文件和拼写 | 已完成 | 本次提交 | 已删除空文件，并修正文件名、变量名和 include 大小写。 |
 
 ## 当前盘点结论
 
@@ -99,7 +100,9 @@ PR 2 前现状：
 
 ### 5. 空头文件和命名不规整文件
 
-现状：
+状态：已在 PR 3 完成清理。
+
+PR 3 前现状：
 
 - `source/Engine/Function/Renderer/render_swap_context.h` 是空命名空间，没有引用。
 - `source/Engine/Function/Renderer/RHI/render_pipeline.cpp` 是空实现文件。
@@ -206,20 +209,21 @@ PR 2 前现状：
 
 风险：低。
 
-### PR 3：清理低风险空文件和拼写
+### PR 3：清理低风险空文件和拼写（已完成）
 
 内容：
 
 - 删除 `render_swap_context.h`。
-- 删除空 `render_pipeline.cpp`，或保留到显式 source list 改造时再删。
+- 删除空 `render_pipeline.cpp`。
 - `material.h.cpp` -> `material.cpp`。
 - `m_is_edtior_mode` -> `m_is_editor_mode`。
 - 修正 `skybox_pass_v2.h` include 路径大小写。
+- `scene_hierachy_panel.*` -> `scene_hierarchy_panel.*`。
 
 验收：
 
 - Engine/Sandbox 构建通过。
-- `rg "edtior|hierachy|Function/Renderer/passes"` 不再命中主线拼写问题。
+- `rg "edtior|hierachy|Function/Renderer/passes" source` 不再命中主线拼写问题。
 
 风险：低。
 
@@ -320,10 +324,11 @@ PR 2 前现状：
 | --- | --- | --- | --- |
 | `source/Editor` | 已删除，并从 CMake 移除 | 已完成 | 低 |
 | `source/Engine/TempTest` | 已删除 | 已完成 | 低 |
-| `render_swap_context.h` | 删除 | 高 | 低 |
-| `material.h.cpp` | 重命名为 `material.cpp` | 高 | 低 |
-| `m_is_edtior_mode` | 重命名为 `m_is_editor_mode` | 高 | 低 |
-| `scene_hierachy_panel.*` | 重命名为 `scene_hierarchy_panel.*` | 中 | 中 |
+| `render_swap_context.h` | 已删除 | 已完成 | 低 |
+| `render_pipeline.cpp` | 已删除 | 已完成 | 低 |
+| `material.h.cpp` | 已重命名为 `material.cpp` | 已完成 | 低 |
+| `m_is_edtior_mode` | 已重命名为 `m_is_editor_mode` | 已完成 | 低 |
+| `scene_hierachy_panel.*` | 已重命名为 `scene_hierarchy_panel.*` | 已完成 | 中 |
 | 旧 `scene.*` | 先断 include，再删除/legacy | 高 | 中 |
 | 旧 `shadow_pass.*` / `skybox_pass.*` | 随旧 Scene 清理 | 高 | 中 |
 | 旧 `RHI/render_pass.*` | 确认无引用后删除 | 中 | 中 |
@@ -364,8 +369,8 @@ cmake -S . -B build
 
 1. 移除 `source/Editor` 空壳目标。（已完成）
 2. 删除或移走 `source/Engine/TempTest`。（已完成）
-3. 删除 `render_swap_context.h`。
-4. 重命名 `material.h.cpp`。
-5. 修正 `m_is_edtior_mode` 和 `skybox_pass_v2.h` 的 include 大小写。
+3. 删除 `render_swap_context.h`。（已完成）
+4. 重命名 `material.h.cpp`。（已完成）
+5. 修正 `m_is_edtior_mode` 和 `skybox_pass_v2.h` 的 include 大小写。（已完成）
 
 这五步基本不会改变引擎行为，但能立刻减少噪音。之后再动旧 `Scene` 和旧 Pass，那一步才是真正清理主线架构分叉。

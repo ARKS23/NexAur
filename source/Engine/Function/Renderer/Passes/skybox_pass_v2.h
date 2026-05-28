@@ -1,6 +1,6 @@
 #pragma once
 #include "Core/Base.h"
-#include "Function/Renderer/passes/interface_render_pass.h"
+#include "Function/Renderer/Passes/interface_render_pass.h"
 #include "Function/Renderer/RHI/vertex_array.h"
 #include "Function/Renderer/RHI/shader.h"
 #include "Function/Renderer/RHI/buffer.h"
