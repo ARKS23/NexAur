@@ -24,7 +24,8 @@
 | PR 4：隔离旧 Scene 和旧 Pass | 已完成 | `801742c` | 已删除旧 `Scene`、旧 Pass，并清理残留 include/声明。 |
 | PR 5：资源目录分级 | 已完成 | `a07565a` | 已新增资产清单，删除旧 demo 资产，并把本地 sample model 改为可选加载。 |
 | PR 6：第三方库构建瘦身 | 已完成 | `73743fc` | 已统一关闭第三方测试/样例/安装目标，并把 GLM 改为 header-only 目标。 |
-| PR 7：CMake 源文件控制 | 已完成 | 本次提交 | 已把 Engine 源文件从递归 glob 改为按模块维护的显式清单。 |
+| PR 7：CMake 源文件控制 | 已完成 | `59c18aa` | 已把 Engine 源文件从递归 glob 改为按模块维护的显式清单。 |
+| PR 8：文档路径整理 | 已完成 | 本次提交 | 已修正 `docs/architecture` 路径和 README 链接，并让 `plans/*.md` 入库。 |
 
 ## 当前盘点结论
 
@@ -175,18 +176,21 @@ PR 6 前粗略体积：
 
 ### 8. 文档目录拼写和计划文件归属
 
-现状：
+状态：已在 PR 8 完成整理。
 
-- `docs/architucture` 拼写错误，应为 `docs/architecture`。
-- README 已引用 `docs/architucture/...`，因此不能只改目录不改链接。
+PR 8 前现状：
+
+- 原架构文档目录拼写错误，应统一为 `docs/architecture`。
+- README 已引用旧目录路径，因此不能只改目录不改链接。
 - `plans/` 当前被 `.gitignore` 忽略。计划文档写得进去，但不会出现在 `git status` 中。
 
 建议：
 
-- 单独做文档路径 PR：`docs/architucture` -> `docs/architecture`，同步修 README。
-- 如果希望 `plans` 文档入库，需要调整 `.gitignore`，例如只忽略 `plans/*.pdf` 或临时生成物。
+- 已将原架构文档目录重命名为 `docs/architecture`，并同步修正 README。
+- 已调整 `.gitignore`：`plans/*.md` 作为可追踪设计文档入库，`plans/*.pdf` 继续作为导出生成物忽略。
+- 已清理 `docs/architecture/Architecture.md` 中指向不存在图片的占位链接。
 
-风险：低。主要是链接修正。
+风险：已处理。后续新增计划文档默认使用 Markdown 入库，导出物单独忽略。
 
 ## 建议执行顺序
 
@@ -305,20 +309,21 @@ PR 6 前粗略体积：
 
 风险：已降低。后续新增 Engine 主线文件时需要同步维护 `source/Engine/CMakeLists.txt`。
 
-### PR 8：文档路径整理
+### PR 8：文档路径整理（已完成）
 
 内容：
 
-- `docs/architucture` -> `docs/architecture`。
+- 原架构文档目录 -> `docs/architecture`。
 - 修正 README 链接。
-- 决定 `plans/` 是否入库；如果入库，调整 `.gitignore`。
+- 调整 `.gitignore`：`plans/*.md` 入库，`plans/*.pdf` 忽略。
 
 验收：
 
 - README 链接有效。
-- `rg "architucture"` 不再命中。
+- 旧目录拼写不再命中。
+- `plans/architecture_decoupling_plan.md`、`plans/open_source_engine_architecture_study.md`、`plans/repository_cleanup_plan.md` 均纳入版本管理。
 
-风险：低。
+风险：已降低。
 
 ## 建议保留的内容
 
@@ -351,8 +356,8 @@ PR 6 前粗略体积：
 | `external/assimp/test` | 已关闭构建，源码目录暂保留 | 已完成 | 中 |
 | `external/glm/doc` | 已关闭安装/测试，物理瘦身留到后续 | 低 | 中 |
 | Engine `file(GLOB_RECURSE)` | 已替换为按模块维护的显式源文件清单 | 已完成 | 中 |
-| `docs/architucture` | 重命名并修 README | 低 | 低 |
-| `plans/` 被 ignore | 决定是否纳入版本管理 | 中 | 低 |
+| 原架构文档目录拼写 | 已重命名为 `docs/architecture` 并修 README | 已完成 | 低 |
+| `plans/` 被 ignore | 已改为 Markdown 入库、PDF 忽略 | 已完成 | 低 |
 
 ## 每个清理 PR 的固定检查
 

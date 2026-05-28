@@ -1,6 +1,6 @@
 # NexAur架构
 ## 初步架构图
-![alt text](./images/architecture.png)
+架构图待补充。
 
 ## 启动调用链
 1. main函数入口

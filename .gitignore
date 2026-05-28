@@ -8,4 +8,5 @@ cmake-build-debug/
 # 可选本地模型资产；Sandbox 会在缺失时跳过，详见 assets/asset_manifest.md。
 assets/models/
 
-plans/
+# plans 下的 Markdown 设计/清理文档需要入库，导出的 PDF 保持本地生成物。
+plans/*.pdf
