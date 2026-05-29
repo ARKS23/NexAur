@@ -7,6 +7,7 @@
 
 #include "Core/Base.h"
 #include "Core/UUID.h"
+#include "Function/Resource/asset_handle.h"
 
 namespace NexAur {
     // 标签组件: 识别实体名称
@@ -63,20 +64,60 @@ namespace NexAur {
 
     // 网格体组件
     struct MeshRendererComponent {
-        UUID model_id = INVALID_UUID;
+        UUID model_id = INVALID_UUID;      // 兼容旧渲染路径，后续会逐步迁移到 model_asset。
+        AssetHandle model_asset;
         bool is_transparent = false; // 是否为透明物体
 
         MeshRendererComponent() = default;
         MeshRendererComponent(const MeshRendererComponent&) = default;
-        MeshRendererComponent(UUID model_uuid) : model_id(model_uuid) {}
+        MeshRendererComponent(UUID model_uuid) { setModel(model_uuid); }
+        MeshRendererComponent(AssetHandle model_handle) { setModel(model_handle); }
+
+        void setModel(UUID model_uuid) {
+            model_id = model_uuid;
+            model_asset = AssetHandle(model_uuid);
+        }
+
+        void setModel(AssetHandle model_handle) {
+            model_asset = model_handle;
+            model_id = model_handle.id;
+        }
+
+        AssetHandle getModelHandle() const {
+            return model_asset ? model_asset : AssetHandle(model_id);
+        }
+
+        UUID getModelUUID() const {
+            return getModelHandle().id;
+        }
     };
 
     struct EnvironmentComponent {
-        UUID environment_map_id = INVALID_UUID; // 对应 AssetManager 里的 EnvironmentMap
+        UUID environment_map_id = INVALID_UUID; // 兼容旧渲染路径，后续会逐步迁移到 environment_asset。
+        AssetHandle environment_asset;
         float intensity = 1.0f; // 环境光亮度控制
 
         EnvironmentComponent() = default;
         EnvironmentComponent(const EnvironmentComponent&) = default;
-        EnvironmentComponent(UUID env_id) : environment_map_id(env_id) {}
+        EnvironmentComponent(UUID env_id) { setEnvironmentMap(env_id); }
+        EnvironmentComponent(AssetHandle env_handle) { setEnvironmentMap(env_handle); }
+
+        void setEnvironmentMap(UUID env_id) {
+            environment_map_id = env_id;
+            environment_asset = AssetHandle(env_id);
+        }
+
+        void setEnvironmentMap(AssetHandle env_handle) {
+            environment_asset = env_handle;
+            environment_map_id = env_handle.id;
+        }
+
+        AssetHandle getEnvironmentHandle() const {
+            return environment_asset ? environment_asset : AssetHandle(environment_map_id);
+        }
+
+        UUID getEnvironmentUUID() const {
+            return getEnvironmentHandle().id;
+        }
     };
 } // namespace NexAur

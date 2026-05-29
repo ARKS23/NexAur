@@ -125,9 +125,10 @@ namespace NexAur {
         auto view_env = m_Registry.view<EnvironmentComponent>();
         for (auto entity : view_env) {
             const auto& env_comp = view_env.get<EnvironmentComponent>(entity);
-            if (env_comp.environment_map_id == INVALID_UUID) break;
+            AssetHandle environment_handle = env_comp.getEnvironmentHandle();
+            if (!environment_handle) break;
 
-            std::shared_ptr<EnvironmentMap> env_map = asset_manager.getEnvironmentMap(env_comp.environment_map_id);
+            std::shared_ptr<EnvironmentMap> env_map = asset_manager.getEnvironmentMap(environment_handle.id);
             if (env_map) {
                 render_packet->environment_data.skybox_texture = env_map->skybox_texture;
                 render_packet->environment_data.irradiance_map = env_map->irradiance_map;
@@ -141,10 +142,11 @@ namespace NexAur {
         // 网格体数据处理
         auto view_meshes = m_Registry.view<MeshRendererComponent, TransformComponent>();
         view_meshes.each([&](auto entity, const auto& mesh_renderer_comp, const auto& transform_comp) {
-            if (mesh_renderer_comp.model_id == INVALID_UUID) return; 
+            AssetHandle model_handle = mesh_renderer_comp.getModelHandle();
+            if (!model_handle) return;
 
             // 获取数据并防御性判断
-            auto gpu_model = asset_manager.getRenderModel(mesh_renderer_comp.model_id);
+            auto gpu_model = asset_manager.getRenderModel(model_handle.id);
             if (!gpu_model) return; 
 
             RenderObjectData object_data;

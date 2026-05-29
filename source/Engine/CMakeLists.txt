@@ -51,8 +51,10 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Input/input_system_glfw.cpp
     Function/Input/KeyCode/key_codes.h
     Function/Input/KeyCode/mouse_codes.h
+    Function/Resource/asset_handle.h
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
+    Function/Resource/asset_metadata.h
     Function/Resource/ibl_builder.h
     Function/Resource/ibl_builder.cpp
     Function/Resource/mesh.h

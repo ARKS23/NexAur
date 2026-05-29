@@ -8,6 +8,7 @@
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/RHI/texture.h"
 #include "Function/Renderer/RHI/shader.h"
+#include "Function/Resource/asset_metadata.h"
 
 namespace NexAur {
     class Model;
@@ -26,25 +27,39 @@ namespace NexAur {
 
         // 模型
         UUID loadModel(const std::string& path); // 加载模型并返回UUID
+        AssetHandle loadModelAsset(const std::string& path) { return AssetHandle(loadModel(path)); }
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
         std::shared_ptr<RenderModelData> getRenderModel(const UUID& handle); // 通过UUID获取GPU模型数据
 
         // 用于测试用的直接放入GPU模型数据
         UUID registerRenderModel(const std::shared_ptr<RenderModelData>& gpu_model);
+        AssetHandle registerRenderModelAsset(const std::shared_ptr<RenderModelData>& gpu_model) { return AssetHandle(registerRenderModel(gpu_model)); }
 
         // 贴图
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
+        AssetHandle loadTextureAsset(const std::string& path) { return AssetHandle(loadTexture(path)); }
         std::shared_ptr<Texture2D> getTexture(const UUID& handle); // 通过UUID获取贴图
         UUID loadTextureCube(const std::string& path); 
+        AssetHandle loadTextureCubeAsset(const std::string& path) { return AssetHandle(loadTextureCube(path)); }
         std::shared_ptr<TextureCubeMap> getTextureCube(const UUID& handle);
 
         // 着色器
         UUID loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path); // 加载着色器并返回UUID
+        AssetHandle loadShaderAsset(const std::string name, const std::string& vertex_path, const std::string& fragment_path) { return AssetHandle(loadShader(name, vertex_path, fragment_path)); }
         std::shared_ptr<Shader> getShader(const UUID& handle); // 通过UUID获取着色器
 
         // 环境光照
         UUID loadEnvironmentMap(const std::string& hdr_path); // 加载环境光照并返回UUID
+        AssetHandle loadEnvironmentMapAsset(const std::string& hdr_path) { return AssetHandle(loadEnvironmentMap(hdr_path)); }
         std::shared_ptr<EnvironmentMap> getEnvironmentMap(const UUID& handle); // 通过UUID获取环境光照
+
+        // 资产元数据查询，后续场景序列化和 Resource/Renderer 解耦会依赖这里。
+        const AssetMetadata* getMetadata(const UUID& handle) const;
+        const AssetMetadata* getMetadata(AssetHandle handle) const { return getMetadata(handle.id); }
+        std::string getPath(const UUID& handle) const;
+        std::string getPath(AssetHandle handle) const { return getPath(handle.id); }
+        AssetType getAssetType(const UUID& handle) const;
+        AssetType getAssetType(AssetHandle handle) const { return getAssetType(handle.id); }
 
         // TODO：暂时不使用该函数
         void clearUnusedAssets();
@@ -55,9 +70,12 @@ namespace NexAur {
         AssetManager(const AssetManager&) = delete;
         AssetManager& operator=(const AssetManager&) = delete;
 
+        void recordAssetMetadata(const UUID& handle, AssetType type, const std::string& path, bool runtime_generated = false, const std::string& debug_name = "");
+
     private:
         std::unordered_map<std::string, UUID> m_path_to_uuid; // 防止重复加载: 路径到UUID的映射, 用于资源管理和引用
         std::unordered_map<UUID, std::string> m_uuid_to_path; // UUID到路径的反向映射: 用于资源卸载和调试
+        std::unordered_map<UUID, AssetMetadata> m_uuid_metadata; // 资产元数据，后续用于序列化和资源边界拆分
 
         // ================================== 缓存记录 ==================================
         // 模型管理

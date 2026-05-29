@@ -372,6 +372,8 @@ Scene Serialization 只保存：
 
 ### PR9：重构设计落地前置清理
 
+状态：已完成。执行说明见 `plans/Rebuild/PR9/pr9_asset_handle_metadata_report.md`。
+
 内容：
 
 - 将 `SceneV2`、`ShadowPassV2`、`SkyboxPassV2` 的 V2 后缀列入命名清理计划。

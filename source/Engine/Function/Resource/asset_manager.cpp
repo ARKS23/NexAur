@@ -21,6 +21,7 @@ namespace NexAur {
         m_uuid_shader_cache.clear();
 
         m_uuid_cpu_model_cache.clear();
+        m_uuid_metadata.clear();
         m_uuid_to_path.clear();
         m_path_to_uuid.clear();
 
@@ -42,6 +43,7 @@ namespace NexAur {
 
             // CPU数据缓存
             m_uuid_cpu_model_cache[new_uuid] = model; // UUID到模型的映射
+            recordAssetMetadata(new_uuid, AssetType::Model, path);
 
             // GPU数据生成
             std::shared_ptr<RenderModelData> gpu_model = RenderResourceUploader::uploadModelData(model);
@@ -67,6 +69,7 @@ namespace NexAur {
             m_uuid_to_path[new_uuid] = path;
             
             m_uuid_texture_cache[new_uuid] = texture;
+            recordAssetMetadata(new_uuid, AssetType::Texture2D, path);
 
             return new_uuid;
         }
@@ -88,6 +91,7 @@ namespace NexAur {
             m_uuid_to_path[new_uuid] = path;
             
             m_uuid_texture_cube_cache[new_uuid] = texture_cube;
+            recordAssetMetadata(new_uuid, AssetType::TextureCube, path);
 
             return new_uuid;
         }
@@ -107,6 +111,7 @@ namespace NexAur {
         UUID new_uuid;
         m_path_to_uuid[combined_path] = new_uuid;
         m_uuid_to_path[new_uuid] = combined_path;
+        recordAssetMetadata(new_uuid, AssetType::Shader, combined_path, false, name);
 
         // 未进行合法性检查，后续优化
         std::shared_ptr<Shader> shader = Shader::create(name, vertex_path, fragment_path);
@@ -123,6 +128,7 @@ namespace NexAur {
         
         UUID new_uuid;
         m_uuid_gpu_model_cache[new_uuid] = gpu_model; // 直接放入GPU模型缓存
+        recordAssetMetadata(new_uuid, AssetType::ProceduralModel, "", true, "ProceduralRenderModel");
         return new_uuid;
     }
 
@@ -140,6 +146,7 @@ namespace NexAur {
         m_path_to_uuid[hdr_path] = new_uuid;
         m_uuid_to_path[new_uuid] = hdr_path;
         m_uuid_environment_map_cache[new_uuid] = env_map;
+        recordAssetMetadata(new_uuid, AssetType::EnvironmentMap, hdr_path);
 
         return new_uuid;
     }
@@ -224,6 +231,44 @@ namespace NexAur {
         }
 
         return nullptr;
+    }
+
+    const AssetMetadata* AssetManager::getMetadata(const UUID& handle) const {
+        if (handle == INVALID_UUID) {
+            return nullptr;
+        }
+
+        auto it = m_uuid_metadata.find(handle);
+        if (it != m_uuid_metadata.end()) {
+            return &it->second;
+        }
+
+        return nullptr;
+    }
+
+    std::string AssetManager::getPath(const UUID& handle) const {
+        auto it = m_uuid_to_path.find(handle);
+        if (it != m_uuid_to_path.end()) {
+            return it->second;
+        }
+
+        const AssetMetadata* metadata = getMetadata(handle);
+        return metadata ? metadata->path : "";
+    }
+
+    AssetType AssetManager::getAssetType(const UUID& handle) const {
+        const AssetMetadata* metadata = getMetadata(handle);
+        return metadata ? metadata->type : AssetType::Unknown;
+    }
+
+    void AssetManager::recordAssetMetadata(const UUID& handle, AssetType type, const std::string& path, bool runtime_generated, const std::string& debug_name) {
+        AssetMetadata metadata;
+        metadata.handle = AssetHandle(handle);
+        metadata.type = type;
+        metadata.path = path;
+        metadata.debug_name = debug_name.empty() ? assetTypeToString(type) : debug_name;
+        metadata.runtime_generated = runtime_generated;
+        m_uuid_metadata[handle] = metadata;
     }
 
     void AssetManager::clearUnusedAssets() {
