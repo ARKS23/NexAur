@@ -8,6 +8,8 @@
 #include "Core/UUID.h"
 
 namespace NexAur {
+    struct RendererMaterialData;
+
     class SceneTestClass {
     public:
         SceneTestClass();

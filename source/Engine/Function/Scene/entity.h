@@ -1,6 +1,7 @@
 #pragma once
 #include <entt/entt.hpp>
 #include "Core/Base.h"
+#include "Core/Log/log_system.h"
 #include "scene_v2.h"
 
 namespace NexAur {

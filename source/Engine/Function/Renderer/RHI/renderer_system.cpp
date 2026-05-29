@@ -4,6 +4,7 @@
 #include "renderer_command.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/editor_camera.h"
+#include "Function/Renderer/Resources/render_model_cache.h"
 
 // 工厂函数实现
 namespace NexAur {
@@ -73,6 +74,7 @@ namespace NexAur {
     void RendererSystem::init() {
         // 初始化底层渲染器
         Renderer::init();
+        RenderModelCache::getInstance().init();
         
         RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
 
@@ -98,6 +100,7 @@ namespace NexAur {
     void RendererSystem::shutdown() {
         m_viewport_framebuffer.reset();
         m_forward_pipeline.reset();
+        RenderModelCache::getInstance().shutdown();
 
         // 关闭底层渲染器
         Renderer::shutdown();

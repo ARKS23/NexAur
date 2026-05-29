@@ -388,6 +388,8 @@ Scene Serialization 只保存：
 
 ### PR10：AssetManager 拆出 CPU Asset 职责
 
+状态：已完成。执行说明见 `plans/Rebuild/PR10/pr10_asset_manager_cpu_asset_report.md`。
+
 内容：
 
 - 把 `loadModel` 拆成 `importModelAsset` / `loadModelCPU`。

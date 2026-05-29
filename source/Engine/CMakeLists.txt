@@ -83,6 +83,8 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/data/render_data.h
     Function/Renderer/data/render_uploader.h
     Function/Renderer/data/render_uploader.cpp
+    Function/Renderer/Resources/render_model_cache.h
+    Function/Renderer/Resources/render_model_cache.cpp
     Function/Renderer/Passes/interface_render_pass.h
     Function/Renderer/Passes/interface_render_pass.cpp
     Function/Renderer/Passes/shadow_pass_v2.h

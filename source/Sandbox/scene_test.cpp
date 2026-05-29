@@ -1,6 +1,7 @@
 #include "scene_test.h"
 #include "Function/Scene/scene_manager.h"
 #include "Function/Resource/procedural_model_factory.h"
+#include "Function/Renderer/Resources/render_model_cache.h"
 #include "Function/File/file_system.h"
 
 namespace NexAur {
@@ -14,10 +15,13 @@ namespace NexAur {
 
         setMaterial(sphere_model->meshes[0].material, material_type);
 
-        UUID procedual_id = m_asset_manager.registerRenderModel(sphere_model);
+        AssetHandle procedural_model = RenderModelCache::getInstance().registerProceduralModel(sphere_model, m_asset_manager, name);
+        if (!procedural_model) {
+            return Entity();
+        }
 
         Entity sphere_entity = m_scene->createEntity(name);
-        sphere_entity.addComponent<MeshRendererComponent>(procedual_id);
+        sphere_entity.addComponent<MeshRendererComponent>(procedural_model);
 
         TransformComponent& transform = sphere_entity.getComponent<TransformComponent>();
         transform.translation = position;
@@ -32,10 +36,13 @@ namespace NexAur {
 
         setMaterial(cube_model->meshes[0].material, material_type);
 
-        UUID procedual_id = m_asset_manager.registerRenderModel(cube_model);
+        AssetHandle procedural_model = RenderModelCache::getInstance().registerProceduralModel(cube_model, m_asset_manager, name);
+        if (!procedural_model) {
+            return Entity();
+        }
 
         Entity cube_entity = m_scene->createEntity(name);
-        cube_entity.addComponent<MeshRendererComponent>(procedual_id);
+        cube_entity.addComponent<MeshRendererComponent>(procedural_model);
 
         TransformComponent& transform = cube_entity.getComponent<TransformComponent>();
         transform.translation = position;
@@ -46,14 +53,14 @@ namespace NexAur {
     }
 
     Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
-        UUID model_id = m_asset_manager.loadModel(model_path);
-        if (model_id == INVALID_UUID) {
+        AssetHandle model_asset = m_asset_manager.importModelAsset(model_path);
+        if (!model_asset) {
             NX_CORE_ERROR("Failed to load model: {0}", model_path);
             return Entity();
         }
 
         Entity model_entity = m_scene->createEntity(name);
-        model_entity.addComponent<MeshRendererComponent>(model_id);
+        model_entity.addComponent<MeshRendererComponent>(model_asset);
 
         TransformComponent& transform = model_entity.getComponent<TransformComponent>();
         transform.translation = position;

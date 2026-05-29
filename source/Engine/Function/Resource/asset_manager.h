@@ -5,7 +5,6 @@
 
 #include "Core/Base.h"
 #include "Core/UUID.h"
-#include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/RHI/texture.h"
 #include "Function/Renderer/RHI/shader.h"
 #include "Function/Resource/asset_metadata.h"
@@ -25,15 +24,12 @@ namespace NexAur {
         void init();
         void shutdown();
 
-        // 模型
-        UUID loadModel(const std::string& path); // 加载模型并返回UUID
-        AssetHandle loadModelAsset(const std::string& path) { return AssetHandle(loadModel(path)); }
+        // 模型资产：AssetManager 只负责 CPU 数据和资产身份，GPU 上传交给 Renderer 侧缓存。
+        AssetHandle importModelAsset(const std::string& path);
+        std::shared_ptr<Model> loadModelCPU(AssetHandle handle);
+        UUID loadModel(const std::string& path); // 过渡 API：兼容旧调用，内部等价于 importModelAsset(path).id
+        AssetHandle loadModelAsset(const std::string& path) { return importModelAsset(path); }
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
-        std::shared_ptr<RenderModelData> getRenderModel(const UUID& handle); // 通过UUID获取GPU模型数据
-
-        // 用于测试用的直接放入GPU模型数据
-        UUID registerRenderModel(const std::shared_ptr<RenderModelData>& gpu_model);
-        AssetHandle registerRenderModelAsset(const std::shared_ptr<RenderModelData>& gpu_model) { return AssetHandle(registerRenderModel(gpu_model)); }
 
         // 贴图
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
@@ -61,6 +57,9 @@ namespace NexAur {
         AssetType getAssetType(const UUID& handle) const;
         AssetType getAssetType(AssetHandle handle) const { return getAssetType(handle.id); }
 
+        // 运行期资产只登记身份和元数据，底层 GPU 对象由对应 Renderer 缓存保存。
+        AssetHandle registerRuntimeAsset(AssetType type, const std::string& debug_name = "");
+
         // TODO：暂时不使用该函数
         void clearUnusedAssets();
 
@@ -80,7 +79,6 @@ namespace NexAur {
         // ================================== 缓存记录 ==================================
         // 模型管理
         std::unordered_map<UUID, std::shared_ptr<Model>> m_uuid_cpu_model_cache;
-        std::unordered_map<UUID, std::shared_ptr<RenderModelData>> m_uuid_gpu_model_cache;
 
         // 材质管理
         std::unordered_map<UUID, std::shared_ptr<Texture2D>> m_uuid_texture_cache;

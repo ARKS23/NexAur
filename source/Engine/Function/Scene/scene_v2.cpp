@@ -5,6 +5,7 @@
 #include "Function/Global/global_context.h"
 #include "Function/File/file_system.h"
 #include "Function/Renderer/data/render_data.h"
+#include "Function/Renderer/Resources/render_model_cache.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/ibl_builder.h"
 
@@ -84,6 +85,7 @@ namespace NexAur {
         render_packet->clear();
 
         AssetManager& asset_manager = AssetManager::getInstance();
+        RenderModelCache& render_model_cache = RenderModelCache::getInstance();
 
         // 摄像机数据
         auto view_camera = m_Registry.view<CameraComponent>();
@@ -146,7 +148,7 @@ namespace NexAur {
             if (!model_handle) return;
 
             // 获取数据并防御性判断
-            auto gpu_model = asset_manager.getRenderModel(model_handle.id);
+            auto gpu_model = render_model_cache.getOrCreateModel(model_handle, asset_manager);
             if (!gpu_model) return; 
 
             RenderObjectData object_data;
