@@ -421,6 +421,8 @@ Scene Serialization 只保存：
 
 ### PR12：EnvironmentMap / IBLBuilder 移入 Renderer
 
+状态：已完成。执行说明见 `plans/Rebuild/PR12/pr12_environment_ibl_renderer_report.md`。
+
 内容：
 
 - `IBLBuilder` 从 `Resource` 移到 `Renderer/Resources` 或 `Renderer/IBL`。

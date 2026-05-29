@@ -4,6 +4,7 @@
 #include "renderer_command.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/editor_camera.h"
+#include "Function/Renderer/Resources/render_ibl_builder.h"
 #include "Function/Renderer/Resources/render_resource_cache.h"
 #include "Function/Resource/asset_manager.h"
 
@@ -108,6 +109,9 @@ namespace NexAur {
     }
 
     void RendererSystem::tick(TimeStep ts, const RenderDataPacket& render_data) {
+        // 先解析资源，再绑定本帧目标；环境光 IBL 首次烘焙会使用临时 FBO。
+        ResolvedRenderDataPacket resolved_render_data = resolveRenderData(render_data);
+
         if (m_viewport_framebuffer) {
             m_viewport_framebuffer->bind();
             RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
@@ -115,8 +119,6 @@ namespace NexAur {
             m_viewport_framebuffer->clearAttachment(1, -1); // ID附件清除为-1，表示没有选中任何物体
         }
 
-        // Scene 数据只携带资产句柄，渲染前在 Renderer 侧解析为 GPU 数据。
-        ResolvedRenderDataPacket resolved_render_data = resolveRenderData(render_data);
         m_forward_pipeline->render(resolved_render_data);
 
         if (m_viewport_framebuffer) {
@@ -129,10 +131,21 @@ namespace NexAur {
         resolved_data.camera_data = render_data.camera_data;
         resolved_data.directional_light_data = render_data.directional_light_data;
         resolved_data.point_lights_data = render_data.point_lights_data;
-        resolved_data.environment_data = render_data.environment_data;
+        resolved_data.environment_data.intensity = render_data.environment_data.intensity;
 
         AssetManager& asset_manager = AssetManager::getInstance();
         RenderResourceCache& resource_cache = RenderResourceCache::getInstance();
+
+        if (render_data.environment_data.environment_asset) {
+            std::shared_ptr<RenderEnvironmentMap> environment_map =
+                resource_cache.getOrCreateEnvironmentMap(render_data.environment_data.environment_asset, asset_manager);
+            if (environment_map) {
+                resolved_data.environment_data.skybox_texture = environment_map->skybox_texture;
+                resolved_data.environment_data.irradiance_map = environment_map->irradiance_map;
+                resolved_data.environment_data.prefilter_map = environment_map->prefilter_map;
+                resolved_data.environment_data.brdf_lut_map = environment_map->brdf_lut_map;
+            }
+        }
 
         auto resolve_objects = [&](const std::vector<RenderObjectData>& source_objects, std::vector<ResolvedRenderObjectData>& target_objects) {
             target_objects.reserve(source_objects.size());

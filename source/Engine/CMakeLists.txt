@@ -55,8 +55,6 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
     Function/Resource/asset_metadata.h
-    Function/Resource/ibl_builder.h
-    Function/Resource/ibl_builder.cpp
     Function/Resource/mesh.h
     Function/Resource/model.h
     Function/Resource/model.cpp
@@ -81,6 +79,8 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/window_system.cpp
     Function/Renderer/data/render_context.h
     Function/Renderer/data/render_data.h
+    Function/Renderer/Resources/render_ibl_builder.h
+    Function/Renderer/Resources/render_ibl_builder.cpp
     Function/Renderer/Resources/render_resource_cache.h
     Function/Renderer/Resources/render_resource_cache.cpp
     Function/Renderer/Resources/render_resource_uploader.h

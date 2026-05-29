@@ -10,6 +10,7 @@
 namespace NexAur {
     class AssetManager;
     class Texture2D;
+    struct RenderEnvironmentMap;
 
     // Renderer 侧资源缓存：负责把资产句柄解析为 GPU 可用的数据。
     class NEXAUR_API RenderResourceCache {
@@ -23,6 +24,8 @@ namespace NexAur {
         std::shared_ptr<RenderModelData> getModel(AssetHandle model_asset) const;
         std::shared_ptr<Texture2D> getOrCreateTexture2D(AssetHandle texture_asset, AssetManager& asset_manager);
         std::shared_ptr<Texture2D> getTexture2D(AssetHandle texture_asset) const;
+        std::shared_ptr<RenderEnvironmentMap> getOrCreateEnvironmentMap(AssetHandle environment_asset, AssetManager& asset_manager);
+        std::shared_ptr<RenderEnvironmentMap> getEnvironmentMap(AssetHandle environment_asset) const;
 
         AssetHandle registerProceduralModel(
             const std::shared_ptr<RenderModelData>& gpu_model,

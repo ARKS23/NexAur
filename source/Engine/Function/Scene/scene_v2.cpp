@@ -6,7 +6,6 @@
 #include "Function/File/file_system.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
-#include "Function/Resource/ibl_builder.h"
 
 #include "Function/Renderer/editor_camera.h" // 测试用
 
@@ -27,9 +26,9 @@ namespace NexAur {
 
         // 环境光
         Entity env_entity = createEntity("Environment");
-        UUID env_map_id = asset_manager.loadEnvironmentMap(NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr"));
-        if (env_map_id != INVALID_UUID) {
-            env_entity.addComponent<EnvironmentComponent>(env_map_id);
+        AssetHandle env_map_asset = asset_manager.importEnvironmentMapAsset(NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr"));
+        if (env_map_asset) {
+            env_entity.addComponent<EnvironmentComponent>(env_map_asset);
             env_entity.getComponent<EnvironmentComponent>().intensity = 1.0f;
         }
 
@@ -83,8 +82,6 @@ namespace NexAur {
     void SceneV2::extractSceneData(RenderDataPacket* render_packet) {
         render_packet->clear();
 
-        AssetManager& asset_manager = AssetManager::getInstance();
-
         // 摄像机数据
         auto view_camera = m_Registry.view<CameraComponent>();
         for (auto entity : view_camera) {
@@ -128,14 +125,9 @@ namespace NexAur {
             AssetHandle environment_handle = env_comp.getEnvironmentHandle();
             if (!environment_handle) break;
 
-            std::shared_ptr<EnvironmentMap> env_map = asset_manager.getEnvironmentMap(environment_handle.id);
-            if (env_map) {
-                render_packet->environment_data.skybox_texture = env_map->skybox_texture;
-                render_packet->environment_data.irradiance_map = env_map->irradiance_map;
-                render_packet->environment_data.prefilter_map = env_map->prefilter_map;
-                render_packet->environment_data.brdf_lut_map = env_map->brdf_lut_map;
-                render_packet->environment_data.intensity = env_comp.intensity;
-            }
+            // Scene 只输出 HDR 环境资产引用，IBL GPU 数据由 RendererSystem 解析。
+            render_packet->environment_data.environment_asset = environment_handle;
+            render_packet->environment_data.intensity = env_comp.intensity;
             break;
         }
 

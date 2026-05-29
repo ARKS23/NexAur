@@ -6,12 +6,14 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/model.h"
 #include "Function/Renderer/RHI/texture.h"
+#include "Function/Renderer/Resources/render_ibl_builder.h"
 #include "Function/Renderer/Resources/render_resource_uploader.h"
 
 namespace NexAur {
     namespace {
         using RenderModelMap = std::unordered_map<AssetHandle, std::shared_ptr<RenderModelData>>;
         using RenderTexture2DMap = std::unordered_map<AssetHandle, std::shared_ptr<Texture2D>>;
+        using RenderEnvironmentMapCache = std::unordered_map<AssetHandle, std::shared_ptr<RenderEnvironmentMap>>;
 
         RenderModelMap& getRenderModelMap() {
             static RenderModelMap cache;
@@ -20,6 +22,11 @@ namespace NexAur {
 
         RenderTexture2DMap& getRenderTexture2DMap() {
             static RenderTexture2DMap cache;
+            return cache;
+        }
+
+        RenderEnvironmentMapCache& getRenderEnvironmentMapCache() {
+            static RenderEnvironmentMapCache cache;
             return cache;
         }
     } // namespace
@@ -34,8 +41,10 @@ namespace NexAur {
     }
 
     void RenderResourceCache::shutdown() {
+        getRenderEnvironmentMapCache().clear();
         getRenderTexture2DMap().clear();
         getRenderModelMap().clear();
+        RenderIBLBuilder::shutdown();
         NX_CORE_INFO("RenderResourceCache Shutdown.");
     }
 
@@ -123,6 +132,49 @@ namespace NexAur {
         const RenderTexture2DMap& texture_cache = getRenderTexture2DMap();
         auto cached_it = texture_cache.find(texture_asset);
         return cached_it != texture_cache.end() ? cached_it->second : nullptr;
+    }
+
+    std::shared_ptr<RenderEnvironmentMap> RenderResourceCache::getOrCreateEnvironmentMap(AssetHandle environment_asset, AssetManager& asset_manager) {
+        if (!environment_asset) {
+            return nullptr;
+        }
+
+        RenderEnvironmentMapCache& environment_cache = getRenderEnvironmentMapCache();
+        auto cached_it = environment_cache.find(environment_asset);
+        if (cached_it != environment_cache.end()) {
+            return cached_it->second;
+        }
+
+        if (asset_manager.getAssetType(environment_asset) != AssetType::EnvironmentMap) {
+            NX_CORE_WARN("AssetHandle is not an EnvironmentMap asset: {}", static_cast<uint64_t>(environment_asset.id));
+            return nullptr;
+        }
+
+        const std::string hdr_path = asset_manager.getPath(environment_asset);
+        if (hdr_path.empty()) {
+            NX_CORE_WARN("EnvironmentMap asset has empty path: {}", static_cast<uint64_t>(environment_asset.id));
+            return nullptr;
+        }
+
+        // HDR -> skybox/irradiance/prefilter/BRDF LUT 的 GPU 烘焙属于 Renderer 侧职责。
+        std::shared_ptr<RenderEnvironmentMap> environment_map = RenderIBLBuilder::bakeFromHDR(hdr_path);
+        if (!environment_map) {
+            NX_CORE_ERROR("Failed to bake environment map: {}", hdr_path);
+            return nullptr;
+        }
+
+        environment_cache[environment_asset] = environment_map;
+        return environment_map;
+    }
+
+    std::shared_ptr<RenderEnvironmentMap> RenderResourceCache::getEnvironmentMap(AssetHandle environment_asset) const {
+        if (!environment_asset) {
+            return nullptr;
+        }
+
+        const RenderEnvironmentMapCache& environment_cache = getRenderEnvironmentMapCache();
+        auto cached_it = environment_cache.find(environment_asset);
+        return cached_it != environment_cache.end() ? cached_it->second : nullptr;
     }
 
     AssetHandle RenderResourceCache::registerProceduralModel(

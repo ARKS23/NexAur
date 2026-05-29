@@ -5,16 +5,16 @@ namespace NexAur {
     class TextureCubeMap;
     class Texture2D;
 
-    struct EnvironmentMap {
+    struct RenderEnvironmentMap {
         std::shared_ptr<TextureCubeMap> skybox_texture;
         std::shared_ptr<TextureCubeMap> irradiance_map;
         std::shared_ptr<TextureCubeMap> prefilter_map;
         std::shared_ptr<Texture2D> brdf_lut_map;
     };
 
-    class NEXAUR_API IBLBuilder {
+    class NEXAUR_API RenderIBLBuilder {
     public:
-        static std::shared_ptr<EnvironmentMap> bakeIBLFromHDR(const std::string& hdr_path);
+        static std::shared_ptr<RenderEnvironmentMap> bakeFromHDR(const std::string& hdr_path);
         static void shutdown();
 
     private:

@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "asset_manager.h"
 #include "Function/Resource/model.h"
-#include "Function/Resource/ibl_builder.h"
 
 
 namespace NexAur {
@@ -11,9 +10,6 @@ namespace NexAur {
     }
 
     void AssetManager::shutdown() {
-        m_uuid_environment_map_cache.clear();
-        IBLBuilder::shutdown();
-
         m_uuid_texture_cube_cache.clear();
         m_uuid_texture_cache.clear();
         m_uuid_shader_cache.clear();
@@ -147,23 +143,27 @@ namespace NexAur {
         return new_uuid;
     }
 
-    UUID AssetManager::loadEnvironmentMap(const std::string& hdr_path) {
-        if (m_path_to_uuid.find(hdr_path) != m_path_to_uuid.end()) 
-            return m_path_to_uuid[hdr_path];
+    AssetHandle AssetManager::importEnvironmentMapAsset(const std::string& hdr_path) {
+        if (hdr_path.empty()) {
+            return AssetHandle();
+        }
 
-        std::shared_ptr<EnvironmentMap> env_map = IBLBuilder::bakeIBLFromHDR(hdr_path);
-        if (!env_map) {
-            NX_CORE_ERROR("Failed to load environment map: {}", hdr_path);
-            return INVALID_UUID;
+        auto loaded_it = m_path_to_uuid.find(hdr_path);
+        if (loaded_it != m_path_to_uuid.end()) {
+            return AssetHandle(loaded_it->second);
         }
 
         UUID new_uuid;
         m_path_to_uuid[hdr_path] = new_uuid;
         m_uuid_to_path[new_uuid] = hdr_path;
-        m_uuid_environment_map_cache[new_uuid] = env_map;
         recordAssetMetadata(new_uuid, AssetType::EnvironmentMap, hdr_path);
 
-        return new_uuid;
+        return AssetHandle(new_uuid);
+    }
+
+    UUID AssetManager::loadEnvironmentMap(const std::string& hdr_path) {
+        // 过渡 API：旧代码仍可拿 UUID，但不会再触发 IBL GPU 烘焙。
+        return importEnvironmentMapAsset(hdr_path).id;
     }
 
     std::shared_ptr<Model> AssetManager::getModel(const UUID& handle) {
@@ -221,18 +221,6 @@ namespace NexAur {
         if (it != m_uuid_texture_cube_cache.end()) {
             return it->second;
         }
-
-        return nullptr;
-    }
-
-    std::shared_ptr<EnvironmentMap> AssetManager::getEnvironmentMap(const UUID& handle) {
-        if (handle == INVALID_UUID) {
-            NX_CORE_WARN("Attempted to get EnvironmentMap with invalid UUID.");
-            return nullptr;
-        }
-
-        if (m_uuid_environment_map_cache.find(handle) != m_uuid_environment_map_cache.end())
-            return m_uuid_environment_map_cache[handle];
 
         return nullptr;
     }

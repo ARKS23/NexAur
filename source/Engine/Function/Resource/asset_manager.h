@@ -11,7 +11,6 @@
 
 namespace NexAur {
     class Model;
-    struct EnvironmentMap;
 
     class NEXAUR_API AssetManager {
     public:
@@ -45,10 +44,10 @@ namespace NexAur {
         AssetHandle loadShaderAsset(const std::string name, const std::string& vertex_path, const std::string& fragment_path) { return AssetHandle(loadShader(name, vertex_path, fragment_path)); }
         std::shared_ptr<Shader> getShader(const UUID& handle); // 通过UUID获取着色器
 
-        // 环境光照
-        UUID loadEnvironmentMap(const std::string& hdr_path); // 加载环境光照并返回UUID
-        AssetHandle loadEnvironmentMapAsset(const std::string& hdr_path) { return AssetHandle(loadEnvironmentMap(hdr_path)); }
-        std::shared_ptr<EnvironmentMap> getEnvironmentMap(const UUID& handle); // 通过UUID获取环境光照
+        // 环境 HDR 资产：Resource 只登记 HDR 身份，IBL 烘焙由 RenderResourceCache 负责。
+        AssetHandle importEnvironmentMapAsset(const std::string& hdr_path);
+        UUID loadEnvironmentMap(const std::string& hdr_path); // 过渡 API：兼容旧调用，内部等价于 importEnvironmentMapAsset(hdr_path).id
+        AssetHandle loadEnvironmentMapAsset(const std::string& hdr_path) { return importEnvironmentMapAsset(hdr_path); }
 
         // 资产元数据查询，后续场景序列化和 Resource/Renderer 解耦会依赖这里。
         const AssetMetadata* getMetadata(const UUID& handle) const;
@@ -87,8 +86,5 @@ namespace NexAur {
 
         // 着色器管理
         std::unordered_map<UUID, std::shared_ptr<Shader>> m_uuid_shader_cache;
-
-        // 环境光照缓存
-        std::unordered_map<UUID, std::shared_ptr<EnvironmentMap>> m_uuid_environment_map_cache;
     };
 } // namespace NexAur

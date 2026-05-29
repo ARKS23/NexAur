@@ -1,5 +1,5 @@
-#include "pch.h"
-#include "ibl_builder.h"
+﻿#include "pch.h"
+#include "render_ibl_builder.h"
 #include "Function/Global/global_context.h"
 #include "Function/File/file_system.h"
 #include "Function/Renderer/window_system.h"
@@ -109,16 +109,22 @@ namespace NexAur {
         glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))  // Back
     };
 
-    std::shared_ptr<Texture2D> IBLBuilder::s_brdf_lut_map = nullptr;
+    std::shared_ptr<Texture2D> RenderIBLBuilder::s_brdf_lut_map = nullptr;
 
-    void IBLBuilder::shutdown() {
+    void RenderIBLBuilder::shutdown() {
         s_brdf_lut_map.reset();
     }
 
-    std::shared_ptr<EnvironmentMap> IBLBuilder::bakeIBLFromHDR(const std::string& hdr_path) {
-        std::shared_ptr<EnvironmentMap> env_map = std::make_shared<EnvironmentMap>();
+    std::shared_ptr<RenderEnvironmentMap> RenderIBLBuilder::bakeFromHDR(const std::string& hdr_path) {
+        std::shared_ptr<RenderEnvironmentMap> env_map = std::make_shared<RenderEnvironmentMap>();
 
-        std::shared_ptr<Texture2D> hdr_texture = RendererFactory::createTexture2D(NX_ASSET(hdr_path));
+        // hdr_path 已由 AssetManager 记录为真实资源路径，这里直接交给 Renderer 创建 HDR 纹理。
+        std::shared_ptr<Texture2D> hdr_texture = RendererFactory::createTexture2D(hdr_path);
+        if (!hdr_texture || !hdr_texture->isLoaded()) {
+            NX_CORE_ERROR("Failed to load HDR texture for IBL: {}", hdr_path);
+            return nullptr;
+        }
+
         env_map->skybox_texture = generateSkybox(hdr_texture);
         env_map->irradiance_map = generateIrradianceMap(env_map->skybox_texture);
         env_map->prefilter_map = generatePrefilterMap(env_map->skybox_texture);
@@ -131,7 +137,7 @@ namespace NexAur {
         return env_map;
     }
 
-    std::shared_ptr<TextureCubeMap> IBLBuilder::generateSkybox(std::shared_ptr<Texture2D> hdr_texture) {
+    std::shared_ptr<TextureCubeMap> RenderIBLBuilder::generateSkybox(std::shared_ptr<Texture2D> hdr_texture) {
         // 天空盒着色器
         std::shared_ptr<Shader> equi_to_cube_shader = RendererFactory::createShaderByPaths("equiToCube", 
                         NX_ASSET("assets/shaders/pbr/equirectangular_to_cubemap.vs"), 
@@ -178,7 +184,7 @@ namespace NexAur {
         return skybox_texture;
     }
 
-    std::shared_ptr<TextureCubeMap> IBLBuilder::generateIrradianceMap(std::shared_ptr<TextureCubeMap> skybox_texture) {
+    std::shared_ptr<TextureCubeMap> RenderIBLBuilder::generateIrradianceMap(std::shared_ptr<TextureCubeMap> skybox_texture) {
         TextureSpecification irradiance_spec;
         irradiance_spec.width = 32;
         irradiance_spec.height = 32;
@@ -220,7 +226,7 @@ namespace NexAur {
         return irradiance_map;
     }
 
-    std::shared_ptr<TextureCubeMap> IBLBuilder::generatePrefilterMap(std::shared_ptr<TextureCubeMap> skybox_texture) {
+    std::shared_ptr<TextureCubeMap> RenderIBLBuilder::generatePrefilterMap(std::shared_ptr<TextureCubeMap> skybox_texture) {
         TextureSpecification prefilter_spec;
         prefilter_spec.width = 128; 
         prefilter_spec.height = 128;
@@ -275,7 +281,7 @@ namespace NexAur {
         return prefilter_map;
     }
 
-    std::shared_ptr<Texture2D> IBLBuilder::generateBRDFLUT() {
+    std::shared_ptr<Texture2D> RenderIBLBuilder::generateBRDFLUT() {
         FramebufferSpecification brdf_spec;
         brdf_spec.width = 512;
         brdf_spec.height = 512;

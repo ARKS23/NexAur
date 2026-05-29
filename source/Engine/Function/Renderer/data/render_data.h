@@ -30,6 +30,11 @@ namespace NexAur {
     };
 
     struct RendererEnvironmentData {
+        AssetHandle environment_asset;
+        float intensity = 1.0f;
+    };
+
+    struct ResolvedRendererEnvironmentData {
         std::shared_ptr<TextureCubeMap> skybox_texture = nullptr;
         std::shared_ptr<TextureCubeMap> irradiance_map = nullptr;
         std::shared_ptr<TextureCubeMap> prefilter_map = nullptr;
@@ -89,6 +94,7 @@ namespace NexAur {
         std::vector<RenderObjectData> transparent_objects; // 透明物体
 
         void clear() {
+            environment_data = RendererEnvironmentData();
             point_lights_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
@@ -101,12 +107,13 @@ namespace NexAur {
         RendererDirectionalLightData directional_light_data;
         std::vector<RendererPointLightData> point_lights_data;
 
-        RendererEnvironmentData environment_data;
+        ResolvedRendererEnvironmentData environment_data;
 
         std::vector<ResolvedRenderObjectData> opaque_objects;   // 已解析的不透明物体
         std::vector<ResolvedRenderObjectData> transparent_objects; // 已解析的透明物体
 
         void clear() {
+            environment_data = ResolvedRendererEnvironmentData();
             point_lights_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
