@@ -16,12 +16,12 @@ namespace NexAur {
         glm::mat4 getLightSpaceMatrix() const { return m_light_space_matrix; }
         std::shared_ptr<Texture2D> getDepthMapTexture() const {return m_depth_texture;};
 
-        virtual void run_without_begin_end(const RenderDataPacket& render_data) override;
+        virtual void run_without_begin_end(const ResolvedRenderDataPacket& render_data) override;
 
     private:
         void initResources();
 
-        virtual void execute(const RenderDataPacket& render_data) override {} // 不走默认管线流程，单独调用run_without_begin_end
+        virtual void execute(const ResolvedRenderDataPacket& render_data) override {} // 不走默认管线流程，单独调用run_without_begin_end
 
     private:
         std::shared_ptr<Shader> m_shader;

@@ -4,7 +4,8 @@
 #include "renderer_command.h"
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/editor_camera.h"
-#include "Function/Renderer/Resources/render_model_cache.h"
+#include "Function/Renderer/Resources/render_resource_cache.h"
+#include "Function/Resource/asset_manager.h"
 
 // 工厂函数实现
 namespace NexAur {
@@ -74,7 +75,7 @@ namespace NexAur {
     void RendererSystem::init() {
         // 初始化底层渲染器
         Renderer::init();
-        RenderModelCache::getInstance().init();
+        RenderResourceCache::getInstance().init();
         
         RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
 
@@ -100,7 +101,7 @@ namespace NexAur {
     void RendererSystem::shutdown() {
         m_viewport_framebuffer.reset();
         m_forward_pipeline.reset();
-        RenderModelCache::getInstance().shutdown();
+        RenderResourceCache::getInstance().shutdown();
 
         // 关闭底层渲染器
         Renderer::shutdown();
@@ -114,12 +115,49 @@ namespace NexAur {
             m_viewport_framebuffer->clearAttachment(1, -1); // ID附件清除为-1，表示没有选中任何物体
         }
 
-        // 场景渲染v2
-        m_forward_pipeline->render(render_data);
+        // Scene 数据只携带资产句柄，渲染前在 Renderer 侧解析为 GPU 数据。
+        ResolvedRenderDataPacket resolved_render_data = resolveRenderData(render_data);
+        m_forward_pipeline->render(resolved_render_data);
 
         if (m_viewport_framebuffer) {
             m_viewport_framebuffer->unbind();
         }
+    }
+
+    ResolvedRenderDataPacket RendererSystem::resolveRenderData(const RenderDataPacket& render_data) {
+        ResolvedRenderDataPacket resolved_data;
+        resolved_data.camera_data = render_data.camera_data;
+        resolved_data.directional_light_data = render_data.directional_light_data;
+        resolved_data.point_lights_data = render_data.point_lights_data;
+        resolved_data.environment_data = render_data.environment_data;
+
+        AssetManager& asset_manager = AssetManager::getInstance();
+        RenderResourceCache& resource_cache = RenderResourceCache::getInstance();
+
+        auto resolve_objects = [&](const std::vector<RenderObjectData>& source_objects, std::vector<ResolvedRenderObjectData>& target_objects) {
+            target_objects.reserve(source_objects.size());
+            for (const RenderObjectData& object : source_objects) {
+                if (!object.model_asset) {
+                    continue;
+                }
+
+                std::shared_ptr<RenderModelData> gpu_model = resource_cache.getOrCreateModel(object.model_asset, asset_manager);
+                if (!gpu_model) {
+                    continue;
+                }
+
+                ResolvedRenderObjectData resolved_object;
+                resolved_object.model_data = gpu_model;
+                resolved_object.transform = object.transform;
+                resolved_object.entity_id = object.entity_id;
+                target_objects.push_back(resolved_object);
+            }
+        };
+
+        resolve_objects(render_data.opaque_objects, resolved_data.opaque_objects);
+        resolve_objects(render_data.transparent_objects, resolved_data.transparent_objects);
+
+        return resolved_data;
     }
 
     void RendererSystem::onEvent(Event& e) {

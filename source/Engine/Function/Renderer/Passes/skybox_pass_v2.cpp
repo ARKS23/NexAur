@@ -6,7 +6,7 @@
 #include "Function/File/file_system.h"
 
 namespace NexAur {
-    void SkyboxPassV2::execute(const RenderDataPacket& render_data) {
+    void SkyboxPassV2::execute(const ResolvedRenderDataPacket& render_data) {
         glm::mat4 view = glm::mat4(glm::mat3(render_data.camera_data.view_matrix)); // 去除平移部分
         glm::mat4 projection = render_data.camera_data.projection_matrix;
         glm::mat4 vp = projection * view;

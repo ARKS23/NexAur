@@ -31,9 +31,10 @@ namespace NexAur {
         AssetHandle loadModelAsset(const std::string& path) { return importModelAsset(path); }
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
 
-        // 贴图
+        // 贴图资产：importTextureAsset 只登记身份，GPU Texture2D 优先交给 RenderResourceCache 创建。
+        AssetHandle importTextureAsset(const std::string& path);
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
-        AssetHandle loadTextureAsset(const std::string& path) { return AssetHandle(loadTexture(path)); }
+        AssetHandle loadTextureAsset(const std::string& path) { return importTextureAsset(path); }
         std::shared_ptr<Texture2D> getTexture(const UUID& handle); // 通过UUID获取贴图
         UUID loadTextureCube(const std::string& path); 
         AssetHandle loadTextureCubeAsset(const std::string& path) { return AssetHandle(loadTextureCube(path)); }

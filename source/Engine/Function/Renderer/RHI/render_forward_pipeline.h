@@ -12,7 +12,7 @@ namespace NexAur {
     public:
         virtual void init() override;
 
-        virtual void render(const RenderDataPacket& render_data) override;
+        virtual void render(const ResolvedRenderDataPacket& render_data) override;
         //virtual void onWindowResize(uint32_t width, uint32_t height) override;
 
     private:

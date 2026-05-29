@@ -73,6 +73,7 @@ namespace NexAur {
         std::shared_ptr<Framebuffer> getViewportFramebuffer() const { return m_viewport_framebuffer; }
 
     private:
+        ResolvedRenderDataPacket resolveRenderData(const RenderDataPacket& render_data);
         void onWindowResize(WindowResizeEvent& e);
 
     private:

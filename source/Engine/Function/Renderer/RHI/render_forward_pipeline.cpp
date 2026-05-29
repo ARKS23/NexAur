@@ -31,7 +31,7 @@ namespace NexAur {
         m_shadow_pass_v2 = std::make_shared<ShadowPassV2>(shadowSpecV2);
     }
 
-    void RenderForwardPipeline::render(const RenderDataPacket& render_data) {
+    void RenderForwardPipeline::render(const ResolvedRenderDataPacket& render_data) {
         RendererCommand::clear(ClearBufferFlag::Depth | ClearBufferFlag::Color);
 
         // shadow pass
@@ -106,7 +106,7 @@ namespace NexAur {
         }
         
         // 绘制不透明物体
-        for (const RenderObjectData& obj : render_data.opaque_objects) {
+        for (const ResolvedRenderObjectData& obj : render_data.opaque_objects) {
             if (!obj.model_data) continue;
             // 设置模型矩阵
             m_pbr_shader->setMat4("u_Transform", obj.transform);

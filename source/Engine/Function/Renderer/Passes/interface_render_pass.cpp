@@ -6,7 +6,7 @@
 #include "Function/Renderer/RHI/renderer_system.h"
 
 namespace NexAur {
-    void IRenderPass::run(const RenderDataPacket& render_data) {
+    void IRenderPass::run(const ResolvedRenderDataPacket& render_data) {
         begin();
         execute(render_data);
         end();

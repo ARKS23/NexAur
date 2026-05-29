@@ -30,7 +30,7 @@ namespace NexAur {
         m_depth_texture = RendererFactory::createTexture2D(depth_texture_id, SHADOW_WIDTH, SHADOW_HEIGHT);
     }
 
-    void ShadowPassV2::run_without_begin_end(const RenderDataPacket& render_data) {
+    void ShadowPassV2::run_without_begin_end(const ResolvedRenderDataPacket& render_data) {
         glm::vec3 dir_light_direction = render_data.directional_light_data.direction;
         // if (glm::length(dir_light_direction) < 0.001f) 
         //     dir_light_direction = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -51,7 +51,7 @@ namespace NexAur {
         // shadow_map绘制场景物体阴影贴图
         m_shader->bind();
         m_shader->setMat4("u_LightSpaceMatrix", m_light_space_matrix);
-        for (const RenderObjectData &object : render_data.opaque_objects) {
+        for (const ResolvedRenderObjectData &object : render_data.opaque_objects) {
             if (!object.model_data) continue;   // 安全性检查
             m_shader->setMat4("u_Model", object.transform);
             for (const RenderMeshData &mesh : object.model_data->meshes) {

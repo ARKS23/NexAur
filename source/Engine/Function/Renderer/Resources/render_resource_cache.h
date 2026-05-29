@@ -9,17 +9,20 @@
 
 namespace NexAur {
     class AssetManager;
+    class Texture2D;
 
-    // PR10 过渡缓存：先由 Renderer 接管模型 GPU 数据，PR11 再扩展为统一 RenderResourceCache。
-    class NEXAUR_API RenderModelCache {
+    // Renderer 侧资源缓存：负责把资产句柄解析为 GPU 可用的数据。
+    class NEXAUR_API RenderResourceCache {
     public:
-        static RenderModelCache& getInstance();
+        static RenderResourceCache& getInstance();
 
         void init();
         void shutdown();
 
         std::shared_ptr<RenderModelData> getOrCreateModel(AssetHandle model_asset, AssetManager& asset_manager);
         std::shared_ptr<RenderModelData> getModel(AssetHandle model_asset) const;
+        std::shared_ptr<Texture2D> getOrCreateTexture2D(AssetHandle texture_asset, AssetManager& asset_manager);
+        std::shared_ptr<Texture2D> getTexture2D(AssetHandle texture_asset) const;
 
         AssetHandle registerProceduralModel(
             const std::shared_ptr<RenderModelData>& gpu_model,
@@ -27,10 +30,9 @@ namespace NexAur {
             const std::string& debug_name = "ProceduralRenderModel");
 
     private:
-        RenderModelCache() = default;
-        ~RenderModelCache() = default;
-        RenderModelCache(const RenderModelCache&) = delete;
-        RenderModelCache& operator=(const RenderModelCache&) = delete;
-
+        RenderResourceCache() = default;
+        ~RenderResourceCache() = default;
+        RenderResourceCache(const RenderResourceCache&) = delete;
+        RenderResourceCache& operator=(const RenderResourceCache&) = delete;
     };
 } // namespace NexAur

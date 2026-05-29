@@ -1,7 +1,7 @@
 #include "scene_test.h"
 #include "Function/Scene/scene_manager.h"
 #include "Function/Resource/procedural_model_factory.h"
-#include "Function/Renderer/Resources/render_model_cache.h"
+#include "Function/Renderer/Resources/render_resource_cache.h"
 #include "Function/File/file_system.h"
 
 namespace NexAur {
@@ -15,7 +15,7 @@ namespace NexAur {
 
         setMaterial(sphere_model->meshes[0].material, material_type);
 
-        AssetHandle procedural_model = RenderModelCache::getInstance().registerProceduralModel(sphere_model, m_asset_manager, name);
+        AssetHandle procedural_model = RenderResourceCache::getInstance().registerProceduralModel(sphere_model, m_asset_manager, name);
         if (!procedural_model) {
             return Entity();
         }
@@ -36,7 +36,7 @@ namespace NexAur {
 
         setMaterial(cube_model->meshes[0].material, material_type);
 
-        AssetHandle procedural_model = RenderModelCache::getInstance().registerProceduralModel(cube_model, m_asset_manager, name);
+        AssetHandle procedural_model = RenderResourceCache::getInstance().registerProceduralModel(cube_model, m_asset_manager, name);
         if (!procedural_model) {
             return Entity();
         }
@@ -69,11 +69,22 @@ namespace NexAur {
     }
 
     void SceneTestClass::setMaterial(RendererMaterialData& material_data, const std::string& material_type) {
-        material_data.albedo_map = m_asset_manager.getTexture(m_asset_manager.loadTexture(NX_ASSET("assets/textures/PBR/" + material_type + "/albedo.png")));
-        material_data.metallic_map = m_asset_manager.getTexture(m_asset_manager.loadTexture(NX_ASSET("assets/textures/PBR/" + material_type + "/metallic.png")));
-        material_data.roughness_map = m_asset_manager.getTexture(m_asset_manager.loadTexture(NX_ASSET("assets/textures/PBR/" + material_type + "/roughness.png")));
-        material_data.ao_map = m_asset_manager.getTexture(m_asset_manager.loadTexture(NX_ASSET("assets/textures/PBR/" + material_type + "/ao.png")));
-        material_data.normal_map = m_asset_manager.getTexture(m_asset_manager.loadTexture(NX_ASSET("assets/textures/PBR/" + material_type + "/normal.png")));
+        RenderResourceCache& resource_cache = RenderResourceCache::getInstance();
+        auto resolve_texture = [&](const std::string& texture_path) {
+            AssetHandle texture_asset = m_asset_manager.importTextureAsset(texture_path);
+            if (!texture_asset) {
+                return std::shared_ptr<Texture2D>();
+            }
+
+            return resource_cache.getOrCreateTexture2D(texture_asset, m_asset_manager);
+        };
+
+        // Sandbox 的过程模型也走 Renderer 资源缓存，避免示例代码绕回 AssetManager 创建 GPU 贴图。
+        material_data.albedo_map = resolve_texture(NX_ASSET("assets/textures/PBR/" + material_type + "/albedo.png"));
+        material_data.metallic_map = resolve_texture(NX_ASSET("assets/textures/PBR/" + material_type + "/metallic.png"));
+        material_data.roughness_map = resolve_texture(NX_ASSET("assets/textures/PBR/" + material_type + "/roughness.png"));
+        material_data.ao_map = resolve_texture(NX_ASSET("assets/textures/PBR/" + material_type + "/ao.png"));
+        material_data.normal_map = resolve_texture(NX_ASSET("assets/textures/PBR/" + material_type + "/normal.png"));
     }
 
 } // namespace NexAur

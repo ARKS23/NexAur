@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include "Core/Base.h"
+#include "Function/Resource/asset_handle.h"
 #include "Function/Renderer/RHI/texture.h"
 #include "Function/Renderer/RHI/vertex_array.h"
 
@@ -61,11 +62,18 @@ namespace NexAur {
         std::vector<RenderMeshData> meshes; // 模型由多个网格体组成
     };
     
-    // 物体数据: 包含模型数据和变换矩阵
+    // 场景提取阶段的物体引用：只保存可序列化资产身份，不直接保存 GPU 指针。
     struct RenderObjectData {
-        std::shared_ptr<RenderModelData> model_data = nullptr; // 模型数据
+        AssetHandle model_asset;
         glm::mat4 transform{ 1.0f };
         int entity_id = -1; // 用于标记实体ID，编辑器选中时需要
+    };
+
+    // RendererSystem 解析后的绘制数据：Pass 只消费已经准备好的 GPU 资源。
+    struct ResolvedRenderObjectData {
+        std::shared_ptr<RenderModelData> model_data = nullptr;
+        glm::mat4 transform{ 1.0f };
+        int entity_id = -1;
     };
     
     // 渲染数据包: 每帧从场景收集的数据,供渲染器使用
@@ -79,6 +87,24 @@ namespace NexAur {
 
         std::vector<RenderObjectData> opaque_objects;   // 不透明物体
         std::vector<RenderObjectData> transparent_objects; // 透明物体
+
+        void clear() {
+            point_lights_data.clear();
+            opaque_objects.clear();
+            transparent_objects.clear();
+        }
+    };
+
+    struct ResolvedRenderDataPacket {
+        RendererCameraData camera_data;
+
+        RendererDirectionalLightData directional_light_data;
+        std::vector<RendererPointLightData> point_lights_data;
+
+        RendererEnvironmentData environment_data;
+
+        std::vector<ResolvedRenderObjectData> opaque_objects;   // 已解析的不透明物体
+        std::vector<ResolvedRenderObjectData> transparent_objects; // 已解析的透明物体
 
         void clear() {
             point_lights_data.clear();

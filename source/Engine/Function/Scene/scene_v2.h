@@ -5,7 +5,7 @@
 
 namespace NexAur {
     class Entity;
-    class RenderDataPacket;
+    struct RenderDataPacket;
     class EditorCamera;
 
     class NEXAUR_API SceneV2 {

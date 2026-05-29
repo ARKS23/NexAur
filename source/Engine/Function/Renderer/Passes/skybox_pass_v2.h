@@ -19,7 +19,7 @@ namespace NexAur {
 
     private:
         void initResources();
-        void execute(const RenderDataPacket& render_data) override;
+        void execute(const ResolvedRenderDataPacket& render_data) override;
         void setSkyboxTexture(const std::shared_ptr<TextureCubeMap>& texture) { m_skybox_texture = texture; }
 
     private:

@@ -5,7 +5,6 @@
 #include "Function/Global/global_context.h"
 #include "Function/File/file_system.h"
 #include "Function/Renderer/data/render_data.h"
-#include "Function/Renderer/Resources/render_model_cache.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/ibl_builder.h"
 
@@ -85,7 +84,6 @@ namespace NexAur {
         render_packet->clear();
 
         AssetManager& asset_manager = AssetManager::getInstance();
-        RenderModelCache& render_model_cache = RenderModelCache::getInstance();
 
         // 摄像机数据
         auto view_camera = m_Registry.view<CameraComponent>();
@@ -147,12 +145,9 @@ namespace NexAur {
             AssetHandle model_handle = mesh_renderer_comp.getModelHandle();
             if (!model_handle) return;
 
-            // 获取数据并防御性判断
-            auto gpu_model = render_model_cache.getOrCreateModel(model_handle, asset_manager);
-            if (!gpu_model) return; 
-
             RenderObjectData object_data;
-            object_data.model_data = gpu_model; // 直接复用刚才获取的指针
+            // Scene 只输出资产引用，GPU 数据由 RendererSystem 在渲染前解析。
+            object_data.model_asset = model_handle;
             object_data.transform = transform_comp.getTransform();
             object_data.entity_id = static_cast<int>(static_cast<uint32_t>(entity)); // 标记实体ID，编辑器选中时需要
 

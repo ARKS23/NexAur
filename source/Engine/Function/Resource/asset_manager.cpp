@@ -56,21 +56,49 @@ namespace NexAur {
         return importModelAsset(path).id;
     }
 
+    AssetHandle AssetManager::importTextureAsset(const std::string& path) {
+        if (path.empty()) {
+            return AssetHandle();
+        }
+
+        auto loaded_it = m_path_to_uuid.find(path);
+        if (loaded_it != m_path_to_uuid.end()) {
+            return AssetHandle(loaded_it->second);
+        }
+
+        UUID new_uuid;
+        m_path_to_uuid[path] = new_uuid;
+        m_uuid_to_path[new_uuid] = path;
+        recordAssetMetadata(new_uuid, AssetType::Texture2D, path);
+
+        return AssetHandle(new_uuid);
+    }
+
     UUID AssetManager::loadTexture(const std::string& path) {
-        if (m_path_to_uuid.find(path) != m_path_to_uuid.end()) {
-            return m_path_to_uuid[path];
+        if (path.empty()) {
+            return INVALID_UUID;
+        }
+
+        AssetHandle texture_asset = importTextureAsset(path);
+        if (!texture_asset) {
+            return INVALID_UUID;
+        }
+
+        auto cached_it = m_uuid_texture_cache.find(texture_asset.id);
+        if (cached_it != m_uuid_texture_cache.end()) {
+            return texture_asset.id;
+        }
+
+        const AssetMetadata* metadata = getMetadata(texture_asset);
+        if (!metadata || metadata->type != AssetType::Texture2D) {
+            NX_CORE_WARN("Path is already registered as non-texture asset: {}", path);
+            return INVALID_UUID;
         }
 
         std::shared_ptr<Texture2D> texture = Texture2D::create(path);
         if (texture && texture->isLoaded()) {
-            UUID new_uuid; 
-            m_path_to_uuid[path] = new_uuid;
-            m_uuid_to_path[new_uuid] = path;
-            
-            m_uuid_texture_cache[new_uuid] = texture;
-            recordAssetMetadata(new_uuid, AssetType::Texture2D, path);
-
-            return new_uuid;
+            m_uuid_texture_cache[texture_asset.id] = texture;
+            return texture_asset.id;
         }
         else {
             NX_CORE_ERROR("Failed to load texture: {}", path);

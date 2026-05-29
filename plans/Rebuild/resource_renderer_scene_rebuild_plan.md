@@ -404,6 +404,8 @@ Scene Serialization 只保存：
 
 ### PR11：RenderResourceCache 接管 GPU 模型和贴图
 
+状态：已完成。执行说明见 `plans/Rebuild/PR11/pr11_render_resource_cache_report.md`。
+
 内容：
 
 - 新增 `RenderResourceCache`。

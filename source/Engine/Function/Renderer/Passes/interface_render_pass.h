@@ -19,11 +19,11 @@ namespace NexAur {
         virtual ~IRenderPass() = default;
 
         std::shared_ptr<Framebuffer> getTargetFramebuffer() const { return m_specification.target_framebuffer; }
-        void run(const RenderDataPacket& render_data);      // run调用begin和end包裹execute, execute由子类实现具体渲染逻辑
-        virtual void run_without_begin_end(const RenderDataPacket& render_data) {}; // 子类自行实现begin和end的run版本，不受默认流程限制
+        void run(const ResolvedRenderDataPacket& render_data);      // run调用begin和end包裹execute, execute由子类实现具体渲染逻辑
+        virtual void run_without_begin_end(const ResolvedRenderDataPacket& render_data) {}; // 子类自行实现begin和end的run版本，不受默认流程限制
 
     protected:
-        virtual void execute(const RenderDataPacket& render_data) = 0;
+        virtual void execute(const ResolvedRenderDataPacket& render_data) = 0;
 
     protected:
         RenderPassSpecificationV2 m_specification;
