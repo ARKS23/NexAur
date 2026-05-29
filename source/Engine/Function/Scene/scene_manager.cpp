@@ -1,10 +1,11 @@
 #include "pch.h"
 #include "scene_manager.h"
+#include "scene_factory.h"
 #include "scene_v2.h"
 
 namespace NexAur {
     void SceneManager::init() {
-        createScene("DefaultScene");
+        setActiveScene(SceneFactory::createDefaultScene());
         processSceneChange();
     }
 
@@ -27,7 +28,8 @@ namespace NexAur {
 
     std::shared_ptr<SceneV2> SceneManager::createScene(const std::string& name) {
         auto new_scene = std::make_shared<SceneV2>();
-        // TODO:场景名处理
+        // 普通新场景保持空白；需要模板内容时由 SceneFactory 显式创建。
+        (void)name;
 
         setActiveScene(new_scene);
         return new_scene;

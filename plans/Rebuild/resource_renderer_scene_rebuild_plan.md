@@ -436,6 +436,8 @@ Scene Serialization 只保存：
 
 ### PR13：Scene 与 EditorCamera 解耦
 
+状态：已完成。执行说明见 `plans/Rebuild/PR13/pr13_scene_editor_camera_decoupling_report.md`。
+
 内容：
 
 - `SceneV2` 构造函数不再创建 `EditorCamera`。

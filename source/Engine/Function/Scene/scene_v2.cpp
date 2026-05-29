@@ -2,54 +2,10 @@
 #include "entity.h"
 #include "scene_v2.h"
 #include "component.h"
-#include "Function/Global/global_context.h"
-#include "Function/File/file_system.h"
 #include "Function/Renderer/data/render_data.h"
-#include "Function/Resource/asset_manager.h"
-
-#include "Function/Renderer/editor_camera.h" // 测试用
 
 namespace NexAur {
     SceneV2::SceneV2() {
-        AssetManager& asset_manager = AssetManager::getInstance();
-
-        // 测试摄像机
-        m_editor_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
-
-        // 设置主相机
-        Entity camera_entity = createEntity("MainCamera");
-        CameraComponent& camera_component = camera_entity.addComponent<CameraComponent>();
-        camera_component.position = { 0.0f, 0.0f, 5.0f };
-        camera_component.viewMatrix = glm::translate(glm::mat4(1.0f), -camera_component.position); 
-        camera_component.projectionMatrix = glm::perspective(glm::radians(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
-        camera_component.viewProjectionMatrix = camera_component.projectionMatrix * camera_component.viewMatrix;
-
-        // 环境光
-        Entity env_entity = createEntity("Environment");
-        AssetHandle env_map_asset = asset_manager.importEnvironmentMapAsset(NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr"));
-        if (env_map_asset) {
-            env_entity.addComponent<EnvironmentComponent>(env_map_asset);
-            env_entity.getComponent<EnvironmentComponent>().intensity = 1.0f;
-        }
-
-        // 方向光
-        Entity dir_light_entity = createEntity("DirectionalLight");
-        DirectionalLightComponent& dir_light_comp = dir_light_entity.addComponent<DirectionalLightComponent>();
-        dir_light_comp.direction = glm::normalize(glm::vec3(-0.6f, -0.6f, 0.6f));
-        dir_light_comp.color = glm::vec3(1.0f, 1.0f, 1.0f);
-        dir_light_comp.intensity = 3.3f;
-
-        // 点光源
-        Entity point_light_entity = createEntity("PointLight");
-        PointLightComponent& point_light_comp = point_light_entity.addComponent<PointLightComponent>();
-        point_light_comp.color = glm::vec3(1.0f, 1.0f, 1.0f);
-        point_light_comp.intensity = 1.0f;
-        point_light_comp.constant = 1.0f;
-        point_light_comp.linear = 0.09f;
-        point_light_comp.quadratic = 0.032f;
-        TransformComponent& point_light_transform = point_light_entity.getComponent<TransformComponent>();
-        point_light_transform.translation = glm::vec3(-5.0f, 0.0f, 0.0f);
-        
     }
 
     SceneV2::~SceneV2() {
@@ -156,15 +112,7 @@ namespace NexAur {
     }
 
     void SceneV2::tick(float deltaTime) {
-        m_editor_camera->onUpdate(TimeStep(deltaTime)); // 目前是测试相机
-        auto view = m_Registry.view<CameraComponent>();
-        for (auto entity : view) {
-            auto& cam_comp = view.get<CameraComponent>(entity);
-            cam_comp.position = m_editor_camera->getPosition();
-            cam_comp.viewMatrix = m_editor_camera->getView();
-            cam_comp.projectionMatrix = m_editor_camera->getProjection();
-            cam_comp.viewProjectionMatrix = m_editor_camera->getViewProjection();
-            break;  // 只设置主相机
-        }
+        // Scene 只推进运行时逻辑，不再用编辑器观察相机覆盖 CameraComponent。
+        (void)deltaTime;
     }
 } // namespace NexAur

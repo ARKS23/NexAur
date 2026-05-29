@@ -29,6 +29,10 @@ namespace NexAur {
 
         // 派发鼠标点击事件，响应物体选中
         dispatcher.dispatch<MouseButtonPressedEvent>(NX_BIND_EVENT_FN(ViewportPanel::onMouseButtonPressed));
+
+        if (m_context && m_context->viewport_camera && (m_viewport_hovered || m_viewport_focused)) {
+            m_context->viewport_camera->onEvent(event);
+        }
     }
 
     void ViewportPanel::beginViewportWindow() {
@@ -39,6 +43,10 @@ namespace NexAur {
     void ViewportPanel::updateViewportWindowState() {
         m_viewport_focused = ImGui::IsWindowFocused();
         m_viewport_hovered = ImGui::IsWindowHovered();
+        if (m_context) {
+            m_context->viewport_focused = m_viewport_focused;
+            m_context->viewport_hovered = m_viewport_hovered;
+        }
 
         const ImVec2 window_pos = ImGui::GetWindowPos();
         const ImVec2 content_min = ImGui::GetWindowContentRegionMin();
@@ -57,7 +65,7 @@ namespace NexAur {
         if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) return;
 
         auto renderer_system = m_context->renderer_system;
-        auto editor_camera = m_context->active_scene->getEditorCamera();
+        auto editor_camera = m_context->viewport_camera;
         if (!editor_camera) return;
 
         auto [current_w, current_h] = renderer_system->getViewportSize();
@@ -105,7 +113,7 @@ namespace NexAur {
         Entity selected = m_context->selected_entity;
         if (!selected || !selected.hasComponent<TransformComponent>()) return;
 
-        std::shared_ptr<EditorCamera> editor_camera = m_context->active_scene->getEditorCamera();
+        std::shared_ptr<EditorCamera> editor_camera = m_context->viewport_camera;
         if (!editor_camera) return;
 
         setGizmoStyle();

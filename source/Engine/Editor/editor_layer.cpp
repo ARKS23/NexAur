@@ -6,13 +6,10 @@
 
 #include <imgui.h>
 
-// 测试
-#include "Function/Scene/component.h"
-#include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Global/global_context.h"
 #include "Function/Scene/scene_manager.h"
 #include "Function/Renderer/editor_camera.h"
-#include "ImGuizmo.h"
+#include "Function/Renderer/data/render_context.h"
 
 namespace NexAur {
     EditorLayer::EditorLayer() {
@@ -31,6 +28,7 @@ namespace NexAur {
         m_context->active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
         m_context->selected_entity = Entity();
         m_context->renderer_system = g_runtime_global_context.m_renderer_system;
+        m_context->viewport_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
         m_context->selection_source = "None";
 
         // 子面板注册
@@ -45,8 +43,8 @@ namespace NexAur {
     }
 
     void EditorLayer::onUpdate(TimeStep delta_time) {
-        // TODO: 更新editor camera的逻辑
         synPanelContext();
+        updateViewportCamera(delta_time);
 
         for (auto& panel : m_panels) {
             if (panel->isOpen()) panel->onUpdate(delta_time);
@@ -66,6 +64,9 @@ namespace NexAur {
         for (auto& panel : m_panels) {
             if (panel->isOpen()) panel->onUIRender();
         }
+
+        // 视口面板可能在 UI 阶段更新相机宽高，交换渲染包前再同步一次矩阵。
+        syncViewportCameraToRenderPacket();
         
         endDockSpace();
     }
@@ -109,5 +110,29 @@ namespace NexAur {
         for (auto& panel : m_panels) {
             panel->synPanelContext(m_context);
         }
+    }
+
+    void EditorLayer::updateViewportCamera(TimeStep delta_time) {
+        if (!m_context || !m_context->viewport_camera) return;
+
+        // 编辑器观察相机只响应视口交互，但始终覆盖渲染包里的视口相机数据。
+        if (m_context->viewport_focused || m_context->viewport_hovered) {
+            m_context->viewport_camera->onUpdate(delta_time);
+        }
+
+        syncViewportCameraToRenderPacket();
+    }
+
+    void EditorLayer::syncViewportCameraToRenderPacket() const {
+        if (!m_context || !m_context->viewport_camera) return;
+        if (!g_runtime_global_context.m_render_context) return;
+
+        auto& camera_data = g_runtime_global_context.m_render_context->getWriteData().camera_data;
+        const auto& viewport_camera = *m_context->viewport_camera;
+
+        camera_data.view_matrix = viewport_camera.getView();
+        camera_data.projection_matrix = viewport_camera.getProjection();
+        camera_data.view_projection_matrix = viewport_camera.getViewProjection();
+        camera_data.position = viewport_camera.getPosition();
     }
 } // namespace NexAur

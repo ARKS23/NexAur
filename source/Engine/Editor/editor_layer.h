@@ -32,6 +32,8 @@ namespace NexAur {
         void beginDockSpace();
         void endDockSpace();
         void synPanelContext();
+        void updateViewportCamera(TimeStep delta_time);
+        void syncViewportCameraToRenderPacket() const;
         
     private:
         std::vector<std::shared_ptr<EditorPanel>> m_panels; // TODO: 编辑器控制面板列表, 后续OnUIRender更新

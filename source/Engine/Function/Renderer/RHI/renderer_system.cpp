@@ -174,8 +174,7 @@ namespace NexAur {
     }
 
     void RendererSystem::onEvent(Event& e) {
-        // m_editor_camera->onEvent(e);
-        
+        (void)e;
         // 事件处理补充
     }
 

@@ -63,6 +63,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Scene/component.h
     Function/Scene/entity.h
     Function/Scene/entity.cpp
+    Function/Scene/scene_factory.h
+    Function/Scene/scene_factory.cpp
     Function/Scene/scene_manager.h
     Function/Scene/scene_manager.cpp
     Function/Scene/scene_v2.h
