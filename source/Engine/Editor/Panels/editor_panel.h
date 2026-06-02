@@ -22,7 +22,7 @@ namespace NexAur {
         virtual void onUIRender() = 0;
         virtual void onEvent(Event& event) {};
 
-        void synPanelContext(const std::shared_ptr<EditorContext>& context) { m_context = context; }
+        void syncPanelContext(const std::shared_ptr<EditorContext>& context) { m_context = context; }
 
         const std::string& getName() const { return m_name; }
 

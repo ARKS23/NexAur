@@ -43,7 +43,7 @@ namespace NexAur {
     }
 
     void EditorLayer::onUpdate(TimeStep delta_time) {
-        synPanelContext();
+        syncPanelContext();
         updateViewportCamera(delta_time);
 
         for (auto& panel : m_panels) {
@@ -106,9 +106,9 @@ namespace NexAur {
         ImGui::End();
     }
 
-    void EditorLayer::synPanelContext() {
+    void EditorLayer::syncPanelContext() {
         for (auto& panel : m_panels) {
-            panel->synPanelContext(m_context);
+            panel->syncPanelContext(m_context);
         }
     }
 
