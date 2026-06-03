@@ -7,6 +7,8 @@
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_system.h"
 
+#include <algorithm>
+
 namespace NexAur {
     void ViewportPanel::onUpdate(TimeStep delta_time) {
         
@@ -230,22 +232,29 @@ namespace NexAur {
 
     void ViewportPanel::pickEntityAtMouse() {
         if (!m_context || !m_context->renderer_system || !m_context->active_scene) return;
+        if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) return;
 
         auto [mx, my] = g_runtime_global_context.m_input_system->getMousePosition();
 
-        if (mx < m_viewport_bounds[0].x || mx > m_viewport_bounds[1].x ||
-            my < m_viewport_bounds[0].y || my > m_viewport_bounds[1].y) {
+        if (mx < m_viewport_bounds[0].x || mx >= m_viewport_bounds[1].x ||
+            my < m_viewport_bounds[0].y || my >= m_viewport_bounds[1].y) {
             return;
         }
 
-        float local_x = mx - m_viewport_bounds[0].x;
-        float local_y = my - m_viewport_bounds[0].y;
-
-        int pixel_x = static_cast<int>(local_x);
-        int pixel_y = static_cast<int>(m_viewport_size.y - local_y); // Y翻转
-
         auto fb = m_context->renderer_system->getViewportFramebuffer();
         if (!fb) return;
+
+        auto [framebuffer_width, framebuffer_height] = m_context->renderer_system->getViewportSize();
+        if (framebuffer_width == 0 || framebuffer_height == 0) return;
+
+        const float local_x = mx - m_viewport_bounds[0].x;
+        const float local_y = my - m_viewport_bounds[0].y;
+        const float framebuffer_x = local_x * static_cast<float>(framebuffer_width) / m_viewport_size.x;
+        const float framebuffer_y = (m_viewport_size.y - local_y) * static_cast<float>(framebuffer_height) / m_viewport_size.y;
+
+        // ImGui 坐标是浮点数，边界点击可能落到宽高值，读 FBO 前夹到合法像素范围。
+        const int pixel_x = std::clamp(static_cast<int>(framebuffer_x), 0, static_cast<int>(framebuffer_width) - 1);
+        const int pixel_y = std::clamp(static_cast<int>(framebuffer_y), 0, static_cast<int>(framebuffer_height) - 1); // Y翻转
 
         fb->bind();
         int picked_id = fb->readPixel(1, pixel_x, pixel_y); // 对应 RED_INTEGER

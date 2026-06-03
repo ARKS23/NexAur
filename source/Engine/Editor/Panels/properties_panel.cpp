@@ -2,8 +2,8 @@
 #include "properties_panel.h"
 #include "Function/Scene/component.h"
 
+#include <algorithm>
 #include <array>
-#include <cstring>
 
 #include <Imgui.h>
 
@@ -76,8 +76,9 @@ namespace NexAur {
         if (!ImGui::CollapsingHeader("Tag", ImGuiTreeNodeFlags_DefaultOpen)) return;
 
         TagComponent& tag = entity.getComponent<TagComponent>();
-        std::array<char, 256> buffer;
-        std::strncpy(buffer.data(), tag.name.c_str(), buffer.size() - 1);
+        std::array<char, 256> buffer{};
+        const std::size_t copy_size = std::min(tag.name.size(), buffer.size() - 1);
+        std::copy_n(tag.name.data(), copy_size, buffer.data());
 
         if (ImGui::InputText("Name", buffer.data(), buffer.size())) {
             tag.name = std::string(buffer.data());

@@ -36,6 +36,8 @@ namespace NexAur {
     }
 
     void SceneV2::extractSceneData(RenderDataPacket* render_packet) {
+        if (!render_packet) return;
+
         render_packet->clear();
 
         // 摄像机数据
@@ -46,6 +48,7 @@ namespace NexAur {
             render_packet->camera_data.projection_matrix = cam_comp.projectionMatrix;
             render_packet->camera_data.view_projection_matrix = cam_comp.viewProjectionMatrix;
             render_packet->camera_data.position = cam_comp.position;
+            break; // 第一版只导出一个主相机，后续通过 ActiveCamera 标记选择。
         }
 
         // 方向光数据
