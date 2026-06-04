@@ -94,6 +94,9 @@ namespace NexAur {
         std::vector<RenderObjectData> transparent_objects; // 透明物体
 
         void clear() {
+            // 清空完整帧状态，避免缺少相机或灯光组件时沿用上一帧数据。
+            camera_data = RendererCameraData();
+            directional_light_data = RendererDirectionalLightData();
             environment_data = RendererEnvironmentData();
             point_lights_data.clear();
             opaque_objects.clear();
@@ -113,6 +116,8 @@ namespace NexAur {
         std::vector<ResolvedRenderObjectData> transparent_objects; // 已解析的透明物体
 
         void clear() {
+            camera_data = RendererCameraData();
+            directional_light_data = RendererDirectionalLightData();
             environment_data = ResolvedRendererEnvironmentData();
             point_lights_data.clear();
             opaque_objects.clear();
