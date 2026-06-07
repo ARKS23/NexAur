@@ -32,8 +32,10 @@ namespace NexAur {
 
     void ShadowPassV2::run_without_begin_end(const ResolvedRenderDataPacket& render_data) {
         glm::vec3 dir_light_direction = render_data.directional_light_data.direction;
-        // if (glm::length(dir_light_direction) < 0.001f) 
-        //     dir_light_direction = glm::vec3(0.0f, -1.0f, 0.0f);
+        if (glm::length(dir_light_direction) < 0.001f) {
+            // 避免零向量归一化导致阴影矩阵 NaN；使用非竖直默认方向可避开 lookAt 的 up 共线问题。
+            dir_light_direction = glm::vec3(-0.2f, -1.0f, -0.3f);
+        }
         dir_light_direction = glm::normalize(dir_light_direction);
 
         // 计算光源空间矩阵: 正交投影

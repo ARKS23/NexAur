@@ -10,7 +10,14 @@
 #include "Function/File/file_system.h"
 #include "Function/Renderer/RHI/renderer_system.h"
 
+#include <algorithm>
+#include <cstddef>
+
 namespace NexAur {
+    namespace {
+        constexpr std::size_t kMaxPointLights = 4; // 与 assets/shaders/pbr/pbr.fs 中的 MAX_POINT_LIGHTS 保持一致。
+    }
+
     void RenderForwardPipeline::init() {
         // 初始化前向渲染管线所需的资源，如渲染通道、着色器等        
         
@@ -55,8 +62,9 @@ namespace NexAur {
         m_pbr_shader->setFloat("u_DirLight.intensity", render_data.directional_light_data.intensity);
 
         // 点光源
-        m_pbr_shader->setInt("u_NumPointLights", static_cast<int>(render_data.point_lights_data.size()));
-        for (size_t i = 0; i < render_data.point_lights_data.size(); ++i) {
+        const std::size_t point_light_count = std::min(render_data.point_lights_data.size(), kMaxPointLights);
+        m_pbr_shader->setInt("u_NumPointLights", static_cast<int>(point_light_count));
+        for (std::size_t i = 0; i < point_light_count; ++i) {
             const auto& pl = render_data.point_lights_data[i];
             std::string index_str = std::to_string(i);
             m_pbr_shader->setFloat3("u_PointLights[" + index_str + "].position", pl.position);
