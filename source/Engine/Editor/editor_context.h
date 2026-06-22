@@ -1,18 +1,34 @@
 #pragma once
+
+#include <memory>
+#include <string>
+
 #include "Core/Base.h"
 #include "Function/Scene/entity.h"
 
 namespace NexAur {
     class EditorCamera;
-    class SceneV2;
+    class InputService;
+    class RenderContext;
+    class RendererService;
     class RendererSystem;
+    class SceneService;
+    class SceneV2;
+    class SelectionService;
+    class UIService;
 
     struct EditorContext {
         std::shared_ptr<SceneV2> active_scene;
+        std::shared_ptr<SceneService> scene_service;
         std::shared_ptr<RendererSystem> renderer_system;
-        std::shared_ptr<EditorCamera> viewport_camera; // 编辑器视口观察相机，独立于场景 CameraComponent。
+        std::shared_ptr<RendererService> renderer_service;
+        std::shared_ptr<InputService> input_service;
+        std::shared_ptr<RenderContext> render_context;
+        std::shared_ptr<UIService> ui_service;
+        std::shared_ptr<EditorCamera> viewport_camera;
+        std::weak_ptr<SelectionService> selection_service;
         Entity selected_entity;
-        std::string selection_source;   // 通过哪个面板选中实体记录
+        std::string selection_source;
         bool viewport_focused = false;
         bool viewport_hovered = false;
     };

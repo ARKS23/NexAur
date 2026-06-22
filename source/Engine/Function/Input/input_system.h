@@ -7,13 +7,14 @@
 #include <unordered_map>
 
 #include "Core/Base.h"
+#include "Function/Platform/platform_services.h"
 #include "Function/Input/KeyCode/key_codes.h"
 #include "Function/Input/KeyCode/mouse_codes.h"
 
 namespace NexAur {
-    class NEXAUR_API InputSystem {
+    class NEXAUR_API InputSystem : public InputService {
     public:
-        virtual  ~InputSystem() = default;
+        ~InputSystem() override = default;
 
     public:
         virtual bool isKeyPressed(KeyCode key_code) = 0;    // 检查按键是否按下
@@ -21,5 +22,13 @@ namespace NexAur {
         virtual std::pair<float, float> getMousePosition() = 0; // 获取鼠标位置
         virtual float getMousePositionX() = 0;
         virtual float getMousePositionY() = 0;
+
+        bool isKeyPressed(KeyCode key_code) const override {
+            return getState().isKeyPressed(key_code);
+        }
+
+        bool isMouseButtonPressed(MouseCode mouse_code) const override {
+            return getState().isMouseButtonPressed(mouse_code);
+        }
     };
 } // namespace NexAur

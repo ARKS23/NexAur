@@ -2,12 +2,13 @@
 #include <memory>
 #include <string>
 #include "Core/Base.h"
+#include "Function/Scene/scene_service.h"
 
 namespace NexAur {
     class SceneV2;
 
     // 场景管理器: 负责场景生命周期和切换
-    class NEXAUR_API SceneManager {
+    class NEXAUR_API SceneManager : public SceneService {
     public:
         SceneManager() = default;
         ~SceneManager() = default;
@@ -20,13 +21,13 @@ namespace NexAur {
         void tick(float delta_time);
 
         // 获取当前运行的场景
-        std::shared_ptr<SceneV2> getActiveScene() const { return m_active_scene; }
+        std::shared_ptr<SceneV2> getActiveScene() const override { return m_active_scene; }
 
         // 创建新的场景并切换
-        std::shared_ptr<SceneV2> createScene(const std::string& name);
+        std::shared_ptr<SceneV2> createScene(const std::string& name) override;
 
         // 切换场景
-        void setActiveScene(std::shared_ptr<SceneV2> new_scene);
+        void setActiveScene(std::shared_ptr<SceneV2> new_scene) override;
 
     private:
         // 处理场景切换逻辑辅助函数

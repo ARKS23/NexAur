@@ -8,8 +8,19 @@ namespace NexAur {
     std::shared_ptr<spdlog::logger> LogSystem::s_core_logger;
 
     void LogSystem::init() {
+        if (s_core_logger) {
+            return;
+        }
+
         //设置日志模式：颜色 | 时间戳 | logger名字 | 具体的日志信息
         spdlog::set_pattern("%^[%T] %n: %v%$");
+
+        s_core_logger = spdlog::get("NEXAUR");
+        if (s_core_logger) {
+            s_core_logger->set_level(spdlog::level::trace);
+            return;
+        }
+
         s_core_logger = spdlog::stdout_color_mt("NEXAUR");
         s_core_logger->set_level(spdlog::level::trace);
     }

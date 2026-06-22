@@ -4,6 +4,7 @@
 #include "Core/Time/TimeStep.h"
 #include "Function/Scene/entity.h"
 #include "Editor/editor_context.h"
+#include "Editor/editor_services.h"
 
 #include <memory>
 #include <vector>
@@ -15,16 +16,30 @@ namespace NexAur {
 
 
 namespace NexAur {
-    class NEXAUR_API EditorLayer {
+    class NEXAUR_API EditorLayer : public EditorService, public SelectionService, public ViewportService {
     public:
         EditorLayer();
+        explicit EditorLayer(std::shared_ptr<EditorContext> context);
         ~EditorLayer();
 
         void onUpdate(TimeStep delta_time);
 
         void onUIRender();
 
-        void onEvent(Event& event);
+        void onEvent(Event& event) override;
+
+        void setEnabled(bool enabled) override { m_is_enabled = enabled; }
+        bool isEnabled() const override { return m_is_enabled; }
+        void update(TimeStep delta_time) override { onUpdate(delta_time); }
+        void renderUI() override { onUIRender(); }
+
+        Entity getSelectedEntity() const override;
+        void setSelectedEntity(Entity entity, const std::string& source) override;
+        void clearSelection() override;
+        const std::string& getSelectionSource() const override;
+
+        bool isViewportFocused() const override;
+        bool isViewportHovered() const override;
 
     private:
         void init();
@@ -40,5 +55,6 @@ namespace NexAur {
         bool m_show_properties_panel = true; // 测试变量
 
         std::shared_ptr<EditorContext> m_context;    // 编辑器上下文，各个面板需要共享的数据
+        bool m_is_enabled = true;
     };
 } // namespace NexAur

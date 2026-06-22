@@ -12,6 +12,13 @@
 namespace NexAur {
     class NEXAUR_API InputSystemGLFW : public InputSystem {
     public:
+        InputSystemGLFW() = default;
+        explicit InputSystemGLFW(GLFWwindow* window);
+
+        void setWindow(GLFWwindow* window);
+        void update() override;
+        const InputState& getState() const override { return m_state; }
+
         bool isKeyPressed(KeyCode key_code) override;
         bool isMouseButtonPress(MouseCode mouse_code) override;
         std::pair<float, float> getMousePosition() override;
@@ -20,6 +27,9 @@ namespace NexAur {
 
     private:
         GLFWwindow* getGLFWWindow();    // 获取GLFW的原生指针
+    private:
+        GLFWwindow* m_window = nullptr;
+        InputState m_state;
     };
 } //namespace NexAur
 

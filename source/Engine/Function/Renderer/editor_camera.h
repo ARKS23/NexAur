@@ -1,4 +1,6 @@
 #pragma once
+#include <memory>
+
 #include "glm/glm.hpp"
 
 #include "camera.h"
@@ -8,6 +10,8 @@
 #include "Core/Events/window_event.h"
 
 namespace NexAur {
+    class InputService;
+
     class EditorCamera : public Camera {
     public:
         EditorCamera() = default;
@@ -15,6 +19,7 @@ namespace NexAur {
 
         void onUpdate(TimeStep deltaTime);
         void onEvent(Event& event);
+        void setInputService(std::shared_ptr<InputService> input_service);
 
         // 更新视图大小
         void setViewportSize(float width, float height);
@@ -53,6 +58,7 @@ namespace NexAur {
 
         //glm::vec3 m_position = { 0.0f, 0.0f, 0.0f };
         glm::vec2 m_init_mouse_position = { 0.0f, 0.0f };
+        std::weak_ptr<InputService> m_input_service;
 
         float m_pitch = 0.0f;
         float m_yaw = 0.0f;

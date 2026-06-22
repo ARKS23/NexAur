@@ -1,7 +1,8 @@
 #include "pch.h"
 #include "editor_camera.h"
-#include "Function/Input/input_system.h"
-#include "Function/Global/global_context.h"
+
+#include "Function/Input/input_state.h"
+#include "Function/Platform/platform_services.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
@@ -9,9 +10,13 @@
 namespace NexAur {
     EditorCamera::EditorCamera(float fov, float aspectRatio, float nearClip, float farClip)
         : m_fov(fov), m_aspect_ratio(aspectRatio), m_near_clip(nearClip), m_far_clip(farClip) {
-        m_position = {0.0f, 0.0f, 5.0f};
+        m_position = { 0.0f, 0.0f, 5.0f };
         updateProjection();
         updateView();
+    }
+
+    void EditorCamera::setInputService(std::shared_ptr<InputService> input_service) {
+        m_input_service = std::move(input_service);
     }
 
     void EditorCamera::updateViewProjection() {
@@ -25,10 +30,9 @@ namespace NexAur {
     }
 
     void EditorCamera::updateView() {
-        // 1. 计算当前的方向向量
         glm::quat orientation = getOrientation();
         glm::vec3 front = glm::rotate(orientation, glm::vec3(0.0f, 0.0f, -1.0f));
-        glm::vec3 up    = glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 up = glm::rotate(orientation, glm::vec3(0.0f, 1.0f, 0.0f));
 
         m_view = glm::lookAt(m_position, m_position + front, up);
 
@@ -42,38 +46,42 @@ namespace NexAur {
     }
 
     void EditorCamera::onUpdate(TimeStep deltaTime) {
-        std::shared_ptr<InputSystem> input_system = g_runtime_global_context.m_input_system;
+        std::shared_ptr<InputService> input_service = m_input_service.lock();
+        if (!input_service) {
+            return;
+        }
 
-        // 获取当前鼠标位置
-        const glm::vec2& mouse{ input_system->getMousePositionX(), input_system->getMousePositionY() };
-        
-        // 只有当右键按住时，才计算旋转
-        if (input_system->isMouseButtonPress(MouseCode::ButtonRight)) {
+        const InputState& input_state = input_service->getState();
+        const glm::vec2 mouse{ input_state.mouse_x, input_state.mouse_y };
+
+        if (input_state.isMouseButtonPressed(MouseCode::ButtonRight)) {
             glm::vec2 delta = (mouse - m_init_mouse_position) * 0.003f;
-            m_init_mouse_position = mouse; // 用当前位置更新init，这样每帧的 delta 才是增量
+            m_init_mouse_position = mouse;
 
             onMouseRotate(delta);
-        }
-        else {
+        } else {
             m_init_mouse_position = mouse;
         }
 
-        // WSAD移动
-        float speed = 5.f * (float)(deltaTime);
-        if (input_system->isKeyPressed(KeyCode::W)) 
+        float speed = 5.0f * static_cast<float>(deltaTime);
+        if (input_state.isKeyPressed(KeyCode::W)) {
             m_position += getForwardDirection() * speed;
-        if (input_system->isKeyPressed(KeyCode::S)) 
+        }
+        if (input_state.isKeyPressed(KeyCode::S)) {
             m_position -= getForwardDirection() * speed;
-        if (input_system->isKeyPressed(KeyCode::A))
+        }
+        if (input_state.isKeyPressed(KeyCode::A)) {
             m_position -= getRightDirection() * speed;
-        if (input_system->isKeyPressed(KeyCode::D))
+        }
+        if (input_state.isKeyPressed(KeyCode::D)) {
             m_position += getRightDirection() * speed;
-
-        // QE上下移动
-        if (input_system->isKeyPressed(KeyCode::Q))
+        }
+        if (input_state.isKeyPressed(KeyCode::Q)) {
             m_position += getUpDirection() * speed;
-        if (input_system->isKeyPressed(KeyCode::E))
+        }
+        if (input_state.isKeyPressed(KeyCode::E)) {
             m_position -= getUpDirection() * speed;
+        }
 
         updateView();
     }
@@ -85,7 +93,7 @@ namespace NexAur {
     }
 
     bool EditorCamera::onWindowResize(WindowResizeEvent& event) {
-        setViewportSize((float)event.getWidth(), (float)event.getHeight());
+        setViewportSize(static_cast<float>(event.getWidth()), static_cast<float>(event.getHeight()));
         return false;
     }
 
@@ -98,19 +106,17 @@ namespace NexAur {
     }
 
     void EditorCamera::onMouseRotate(const glm::vec2& delta) {
-        float yaw_sign = getUpDirection().y < 0 ? -1.0f : 1.0f;
+        float yaw_sign = getUpDirection().y < 0.0f ? -1.0f : 1.0f;
 
         m_yaw += yaw_sign * delta.x * rotationSpeed();
         m_pitch += delta.y * rotationSpeed();
-
-        // 限制俯仰角度，防止翻转
         m_pitch = glm::clamp(m_pitch, -89.0f, 89.0f);
 
         updateView();
     }
 
     void EditorCamera::onMouseZoom(float delta) {
-        //TODO
+        (void)delta;
     }
 
     float EditorCamera::zoomSpeed() const {
@@ -122,16 +128,14 @@ namespace NexAur {
     }
 
     void EditorCamera::onMousePan(const glm::vec2& delta) {
-        // 暂时不用
+        (void)delta;
     }
 
     glm::vec3 EditorCamera::calculatePosition() const {
-        // 暂时不用
         return m_position;
     }
 
     std::pair<float, float> EditorCamera::panSpeed() const {
-        // 暂时不用
         return { 0.0f, 0.0f };
     }
 

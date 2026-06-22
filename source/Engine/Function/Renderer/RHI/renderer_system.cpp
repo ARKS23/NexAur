@@ -174,8 +174,8 @@ namespace NexAur {
     }
 
     void RendererSystem::onEvent(Event& e) {
-        (void)e;
-        // 事件处理补充
+        EventDispatcher dispatcher(e);
+        dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(RendererSystem::onWindowResize));
     }
 
     void RendererSystem::setViewportSize(uint32_t width, uint32_t height) {
@@ -194,7 +194,19 @@ namespace NexAur {
         }
     }
 
-    void RendererSystem::onWindowResize(WindowResizeEvent& e) {
+    int RendererSystem::readViewportEntityID(int x, int y) {
+        if (!m_viewport_framebuffer) {
+            return -1;
+        }
+
+        m_viewport_framebuffer->bind();
+        const int entity_id = m_viewport_framebuffer->readPixel(1, x, y);
+        m_viewport_framebuffer->unbind();
+        return entity_id;
+    }
+
+    bool RendererSystem::onWindowResize(WindowResizeEvent& e) {
         Renderer::onWindowResize(e.getWidth(), e.getHeight());
+        return false;
     }
 } // namespace NexAur

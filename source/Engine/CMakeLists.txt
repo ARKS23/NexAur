@@ -23,6 +23,9 @@ set(NEXAUR_ENGINE_CORE_FILES
     Core/Events/window_event.h
     Core/Log/log_system.h
     Core/Log/log_system.cpp
+    Core/Module/engine_module.h
+    Core/Module/module_manager.h
+    Core/Module/module_manager.cpp
     Core/Time/Clock.h
     Core/Time/Clock.cpp
     Core/Time/TimeStep.h
@@ -32,6 +35,7 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/editor_context.h
     Editor/editor_layer.h
     Editor/editor_layer.cpp
+    Editor/editor_services.h
     Editor/Panels/editor_panel.h
     Editor/Panels/properties_panel.h
     Editor/Panels/properties_panel.cpp
@@ -46,11 +50,13 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/File/file_system.cpp
     Function/Global/global_context.h
     Function/Global/global_context.cpp
+    Function/Input/input_state.h
     Function/Input/input_system.h
     Function/Input/input_system_glfw.h
     Function/Input/input_system_glfw.cpp
     Function/Input/KeyCode/key_codes.h
     Function/Input/KeyCode/mouse_codes.h
+    Function/Platform/platform_services.h
     Function/Resource/asset_handle.h
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
@@ -67,6 +73,7 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Scene/scene_factory.cpp
     Function/Scene/scene_manager.h
     Function/Scene/scene_manager.cpp
+    Function/Scene/scene_service.h
     Function/Scene/scene_v2.h
     Function/Scene/scene_v2.cpp
     Function/UI/ui_system.h
@@ -111,6 +118,7 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/RHI/renderer_API.cpp
     Function/Renderer/RHI/renderer_command.h
     Function/Renderer/RHI/renderer_command.cpp
+    Function/Renderer/RHI/renderer_service.h
     Function/Renderer/RHI/renderer_system.h
     Function/Renderer/RHI/renderer_system.cpp
     Function/Renderer/RHI/shader.h

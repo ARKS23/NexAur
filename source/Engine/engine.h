@@ -15,7 +15,6 @@ namespace NexAur {
      */
     class WindowCloseEvent;
     class WindowResizeEvent;
-    class EditorLayer;
 
     class NEXAUR_API Engine {
     public:
@@ -25,7 +24,7 @@ namespace NexAur {
         bool isRunning() const { return m_is_running; }
         void run();
         bool tickOneFrame(TimeStep delta_time);
-        void enableEditorMode(bool enable) { m_is_editor_mode = enable; }
+        void enableEditorMode(bool enable);
 
         void onEvent(Event& event);
 
@@ -44,7 +43,6 @@ namespace NexAur {
     private:
         bool m_is_running = true;
         bool m_is_editor_mode = true;
-        std::shared_ptr<EditorLayer> m_editor_layer;
         Clock m_clock;
 
         int m_frame_count_accumulator = 0;  // 累计帧数

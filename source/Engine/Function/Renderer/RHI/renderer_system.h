@@ -8,6 +8,7 @@
 #include "texture.h"
 #include "material.h"
 #include "buffer.h"
+#include "renderer_service.h"
 #include "Function/Renderer/data/render_data.h"
 
 namespace NexAur {
@@ -56,7 +57,7 @@ namespace NexAur {
 
     
     // 渲染模块总线
-    class NEXAUR_API RendererSystem {
+    class NEXAUR_API RendererSystem : public RendererService {
     public:
         RendererSystem() = default;
         ~RendererSystem() = default;
@@ -65,16 +66,18 @@ namespace NexAur {
         void shutdown();
 
         void tick(TimeStep ts, const RenderDataPacket& render_data); // 每帧调用，传入渲染数据包
+        void render(TimeStep ts, const RenderDataPacket& render_data) override { tick(ts, render_data); }
         void onEvent(Event& e);
 
-        void setViewportSize(uint32_t width, uint32_t height);
-        std::pair<uint32_t, uint32_t> getViewportSize() const { return { m_viewport_width, m_viewport_height }; }
-        uint32_t getViewportColorAttachment() const { return m_viewport_framebuffer ? m_viewport_framebuffer->getColorAttachmentRendererID(0) : 0; }
-        std::shared_ptr<Framebuffer> getViewportFramebuffer() const { return m_viewport_framebuffer; }
+        void setViewportSize(uint32_t width, uint32_t height) override;
+        std::pair<uint32_t, uint32_t> getViewportSize() const override { return { m_viewport_width, m_viewport_height }; }
+        uint32_t getViewportColorAttachment() const override { return m_viewport_framebuffer ? m_viewport_framebuffer->getColorAttachmentRendererID(0) : 0; }
+        int readViewportEntityID(int x, int y) override;
+        std::shared_ptr<Framebuffer> getViewportFramebuffer() const override { return m_viewport_framebuffer; }
 
     private:
         ResolvedRenderDataPacket resolveRenderData(const RenderDataPacket& render_data);
-        void onWindowResize(WindowResizeEvent& e);
+        bool onWindowResize(WindowResizeEvent& e);
 
     private:
         std::shared_ptr<RenderForwardPipeline> m_forward_pipeline;  // 前向渲染管线

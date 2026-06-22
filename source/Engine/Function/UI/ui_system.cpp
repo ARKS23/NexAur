@@ -73,8 +73,26 @@ namespace NexAur {
         // 处理全局派发事件
     }
 
+    bool UISystem::isConsumingInput() const {
+        return wantsCaptureMouse() || wantsCaptureKeyboard() || wantsTextInput();
+    }
+
     bool UISystem::isConsumeingInput() const {
+        return isConsumingInput();
+    }
+
+    bool UISystem::wantsCaptureMouse() const {
         ImGuiIO& io = ImGui::GetIO();
-        return io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput;
+        return io.WantCaptureMouse;
+    }
+
+    bool UISystem::wantsCaptureKeyboard() const {
+        ImGuiIO& io = ImGui::GetIO();
+        return io.WantCaptureKeyboard;
+    }
+
+    bool UISystem::wantsTextInput() const {
+        ImGuiIO& io = ImGui::GetIO();
+        return io.WantTextInput;
     }
 } // namespace NexAur

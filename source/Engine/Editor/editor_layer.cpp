@@ -1,18 +1,25 @@
 #include "pch.h"
 #include "editor_layer.h"
-#include "Editor/Panels/viewport_panel.h"
-#include "Editor/Panels/scene_hierarchy_panel.h"
+
 #include "Editor/Panels/properties_panel.h"
+#include "Editor/Panels/scene_hierarchy_panel.h"
+#include "Editor/Panels/viewport_panel.h"
+#include "Function/Platform/platform_services.h"
+#include "Function/Renderer/RHI/renderer_service.h"
+#include "Function/Renderer/data/render_context.h"
+#include "Function/Renderer/editor_camera.h"
+#include "Function/Scene/scene_service.h"
+#include "Function/UI/ui_system.h"
 
 #include <imgui.h>
-
-#include "Function/Global/global_context.h"
-#include "Function/Scene/scene_manager.h"
-#include "Function/Renderer/editor_camera.h"
-#include "Function/Renderer/data/render_context.h"
+#include <utility>
 
 namespace NexAur {
-    EditorLayer::EditorLayer() {
+    EditorLayer::EditorLayer()
+        : EditorLayer(std::make_shared<EditorContext>()) {}
+
+    EditorLayer::EditorLayer(std::shared_ptr<EditorContext> context)
+        : m_context(std::move(context)) {
         init();
         NX_CORE_INFO("EditorLayer created.");
     }
@@ -23,51 +30,112 @@ namespace NexAur {
     }
 
     void EditorLayer::init() {
-        // 编辑器上下文初始化
-        m_context = std::make_shared<EditorContext>();
-        m_context->active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
+        if (!m_context) {
+            m_context = std::make_shared<EditorContext>();
+        }
+
+        m_context->active_scene = m_context->scene_service
+            ? m_context->scene_service->getActiveScene()
+            : nullptr;
         m_context->selected_entity = Entity();
-        m_context->renderer_system = g_runtime_global_context.m_renderer_system;
-        m_context->viewport_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
         m_context->selection_source = "None";
 
-        // 子面板注册
+        if (!m_context->viewport_camera) {
+            m_context->viewport_camera = std::make_shared<EditorCamera>(45.0f, 1920.0f / 1080.0f, 0.1f, 1000.0f);
+        }
+        m_context->viewport_camera->setInputService(m_context->input_service);
+
         m_panels.push_back(std::make_shared<ViewportPanel>("Viewport Panel"));
         m_panels.push_back(std::make_shared<SceneHierarchyPanel>("Scene Hierarchy Panel"));
         m_panels.push_back(std::make_shared<PropertiesPanel>("Properties Panel"));
+
         NX_CORE_INFO("EditorLayer initialized.");
     }
 
     void EditorLayer::shutdown() {
+        m_panels.clear();
         NX_CORE_INFO("EditorLayer shutdown.");
     }
 
+    Entity EditorLayer::getSelectedEntity() const {
+        return m_context ? m_context->selected_entity : Entity();
+    }
+
+    void EditorLayer::setSelectedEntity(Entity entity, const std::string& source) {
+        if (!m_context) {
+            return;
+        }
+
+        m_context->selected_entity = entity;
+        m_context->selection_source = source;
+    }
+
+    void EditorLayer::clearSelection() {
+        if (!m_context) {
+            return;
+        }
+
+        m_context->selected_entity = Entity();
+        m_context->selection_source = "None";
+    }
+
+    const std::string& EditorLayer::getSelectionSource() const {
+        static const std::string kNone = "None";
+        return m_context ? m_context->selection_source : kNone;
+    }
+
+    bool EditorLayer::isViewportFocused() const {
+        return m_context && m_context->viewport_focused;
+    }
+
+    bool EditorLayer::isViewportHovered() const {
+        return m_context && m_context->viewport_hovered;
+    }
+
     void EditorLayer::onUpdate(TimeStep delta_time) {
+        if (!m_is_enabled) {
+            return;
+        }
+
         syncPanelContext();
         updateViewportCamera(delta_time);
 
         for (auto& panel : m_panels) {
-            if (panel->isOpen()) panel->onUpdate(delta_time);
+            if (panel->isOpen()) {
+                panel->onUpdate(delta_time);
+            }
         }
     }
 
     void EditorLayer::onEvent(Event& event) {
+        if (!m_is_enabled) {
+            return;
+        }
+
         for (auto& panel : m_panels) {
-            if (panel->isOpen()) panel->onEvent(event);
-            if (event.handled) break;
+            if (panel->isOpen()) {
+                panel->onEvent(event);
+            }
+            if (event.handled) {
+                break;
+            }
         }
     }
 
     void EditorLayer::onUIRender() {
+        if (!m_is_enabled) {
+            return;
+        }
+
         beginDockSpace();
 
         for (auto& panel : m_panels) {
-            if (panel->isOpen()) panel->onUIRender();
+            if (panel->isOpen()) {
+                panel->onUIRender();
+            }
         }
 
-        // 视口面板可能在 UI 阶段更新相机宽高，交换渲染包前再同步一次矩阵。
         syncViewportCameraToRenderPacket();
-        
         endDockSpace();
     }
 
@@ -84,7 +152,8 @@ namespace NexAur {
             ImGui::SetNextWindowViewport(viewport->ID);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+            window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
             window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
         }
 
@@ -92,9 +161,10 @@ namespace NexAur {
         ImGui::Begin("NexAur Editor DockSpace", &dock_space_open, window_flags);
         ImGui::PopStyleVar();
 
-        if (opt_fullscreen) ImGui::PopStyleVar(2);
+        if (opt_fullscreen) {
+            ImGui::PopStyleVar(2);
+        }
 
-        // 提交DockSpace
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
             ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
@@ -107,16 +177,25 @@ namespace NexAur {
     }
 
     void EditorLayer::syncPanelContext() {
+        if (m_context && m_context->scene_service) {
+            m_context->active_scene = m_context->scene_service->getActiveScene();
+        }
+
         for (auto& panel : m_panels) {
             panel->syncPanelContext(m_context);
         }
     }
 
     void EditorLayer::updateViewportCamera(TimeStep delta_time) {
-        if (!m_context || !m_context->viewport_camera) return;
+        if (!m_context || !m_context->viewport_camera) {
+            return;
+        }
 
-        // 编辑器观察相机只响应视口交互，但始终覆盖渲染包里的视口相机数据。
-        if (m_context->viewport_focused || m_context->viewport_hovered) {
+        const bool keyboard_captured =
+            m_context->ui_service &&
+            (m_context->ui_service->wantsCaptureKeyboard() || m_context->ui_service->wantsTextInput());
+
+        if (!keyboard_captured && (m_context->viewport_focused || m_context->viewport_hovered)) {
             m_context->viewport_camera->onUpdate(delta_time);
         }
 
@@ -124,10 +203,11 @@ namespace NexAur {
     }
 
     void EditorLayer::syncViewportCameraToRenderPacket() const {
-        if (!m_context || !m_context->viewport_camera) return;
-        if (!g_runtime_global_context.m_render_context) return;
+        if (!m_context || !m_context->viewport_camera || !m_context->render_context) {
+            return;
+        }
 
-        auto& camera_data = g_runtime_global_context.m_render_context->getWriteData().camera_data;
+        auto& camera_data = m_context->render_context->getWriteData().camera_data;
         const auto& viewport_camera = *m_context->viewport_camera;
 
         camera_data.view_matrix = viewport_camera.getView();
