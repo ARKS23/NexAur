@@ -8,6 +8,7 @@
 #include "Function/Scene/entity.h"
 
 namespace NexAur {
+    // EditorModule 对 Engine 暴露的顶层控制接口。
     class NEXAUR_API EditorService {
     public:
         virtual ~EditorService() = default;
@@ -19,6 +20,7 @@ namespace NexAur {
         virtual void onEvent(Event& event) = 0;
     };
 
+    // 编辑器选择状态的唯一写入口，避免面板之间直接互相改状态。
     class NEXAUR_API SelectionService {
     public:
         virtual ~SelectionService() = default;
@@ -29,6 +31,7 @@ namespace NexAur {
         virtual const std::string& getSelectionSource() const = 0;
     };
 
+    // UI 捕获策略需要知道鼠标是否在视口上，因此把视口状态抽成服务。
     class NEXAUR_API ViewportService {
     public:
         virtual ~ViewportService() = default;

@@ -953,6 +953,8 @@ struct AudioListenerComponent {
 
 ### PR8：RenderPassContext 最小实现
 
+状态：已完成（2026-06-22）。
+
 目标：
 
 - Pass 不再直接访问全局 RendererSystem / WindowSystem。
@@ -970,7 +972,19 @@ struct AudioListenerComponent {
 - Shadow、Skybox、PBR 渲染正常。
 - Pass 源码不 include `global_context.h`。
 
+实际落地：
+
+- 新增 `Function/Renderer/RHI/render_pass_context.h`，用 `RenderPassContext` 显式描述当前 viewport framebuffer 和 viewport 尺寸。
+- `RenderPipeline::render()`、`RenderForwardPipeline::render()`、`IRenderPass::run()`、`IRenderPass::execute()` 改为接收 `RenderPassContext`。
+- `RendererSystem` 在每帧创建 `RenderPassContext`，并在绑定 viewport framebuffer 时统一设置 viewport。
+- `ShadowPassV2` 不再从 `g_runtime_global_context` 读取 `WindowSystem` / `RendererSystem`，而是用 context 恢复 viewport target。
+- `SkyboxPassV2` 使用新的 pass 接口，Pass 目录已不再 include `global_context.h`。
+- `RenderIBLBuilder` 去掉对 `global_context.h` / `WindowSystem` / `RendererSystem` 的依赖，烘焙后 viewport 恢复交给 `RendererSystem` 的帧入口统一处理。
+- `NX_ASSET` 的轻量定义下沉到 `Function/File/file_system.h`，渲染 Pass 获取资源路径不再需要 include `global_context.h`。
+
 ### PR9：RenderDevice 最小接口
+
+状态：已完成（2026-06-22）。
 
 目标：
 
@@ -989,6 +1003,26 @@ struct AudioListenerComponent {
 - OpenGL 行为不变。
 - 新代码优先使用 RenderDevice。
 - VulkanRenderDevice 后续可以从同一接口开始实现。
+
+实际落地：
+
+- 新增 `Function/Renderer/RHI/render_device.h/.cpp`，定义 `RenderDevice` 最小资源创建接口。
+- 新增 `Function/Renderer/Platform/OpenGL/opengl_render_device.h/.cpp`，当前 OpenGL 后端通过该 device 创建 framebuffer、shader、texture、buffer、vertex array、uniform buffer 等资源。
+- `RendererFactory` 从 `RendererSystem` 中移出，变成 `RenderDevice` 上方的兼容静态门面；旧调用点可以继续使用，内部会转发到当前 active device。
+- `RendererFactory` 不再隐式创建 OpenGL fallback；RendererSystem 必须先设置 active device，避免中立 RHI 层反向依赖具体 OpenGL 后端。
+- `RendererSystem` 创建并持有 `OpenGLRenderDevice`，初始化时注册给 `RendererFactory`，关闭时清理 active device。
+- `Renderer::init()` 的 camera UBO、`RenderResourceCache` 的 Texture2D、`RenderResourceUploader` 的 mesh GPU 上传、`RenderIBLBuilder` 的离屏 framebuffer 创建都改为走 `RendererFactory -> RenderDevice`。
+- `ProceduralModelFactory` 不再 include `renderer_system.h`，改为只依赖 `render_device.h` 的资源创建门面。
+- CMake 已加入 `render_device`、`render_pass_context`、`opengl_render_device` 新文件。
+
+保留事项：
+
+- `AssetManager` 仍保留 `getTexture()` / `getTextureCube()` / `loadShader()` 等旧 GPU 资源缓存接口，作为迁移期兼容路径；新渲染主路径应优先使用 `RenderResourceCache -> RenderDevice`，后续可单独把这些旧接口降级或移出 Resource 层。
+
+验证：
+
+- `cmake --build build --config Debug` 已通过。
+- 构建仍有既有 C4251 DLL 导出 warning，未发现 PR8/PR9 引入的编译错误。
 
 ## 9. 目录与命名建议
 

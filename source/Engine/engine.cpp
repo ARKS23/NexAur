@@ -17,6 +17,8 @@
 
 namespace NexAur {
     namespace {
+        // Engine 位于顶层调度，可以在迁移期从 ModuleRegistry 取服务。
+        // 深层系统不要复制这种访问方式，应该通过构造参数或自己的 Context 拿依赖。
         template<typename Service>
         std::shared_ptr<Service> getModuleService() {
             ModuleRegistry* registry = g_runtime_global_context.getModuleRegistry();
@@ -58,12 +60,15 @@ namespace NexAur {
 
         ModuleManager* module_manager = g_runtime_global_context.getModuleManager();
         if (module_manager) {
+            // 帧早期模块更新：当前主要让 PlatformModule 刷新 InputState。
             module_manager->tickModules(TickContext{ delta_time });
         }
 
+        // Runtime 场景逻辑仍暂时由 Engine 顶层调度，后续可以继续下沉到 RuntimeModule。
         logicalTick(delta_time);
 
         if (module_manager) {
+            // Scene 提取 RenderData 后，Editor 可以覆盖 viewport 相机等编辑器态数据。
             module_manager->postUpdateModules(TickContext{ delta_time });
         }
 
@@ -75,9 +80,11 @@ namespace NexAur {
         }
 
         if (module_manager) {
+            // EditorModule/GameModule 等模块在这里提交 UI。
             module_manager->renderUIModules(TickContext{ delta_time });
         }
 
+        // 双缓冲交换：本帧写入的数据变成 Renderer 读取的数据。
         std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
         render_context->swapBuffers();
 
@@ -91,6 +98,7 @@ namespace NexAur {
 
         std::shared_ptr<WindowService> window_service = getModuleService<WindowService>();
         if (window_service) {
+            // 当前 OpenGL 后端由 WindowSystem 负责 swap/poll；通过 WindowService 隔离 GLFW 细节。
             window_service->present();
             window_service->pollEvents();
             window_service->setTitle(std::string("NexAur: " + std::to_string(m_fps) + "FPS").c_str());
@@ -117,6 +125,7 @@ namespace NexAur {
 
         active_scene->tick(delta_time);
 
+        // Scene 只提取轻量 RenderDataPacket；GPU 资源解析交给 RendererModule。
         std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
         RenderDataPacket* write_packet = &render_context->getWriteData();
         active_scene->extractSceneData(write_packet);
@@ -148,6 +157,7 @@ namespace NexAur {
 
     void Engine::onEvent(Event& event) {
         EventDispatcher dispatcher(event);
+        // Engine 只先处理应用生命周期事件；普通输入交给模块事件路由。
         dispatcher.dispatch<WindowCloseEvent>(NX_BIND_EVENT_FN(Engine::onWindowClose));
         dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(Engine::onWindowResize));
 

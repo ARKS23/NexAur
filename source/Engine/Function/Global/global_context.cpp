@@ -25,6 +25,8 @@ namespace NexAur {
     RunTimeGlobalContext g_runtime_global_context;
 
     namespace {
+        // 当前阶段使用静态模块名声明依赖关系。后续如果拆成独立 module 文件，
+        // 这些名字应当继续保持稳定，因为依赖拓扑排序依赖它们。
         constexpr const char* kCoreModule = "Core";
         constexpr const char* kFileSystemModule = "FileSystem";
         constexpr const char* kPlatformModule = "Platform";
@@ -35,6 +37,7 @@ namespace NexAur {
         constexpr const char* kUIModule = "UI";
         constexpr const char* kEditorModule = "Editor";
 
+        // Core 最先启动，提供日志等基础能力。
         class CoreEngineModule final : public EngineModule {
         public:
             ModuleInfo getInfo() const override {
@@ -59,6 +62,7 @@ namespace NexAur {
             void initialize(ModuleContext& context) override {
                 m_file_system = std::make_shared<FileSystem>(ENGINE_ROOT_DIR);
                 context.registry.registerService<FileSystem>(m_file_system);
+                // 兼容桥：旧代码仍可能从 g_runtime_global_context 取 FileSystem。
                 m_owner.m_file_system = m_file_system;
                 NX_CORE_INFO("FileSystem module initialized.");
             }
@@ -125,6 +129,7 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // PlatformModule 拥有窗口和输入实现，对外只暴露 WindowService/InputService。
                 m_window_system = std::make_shared<WindowSystem>();
                 WindowSpecification specification;
                 m_window_system->init(specification);
@@ -138,6 +143,7 @@ namespace NexAur {
                 context.registry.registerService<WindowSystem>(m_window_system);
                 context.registry.registerService<InputService>(m_input_service);
                 context.registry.registerService<InputSystem>(m_input_system);
+                // 兼容桥：旧路径暂时保留，后续新代码优先从 ModuleRegistry 取服务。
                 m_owner.m_window_system = m_window_system;
                 m_owner.m_input_system = m_input_system;
 
@@ -188,6 +194,7 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // AssetManager 目前仍是单例，这里用不拥有删除权的 shared_ptr 作为过渡服务视图。
                 AssetManager::getInstance().init();
                 m_asset_manager = std::shared_ptr<AssetManager>(&AssetManager::getInstance(), [](AssetManager*) {});
                 context.registry.registerService<AssetManager>(m_asset_manager);
@@ -212,6 +219,7 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // RenderContext 管理双缓冲 RenderDataPacket，连接 Scene 数据提取和 Renderer 消费。
                 m_render_context = std::make_shared<RenderContext>();
                 context.registry.registerService<RenderContext>(m_render_context);
                 m_owner.m_render_context = m_render_context;
@@ -239,6 +247,7 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // RendererSystem 是当前 OpenGL 实现；外部模块优先依赖 RendererService。
                 m_renderer_system = std::make_shared<RendererSystem>();
                 m_renderer_system->init();
 
@@ -282,6 +291,7 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // RuntimeModule 拥有 SceneManager，对外暴露 SceneService。
                 m_scene_manager = std::make_shared<SceneManager>();
                 m_scene_manager->init();
 
@@ -319,6 +329,8 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // UI 需要在事件路由中查询 ViewportService，因此保存 registry 指针。
+                // 这里仍是模块顶层使用，不把 registry 继续传入深层业务对象。
                 m_registry = &context.registry;
                 m_ui_system = std::make_shared<UISystem>();
                 m_ui_system->init();
@@ -336,6 +348,7 @@ namespace NexAur {
                 }
 
                 m_ui_system->onEvent(event);
+                // ImGui 捕获输入时，在这里截断后续 Editor/Runtime 输入响应。
                 if (shouldBlockInputForUICapture(event)) {
                     event.handled = true;
                 }
@@ -369,6 +382,7 @@ namespace NexAur {
                 if (mouse_event && m_ui_system->wantsCaptureMouse()) {
                     std::shared_ptr<ViewportService> viewport_service =
                         m_registry ? m_registry->getService<ViewportService>() : nullptr;
+                    // 鼠标在 viewport 上时允许编辑器视口继续处理 picking/滚轮等交互。
                     const bool mouse_over_viewport = viewport_service && viewport_service->isViewportHovered();
                     return !mouse_over_viewport;
                 }
@@ -389,6 +403,8 @@ namespace NexAur {
             }
 
             void initialize(ModuleContext& context) override {
+                // EditorContext 是编辑器层的小上下文，只保存编辑器实际需要的窄服务。
+                // 这样 Panel/EditorLayer 不需要直接访问 RunTimeGlobalContext。
                 m_context = std::make_shared<EditorContext>();
                 m_context->scene_service = context.registry.getService<SceneService>();
                 m_context->renderer_system = context.registry.getService<RendererSystem>();
@@ -399,6 +415,7 @@ namespace NexAur {
                 m_context->active_scene = m_context->scene_service ? m_context->scene_service->getActiveScene() : nullptr;
 
                 m_editor_layer = std::make_shared<EditorLayer>(m_context);
+                // SelectionService 由 EditorLayer 实现，Panel 通过服务写选择状态。
                 m_context->selection_service = std::static_pointer_cast<SelectionService>(m_editor_layer);
 
                 context.registry.registerService<EditorService>(std::static_pointer_cast<EditorService>(m_editor_layer));
@@ -409,6 +426,8 @@ namespace NexAur {
             }
 
             void postUpdate(const TickContext& tick_context) override {
+                // 放在 postUpdate 是为了让 Scene 先提取渲染数据，
+                // 然后 EditorCamera 再覆盖 viewport 预览相机。
                 if (m_editor_layer && m_editor_layer->isEnabled()) {
                     m_editor_layer->update(tick_context.delta_time);
                 }
@@ -452,6 +471,8 @@ namespace NexAur {
 
         clearCompatibilityServices();
 
+        // RunTimeGlobalContext 现在只负责组合模块和保留旧 public 指针兼容视图。
+        // 新模块代码不要继续把它当成万能 Service Locator。
         m_module_manager = std::make_unique<ModuleManager>();
         m_module_manager->registerModule(std::make_unique<CoreEngineModule>());
         m_module_manager->registerModule(std::make_unique<FileSystemModule>(*this));
@@ -467,6 +488,7 @@ namespace NexAur {
 
     void RunTimeGlobalContext::shutdownSystems() {
         if (m_module_manager) {
+            // 具体关闭顺序交给 ModuleManager 根据初始化顺序反向执行。
             m_module_manager->shutdownModules();
             m_module_manager.reset();
         }

@@ -5,6 +5,8 @@
 struct ImGuiContext;
 
 namespace NexAur {
+    // UI 对外暴露的帧生命周期和输入捕获状态。
+    // 事件路由只需要知道“UI 是否想吃掉输入”，不需要知道 ImGui 后端细节。
     class NEXAUR_API UIService {
     public:
             virtual ~UIService() = default;

@@ -1,100 +1,41 @@
 #include "pch.h"
 #include "renderer_system.h"
-#include "renderer.h"
-#include "renderer_command.h"
-#include "render_forward_pipeline.h"
-#include "Function/Renderer/editor_camera.h"
+
+#include "Function/Renderer/Platform/OpenGL/opengl_render_device.h"
+#include "Function/Renderer/RHI/render_forward_pipeline.h"
+#include "Function/Renderer/RHI/renderer.h"
+#include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/Resources/render_ibl_builder.h"
 #include "Function/Renderer/Resources/render_resource_cache.h"
 #include "Function/Resource/asset_manager.h"
 
-// 工厂函数实现
-namespace NexAur {
-    std::shared_ptr<Framebuffer> RendererFactory::createFramebuffer(const FramebufferSpecification& spec) {
-        return Framebuffer::create(spec);
-    }
-
-    std::shared_ptr<Material> RendererFactory::createMaterial(const std::shared_ptr<Shader>& shader) {
-        return std::make_shared<Material>(shader);
-    }
-
-    std::shared_ptr<Shader> RendererFactory::createShader(const std::string& filepath) {
-        return Shader::create(filepath);
-    }
-
-    std::shared_ptr<Shader> RendererFactory::createShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
-        return Shader::create(name, vertexSrc, fragmentSrc);
-    }
-
-    std::shared_ptr<Shader> RendererFactory::createShaderByPaths(const std::string& name, const std::string& vertexSrcPath, const std::string& fragmentSrcPath) {
-        return Shader::createByPaths(name, vertexSrcPath, fragmentSrcPath);
-    }
-
-    std::shared_ptr<TextureCubeMap> RendererFactory::createTextureCube(const TextureSpecification& specification) {
-        return TextureCubeMap::create(specification);
-    }
-
-    std::shared_ptr<TextureCubeMap> RendererFactory::createTextureCube(const std::string& path) {
-        return TextureCubeMap::create(path);
-    }
-
-    std::shared_ptr<Texture2D> RendererFactory::createTexture2D(const TextureSpecification& specification) {
-        return Texture2D::create(specification);
-    }
-
-    std::shared_ptr<Texture2D> RendererFactory::createTexture2D(const std::string& path) {
-        return Texture2D::create(path);
-    }
-
-    std::shared_ptr<Texture2D> RendererFactory::createTexture2D(uint32_t renderer_id, uint32_t width, uint32_t height) {
-        return Texture2D::create(renderer_id, width, height);
-    }
-
-    std::shared_ptr<VertexArray> RendererFactory::createVertexArray() {
-        return VertexArray::create();
-    }
-
-    std::shared_ptr<VertexBuffer> RendererFactory::createVertexBuffer(uint32_t size) {
-        return VertexBuffer::create(size);
-    }
-
-    std::shared_ptr<VertexBuffer> RendererFactory::createVertexBuffer(float* vertices, uint32_t size) {
-        return VertexBuffer::create(vertices, size);
-    }
-
-    std::shared_ptr<IndexBuffer> RendererFactory::createIndexBuffer(uint32_t* indices, uint32_t count) {
-        return IndexBuffer::create(indices, count);
-    }
-
-    std::shared_ptr<UniformBuffer> RendererFactory::createUniformBuffer(uint32_t size, uint32_t binding) {
-        return UniformBuffer::create(size, binding);
-    }
-} // namespace NexAur
-
+#include <algorithm>
 
 namespace NexAur {
     void RendererSystem::init() {
-        // 初始化底层渲染器
+        // 当前后端仍然是 OpenGL；RenderDevice 把创建资源的入口先收口，给后续 Vulkan 留替换点。
+        m_render_device = std::make_shared<OpenGLRenderDevice>();
+        RendererFactory::setDevice(m_render_device);
+
         Renderer::init();
         RenderResourceCache::getInstance().init();
-        
+
         RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
 
-        // 初始化RenderPipline
         m_forward_pipeline = std::make_shared<RenderForwardPipeline>();
         m_forward_pipeline->init();
         NX_CORE_ASSERT(m_forward_pipeline, "Failed to create RenderForwardPipeline in RendererSystem!");
 
-        // Viewport Framebuffer 用于离屏渲染给编辑器窗口
+        // Viewport Framebuffer 用于离屏渲染，再交给编辑器 viewport 显示。
         FramebufferSpecification fb_spec;
         fb_spec.width = m_viewport_width;
         fb_spec.height = m_viewport_height;
         fb_spec.Attachments = {
-            FramebufferTextureFormat::RGBA8, 
-            FramebufferTextureFormat::RED_INTEGER,     // 额外的ID附件，用于编辑器物体选中
+            FramebufferTextureFormat::RGBA8,
+            FramebufferTextureFormat::RED_INTEGER,
             FramebufferTextureFormat::DEPTH24STENCIL8
         };
-        
+
         m_viewport_framebuffer = RendererFactory::createFramebuffer(fb_spec);
         NX_CORE_ASSERT(m_viewport_framebuffer, "Failed to create viewport framebuffer in RendererSystem!");
     }
@@ -104,22 +45,27 @@ namespace NexAur {
         m_forward_pipeline.reset();
         RenderResourceCache::getInstance().shutdown();
 
-        // 关闭底层渲染器
         Renderer::shutdown();
+        RendererFactory::setDevice(nullptr);
+        m_render_device.reset();
     }
 
     void RendererSystem::tick(TimeStep ts, const RenderDataPacket& render_data) {
-        // 先解析资源，再绑定本帧目标；环境光 IBL 首次烘焙会使用临时 FBO。
+        (void)ts;
+
+        // 先把跨模块的轻量 RenderDataPacket 解析成 Renderer 内部可直接绘制的资源。
         ResolvedRenderDataPacket resolved_render_data = resolveRenderData(render_data);
+        RenderPassContext pass_context = createRenderPassContext();
 
         if (m_viewport_framebuffer) {
             m_viewport_framebuffer->bind();
+            RendererCommand::setViewport(0, 0, pass_context.viewport_width, pass_context.viewport_height);
             RendererCommand::setClearColor(glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f });
             RendererCommand::clear(ClearBufferFlag::ColorDepth);
-            m_viewport_framebuffer->clearAttachment(1, -1); // ID附件清除为-1，表示没有选中任何物体
+            m_viewport_framebuffer->clearAttachment(1, -1);
         }
 
-        m_forward_pipeline->render(resolved_render_data);
+        m_forward_pipeline->render(pass_context, resolved_render_data);
 
         if (m_viewport_framebuffer) {
             m_viewport_framebuffer->unbind();
@@ -173,6 +119,21 @@ namespace NexAur {
         return resolved_data;
     }
 
+    RenderPassContext RendererSystem::createRenderPassContext() const {
+        RenderPassContext context;
+        context.viewport_framebuffer = m_viewport_framebuffer;
+        context.viewport_width = std::max(1u, m_viewport_width);
+        context.viewport_height = std::max(1u, m_viewport_height);
+
+        if (m_viewport_framebuffer) {
+            const FramebufferSpecification& spec = m_viewport_framebuffer->getSpecification();
+            context.viewport_width = std::max(1u, spec.width);
+            context.viewport_height = std::max(1u, spec.height);
+        }
+
+        return context;
+    }
+
     void RendererSystem::onEvent(Event& e) {
         EventDispatcher dispatcher(e);
         dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(RendererSystem::onWindowResize));
@@ -183,7 +144,7 @@ namespace NexAur {
         height = std::max(1u, height);
 
         if (width == m_viewport_width && height == m_viewport_height) {
-            return; // 尺寸未改变，无需处理
+            return;
         }
 
         m_viewport_width = width;

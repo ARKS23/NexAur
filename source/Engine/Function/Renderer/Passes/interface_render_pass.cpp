@@ -1,41 +1,40 @@
 #include "pch.h"
 #include "interface_render_pass.h"
+
 #include "Function/Renderer/RHI/renderer_command.h"
-#include "Function/Renderer/window_system.h"
-#include "Function/Global/global_context.h"
-#include "Function/Renderer/RHI/renderer_system.h"
+
+#include <algorithm>
 
 namespace NexAur {
-    void IRenderPass::run(const ResolvedRenderDataPacket& render_data) {
-        begin();
-        execute(render_data);
-        end();
+    void IRenderPass::run(const RenderPassContext& pass_context, const ResolvedRenderDataPacket& render_data) {
+        begin(pass_context);
+        execute(pass_context, render_data);
+        end(pass_context);
     }
 
-    void IRenderPass::begin() {
-        if (m_specification.target_framebuffer) {
-            m_specification.target_framebuffer->bind();
-        } 
-        else {
-            // RendererCommand::bindDefaultFramebuffer();
-            // auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
-            // RendererCommand::setViewport(0, 0, width, height);
-            std::shared_ptr<Framebuffer> viewport_fb = g_runtime_global_context.m_renderer_system->getViewportFramebuffer();
-            if (viewport_fb) {
-                viewport_fb->bind();
-                RendererCommand::setViewport(0, 0, viewport_fb->getSpecification().width, viewport_fb->getSpecification().height);
-            }
+    void IRenderPass::begin(const RenderPassContext& pass_context) {
+        std::shared_ptr<Framebuffer> target_framebuffer =
+            m_specification.target_framebuffer ? m_specification.target_framebuffer : pass_context.viewport_framebuffer;
+
+        if (target_framebuffer) {
+            target_framebuffer->bind();
+            const FramebufferSpecification& spec = target_framebuffer->getSpecification();
+            RendererCommand::setViewport(0, 0, std::max(1u, spec.width), std::max(1u, spec.height));
+        } else {
+            RendererCommand::bindDefaultFramebuffer();
+            RendererCommand::setViewport(0, 0, pass_context.viewport_width, pass_context.viewport_height);
         }
 
-        // 清除缓冲区
         RendererCommand::setClearColor(m_specification.clear_color);
         RendererCommand::clear(m_specification.clear_buffer_flags);
     }
 
-    void IRenderPass::end() {
+    void IRenderPass::end(const RenderPassContext& pass_context) {
+        (void)pass_context;
+
+        // 显式 target 是 Pass 自己拥有的临时目标，默认 viewport target 则由 RendererSystem 控制生命周期。
         if (m_specification.target_framebuffer) {
             m_specification.target_framebuffer->unbind();
         }
     }
-
 } // namespace NexAur

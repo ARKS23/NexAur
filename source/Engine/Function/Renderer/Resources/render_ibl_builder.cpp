@@ -1,9 +1,7 @@
 ﻿#include "pch.h"
 #include "render_ibl_builder.h"
-#include "Function/Global/global_context.h"
 #include "Function/File/file_system.h"
-#include "Function/Renderer/window_system.h"
-#include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Renderer/RHI/render_device.h"
 #include "Function/Renderer/RHI/renderer_command.h"
 
 namespace NexAur {
@@ -131,9 +129,6 @@ namespace NexAur {
         if (!s_brdf_lut_map) s_brdf_lut_map = generateBRDFLUT();
         env_map->brdf_lut_map = s_brdf_lut_map;
 
-        auto [width, height] = g_runtime_global_context.m_window_system->getWindowSize();
-        RendererCommand::setViewport(0, 0, width, height);
-
         return env_map;
     }
 
@@ -157,7 +152,7 @@ namespace NexAur {
         captureFBO_spec.width = 1024;
         captureFBO_spec.height = 1024;
         captureFBO_spec.Attachments = { FramebufferTextureFormat::DEPTH24STENCIL8 };
-        std::shared_ptr<Framebuffer> captureFBO = Framebuffer::create(captureFBO_spec);
+        std::shared_ptr<Framebuffer> captureFBO = RendererFactory::createFramebuffer(captureFBO_spec);
 
         // 渲染到6个面
         equi_to_cube_shader->bind();
@@ -197,7 +192,7 @@ namespace NexAur {
         irradianceFBO_spec.width = 32;
         irradianceFBO_spec.height = 32;
         irradianceFBO_spec.Attachments = { FramebufferTextureFormat::DEPTH24STENCIL8 };
-        std::shared_ptr<Framebuffer> irradianceFBO = Framebuffer::create(irradianceFBO_spec);
+        std::shared_ptr<Framebuffer> irradianceFBO = RendererFactory::createFramebuffer(irradianceFBO_spec);
 
         std::shared_ptr<Shader> irradiance_shader = RendererFactory::createShaderByPaths("irradiance_conv", 
                 NX_ASSET("assets/shaders/pbr/irradiance_convolution.vs"), 
@@ -255,7 +250,7 @@ namespace NexAur {
             mipFBOSpec.width = mipWidth;
             mipFBOSpec.height = mipHeight;
             mipFBOSpec.Attachments = { FramebufferTextureFormat::DEPTH24STENCIL8 };
-            std::shared_ptr<Framebuffer> mipFBO = Framebuffer::create(mipFBOSpec);
+            std::shared_ptr<Framebuffer> mipFBO = RendererFactory::createFramebuffer(mipFBOSpec);
             
             RendererCommand::setViewport(0, 0, mipWidth, mipHeight);
 
@@ -287,7 +282,7 @@ namespace NexAur {
         brdf_spec.height = 512;
         // BRDFLUT 是2D的红绿色图像，使用普通的颜色附件
         brdf_spec.Attachments = { FramebufferTextureSpecification(FramebufferTextureFormat::RGBA16F) }; 
-        std::shared_ptr<Framebuffer> brdfFBO = Framebuffer::create(brdf_spec);
+        std::shared_ptr<Framebuffer> brdfFBO = RendererFactory::createFramebuffer(brdf_spec);
 
         std::shared_ptr<Shader> brdf_shader = RendererFactory::createShaderByPaths("brdf_shader", 
                 NX_ASSET("assets/shaders/pbr/brdf.vs"), 

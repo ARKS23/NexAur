@@ -53,11 +53,15 @@ namespace NexAur {
         ModuleContext context{ m_registry };
         std::vector<size_t> ordered_modules = resolveInitializationOrder();
 
+        // 第一轮只注册服务壳。以后如果模块之间有循环查询接口需求，
+        // 可以先在这里暴露 Service，再在 initialize 里创建真实资源。
         for (size_t module_index : ordered_modules) {
             EngineModule* module = m_modules[module_index].get();
             module->registerServices(context);
         }
 
+        // 第二轮创建真实系统资源。这里严格遵守依赖拓扑顺序，
+        // 例如 Renderer 必须晚于 Platform，Editor 必须晚于 UI/Runtime/Renderer。
         for (size_t module_index : ordered_modules) {
             EngineModule* module = m_modules[module_index].get();
             const ModuleInfo module_info = module->getInfo();
@@ -73,6 +77,9 @@ namespace NexAur {
             m_modules[module_index]->postInitialize(context);
         }
 
+        // 事件分发不能简单复用初始化顺序：
+        // UI 捕获输入必须先于 Editor/Runtime，所以这里单独生成事件顺序。
+        // 先反转初始化顺序，再按 stage 稳定排序，可以保留同阶段“后初始化者优先”的直觉。
         m_event_modules.assign(m_initialized_modules.rbegin(), m_initialized_modules.rend());
         std::stable_sort(
             m_event_modules.begin(),
@@ -105,6 +112,7 @@ namespace NexAur {
     void ModuleManager::dispatchEvent(Event& event) {
         for (EngineModule* module : m_event_modules) {
             module->onEvent(event);
+            // handled 表示事件已经被消费，后续模块不应该再响应。
             if (event.handled) {
                 break;
             }
@@ -117,6 +125,8 @@ namespace NexAur {
         }
 
         ModuleContext context{ m_registry };
+        // 反向关闭可以保证依赖方先释放资源：
+        // 例如 Editor 先于 UI，Renderer 先于 Platform/window context。
         for (auto it = m_initialized_modules.rbegin(); it != m_initialized_modules.rend(); ++it) {
             const ModuleInfo module_info = (*it)->getInfo();
             (*it)->shutdown(context);
@@ -144,10 +154,7 @@ namespace NexAur {
         return ordered_modules;
     }
 
-    void ModuleManager::visitModule(
-        size_t module_index,
-        std::vector<uint8_t>& visit_state,
-        std::vector<size_t>& ordered_modules) const {
+    void ModuleManager::visitModule(size_t module_index, std::vector<uint8_t>& visit_state, std::vector<size_t>& ordered_modules) const {
         if (visit_state[module_index] == 2) {
             return;
         }
@@ -160,6 +167,7 @@ namespace NexAur {
 
         const ModuleInfo module_info = m_modules[module_index]->getInfo();
         for (const std::string& dependency_name : module_info.dependencies) {
+            // 先访问依赖模块，当前模块会在所有依赖之后进入 ordered_modules。
             const size_t dependency_index = findModuleIndex(dependency_name);
             visitModule(dependency_index, visit_state, ordered_modules);
         }

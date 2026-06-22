@@ -5,6 +5,7 @@
 
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/model.h"
+#include "Function/Renderer/RHI/render_device.h"
 #include "Function/Renderer/RHI/texture.h"
 #include "Function/Renderer/Resources/render_ibl_builder.h"
 #include "Function/Renderer/Resources/render_resource_uploader.h"
@@ -114,7 +115,7 @@ namespace NexAur {
         }
 
         // 贴图 GPU 对象由 Renderer 侧缓存创建，避免 Resource 层绑定具体图形 API。
-        std::shared_ptr<Texture2D> texture = Texture2D::create(texture_path);
+        std::shared_ptr<Texture2D> texture = RendererFactory::createTexture2D(texture_path);
         if (!texture || !texture->isLoaded()) {
             NX_CORE_ERROR("Failed to upload texture: {}", texture_path);
             return nullptr;

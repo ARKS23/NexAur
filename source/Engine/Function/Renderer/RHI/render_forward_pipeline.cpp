@@ -2,13 +2,12 @@
 #include "render_forward_pipeline.h"
 #include "Function/Renderer/Passes/skybox_pass_v2.h"
 #include "Function/Renderer/Passes/shadow_pass_v2.h"
+#include "Function/Renderer/RHI/render_device.h"
 #include "Function/Renderer/RHI/renderer_command.h"
 #include "Function/Renderer/editor_camera.h"
 #include "Function/Renderer/RHI/Renderer.h"
 #include "Function/Renderer/data/render_data.h"
-#include "Function/Global/global_context.h"
 #include "Function/File/file_system.h"
-#include "Function/Renderer/RHI/renderer_system.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -38,11 +37,11 @@ namespace NexAur {
         m_shadow_pass_v2 = std::make_shared<ShadowPassV2>(shadowSpecV2);
     }
 
-    void RenderForwardPipeline::render(const ResolvedRenderDataPacket& render_data) {
+    void RenderForwardPipeline::render(const RenderPassContext& pass_context, const ResolvedRenderDataPacket& render_data) {
         RendererCommand::clear(ClearBufferFlag::Depth | ClearBufferFlag::Color);
 
         // shadow pass
-        m_shadow_pass_v2->run_without_begin_end(render_data);
+        m_shadow_pass_v2->run_without_begin_end(pass_context, render_data);
 
         // 获取shader
         if (!m_pbr_shader) return;
@@ -173,6 +172,6 @@ namespace NexAur {
         }
 
         // 绘制天空盒
-        if (render_data.environment_data.skybox_texture) m_skybox_pass_v2->run(render_data);
+        if (render_data.environment_data.skybox_texture) m_skybox_pass_v2->run(pass_context, render_data);
     }
 } // namespace NexAur

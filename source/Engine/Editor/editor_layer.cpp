@@ -97,6 +97,7 @@ namespace NexAur {
             return;
         }
 
+        // 每帧先刷新 EditorContext，再让面板和相机读取最新服务状态。
         syncPanelContext();
         updateViewportCamera(delta_time);
 
@@ -127,6 +128,7 @@ namespace NexAur {
             return;
         }
 
+        // DockSpace 是编辑器 UI 根窗口，所有 Panel 都挂在它里面。
         beginDockSpace();
 
         for (auto& panel : m_panels) {
@@ -181,6 +183,7 @@ namespace NexAur {
             m_context->active_scene = m_context->scene_service->getActiveScene();
         }
 
+        // Panel 不自己去找全局服务，只吃 EditorContext。
         for (auto& panel : m_panels) {
             panel->syncPanelContext(m_context);
         }
@@ -195,6 +198,7 @@ namespace NexAur {
             m_context->ui_service &&
             (m_context->ui_service->wantsCaptureKeyboard() || m_context->ui_service->wantsTextInput());
 
+        // UI 输入框正在吃键盘时，禁止 WASD 推动编辑器相机。
         if (!keyboard_captured && (m_context->viewport_focused || m_context->viewport_hovered)) {
             m_context->viewport_camera->onUpdate(delta_time);
         }
@@ -207,6 +211,7 @@ namespace NexAur {
             return;
         }
 
+        // Editor 视口使用独立相机，写入 RenderDataPacket 覆盖场景 CameraComponent。
         auto& camera_data = m_context->render_context->getWriteData().camera_data;
         const auto& viewport_camera = *m_context->viewport_camera;
 

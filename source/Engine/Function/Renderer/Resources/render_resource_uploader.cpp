@@ -2,8 +2,7 @@
 #include "render_resource_uploader.h"
 
 #include "Function/Renderer/data/render_data.h"
-#include "Function/Renderer/RHI/buffer.h"
-#include "Function/Renderer/RHI/vertex_array.h"
+#include "Function/Renderer/RHI/render_device.h"
 #include "Function/Renderer/Resources/render_resource_cache.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/model.h"
@@ -30,9 +29,9 @@ namespace NexAur {
         RenderMeshData gpu_mesh;
 
         // 顶点上传仍然走当前 RHI 工厂接口，后续 Vulkan 可在这里切换为 staging buffer。
-        gpu_mesh.vertex_array = VertexArray::create();
+        gpu_mesh.vertex_array = RendererFactory::createVertexArray();
         const std::vector<Vertex>& vertices = cpu_mesh.GetVertices();
-        auto vbo = VertexBuffer::create(reinterpret_cast<float*>(const_cast<Vertex*>(vertices.data())), vertices.size() * sizeof(Vertex));
+        auto vbo = RendererFactory::createVertexBuffer(reinterpret_cast<float*>(const_cast<Vertex*>(vertices.data())), vertices.size() * sizeof(Vertex));
         vbo->setLayout({
             { ShaderDataType::Float3, "a_Position" },
             { ShaderDataType::Float3, "a_Normal" },
@@ -42,7 +41,7 @@ namespace NexAur {
         });
 
         const std::vector<unsigned int>& indices = cpu_mesh.GetIndices();
-        auto ebo = IndexBuffer::create(reinterpret_cast<uint32_t*>(const_cast<unsigned int*>(indices.data())), indices.size());
+        auto ebo = RendererFactory::createIndexBuffer(reinterpret_cast<uint32_t*>(const_cast<unsigned int*>(indices.data())), indices.size());
         gpu_mesh.index_count = static_cast<uint32_t>(indices.size());
 
         gpu_mesh.vertex_array->addVertexBuffer(vbo);

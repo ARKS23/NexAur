@@ -109,8 +109,11 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/RHI/graphics_context.cpp
     Function/Renderer/RHI/material.h
     Function/Renderer/RHI/material.cpp
+    Function/Renderer/RHI/render_device.h
+    Function/Renderer/RHI/render_device.cpp
     Function/Renderer/RHI/render_forward_pipeline.h
     Function/Renderer/RHI/render_forward_pipeline.cpp
+    Function/Renderer/RHI/render_pass_context.h
     Function/Renderer/RHI/render_pipeline.h
     Function/Renderer/RHI/renderer.h
     Function/Renderer/RHI/renderer.cpp
@@ -137,6 +140,8 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/Platform/OpenGL/opengl_graphics_context.cpp
     Function/Renderer/Platform/OpenGL/opengl_renderer_api.h
     Function/Renderer/Platform/OpenGL/opengl_renderer_api.cpp
+    Function/Renderer/Platform/OpenGL/opengl_render_device.h
+    Function/Renderer/Platform/OpenGL/opengl_render_device.cpp
     Function/Renderer/Platform/OpenGL/opengl_shader.h
     Function/Renderer/Platform/OpenGL/opengl_shader.cpp
     Function/Renderer/Platform/OpenGL/opengl_texture.h

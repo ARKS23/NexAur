@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "procedural_model_factory.h"
 #include "Function/Renderer/data/render_data.h"
-#include "Function/Renderer/RHI/renderer_system.h"
+#include "Function/Renderer/RHI/render_device.h"
 
 namespace NexAur {
     static std::shared_ptr<VertexArray> genCubeMeshVAO() {

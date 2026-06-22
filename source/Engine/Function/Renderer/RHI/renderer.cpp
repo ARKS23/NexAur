@@ -1,7 +1,8 @@
 #include "pch.h"
 #include "renderer.h"
-#include "uniform_buffer.h"
-#include "renderer_command.h"
+
+#include "Function/Renderer/RHI/render_device.h"
+#include "Function/Renderer/RHI/renderer_command.h"
 
 namespace NexAur {
     Renderer::RendererData* Renderer::s_renderer_data = nullptr;
@@ -10,7 +11,7 @@ namespace NexAur {
         RendererCommand::init();
 
         s_renderer_data = new RendererData();
-        s_renderer_data->camera_ubo = UniformBuffer::create(sizeof(glm::mat4), 0); // 创建绑定点0，设置view Projection Matrix的UBO
+        s_renderer_data->camera_ubo = RendererFactory::createUniformBuffer(sizeof(glm::mat4), 0);
     }
 
     void Renderer::shutdown() {

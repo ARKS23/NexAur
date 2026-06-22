@@ -9,6 +9,7 @@
 #include "Function/Input/input_state.h"
 
 namespace NexAur {
+    // PlatformModule 对外暴露的窗口能力，屏蔽 GLFW/平台窗口细节。
     class NEXAUR_API WindowService {
     public:
         virtual ~WindowService() = default;
@@ -20,6 +21,7 @@ namespace NexAur {
         virtual void pollEvents() = 0;
     };
 
+    // 输入只暴露快照读取接口。EditorCamera 等使用者不再直接依赖 GLFW。
     class NEXAUR_API InputService {
     public:
         virtual ~InputService() = default;

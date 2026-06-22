@@ -11,6 +11,8 @@ namespace NexAur {
     class Framebuffer;
     struct RenderDataPacket;
 
+    // RendererModule 的对外门面。Editor/Runtime 只依赖这个接口，
+    // 不应该知道当前后端是 OpenGL、Vulkan 还是其他实现。
     class NEXAUR_API RendererService {
     public:
         virtual ~RendererService() = default;

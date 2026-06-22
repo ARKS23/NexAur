@@ -17,6 +17,8 @@ namespace NexAur {
     class SelectionService;
     class UIService;
 
+    // EditorLayer 和各个 Panel 共享的小上下文。
+    // 这里放编辑器真正需要的窄服务，不把 ModuleRegistry 或全局上下文传进面板。
     struct EditorContext {
         std::shared_ptr<SceneV2> active_scene;
         std::shared_ptr<SceneService> scene_service;
