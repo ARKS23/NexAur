@@ -46,6 +46,7 @@ namespace NexAur {
         std::shared_ptr<UISystem> m_ui_system;
 
     private:
+        void syncCompatibilityServices();
         void clearCompatibilityServices();
 
     private:

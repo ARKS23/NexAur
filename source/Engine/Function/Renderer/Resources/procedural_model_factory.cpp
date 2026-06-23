@@ -127,7 +127,9 @@ namespace NexAur {
         }
 
         // 3. 上传数据到 GPU
-        auto vbo = RendererFactory::createVertexBuffer(data.data(), data.size() * sizeof(float));
+        auto vbo = RendererFactory::createVertexBuffer(
+            data.data(),
+            static_cast<uint32_t>(data.size() * sizeof(float)));
         
         vbo->setLayout({
             { ShaderDataType::Float3, "a_Pos" },
@@ -136,7 +138,7 @@ namespace NexAur {
         });
         vertex_array->addVertexBuffer(vbo);
 
-        auto ebo = RendererFactory::createIndexBuffer(indices.data(), indices.size());
+        auto ebo = RendererFactory::createIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
         vertex_array->setIndexBuffer(ebo);
 
         return vertex_array;

@@ -23,6 +23,9 @@ set(NEXAUR_ENGINE_CORE_FILES
     Core/Events/window_event.h
     Core/Log/log_system.h
     Core/Log/log_system.cpp
+    Core/Module/builtin_module_names.h
+    Core/Module/core_engine_module.h
+    Core/Module/core_engine_module.cpp
     Core/Module/engine_module.h
     Core/Module/module_manager.h
     Core/Module/module_manager.cpp
@@ -32,6 +35,8 @@ set(NEXAUR_ENGINE_CORE_FILES
 )
 
 set(NEXAUR_ENGINE_EDITOR_FILES
+    Editor/editor_module.h
+    Editor/editor_module.cpp
     Editor/editor_context.h
     Editor/editor_layer.h
     Editor/editor_layer.cpp
@@ -48,6 +53,8 @@ set(NEXAUR_ENGINE_EDITOR_FILES
 set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/File/file_system.h
     Function/File/file_system.cpp
+    Function/File/file_system_module.h
+    Function/File/file_system_module.cpp
     Function/Global/global_context.h
     Function/Global/global_context.cpp
     Function/Input/input_state.h
@@ -56,16 +63,18 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Input/input_system_glfw.cpp
     Function/Input/KeyCode/key_codes.h
     Function/Input/KeyCode/mouse_codes.h
+    Function/Platform/platform_module.h
+    Function/Platform/platform_module.cpp
     Function/Platform/platform_services.h
     Function/Resource/asset_handle.h
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
     Function/Resource/asset_metadata.h
+    Function/Resource/resource_module.h
+    Function/Resource/resource_module.cpp
     Function/Resource/mesh.h
     Function/Resource/model.h
     Function/Resource/model.cpp
-    Function/Resource/procedural_model_factory.h
-    Function/Resource/procedural_model_factory.cpp
     Function/Scene/component.h
     Function/Scene/entity.h
     Function/Scene/entity.cpp
@@ -74,8 +83,12 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Scene/scene_manager.h
     Function/Scene/scene_manager.cpp
     Function/Scene/scene_service.h
+    Function/Scene/runtime_module.h
+    Function/Scene/runtime_module.cpp
     Function/Scene/scene_v2.h
     Function/Scene/scene_v2.cpp
+    Function/UI/ui_module.h
+    Function/UI/ui_module.cpp
     Function/UI/ui_system.h
     Function/UI/ui_system.cpp
 )
@@ -84,6 +97,8 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/camera.h
     Function/Renderer/editor_camera.h
     Function/Renderer/editor_camera.cpp
+    Function/Renderer/renderer_module.h
+    Function/Renderer/renderer_module.cpp
     Function/Renderer/window_system.h
     Function/Renderer/window_system.cpp
     Function/Renderer/data/render_context.h
@@ -94,6 +109,8 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/Resources/render_resource_cache.cpp
     Function/Renderer/Resources/render_resource_uploader.h
     Function/Renderer/Resources/render_resource_uploader.cpp
+    Function/Renderer/Resources/procedural_model_factory.h
+    Function/Renderer/Resources/procedural_model_factory.cpp
     Function/Renderer/Passes/interface_render_pass.h
     Function/Renderer/Passes/interface_render_pass.cpp
     Function/Renderer/Passes/shadow_pass_v2.h

@@ -5,12 +5,13 @@
 
 #include "Core/Base.h"
 #include "Core/UUID.h"
-#include "Function/Renderer/RHI/texture.h"
-#include "Function/Renderer/RHI/shader.h"
 #include "Function/Resource/asset_metadata.h"
 
 namespace NexAur {
     class Model;
+    class Shader;
+    class Texture2D;
+    class TextureCubeMap;
 
     class NEXAUR_API AssetManager {
     public:
@@ -32,17 +33,22 @@ namespace NexAur {
 
         // 贴图资产：importTextureAsset 只登记身份，GPU Texture2D 优先交给 RenderResourceCache 创建。
         AssetHandle importTextureAsset(const std::string& path);
+        AssetHandle importTextureCubeAsset(const std::string& path);
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
         AssetHandle loadTextureAsset(const std::string& path) { return importTextureAsset(path); }
-        std::shared_ptr<Texture2D> getTexture(const UUID& handle); // 通过UUID获取贴图
-        UUID loadTextureCube(const std::string& path); 
-        AssetHandle loadTextureCubeAsset(const std::string& path) { return AssetHandle(loadTextureCube(path)); }
+        // Legacy GPU cache API：新代码请使用 AssetHandle -> RenderResourceCache。
+        std::shared_ptr<Texture2D> getTexture(const UUID& handle);
+        UUID loadTextureCube(const std::string& path);
+        AssetHandle loadTextureCubeAsset(const std::string& path) { return importTextureCubeAsset(path); }
+        // Legacy GPU cache API：新代码请使用 AssetHandle -> RenderResourceCache。
         std::shared_ptr<TextureCubeMap> getTextureCube(const UUID& handle);
 
         // 着色器
-        UUID loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path); // 加载着色器并返回UUID
-        AssetHandle loadShaderAsset(const std::string name, const std::string& vertex_path, const std::string& fragment_path) { return AssetHandle(loadShader(name, vertex_path, fragment_path)); }
-        std::shared_ptr<Shader> getShader(const UUID& handle); // 通过UUID获取着色器
+        AssetHandle importShaderAsset(const std::string& name, const std::string& vertex_path, const std::string& fragment_path);
+        UUID loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path); // 过渡 API：只登记着色器身份并返回 UUID
+        AssetHandle loadShaderAsset(const std::string name, const std::string& vertex_path, const std::string& fragment_path) { return importShaderAsset(name, vertex_path, fragment_path); }
+        // Legacy GPU cache API：新代码请使用 Renderer 侧资源创建路径。
+        std::shared_ptr<Shader> getShader(const UUID& handle);
 
         // 环境 HDR 资产：Resource 只登记 HDR 身份，IBL 烘焙由 RenderResourceCache 负责。
         AssetHandle importEnvironmentMapAsset(const std::string& hdr_path);

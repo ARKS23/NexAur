@@ -8,18 +8,27 @@
 架构图待补充。
 
 ## 启动调用链
-1. main函数入口
-2. 构建引擎，引擎进行初始化函数
-3. 引擎初始化函数调用全局上下文启动各个系统模块
-4. 运行引擎 `tick`
-5. 结束时销毁模块的顺序通常和初始化的顺序相反
+
+1. `main` 创建 `Engine`。
+2. `Engine::startEngine()` 调用 `RunTimeGlobalContext::startSystems()`。
+3. `RunTimeGlobalContext` 创建 `ModuleManager`，注册内置模块工厂。
+4. `ModuleManager` 根据模块依赖初始化 Core、FileSystem、Platform、Resource、RenderContext、Renderer、Runtime、UI、Editor。
+5. `Engine` 绑定 `WindowService` 事件回调并进入主循环。
+6. 结束时 `ModuleManager` 按初始化顺序的反向关闭模块。
+
+`RunTimeGlobalContext` 现在主要是组合根和旧代码兼容桥；深层系统应优先使用 Service 或显式参数。
 
 ### TickOneFrame
-1. logicalTick
-  1.  `m_world_manager->tick(delta_time);` 更新当前关卡内的所有对象
-  2.  `m_input_system->tick();`  处理输入状态的清理和特定逻辑，真正的输入收集在帧尾的`pollEvents()`
-2. calculateFPS: 计算FPS
-3. `g_runtime_global_context.m_render_system->swapLogicRenderData();`
-  - 数据流向: Logical Memory -> Render Memory
-4. rendererTick: 渲染系统根据上一步同步来的数据进行绘制渲染
-5. pollEevents: 接收输入，数据流向是Hardware -> Input Buffer
+
+当前一帧的主顺序：
+
+1. `calculateFPS()`。
+2. `ModuleManager::tickModules()`：当前主要由 `PlatformModule` 刷新 `InputState`。
+3. `Engine::logicalTick()`：active scene 更新并提取 `RenderDataPacket`。
+4. `ModuleManager::postUpdateModules()`：EditorCamera 等编辑器逻辑覆盖 viewport 相机数据。
+5. `UIService::beginFrame()`。
+6. `ModuleManager::renderUIModules()`：Editor panel 提交 ImGui。
+7. `RenderContext::swapBuffers()`：逻辑写入数据切换为 Renderer 读取数据。
+8. `RendererService::render()`。
+9. `UIService::endFrameAndRender()`。
+10. `WindowService::present()` / `pollEvents()`。

@@ -34,19 +34,19 @@ NexAur 目前已经具备一个早期 3D 引擎雏形：
 
 这说明项目主线是健康的。当前最大问题不是缺少某个单点功能，而是几个核心边界还没有完全稳定：
 
-- 全局上下文访问范围偏大。
-- Engine 主循环对 Editor、UI、Renderer 的调度比较硬编码。
+- `RunTimeGlobalContext` 已经降级为组合根和兼容桥，旧 public pointer 由组合根统一同步；各内置模块不再反向依赖它。
+- Engine 主循环已经优先通过 `ModuleManager` / Service 工作，Runtime scene tick 后续仍可继续下沉。
 - Editor 与 Runtime 的职责边界还不够清楚。
 - Input/Event 还缺少统一消费策略和 action mapping。
-- Renderer Pass 仍会直接访问全局窗口或 renderer。
-- RenderDevice / RenderCommandContext / RenderPassContext 还没有形成。
+- Renderer Pass 已使用 `RenderPassContext`，OpenGL 资源创建已通过最小 `RenderDevice` 收口。
+- `RenderCommandContext`、RenderTarget 抽象和更完整的材质/管线状态还没有形成。
 - Scene 序列化、Prefab、Gameplay System、Physics、Audio、Runtime UI 等 demo 所需模块还未建立。
 
 ## 3. 第一阶段：架构优化优先方向
 
 ### 3.1 收窄 `RunTimeGlobalContext` 的使用范围
 
-当前 `g_runtime_global_context` 是事实上的全局 Service Locator。它适合作为早期引擎的组合根，但不适合被深层模块随处访问。
+`g_runtime_global_context` 历史上是事实上的全局 Service Locator。现在它更接近组合根和旧代码兼容桥，仍适合 Engine / Sandbox 这类应用顶层使用，但不适合被深层模块随处访问。
 
 优化方向：
 
@@ -58,14 +58,15 @@ NexAur 目前已经具备一个早期 3D 引擎雏形：
 建议拆分上下文：
 
 ```text
-EngineServices
+ModuleRegistry services
   FileSystem
-  WindowSystem
-  InputSystem
+  WindowService
+  InputService
   AssetManager
-  SceneManager
-  RendererSystem
-  UISystem
+  SceneService
+  RenderContext
+  RendererService
+  UIService
 
 EditorContext
   active scene
@@ -119,13 +120,17 @@ ModuleManager
 - PR3：`PlatformModule` 注册 `WindowService` / `InputService`，`InputSystemGLFW` 维护 `InputState`。
 - PR4：`RuntimeModule` 注册 `SceneService`，Engine 和 Editor 顶层优先通过服务获取 active scene。
 - PR5：`RendererModule` 注册 `RendererService`，Viewport resize、显示和 picking 走渲染服务入口。
+- PR6：`EditorModule` 和 `EditorContext` 接入，Editor panels 通过窄服务工作。
+- PR7：事件由 `ModuleManager` 路由，UI 捕获策略先于 Editor 输入处理。
+- PR8：Render Pass 改用 `RenderPassContext`，不再直接访问全局上下文。
+- PR9：新增 `RenderDevice` / `OpenGLRenderDevice`，`RendererFactory` 转为 active device 兼容门面。
+- Phase1.1：完成 PR10-PR17，清理 UI/Engine/Resource/RendererService/EditorContext/Scene 旧路径，并更新文档示例。
 
-优先级：
+后续优先级：
 
-1. 让 Engine 只保留 frame loop、事件入口和少量兼容调度。
-2. 将 Platform、Runtime、Renderer、UI 的生命周期继续收口到模块。
-3. 后续 PR6 再让 EditorLayer 进入 EditorModule。
-4. Game Demo 逻辑后续作为 GameModule 或 Sandbox application module 接入。
+1. 将 Runtime scene tick 从 `Engine::logicalTick()` 继续下沉到 RuntimeModule 或 GameModule。
+2. 为 Game Demo 引入 GameModule / ApplicationModule。
+3. 在 Vulkan 接入前继续收窄 Renderer 内部的静态工厂和命令接口。
 
 ### 3.3 明确 Editor 与 Runtime 边界
 
@@ -215,27 +220,23 @@ if UI wants mouse and mouse is not inside viewport:
 
 ### 3.6 Renderer Pass 改为显式上下文
 
-当前部分 Pass 会直接从全局上下文中获取 RendererSystem、WindowSystem 或 viewport framebuffer。这会阻碍后续 Vulkan、RenderGraph、多 viewport。
+Render Pass 已经不再直接从全局上下文中获取 RendererSystem、WindowSystem 或 viewport framebuffer。当前的 `RenderPassContext` 仍是最小实现，后续可继续扩展为命令上下文、资源视图和 RenderTarget。
 
-建议引入：
+当前最小形态：
 
 ```cpp
 struct RenderPassContext {
-    RenderDevice* device = nullptr;
-    RenderCommandContext* commands = nullptr;
-    RenderResourceCache* resources = nullptr;
-    Framebuffer* target = nullptr;
-    uint32_t viewport_width = 0;
-    uint32_t viewport_height = 0;
+    std::shared_ptr<Framebuffer> viewport_framebuffer;
+    uint32_t viewport_width = 1;
+    uint32_t viewport_height = 1;
 };
 ```
 
-目标：
+后续目标：
 
 - `IRenderPass` 不访问全局系统。
-- `ShadowPass` 不自己恢复全局 viewport。
-- `SkyboxPass`、`ShadowPass`、Forward Pass 统一执行模型。
-- Pass 的输入输出由 context 或 specification 提供。
+- `ShadowPass`、`SkyboxPass`、Forward Pass 继续保持统一执行模型。
+- Pass 的输入输出逐步由 context、specification 或 RenderGraph 描述。
 
 这一步是 Vulkan 接入前的重要准备。
 
@@ -254,6 +255,7 @@ Resource 层：
 - 管理资产身份、路径、元数据、CPU 数据。
 - 模型导入、图片导入、材质描述都属于 Resource。
 - 不要求存在 OpenGL/Vulkan context。
+- 会创建 GPU buffer 的过程模型工具已移动到 Renderer/Resources。
 
 Renderer 层：
 
@@ -582,14 +584,14 @@ enum class GameState {
 - 初步整理 Editor 与 Runtime 边界。
 - 输入和事件规则更清楚。
 
-建议任务：
+当前状态：已完成 Phase1 和 Phase1.1 主线。
 
-1. 完成 EngineModule、ModuleManager、ModuleRegistry 骨架。
-2. 将 RunTimeGlobalContext 降级为兼容桥。
-3. 继续收口 Platform、Runtime、Renderer、UI 模块边界。
-4. EditorCamera 输入改为依赖 InputState。
-5. ViewportPanel 不直接访问全局 InputSystem。
-6. UI 捕获输入时阻断不应继续传播的事件。
+后续可继续：
+
+1. 抽出 GameModule / ApplicationModule。
+2. Runtime scene tick 下沉到 RuntimeModule。
+3. 抽出更窄的 AssetService。
+4. 为 EditorCameraController 单独建类。
 
 ### Phase 2：Renderer 接口前置重构
 
@@ -600,12 +602,10 @@ enum class GameState {
 
 建议任务：
 
-1. 拆出 `RenderDevice`。
-2. 让 OpenGL 资源创建走 `OpenGLRenderDevice`。
-3. 新增 `RenderCommandContext`。
-4. 新增 `RenderPassContext`。
-5. Shadow/Skybox/Forward Pass 改为显式 context。
-6. ResourceCache 不再直接依赖静态工厂。
+1. 继续补 `RenderCommandContext`。
+2. 抽象 RenderTarget / viewport texture handle。
+3. 让 Renderer 内部对象逐步显式持有 `RenderDevice`，减少静态 `RendererFactory` 使用。
+4. 增加 RenderBackend 配置入口。
 
 ### Phase 3：Scene 与 Asset 基础能力
 
@@ -662,12 +662,12 @@ enum class GameState {
 
 近期优先：
 
-1. PlatformModule / InputState。
-2. EditorCamera 输入解耦。
-3. ViewportPanel 输入和 picking 解耦。
-4. RendererService / RenderPassContext。
-5. RenderDevice 最小接口。
-6. SceneSerializer 第一版。
+1. SceneSerializer 第一版。
+2. GameModule / ApplicationModule 骨架。
+3. Runtime scene tick 下沉到 RuntimeModule 或 GameModule。
+4. 抽出更窄的 AssetService。
+5. RenderCommandContext / RenderTarget 前置设计。
+6. EditorCameraController 单独建类。
 
 中期优先：
 
@@ -720,9 +720,11 @@ enum class GameState {
 
 标准：
 
-- RendererSystem 是外部唯一渲染入口。
+- RendererService 是外部唯一渲染入口。
 - Pass 不访问全局 WindowSystem / RendererSystem。
 - ResourceCache 通过 RenderDevice 创建 GPU 资源。
+
+当前状态：主体已完成。`RendererFactory` 仍作为迁移期静态门面，内部转发到 active `RenderDevice`；`AssetManager` 和 Scene 不再作为 GPU 资源创建入口。
 
 ### Milestone D：Vulkan 最小路径跑通
 

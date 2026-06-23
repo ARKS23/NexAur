@@ -1,16 +1,26 @@
 #include "scene_test.h"
-#include "Function/Scene/scene_manager.h"
-#include "Function/Resource/procedural_model_factory.h"
+
+#include "Core/Module/engine_module.h"
+#include "Function/Global/global_context.h"
+#include "Function/Scene/scene_service.h"
+#include "Function/Renderer/Resources/procedural_model_factory.h"
 #include "Function/Renderer/Resources/render_resource_cache.h"
 #include "Function/File/file_system.h"
 
 namespace NexAur {
     SceneTestClass::SceneTestClass() : m_asset_manager(AssetManager::getInstance()) {
-        // 需要等引擎初始化完再进行构造
-        m_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
+        // Sandbox 是应用层示例，仍可从组合根拿服务，但不直接访问 legacy public pointer。
+        ModuleRegistry* registry = g_runtime_global_context.getModuleRegistry();
+        std::shared_ptr<SceneService> scene_service = registry ? registry->getService<SceneService>() : nullptr;
+        m_scene = scene_service ? scene_service->getActiveScene() : nullptr;
     }
 
     Entity SceneTestClass::addSphereEntity(std::string name, std::string material_type, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
+        if (!m_scene) {
+            NX_CORE_ERROR("SceneTestClass has no active scene.");
+            return Entity();
+        }
+
         std::shared_ptr<RenderModelData> sphere_model = ProceduralModelFactory::createSphereModel(64, 64);
 
         setMaterial(sphere_model->meshes[0].material, material_type);
@@ -32,6 +42,11 @@ namespace NexAur {
     }
 
     Entity SceneTestClass::addCubeEntity(std::string name, std::string material_type, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
+        if (!m_scene) {
+            NX_CORE_ERROR("SceneTestClass has no active scene.");
+            return Entity();
+        }
+
         std::shared_ptr<RenderModelData> cube_model = ProceduralModelFactory::createCubeModel();
 
         setMaterial(cube_model->meshes[0].material, material_type);
@@ -53,6 +68,11 @@ namespace NexAur {
     }
 
     Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
+        if (!m_scene) {
+            NX_CORE_ERROR("SceneTestClass has no active scene.");
+            return Entity();
+        }
+
         AssetHandle model_asset = m_asset_manager.importModelAsset(model_path);
         if (!model_asset) {
             NX_CORE_ERROR("Failed to load model: {0}", model_path);

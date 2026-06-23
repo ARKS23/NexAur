@@ -1,25 +1,27 @@
 #include "pch.h"
 #include "ui_system.h"
 
-#include "Function/Global/global_context.h"
-#include "Function/Renderer/window_system.h"
+#include "Function/Platform/platform_services.h"
 
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 
 namespace NexAur {
-    void UISystem::init() {
-        // 设置ImGui上下文
+    void UISystem::init(std::shared_ptr<WindowService> window_service) {
+        NX_CORE_ASSERT(window_service, "UISystem requires a valid WindowService.");
+        m_window_service = std::move(window_service);
+
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        ImGuiIO& io = ImGui::GetIO();
 
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // 开启键盘导航
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-        
+
         ImGui::StyleColorsDark();
 
         ImGuiStyle& style = ImGui::GetStyle();
@@ -28,7 +30,8 @@ namespace NexAur {
             style.Colors[ImGuiCol_WindowBg].w = 1.0f;
         }
 
-        GLFWwindow* window = g_runtime_global_context.m_window_system->getNativeWindow();
+        GLFWwindow* window = static_cast<GLFWwindow*>(m_window_service->getNativeWindow());
+        NX_CORE_ASSERT(window, "UISystem requires a valid native GLFW window.");
 
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 450");
@@ -40,6 +43,7 @@ namespace NexAur {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
+        m_window_service.reset();
 
         NX_CORE_INFO("UI System shut down.");
     }
@@ -54,13 +58,12 @@ namespace NexAur {
 
     void UISystem::endFrameAndRender() {
         ImGuiIO& io = ImGui::GetIO();
-        auto window_size = g_runtime_global_context.m_window_system->getWindowSize();
-        io.DisplaySize = ImVec2((float)window_size[0], (float)window_size[1]);
+        auto [width, height] = m_window_service ? m_window_service->getSize() : std::pair<uint32_t, uint32_t>{ 0, 0 };
+        io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        // 多视口处理
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
             GLFWwindow* backup_current_context = glfwGetCurrentContext();
             ImGui::UpdatePlatformWindows();
@@ -70,7 +73,7 @@ namespace NexAur {
     }
 
     void UISystem::onEvent(Event& event) {
-        // 处理全局派发事件
+        (void)event;
     }
 
     bool UISystem::isConsumingInput() const {

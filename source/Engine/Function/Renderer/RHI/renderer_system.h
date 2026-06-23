@@ -29,7 +29,6 @@ namespace NexAur {
         std::pair<uint32_t, uint32_t> getViewportSize() const override { return { m_viewport_width, m_viewport_height }; }
         uint32_t getViewportColorAttachment() const override { return m_viewport_framebuffer ? m_viewport_framebuffer->getColorAttachmentRendererID(0) : 0; }
         int readViewportEntityID(int x, int y) override;
-        std::shared_ptr<Framebuffer> getViewportFramebuffer() const override { return m_viewport_framebuffer; }
 
     private:
         ResolvedRenderDataPacket resolveRenderData(const RenderDataPacket& render_data);

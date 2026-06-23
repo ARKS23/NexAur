@@ -7,10 +7,7 @@
 #include "Function/Global/global_context.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/RHI/renderer_service.h"
-#include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/data/render_context.h"
-#include "Function/Renderer/window_system.h"
-#include "Function/Scene/scene_manager.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/Scene/scene_v2.h"
 #include "Function/UI/ui_system.h"
@@ -24,11 +21,18 @@ namespace NexAur {
             ModuleRegistry* registry = g_runtime_global_context.getModuleRegistry();
             return registry ? registry->getService<Service>() : nullptr;
         }
+
+        template<typename Service>
+        std::shared_ptr<Service> getRequiredModuleService() {
+            std::shared_ptr<Service> service = getModuleService<Service>();
+            NX_CORE_ASSERT(service, "Required module service is not registered.");
+            return service;
+        }
     } // namespace
 
     void Engine::startEngine() {
         g_runtime_global_context.startSystems();
-        g_runtime_global_context.m_window_system->setEventCallback(NX_BIND_EVENT_FN(Engine::onEvent));
+        getRequiredModuleService<WindowService>()->setEventCallback(NX_BIND_EVENT_FN(Engine::onEvent));
 
         enableEditorMode(m_is_editor_mode);
 
@@ -72,12 +76,8 @@ namespace NexAur {
             module_manager->postUpdateModules(TickContext{ delta_time });
         }
 
-        std::shared_ptr<UIService> ui_service = getModuleService<UIService>();
-        if (ui_service) {
-            ui_service->beginFrame();
-        } else if (g_runtime_global_context.m_ui_system) {
-            g_runtime_global_context.m_ui_system->beginFrame();
-        }
+        std::shared_ptr<UIService> ui_service = getRequiredModuleService<UIService>();
+        ui_service->beginFrame();
 
         if (module_manager) {
             // EditorModule/GameModule 等模块在这里提交 UI。
@@ -85,40 +85,24 @@ namespace NexAur {
         }
 
         // 双缓冲交换：本帧写入的数据变成 Renderer 读取的数据。
-        std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
+        std::shared_ptr<RenderContext> render_context = getRequiredModuleService<RenderContext>();
         render_context->swapBuffers();
 
         rendererTick(delta_time);
 
-        if (ui_service) {
-            ui_service->endFrameAndRender();
-        } else if (g_runtime_global_context.m_ui_system) {
-            g_runtime_global_context.m_ui_system->endFrameAndRender();
-        }
+        ui_service->endFrameAndRender();
 
-        std::shared_ptr<WindowService> window_service = getModuleService<WindowService>();
-        if (window_service) {
-            // 当前 OpenGL 后端由 WindowSystem 负责 swap/poll；通过 WindowService 隔离 GLFW 细节。
-            window_service->present();
-            window_service->pollEvents();
-            window_service->setTitle(std::string("NexAur: " + std::to_string(m_fps) + "FPS").c_str());
-        } else if (g_runtime_global_context.m_window_system) {
-            g_runtime_global_context.m_window_system->update();
-            g_runtime_global_context.m_window_system->pollEvents();
-            g_runtime_global_context.m_window_system->setTitle(std::string("NexAur: " + std::to_string(m_fps) + "FPS").c_str());
-        }
+        std::shared_ptr<WindowService> window_service = getRequiredModuleService<WindowService>();
+        // 当前 OpenGL 后端由 WindowSystem 负责 swap/poll；通过 WindowService 隔离 GLFW 细节。
+        window_service->present();
+        window_service->pollEvents();
+        window_service->setTitle(std::string("NexAur: " + std::to_string(m_fps) + "FPS").c_str());
 
         return m_is_running;
     }
 
     void Engine::logicalTick(TimeStep delta_time) {
-        std::shared_ptr<SceneV2> active_scene;
-        if (std::shared_ptr<SceneService> scene_service = getModuleService<SceneService>()) {
-            active_scene = scene_service->getActiveScene();
-        } else if (g_runtime_global_context.m_scene_manager) {
-            active_scene = g_runtime_global_context.m_scene_manager->getActiveScene();
-        }
-
+        std::shared_ptr<SceneV2> active_scene = getRequiredModuleService<SceneService>()->getActiveScene();
         if (!active_scene) {
             return;
         }
@@ -126,18 +110,14 @@ namespace NexAur {
         active_scene->tick(delta_time);
 
         // Scene 只提取轻量 RenderDataPacket；GPU 资源解析交给 RendererModule。
-        std::shared_ptr<RenderContext> render_context = g_runtime_global_context.m_render_context;
+        std::shared_ptr<RenderContext> render_context = getRequiredModuleService<RenderContext>();
         RenderDataPacket* write_packet = &render_context->getWriteData();
         active_scene->extractSceneData(write_packet);
     }
 
     void Engine::rendererTick(TimeStep delta_time) {
-        const RenderDataPacket& render_data = g_runtime_global_context.m_render_context->getReadData();
-        if (std::shared_ptr<RendererService> renderer_service = getModuleService<RendererService>()) {
-            renderer_service->render(delta_time, render_data);
-        } else if (g_runtime_global_context.m_renderer_system) {
-            g_runtime_global_context.m_renderer_system->tick(delta_time, render_data);
-        }
+        const RenderDataPacket& render_data = getRequiredModuleService<RenderContext>()->getReadData();
+        getRequiredModuleService<RendererService>()->render(delta_time, render_data);
     }
 
     void Engine::calculateFPS(TimeStep delta_time) {

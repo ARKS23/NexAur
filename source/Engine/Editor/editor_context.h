@@ -11,7 +11,6 @@ namespace NexAur {
     class InputService;
     class RenderContext;
     class RendererService;
-    class RendererSystem;
     class SceneService;
     class SceneV2;
     class SelectionService;
@@ -22,7 +21,6 @@ namespace NexAur {
     struct EditorContext {
         std::shared_ptr<SceneV2> active_scene;
         std::shared_ptr<SceneService> scene_service;
-        std::shared_ptr<RendererSystem> renderer_system;
         std::shared_ptr<RendererService> renderer_service;
         std::shared_ptr<InputService> input_service;
         std::shared_ptr<RenderContext> render_context;

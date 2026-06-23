@@ -5,7 +5,6 @@
 #include "entity.h"
 #include "scene_v2.h"
 #include "Function/File/file_system.h"
-#include "Function/Global/global_context.h"
 #include "Function/Resource/asset_manager.h"
 
 namespace NexAur {

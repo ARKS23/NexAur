@@ -15,12 +15,13 @@
 - PR5：`RendererModule` 与 `RendererService`。
 - PR6：`EditorModule` 与 Editor services。
 - PR7：事件路由与 UI 捕获策略。
+- PR8：`RenderPassContext`。
+- PR9：`RenderDevice` / `OpenGLRenderDevice`。
+- PR10-PR17：Phase1.1 残留旧代码清理。
 
 暂不包含：
 
-- PR8：`RenderPassContext`。
-- PR9：`RenderDevice`。
-- Vulkan 后端。
+- Vulkan 后端完整实现。
 - 物理、音频、脚本、Gameplay 模块的完整实现。
 
 ## 2. 设计目标
@@ -126,10 +127,23 @@ auto renderer_service = context.registry.getService<RendererService>();
 
 ## 4. 当前模块列表
 
-当前静态模块注册在：
+当前内置模块的注册入口在：
 
 ```text
 source/Engine/Function/Global/global_context.cpp
+```
+
+各模块实现已经拆到自己的领域目录，例如：
+
+```text
+Core/Module/core_engine_module.*
+Function/File/file_system_module.*
+Function/Platform/platform_module.*
+Function/Resource/resource_module.*
+Function/Renderer/renderer_module.*
+Function/Scene/runtime_module.*
+Function/UI/ui_module.*
+Editor/editor_module.*
 ```
 
 ### 4.1 CoreModule
@@ -149,7 +163,8 @@ source/Engine/Function/Global/global_context.cpp
 
 - 创建 `FileSystem`。
 - 注册 `FileSystem` 服务。
-- 同步旧的 `g_runtime_global_context.m_file_system` 兼容指针。
+
+旧的 `g_runtime_global_context.m_file_system` 兼容指针不由模块直接写入，而是在 `RunTimeGlobalContext` 组合根里统一同步。
 
 ### 4.3 PlatformModule
 
@@ -191,11 +206,13 @@ void PlatformModule::tick(const TickContext&) {
 
 - `AssetManager` 仍是单例。
 - Module 中用不拥有删除权的 `shared_ptr` 暴露过渡服务视图。
+- `AssetManager` 不再创建 GPU Texture / Shader，对应旧 API 只作为 legacy UUID/cache 查询入口保留。
+- 会创建 GPU buffer 的 `ProceduralModelFactory` 已移动到 `Function/Renderer/Resources`，Resource 目录不再作为 GPU 资源创建入口。
 
 后续方向：
 
 - 抽出更窄的 `AssetService`。
-- ResourceModule 不应创建 GPU 资源。
+- 删除或迁移 `getTexture()` / `getTextureCube()` / `getShader()` 等 legacy GPU cache API。
 
 ### 4.5 RenderContextModule
 
@@ -278,6 +295,8 @@ Texture
 - `UIService`
 - `UISystem` 兼容注册
 
+`UISystem` 初始化时由 `UIModule` 注入 `WindowService`，不再自己访问 `RunTimeGlobalContext`。
+
 输入捕获规则：
 
 ```text
@@ -335,6 +354,8 @@ Phase1 后，它的新定位是：
 模块组合根 + 旧代码兼容桥
 ```
 
+兼容桥的写入集中在 `RunTimeGlobalContext::syncCompatibilityServices()`。各个内置模块只注册自己的 Service，不再接收 `RunTimeGlobalContext&` 或直接写旧 public pointer。
+
 允许使用：
 
 - `Engine`
@@ -374,6 +395,7 @@ Engine::startEngine
       -> create ModuleManager
       -> register Core/FileSystem/Platform/Resource/RenderContext/Renderer/Runtime/UI/Editor
       -> ModuleManager::initializeModules()
+      -> sync legacy compatibility service pointers
   -> bind window event callback
   -> enableEditorMode()
 ```
@@ -629,17 +651,19 @@ public:
 
 ### 10.3 第三步：实现 Module
 
-在当前阶段，模块仍然集中注册在 `global_context.cpp`。
+每个模块优先放在自己的领域目录，并提供一个工厂函数给组合根注册。
 
 示例：
 
 ```cpp
-constexpr const char* kAudioModule = "Audio";
-
 class AudioModule final : public EngineModule {
 public:
     ModuleInfo getInfo() const override {
-        return { kAudioModule, ModuleStage::Audio, { kCoreModule, kResourceModule, kRuntimeModule } };
+        return {
+            "Audio",
+            ModuleStage::Audio,
+            { BuiltinModuleNames::Core, BuiltinModuleNames::Resource, BuiltinModuleNames::Runtime }
+        };
     }
 
     void initialize(ModuleContext& context) override {
@@ -667,6 +691,10 @@ public:
 private:
     std::shared_ptr<AudioSystem> m_audio_system;
 };
+
+std::unique_ptr<EngineModule> createAudioModule() {
+    return std::make_unique<AudioModule>();
+}
 ```
 
 ### 10.4 第四步：注册模块
@@ -674,7 +702,7 @@ private:
 在 `RunTimeGlobalContext::startSystems()` 中注册：
 
 ```cpp
-m_module_manager->registerModule(std::make_unique<AudioModule>());
+m_module_manager->registerModule(createAudioModule());
 ```
 
 注册位置不必强求顺序完全正确，因为初始化顺序由 dependencies 决定。
@@ -747,10 +775,11 @@ private:
 1. engine_module.h
 2. module_manager.h / module_manager.cpp
 3. global_context.cpp
-4. engine.cpp
-5. platform_services.h / renderer_service.h / scene_service.h / editor_services.h / ui_system.h
-6. editor_context.h / editor_layer.cpp
-7. viewport_panel.cpp / scene_hierarchy_panel.cpp
+4. core_engine_module.cpp / platform_module.cpp / renderer_module.cpp / runtime_module.cpp / ui_module.cpp / editor_module.cpp
+5. engine.cpp
+6. platform_services.h / renderer_service.h / scene_service.h / editor_services.h / ui_system.h
+7. editor_context.h / editor_layer.cpp
+8. viewport_panel.cpp / scene_hierarchy_panel.cpp
 ```
 
 读的时候不要先钻进 OpenGL、Framebuffer、Shader、Scene 细节。
@@ -769,9 +798,8 @@ private:
 
 Phase1 已经完成模块系统主线，但仍有一些明确遗留：
 
-- Render Pass 仍有部分代码直接访问 `g_runtime_global_context`，PR8 用 `RenderPassContext` 下沉。
-- Renderer 还没有 `RenderDevice` 抽象，PR9 为 Vulkan 接入做准备。
 - `AssetManager` 仍是单例，后续可以抽出 `AssetService`。
+- `RendererFactory` 仍是迁移期静态门面，后续可让 Renderer 内部对象显式持有 `RenderDevice`。
 - Runtime 的 scene tick 仍在 `Engine::logicalTick()` 顶层调度，后续可以继续收口到 RuntimeModule。
 - Physics、Audio、GameModule 尚未实现。
 - EditorCameraController 还没有单独拆类，目前逻辑在 `EditorLayer::updateViewportCamera()`。

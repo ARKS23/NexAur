@@ -882,7 +882,7 @@ struct AudioListenerComponent {
 - `RendererModule` 注册 `RendererService` 和 `RendererSystem`。
 - Engine 渲染提交优先调用 `RendererService::render()`。
 - `ViewportPanel` 改为依赖 `RendererService` 完成 viewport resize、color attachment 显示和 picking。
-- `RendererService::getViewportFramebuffer()` 暂时保留为兼容接口，后续 PR8 用 `RenderPassContext` 继续下沉。
+- `RendererService::getViewportFramebuffer()` 在 Phase1 期间曾作为兼容接口保留；Phase1.1 PR14 已删除，Editor 现在只通过 color attachment、resize 和 picking 窄接口工作。
 
 ### PR6：EditorModule 与 EditorServices
 
@@ -1017,7 +1017,8 @@ struct AudioListenerComponent {
 
 保留事项：
 
-- `AssetManager` 仍保留 `getTexture()` / `getTextureCube()` / `loadShader()` 等旧 GPU 资源缓存接口，作为迁移期兼容路径；新渲染主路径应优先使用 `RenderResourceCache -> RenderDevice`，后续可单独把这些旧接口降级或移出 Resource 层。
+- Phase1.1 已将 `AssetManager` 的 GPU 创建路径降级：`loadTexture()` / `loadTextureCube()` / `loadShader()` 只登记资产身份，`getTexture()` / `getTextureCube()` / `getShader()` 仅作为 legacy cache 查询入口保留。新渲染主路径使用 `AssetHandle -> RenderResourceCache -> RenderDevice`。
+- `ProceduralModelFactory` 已移动到 `Function/Renderer/Resources`，避免 Resource 目录继续承担 GPU buffer 创建职责。
 
 验证：
 

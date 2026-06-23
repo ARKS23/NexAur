@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <utility>
 
 #include "Core/Base.h"
@@ -9,13 +10,18 @@
 #include "Function/Input/input_state.h"
 
 namespace NexAur {
+    class Event;
+
     // PlatformModule 对外暴露的窗口能力，屏蔽 GLFW/平台窗口细节。
     class NEXAUR_API WindowService {
     public:
+        using EventCallbackFn = std::function<void(Event&)>;
+
         virtual ~WindowService() = default;
 
         virtual void* getNativeWindow() const = 0;
         virtual std::pair<uint32_t, uint32_t> getSize() const = 0;
+        virtual void setEventCallback(const EventCallbackFn& callback) = 0;
         virtual void setTitle(const char* title) = 0;
         virtual void present() = 0;
         virtual void pollEvents() = 0;

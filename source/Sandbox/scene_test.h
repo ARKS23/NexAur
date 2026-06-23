@@ -2,10 +2,7 @@
 #include "Function/Scene/scene_v2.h"
 #include "Function/Scene/component.h"
 #include "Function/Resource/asset_manager.h"
-#include "Function/Resource/procedural_model_factory.h"
-#include "Function/Global/global_context.h"
 #include "Function/Scene/entity.h"
-#include "Core/UUID.h"
 
 namespace NexAur {
     struct RendererMaterialData;
