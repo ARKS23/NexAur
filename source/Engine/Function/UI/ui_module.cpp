@@ -63,15 +63,23 @@ namespace NexAur {
                     event.isInCategory(EventCategoryMouse) ||
                     event.isInCategory(EventCategoryMouseButton);
 
-                if (keyboard_event && (m_ui_system->wantsCaptureKeyboard() || m_ui_system->wantsTextInput())) {
-                    return true;
+                std::shared_ptr<ViewportService> viewport_service =
+                    m_registry ? m_registry->getService<ViewportService>() : nullptr;
+                const bool mouse_over_viewport = viewport_service && viewport_service->isViewportHovered();
+                const bool keyboard_targets_viewport =
+                    viewport_service && (viewport_service->isViewportFocused() || viewport_service->isViewportHovered());
+
+                if (keyboard_event) {
+                    if (m_ui_system->wantsTextInput()) {
+                        return true;
+                    }
+                    if (m_ui_system->wantsCaptureKeyboard() && !keyboard_targets_viewport) {
+                        return true;
+                    }
                 }
 
                 if (mouse_event && m_ui_system->wantsCaptureMouse()) {
-                    std::shared_ptr<ViewportService> viewport_service =
-                        m_registry ? m_registry->getService<ViewportService>() : nullptr;
                     // 鼠标在 viewport 上时允许编辑器视口继续处理 picking/滚轮等交互。
-                    const bool mouse_over_viewport = viewport_service && viewport_service->isViewportHovered();
                     return !mouse_over_viewport;
                 }
 

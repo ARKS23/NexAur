@@ -194,12 +194,11 @@ namespace NexAur {
             return;
         }
 
-        const bool keyboard_captured =
-            m_context->ui_service &&
-            (m_context->ui_service->wantsCaptureKeyboard() || m_context->ui_service->wantsTextInput());
+        const bool text_input_captured =
+            m_context->ui_service && m_context->ui_service->wantsTextInput();
 
-        // UI 输入框正在吃键盘时，禁止 WASD 推动编辑器相机。
-        if (!keyboard_captured && (m_context->viewport_focused || m_context->viewport_hovered)) {
+        // 普通 ImGui 键盘捕获不阻止 viewport 相机；只有文本输入时才屏蔽 WASD。
+        if (!text_input_captured && (m_context->viewport_focused || m_context->viewport_hovered)) {
             m_context->viewport_camera->onUpdate(delta_time);
         }
 
