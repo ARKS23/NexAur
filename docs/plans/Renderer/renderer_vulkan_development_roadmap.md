@@ -59,7 +59,7 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D10 Vulkan viewport image 已完成
+当前阶段：D11 Vulkan picking 已完成
 代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端已对齐 Vulkan 1.3+，可创建 instance / surface / device / swapchain，把 RenderDataPacket 转换为 RenderView / RenderSceneFrame / VulkanDrawList，并通过 dynamic rendering forward pass 绘制 opaque mesh
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 externalRenderer：仅作为临时本地参考目录
@@ -81,6 +81,7 @@ externalRenderer：仅作为临时本地参考目录
 - D8：完成 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 最小绘制链路。
 - D9：完成 Editor viewport 过渡，ExternalSwapchain 下有明确状态、尺寸策略和交互降级。
 - D10：完成 Vulkan viewport image，Editor viewport 可显示 RendererV2 offscreen image。
+- D11：完成 Vulkan picking，Editor viewport 可通过 ObjectId pass / readback 选中实体。
 
 已确认：
 
@@ -110,7 +111,7 @@ externalRenderer：仅作为临时本地参考目录
 | D8 SceneFrame / DrawList / ForwardPass | 已完成 | Vulkan 1.3 + dynamic rendering 下提交并显示 NexAur 场景模型 | 总方案 |
 | D9 Editor viewport 过渡 | 已完成 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
 | D10 Vulkan viewport image | 已完成 | Editor viewport 显示 Vulkan offscreen image | 接口文档 |
-| D11 Vulkan picking | 待开始 | ObjectId pass / readback 接入 | 接口文档 |
+| D11 Vulkan picking | 已完成 | ObjectId pass / readback 接入 | 接口文档 |
 | D12 OpenGL legacy 退役 | 待开始 | 默认 Vulkan，旧 OpenGL 移除或隔离 | 总方案 |
 
 状态定义：
@@ -1502,18 +1503,148 @@ D8 不做：
 目标：
 
 - Vulkan backend 支持 entity picking。
+- Editor 点击 Vulkan embedded viewport 后可以选中实体。
+- picking 坐标、viewport 显示方向和 ObjectId target 像素语义一致。
+
+D11 开始前基础：
+
+- `RenderObjectData.entity_id` 已经存在。
+- `RenderSceneFrameObject.entity_id` 已经存在。
+- `VulkanMeshDrawItem.entity_id` 已经存在。
+- `ViewportPanel` 已经通过 `RendererService::pickViewport()` 发起 picking 请求。
+- `VulkanRendererSystem::pickViewport()` 在 D11 前仍返回 `supported = false`。
+
+设计边界：
+
+- D11 只做 Editor viewport picking，不做 GPU selection outline / hover highlight。
+- D11 不把 Vulkan 类型暴露到 Editor / Scene / Resource。
+- 第一版允许同步 readback 和保守等待，优先保证行为正确；后续再优化为异步 readback。
+- transparent picking 第一版可以先不做或按 opaque 后续扩展，避免提前引入透明排序语义。
+
+前置修复：viewport Y 轴显示和坐标约定
+
+- 当前 `VulkanRenderDataTranslator::toVulkanProjection()` 已经集中处理 Vulkan projection Y flip。
+- `ViewportPanel::drawVulkanImGuiViewport()` 不应继续沿用 OpenGL texture 的 UV 翻转。
+- OpenGL legacy viewport 仍使用：
+
+```cpp
+ImVec2(0.0f, 1.0f),
+ImVec2(1.0f, 0.0f)
+```
+
+- Vulkan ImGui viewport 应使用：
+
+```cpp
+ImVec2(0.0f, 0.0f),
+ImVec2(1.0f, 1.0f)
+```
+
+- 不要通过删除 projection Y flip 来修复显示方向；projection flip 是 Vulkan clip space 修正，ImGui UV flip 是显示层问题。
+- picking 坐标也要跟随这个约定：
+  - OpenGL framebuffer 坐标按 bottom-left 语义转换。
+  - Vulkan viewport image 坐标按 top-left 语义转换。
+- 更清爽的长期方案是在 `ViewportOutput` 中补充 coordinate origin 描述，避免 `ViewportPanel` 硬编码 backend 判断。
 
 任务：
 
-- Vulkan renderer 增加 ObjectId pass。
-- RenderScene / draw item 携带 entity id。
-- 输出 integer target。
-- readback 到 CPU。
-- `pickViewport()` 返回实体 ID。
+- D11-A：修复 viewport Y 轴显示与 picking 坐标基础
+  - `drawVulkanImGuiViewport()` 改为不翻转 UV。
+  - `ViewportPanel::pickEntityAtMouse()` 根据 output coordinate origin 计算 framebuffer y。
+  - 推荐新增轻量类型：
+
+    ```cpp
+    enum class ViewportCoordinateOrigin {
+        TopLeft,
+        BottomLeft,
+    };
+    ```
+
+  - `ViewportOutput` 设置默认 origin，OpenGL 为 `BottomLeft`，Vulkan 为 `TopLeft`。
+
+- D11-B：新增 Vulkan picking target
+  - 建议新增：
+
+    ```text
+    source/Engine/Function/RendererV2/targets/vulkan_picking_target.h / .cpp
+    ```
+
+  - color format 使用 `VK_FORMAT_R32_SINT`，clear value 为 `-1`。
+  - usage 至少包含：
+
+    ```text
+    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+    VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+    ```
+
+  - depth target 可以第一版独立创建，避免复用 viewport target depth 时引入复杂 layout / loadOp 语义。
+  - target extent 必须跟 viewport target 保持一致，`setViewportSize()` resize 时同步重建。
+
+- D11-C：新增 ObjectId pass
+  - 建议新增：
+
+    ```text
+    source/Engine/Function/RendererV2/passes/vulkan_object_id_pass.h / .cpp
+    source/Engine/Function/RendererV2/shaders/vulkan_object_id.hlsl
+    ```
+
+  - vertex shader 使用与 forward pass 相同的 mesh position / model / view_projection。
+  - pixel shader 输出 `int entity_id` 到 `VK_FORMAT_R32_SINT` target。
+  - 每个 draw item 通过 push constant 传：
+
+    ```text
+    view_projection
+    model
+    entity_id
+    ```
+
+  - clear 为 `-1`，代表未命中。
+  - 第一版只绘制 opaque items，后续再处理 transparent / gizmo / helper geometry。
+
+- D11-D：readback helper
+  - picking 请求触发时，从 ObjectId target copy 1x1 pixel 到 host visible buffer。
+  - 第一版可以在 `pickViewport()` 中保守 `vkDeviceWaitIdle()` 或等待当前 frame fence，保证上一帧 ObjectId target 可读。
+  - copy 流程：
+
+    ```text
+    transition ObjectId image -> TRANSFER_SRC_OPTIMAL
+    vkCmdCopyImageToBuffer(1x1)
+    submit and wait
+    map/read int32
+    ```
+
+  - 读完后可以保持 tracked layout，下一帧 object pass 再转回 color attachment。
+
+- D11-E：`VulkanRendererSystem` frame flow 接入
+  - 每帧在 forward viewport pass 附近记录 ObjectId pass。
+  - 推荐流程：
+
+    ```text
+    render scene color -> viewport target
+    render object id -> picking target
+    transition viewport color -> shader read
+    render ImGui -> swapchain
+    present
+    ```
+
+  - `pickViewport()` 读取最近一帧 picking target。
+  - target 未 ready 时返回 `supported = true, ready = false`，不要清空 selection。
+
+- D11-F：文档和验证
+  - 更新本 roadmap 的 D11 进度。
+  - 验证 Vulkan clicking selection。
+  - 验证 OpenGL legacy picking 不退化。
 
 验收：
 
 - Editor 点击 viewport 可选中实体。
+- 点击空白处返回 `entity_id = -1`，清空 selection 的行为与 OpenGL legacy 一致。
+- Vulkan viewport 显示方向正确。
+- Vulkan picking 坐标不再上下颠倒。
+- resize 后 picking target 和 viewport target 尺寸一致。
+- `cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `cmake --build --preset msvc-legacy-debug` 通过。
+- `bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` smoke check 通过。
 
 ### D12：OpenGL legacy 退役
 
@@ -1694,3 +1825,13 @@ D11 开始前的已确认前提：
 - 验证 D10：`cmake --build --preset msvc-vcpkg-debug` 通过。
 - 验证 D10：`cmake --build --preset msvc-legacy-debug` 通过。
 - 验证 D10：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
+- 完成 D11-A：新增 `ViewportCoordinateOrigin`，OpenGL viewport 使用 bottom-left 坐标，Vulkan viewport 使用 top-left 坐标。
+- 完成 D11-A：修复 Vulkan viewport image 的 ImGui UV，避免沿用 OpenGL framebuffer 的上下翻转。
+- 完成 D11-B：新增 `VulkanPickingTarget`，持有 `VK_FORMAT_R32_SINT` ObjectId image、独立 depth image 和 1 像素 readback buffer。
+- 完成 D11-C：新增 `VulkanObjectIdPass` 和 `vulkan_object_id.hlsl`，通过 `firstInstance` / `SV_InstanceID` 写入实体 ID，避免 push constants 超过 Vulkan 最小 128 bytes。
+- 完成 D11-D：`VulkanRendererSystem::pickViewport()` 使用同步 readback 从上一帧 ObjectId target 读取实体 ID。
+- 完成 D11-E：Vulkan frame flow 增加 ObjectId pass，viewport resize 时同步重建 picking target。
+- 验证 D11：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- 验证 D11：`cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D11：`cmake --build --preset msvc-legacy-debug` 通过。
+- 验证 D11：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 5 秒 smoke check 通过，stderr 为空。

@@ -170,8 +170,8 @@ namespace NexAur {
         ImGui::Image(
             output.native_handle,
             ImVec2(m_viewport_size.x, m_viewport_size.y),
-            ImVec2(0.0f, 1.0f),
-            ImVec2(1.0f, 0.0f)
+            ImVec2(0.0f, 0.0f),
+            ImVec2(1.0f, 1.0f)
         );
     }
 
@@ -438,7 +438,10 @@ namespace NexAur {
         const float local_x = mx - m_viewport_bounds[0].x;
         const float local_y = my - m_viewport_bounds[0].y;
         const float framebuffer_x = local_x * static_cast<float>(framebuffer_width) / m_viewport_size.x;
-        const float framebuffer_y = (m_viewport_size.y - local_y) * static_cast<float>(framebuffer_height) / m_viewport_size.y;
+        const float framebuffer_y =
+            output.coordinate_origin == ViewportCoordinateOrigin::BottomLeft
+                ? (m_viewport_size.y - local_y) * static_cast<float>(framebuffer_height) / m_viewport_size.y
+                : local_y * static_cast<float>(framebuffer_height) / m_viewport_size.y;
 
         const int pixel_x = std::clamp(static_cast<int>(framebuffer_x), 0, static_cast<int>(framebuffer_width) - 1);
         const int pixel_y = std::clamp(static_cast<int>(framebuffer_y), 0, static_cast<int>(framebuffer_height) - 1);

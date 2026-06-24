@@ -18,6 +18,11 @@ namespace NexAur {
         ExternalSwapchain,
     };
 
+    enum class ViewportCoordinateOrigin {
+        TopLeft,
+        BottomLeft,
+    };
+
     // RendererService 对外暴露的 viewport 输出描述。
     // 上层只能根据 kind 选择显示策略，不能解释 native_handle 的内部生命周期。
     struct NEXAUR_API ViewportOutput {
@@ -26,6 +31,7 @@ namespace NexAur {
 
         uint32_t width = 0;
         uint32_t height = 0;
+        ViewportCoordinateOrigin coordinate_origin = ViewportCoordinateOrigin::TopLeft;
 
         // OpenGL legacy 使用 numeric_handle 存 texture id。
         uint64_t numeric_handle = 0;

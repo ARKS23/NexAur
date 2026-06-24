@@ -6,6 +6,8 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/RendererV2/render_scene_frame_builder.h"
 #include "Function/RendererV2/passes/vulkan_forward_pass.h"
+#include "Function/RendererV2/passes/vulkan_object_id_pass.h"
+#include "Function/RendererV2/targets/vulkan_picking_target.h"
 #include "Function/RendererV2/targets/vulkan_viewport_target.h"
 #include "Function/RendererV2/ui/vulkan_imgui_renderer.h"
 #include "Function/RendererV2/vulkan_draw_list_builder.h"
@@ -153,6 +155,20 @@ namespace NexAur {
                 return false;
             }
 
+            if (!picking_target.init(createResourceContext(), surface_width, surface_height)) {
+                shutdown();
+                return false;
+            }
+
+            VulkanObjectIdPassContext object_id_context;
+            object_id_context.device = device.device;
+            object_id_context.object_id_format = picking_target.getObjectIdFormat();
+            object_id_context.depth_format = picking_target.getDepthFormat();
+            if (!object_id_pass.init(object_id_context)) {
+                shutdown();
+                return false;
+            }
+
             initialized = true;
             NX_CORE_INFO(
                 "VulkanRendererSystem initialized: surface {}x{}, swapchain {} images, API {}.{}.{}.",
@@ -171,6 +187,8 @@ namespace NexAur {
             }
 
             imgui_renderer.shutdown();
+            object_id_pass.shutdown();
+            picking_target.shutdown();
             viewport_target.shutdown();
             resource_cache.shutdown();
             forward_pass.shutdown();
@@ -237,7 +255,15 @@ namespace NexAur {
 
             vkDeviceWaitIdle(device.device);
             imgui_renderer.releaseViewportTexture();
-            if (viewport_target.resize(width, height) && imgui_renderer.isInitialized()) {
+            const bool viewport_resized = viewport_target.resize(width, height);
+            const bool picking_resized = picking_target.resize(width, height);
+            if (!viewport_resized || !picking_resized) {
+                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport or picking target.");
+                return;
+            }
+            picking_frame_ready = false;
+
+            if (imgui_renderer.isInitialized()) {
                 registerViewportTexture();
             }
         }
@@ -246,9 +272,37 @@ namespace NexAur {
             return getViewportRenderExtent();
         }
 
+        ViewportPickResult pickViewport(const ViewportPickRequest& request) {
+            ViewportPickResult result;
+            result.supported = true;
+
+            if (!initialized || !picking_target.isReady() || !picking_frame_ready) {
+                return result;
+            }
+
+            const VkExtent2D extent = picking_target.getExtent();
+            if (request.x < 0 || request.y < 0 ||
+                request.x >= static_cast<int>(extent.width) ||
+                request.y >= static_cast<int>(extent.height)) {
+                result.ready = true;
+                result.entity_id = -1;
+                return result;
+            }
+
+            int32_t entity_id = -1;
+            if (!readPickingPixel(static_cast<uint32_t>(request.x), static_cast<uint32_t>(request.y), entity_id)) {
+                return result;
+            }
+
+            result.ready = true;
+            result.entity_id = entity_id;
+            return result;
+        }
+
         ViewportOutput getViewportOutput() const {
             ViewportOutput output;
             output.backend = RendererBackendType::Vulkan;
+            output.coordinate_origin = ViewportCoordinateOrigin::TopLeft;
 
             if (!initialized) {
                 return output;
@@ -673,6 +727,9 @@ namespace NexAur {
             if (!checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight), "vkQueueSubmit")) {
                 return;
             }
+            if (picking_recorded_this_frame) {
+                picking_frame_ready = true;
+            }
 
             VkPresentInfoKHR present_info{};
             present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -695,6 +752,7 @@ namespace NexAur {
             if (image_index >= swapchain_images.size()) {
                 return false;
             }
+            picking_recorded_this_frame = false;
 
             if (!checkVk(vkResetCommandBuffer(command_buffer, 0), "vkResetCommandBuffer")) {
                 return false;
@@ -714,6 +772,9 @@ namespace NexAur {
             if (render_to_viewport_image) {
                 transitionViewportTargetForRendering();
                 if (!forward_pass.record(command_buffer, viewport_target.getRenderTarget(), draw_list)) {
+                    return false;
+                }
+                if (!recordObjectIdPass(draw_list)) {
                     return false;
                 }
                 transitionViewportColorForSampling();
@@ -745,6 +806,9 @@ namespace NexAur {
                 if (!forward_pass.record(command_buffer, image_index, draw_list)) {
                     return false;
                 }
+                if (!recordObjectIdPass(draw_list)) {
+                    return false;
+                }
             }
 
             transitionImageLayout(
@@ -759,6 +823,20 @@ namespace NexAur {
             swapchain_image_layouts[image_index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
             return checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer");
+        }
+
+        bool recordObjectIdPass(const VulkanDrawList& draw_list) {
+            if (!picking_target.isReady()) {
+                return true;
+            }
+
+            transitionPickingTargetForRendering();
+            if (!object_id_pass.record(command_buffer, picking_target.getRenderTarget(), draw_list)) {
+                return false;
+            }
+
+            picking_recorded_this_frame = true;
+            return true;
         }
 
         void transitionViewportTargetForRendering() {
@@ -795,6 +873,42 @@ namespace NexAur {
                 depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                 VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
             viewport_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        }
+
+        void transitionPickingTargetForRendering() {
+            const VkImageLayout object_id_old_layout = picking_target.getObjectIdLayout();
+            VkAccessFlags object_id_src_access = 0;
+            VkPipelineStageFlags object_id_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (object_id_old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+                object_id_src_access = VK_ACCESS_TRANSFER_READ_BIT;
+                object_id_src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            } else if (object_id_old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+                object_id_src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                object_id_src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            }
+
+            transitionImageLayout(
+                picking_target.getObjectIdImage(),
+                object_id_old_layout,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                object_id_src_access,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                object_id_src_stage,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+            picking_target.setObjectIdLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            const VkImageLayout depth_old_layout = picking_target.getDepthLayout();
+            transitionImageLayout(
+                picking_target.getDepthImage(),
+                depth_old_layout,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_DEPTH_BIT,
+                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
+            picking_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         }
 
         void transitionViewportColorForSampling() {
@@ -853,6 +967,28 @@ namespace NexAur {
             VkAccessFlags dst_access_mask,
             VkPipelineStageFlags src_stage,
             VkPipelineStageFlags dst_stage) {
+            transitionImageLayout(
+                command_buffer,
+                image,
+                old_layout,
+                new_layout,
+                aspect_mask,
+                src_access_mask,
+                dst_access_mask,
+                src_stage,
+                dst_stage);
+        }
+
+        void transitionImageLayout(
+            VkCommandBuffer target_command_buffer,
+            VkImage image,
+            VkImageLayout old_layout,
+            VkImageLayout new_layout,
+            VkImageAspectFlags aspect_mask,
+            VkAccessFlags src_access_mask,
+            VkAccessFlags dst_access_mask,
+            VkPipelineStageFlags src_stage,
+            VkPipelineStageFlags dst_stage) {
             if (old_layout == new_layout) {
                 return;
             }
@@ -873,7 +1009,7 @@ namespace NexAur {
             barrier.subresourceRange.layerCount = 1;
 
             vkCmdPipelineBarrier(
-                command_buffer,
+                target_command_buffer,
                 src_stage,
                 dst_stage,
                 0,
@@ -885,6 +1021,104 @@ namespace NexAur {
                 &barrier);
         }
 
+        bool readPickingPixel(uint32_t x, uint32_t y, int32_t& entity_id) {
+            if (!picking_target.isReady() || picking_target.getReadbackBuffer() == VK_NULL_HANDLE) {
+                return false;
+            }
+
+            if (!checkVk(vkDeviceWaitIdle(device.device), "vkDeviceWaitIdle(before picking readback)")) {
+                return false;
+            }
+
+            VkCommandBuffer readback_command_buffer = VK_NULL_HANDLE;
+            VkCommandBufferAllocateInfo allocate_info{};
+            allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            allocate_info.commandPool = command_pool;
+            allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocate_info.commandBufferCount = 1;
+            if (!checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &readback_command_buffer), "vkAllocateCommandBuffers(picking readback)")) {
+                return false;
+            }
+
+            auto free_readback_command_buffer = [&]() {
+                if (readback_command_buffer != VK_NULL_HANDLE) {
+                    vkFreeCommandBuffers(device.device, command_pool, 1, &readback_command_buffer);
+                    readback_command_buffer = VK_NULL_HANDLE;
+                }
+            };
+
+            VkCommandBufferBeginInfo begin_info{};
+            begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            if (!checkVk(vkBeginCommandBuffer(readback_command_buffer, &begin_info), "vkBeginCommandBuffer(picking readback)")) {
+                free_readback_command_buffer();
+                return false;
+            }
+
+            const VkImageLayout old_layout = picking_target.getObjectIdLayout();
+            VkAccessFlags src_access = 0;
+            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+                src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+                src_access = VK_ACCESS_TRANSFER_READ_BIT;
+                src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            }
+
+            transitionImageLayout(
+                readback_command_buffer,
+                picking_target.getObjectIdImage(),
+                old_layout,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                src_access,
+                VK_ACCESS_TRANSFER_READ_BIT,
+                src_stage,
+                VK_PIPELINE_STAGE_TRANSFER_BIT);
+            picking_target.setObjectIdLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+            VkBufferImageCopy copy_region{};
+            copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copy_region.imageSubresource.mipLevel = 0;
+            copy_region.imageSubresource.baseArrayLayer = 0;
+            copy_region.imageSubresource.layerCount = 1;
+            copy_region.imageOffset = {
+                static_cast<int32_t>(x),
+                static_cast<int32_t>(y),
+                0
+            };
+            copy_region.imageExtent = { 1, 1, 1 };
+
+            vkCmdCopyImageToBuffer(
+                readback_command_buffer,
+                picking_target.getObjectIdImage(),
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                picking_target.getReadbackBuffer(),
+                1,
+                &copy_region);
+
+            if (!checkVk(vkEndCommandBuffer(readback_command_buffer), "vkEndCommandBuffer(picking readback)")) {
+                free_readback_command_buffer();
+                return false;
+            }
+
+            VkSubmitInfo submit_info{};
+            submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit_info.commandBufferCount = 1;
+            submit_info.pCommandBuffers = &readback_command_buffer;
+
+            const bool submitted = checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE), "vkQueueSubmit(picking readback)");
+            const bool waited = submitted && checkVk(vkQueueWaitIdle(graphics_queue), "vkQueueWaitIdle(picking readback)");
+            free_readback_command_buffer();
+            if (!waited) {
+                return false;
+            }
+
+            entity_id = picking_target.readbackEntityId();
+            return true;
+        }
+
     private:
         GLFWwindow* window = nullptr;
 
@@ -893,6 +1127,8 @@ namespace NexAur {
 
         bool initialized = false;
         bool swapchain_dirty = false;
+        bool picking_frame_ready = false;
+        bool picking_recorded_this_frame = false;
 
         vkb::Instance instance;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -918,7 +1154,9 @@ namespace NexAur {
         RenderSceneFrameBuilder scene_frame_builder;
         VulkanDrawListBuilder draw_list_builder;
         VulkanForwardPass forward_pass;
+        VulkanObjectIdPass object_id_pass;
         VulkanViewportTarget viewport_target;
+        VulkanPickingTarget picking_target;
         VulkanImGuiRenderer imgui_renderer;
     };
 
@@ -956,13 +1194,7 @@ namespace NexAur {
     }
 
     ViewportPickResult VulkanRendererSystem::pickViewport(const ViewportPickRequest& request) {
-        (void)request;
-
-        ViewportPickResult result;
-        result.supported = false;
-        result.ready = false;
-        result.entity_id = -1;
-        return result;
+        return m_backend->pickViewport(request);
     }
 
     void VulkanRendererSystem::onUIContextInitialized() {

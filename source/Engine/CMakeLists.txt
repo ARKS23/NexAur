@@ -188,6 +188,7 @@ set(NEXAUR_ENGINE_RENDERER_V2_FILES)
 if(NEXAUR_BUILD_RENDERER_V2)
     set_source_files_properties(
         Function/RendererV2/shaders/vulkan_forward.hlsl
+        Function/RendererV2/shaders/vulkan_object_id.hlsl
         PROPERTIES
             HEADER_FILE_ONLY TRUE
             VS_TOOL_OVERRIDE "None"
@@ -200,7 +201,10 @@ if(NEXAUR_BUILD_RENDERER_V2)
         Function/RendererV2/render_view.h
         Function/RendererV2/passes/vulkan_forward_pass.h
         Function/RendererV2/passes/vulkan_forward_pass.cpp
+        Function/RendererV2/passes/vulkan_object_id_pass.h
+        Function/RendererV2/passes/vulkan_object_id_pass.cpp
         Function/RendererV2/shaders/vulkan_forward.hlsl
+        Function/RendererV2/shaders/vulkan_object_id.hlsl
         Function/RendererV2/vulkan_draw_list.h
         Function/RendererV2/vulkan_draw_list_builder.h
         Function/RendererV2/vulkan_draw_list_builder.cpp
@@ -213,6 +217,8 @@ if(NEXAUR_BUILD_RENDERER_V2)
         Function/RendererV2/resources/vulkan_model_resource.cpp
         Function/RendererV2/targets/vulkan_viewport_target.h
         Function/RendererV2/targets/vulkan_viewport_target.cpp
+        Function/RendererV2/targets/vulkan_picking_target.h
+        Function/RendererV2/targets/vulkan_picking_target.cpp
         Function/RendererV2/ui/vulkan_imgui_renderer.h
         Function/RendererV2/ui/vulkan_imgui_renderer.cpp
         Function/RendererV2/vulkan_renderer_system.h
@@ -328,6 +334,12 @@ if(NEXAUR_USE_VCPKG_DEPS)
             COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
                     -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.frag.spv"
                     "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
+            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
+                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_object_id.vert.spv"
+                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
+            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
+                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_object_id.frag.spv"
+                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
             COMMENT "Compiling RendererV2 HLSL shaders"
             VERBATIM
         )

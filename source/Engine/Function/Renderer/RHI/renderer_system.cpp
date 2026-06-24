@@ -166,6 +166,7 @@ namespace NexAur {
         }
 
         output.kind = ViewportOutputKind::OpenGLTexture;
+        output.coordinate_origin = ViewportCoordinateOrigin::BottomLeft;
         output.numeric_handle = m_viewport_framebuffer->getColorAttachmentRendererID(0);
         return output;
     }
