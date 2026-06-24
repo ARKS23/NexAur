@@ -19,6 +19,7 @@
         "NEXAUR_USE_VCPKG_DEPS": "ON",
         "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
         "NEXAUR_BUILD_RENDERER_V2": "OFF",
+        "NEXAUR_DEFAULT_GRAPHICS_API": "OpenGL",
         "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-vcpkg"
       }
     },
@@ -32,6 +33,7 @@
         "NEXAUR_USE_VCPKG_DEPS": "OFF",
         "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
         "NEXAUR_BUILD_RENDERER_V2": "OFF",
+        "NEXAUR_DEFAULT_GRAPHICS_API": "OpenGL",
         "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-legacy"
       }
     }

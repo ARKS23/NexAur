@@ -4,8 +4,6 @@
 
 #include "pch.h"
 
-#include <random>
-
 #include "window_system.h"
 #include "Core/Events/window_event.h"
 #include "Core/Events/key_event.h"
@@ -16,7 +14,9 @@ namespace NexAur {
     WindowSystem::WindowSystem() = default;
 
     WindowSystem::~WindowSystem() {
-        glfwDestroyWindow(m_window);
+        if (m_window) {
+            glfwDestroyWindow(m_window);
+        }
         glfwTerminate();
     }
 
@@ -28,22 +28,35 @@ namespace NexAur {
 
         m_data.width = specification.width;
         m_data.height = specification.height;
+        m_data.title = specification.title ? specification.title : "NexAur";
+        m_data.vsync = specification.enable_vsync;
+        m_graphics_api = specification.graphics_api;
 
-        // OpenGL 4.6 核心模式 （后期拓展Vulkan时修改）
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwDefaultWindowHints();
+        if (m_graphics_api == WindowGraphicsAPI::OpenGL) {
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        } else {
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        }
 
-        m_window = glfwCreateWindow(specification.width, specification.height, specification.title, nullptr, nullptr);
+        GLFWmonitor* monitor = specification.fullscreen ? glfwGetPrimaryMonitor() : nullptr;
+        m_window = glfwCreateWindow(specification.width, specification.height, m_data.title.c_str(), monitor, nullptr);
         if (!m_window) {
             NX_CORE_FATAL(__FUNCTION__, "Fail to create GLFW window");
             glfwTerminate();
             return;
         }
 
-        // 创建图形上下文管理对象
-        m_context = std::make_unique<OpenGLGraphicsContext>(m_window);
-        m_context->init();
+        if (m_graphics_api == WindowGraphicsAPI::OpenGL) {
+            m_context = std::make_unique<OpenGLGraphicsContext>(m_window);
+            m_context->init();
+            glfwSwapInterval(m_data.vsync ? 1 : 0);
+        } else {
+            NX_CORE_INFO("Created GLFW no-api window for Vulkan.");
+        }
 
         bindEvents(); // 绑定事件回调放这里，在ImGui初始化好之前绑定引擎回调,避免覆盖
     }
@@ -68,13 +81,29 @@ namespace NexAur {
         return m_window;
     }
 
+    WindowGraphicsAPI WindowSystem::getGraphicsAPI() const {
+        return m_graphics_api;
+    }
+
+    std::vector<const char*> WindowSystem::getRequiredVulkanInstanceExtensions() const {
+        uint32_t extension_count = 0;
+        const char** extensions = glfwGetRequiredInstanceExtensions(&extension_count);
+        if (!extensions || extension_count == 0) {
+            return {};
+        }
+
+        return { extensions, extensions + extension_count };
+    }
+
     std::array<int, 2> WindowSystem::getWindowSize() const {
         return {m_data.width, m_data.height};
     }
 
     void WindowSystem::update() {
-        // 交换缓冲区 (这一步才会把画的东西显示到屏幕上)
-        m_context->swapBuffers();
+        // OpenGL 由 WindowSystem swap buffers；Vulkan 由 renderer/swapchain 负责 present。
+        if (m_context) {
+            m_context->swapBuffers();
+        }
     }
 
     void WindowSystem::bindEvents() {

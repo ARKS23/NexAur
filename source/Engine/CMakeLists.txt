@@ -77,6 +77,7 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Platform/platform_module.h
     Function/Platform/platform_module.cpp
     Function/Platform/platform_services.h
+    Function/Platform/window_graphics_api.h
     Function/Resource/asset_handle.h
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp

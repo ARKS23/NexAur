@@ -6,11 +6,13 @@
 
 #include <array>
 #include <functional>
+#include <vector>
 
 #include "GLFW/glfw3.h"
 
 #include "Core/Base.h"
 #include "Core/Events/event.h"
+#include "Function/Platform/window_graphics_api.h"
 
 namespace NexAur
 {
@@ -21,6 +23,8 @@ namespace NexAur
         int height{1080};
         const char* title{"NexAur"};
         bool fullscreen{false};
+        bool enable_vsync{true};
+        WindowGraphicsAPI graphics_api{WindowGraphicsAPI::OpenGL};
     };
 
 
@@ -39,6 +43,8 @@ namespace NexAur
         void shutdown();
         void setTitle(const char* title);
         GLFWwindow* getNativeWindow() const;    // 得到原生GLFW窗口
+        WindowGraphicsAPI getGraphicsAPI() const;
+        std::vector<const char*> getRequiredVulkanInstanceExtensions() const;
         std::array<int, 2> getWindowSize() const;   // 返回宽高
 
         // 设置事件回调
@@ -56,6 +62,7 @@ namespace NexAur
     private:
         GLFWwindow* m_window{nullptr};
         std::unique_ptr<GraphicsContext> m_context;
+        WindowGraphicsAPI m_graphics_api{WindowGraphicsAPI::OpenGL};
 
         bool is_focus_mode{false};
 

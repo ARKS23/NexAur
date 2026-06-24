@@ -10,6 +10,14 @@
 
 namespace NexAur {
     namespace {
+        WindowGraphicsAPI resolveDefaultWindowGraphicsAPI() {
+#if defined(NEXAUR_DEFAULT_GRAPHICS_API_VULKAN)
+            return WindowGraphicsAPI::Vulkan;
+#else
+            return WindowGraphicsAPI::OpenGL;
+#endif
+        }
+
         class WindowSystemService final : public WindowService {
         public:
             explicit WindowSystemService(std::shared_ptr<WindowSystem> window_system)
@@ -17,6 +25,14 @@ namespace NexAur {
 
             void* getNativeWindow() const override {
                 return m_window_system ? m_window_system->getNativeWindow() : nullptr;
+            }
+
+            WindowGraphicsAPI getGraphicsAPI() const override {
+                return m_window_system ? m_window_system->getGraphicsAPI() : WindowGraphicsAPI::OpenGL;
+            }
+
+            std::vector<const char*> getRequiredVulkanInstanceExtensions() const override {
+                return m_window_system ? m_window_system->getRequiredVulkanInstanceExtensions() : std::vector<const char*>{};
             }
 
             std::pair<uint32_t, uint32_t> getSize() const override {
@@ -66,7 +82,9 @@ namespace NexAur {
                 // PlatformModule 拥有窗口和输入实现，对外只暴露 WindowService/InputService。
                 m_window_system = std::make_shared<WindowSystem>();
                 WindowSpecification specification;
+                specification.graphics_api = resolveDefaultWindowGraphicsAPI();
                 m_window_system->init(specification);
+                NX_CORE_INFO("Platform window graphics API: {}", toString(specification.graphics_api));
 
                 m_window_service = std::make_shared<WindowSystemService>(m_window_system);
                 m_input_system = std::make_shared<InputSystemGLFW>(m_window_system->getNativeWindow());

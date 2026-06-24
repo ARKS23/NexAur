@@ -44,6 +44,14 @@ namespace NexAur {
         bool wantsTextInput() const override;
 
     private:
+        enum class Backend {
+            None,
+            OpenGL,
+            GlfwOnly
+        };
+
         std::shared_ptr<WindowService> m_window_service;
+        Backend m_backend{Backend::None};
+        bool m_context_initialized{false};
     };
 } // namespace NexAur

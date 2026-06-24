@@ -3,11 +3,13 @@
 #include <cstdint>
 #include <functional>
 #include <utility>
+#include <vector>
 
 #include "Core/Base.h"
 #include "Function/Input/KeyCode/key_codes.h"
 #include "Function/Input/KeyCode/mouse_codes.h"
 #include "Function/Input/input_state.h"
+#include "Function/Platform/window_graphics_api.h"
 
 namespace NexAur {
     class Event;
@@ -20,6 +22,8 @@ namespace NexAur {
         virtual ~WindowService() = default;
 
         virtual void* getNativeWindow() const = 0;
+        virtual WindowGraphicsAPI getGraphicsAPI() const = 0;
+        virtual std::vector<const char*> getRequiredVulkanInstanceExtensions() const = 0;
         virtual std::pair<uint32_t, uint32_t> getSize() const = 0;
         virtual void setEventCallback(const EventCallbackFn& callback) = 0;
         virtual void setTitle(const char* title) = 0;

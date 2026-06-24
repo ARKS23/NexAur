@@ -14,6 +14,8 @@ endif()
 option(NEXAUR_USE_VCPKG_DEPS "Use vcpkg packages for third-party dependencies." ${NEXAUR_USE_VCPKG_DEPS_DEFAULT})
 option(NEXAUR_BUILD_LEGACY_OPENGL "Build legacy OpenGL renderer." ON)
 option(NEXAUR_BUILD_RENDERER_V2 "Build RendererV2 integration." OFF)
+set(NEXAUR_DEFAULT_GRAPHICS_API "OpenGL" CACHE STRING "Default window graphics API. Valid values: OpenGL, Vulkan.")
+set_property(CACHE NEXAUR_DEFAULT_GRAPHICS_API PROPERTY STRINGS OpenGL Vulkan)
 
 if(NEXAUR_BUILD_RENDERER_V2)
     message(WARNING "NEXAUR_BUILD_RENDERER_V2 is reserved for the later RendererV2 integration stage.")
@@ -21,6 +23,14 @@ endif()
 
 if(NOT NEXAUR_BUILD_LEGACY_OPENGL)
     message(FATAL_ERROR "NEXAUR_BUILD_LEGACY_OPENGL=OFF is not supported until RendererV2 replaces the legacy OpenGL path.")
+endif()
+
+if(NEXAUR_DEFAULT_GRAPHICS_API STREQUAL "OpenGL")
+    add_compile_definitions(NEXAUR_DEFAULT_GRAPHICS_API_OPENGL=1)
+elseif(NEXAUR_DEFAULT_GRAPHICS_API STREQUAL "Vulkan")
+    add_compile_definitions(NEXAUR_DEFAULT_GRAPHICS_API_VULKAN=1)
+else()
+    message(FATAL_ERROR "Unsupported NEXAUR_DEFAULT_GRAPHICS_API: ${NEXAUR_DEFAULT_GRAPHICS_API}. Use OpenGL or Vulkan.")
 endif()
 
 # 编译输出目录。默认保持旧路径；preset 可覆盖 NEXAUR_OUTPUT_ROOT 来隔离不同依赖来源的产物。

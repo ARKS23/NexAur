@@ -59,8 +59,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D3 vcpkg / CMake 预研落地已完成
-代码状态：顶层已升级 C++20；vcpkg preset 与 legacy fallback 均可配置和构建
+当前阶段：D4 Window graphics API 策略已完成
+代码状态：窗口系统已支持 OpenGL context 与 Vulkan no-api window 两种创建策略
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 ```
@@ -74,6 +74,7 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 - D1：完成 `RendererService` 后端无关 viewport / picking 契约。
 - D2：完成 `ViewportPanel` 对新 viewport output / picking 契约的适配。
 - D3：完成顶层 C++20、vcpkg manifest / preset、依赖来源分支和特殊依赖收口。
+- D4：完成 Window graphics API 策略，OpenGL / Vulkan no-api window 可按配置选择。
 
 已确认：
 
@@ -96,7 +97,7 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 | D1 RendererService 接口清理 | 已完成 | 降级 OpenGL texture id 接口，新增后端无关 viewport / picking 契约 | 接口文档 |
 | D2 ViewportPanel 适配新输出 | 已完成 | Editor 不再假设 viewport 是 OpenGL texture | 接口文档 |
 | D3 vcpkg / CMake 预研落地 | 已完成 | 顶层 C++20 + vcpkg 方案可支撑 RendererV2 | 构建文档 |
-| D4 Window graphics API 策略 | 待开始 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
+| D4 Window graphics API 策略 | 已完成 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
 | D5 RendererV2 / ArkVulkanRendererSystem 骨架 | 待开始 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
 | D6 RenderView 转换 | 待开始 | NexAur 相机驱动 ARKRenderer | 总方案 |
 | D7 ArkRenderResourceCache | 待开始 | AssetHandle 解析到 ARK renderer resources | 总方案 |
@@ -332,6 +333,9 @@ D3 不做：
 目标：
 
 - Window 创建策略根据 renderer backend 选择。
+- OpenGL 路径继续创建 OpenGL context。
+- Vulkan 路径创建 GLFW no-api window，不再由 WindowSystem 负责 swap buffers。
+- UI 在 Vulkan no-api 过渡期不初始化 OpenGL ImGui renderer backend，避免错误绑定图形 API。
 
 任务：
 
@@ -339,11 +343,34 @@ D3 不做：
 - OpenGL legacy 创建 OpenGL context。
 - ArkVulkan 创建 GLFW no-api window。
 - `WindowService::getNativeWindow()` 保持稳定。
+- `WindowService` 暴露当前 `WindowGraphicsAPI`。
+- `WindowService` 提供 GLFW 所需 Vulkan instance extensions 查询。
+- 新增 `NEXAUR_DEFAULT_GRAPHICS_API` 构建配置，默认 `OpenGL`，可用 `Vulkan` 验证 no-api window 编译路径。
 
 验收：
 
 - OpenGL legacy 仍能启动。
 - ArkVulkan path 能创建 Vulkan surface。
+- vcpkg / OpenGL 默认路径构建通过。
+- legacy / OpenGL fallback 构建通过。
+- `NEXAUR_DEFAULT_GRAPHICS_API=Vulkan` 编译路径通过。
+
+当前状态：
+
+```text
+已完成
+验证：
+- cmake --preset msvc-vcpkg 通过
+- cmake --build --preset msvc-vcpkg-debug 通过
+- cmake --preset msvc-legacy 通过
+- cmake --build --preset msvc-legacy-debug 通过
+- cmake -S . -B build/msvc-vcpkg-vulkan-window ... -DNEXAUR_DEFAULT_GRAPHICS_API=Vulkan 通过
+- cmake --build build/msvc-vcpkg-vulkan-window --config Debug 通过
+备注：
+- 默认仍为 OpenGL，D4 不默认切换 Vulkan runtime。
+- Vulkan no-api 下 UI 只启用 ImGui GLFW platform backend；正式 Vulkan ImGui renderer 留到 D10。
+- Vulkan surface 创建留给 D5 RendererV2 后端完成。
+```
 
 ### D5：RendererV2 / ArkVulkanRendererSystem 骨架
 
@@ -540,17 +567,19 @@ D3 不做：
 推荐下一步：
 
 ```text
-D4 开始：Window graphics API 策略
-D5 准备：RendererV2 / ArkVulkanRendererSystem 骨架
+D5 开始：RendererV2 / ArkVulkanRendererSystem 骨架
+D6 准备：RenderDataPacket -> RenderView
 ```
 
-D4 / D5 开始前的已确认前提：
+D5 / D6 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
 - NexAur 顶层已升级到 C++20。
 - NexAur 顶层已具备 vcpkg manifest / preset 构建路径。
 - RendererV2 新增 shader 统一使用 HLSL -> SPIR-V 流程。
+- WindowService 已能提供 graphics API 状态和 Vulkan instance extensions。
+- Vulkan no-api window 编译路径已验证通过。
 - OpenGL legacy 只作为过渡 fallback，不再继续增强。
 
 ## 9. 进度记录
@@ -585,3 +614,12 @@ D4 / D5 开始前的已确认前提：
 - 确认后续 RendererV2 新增 shader 统一使用 HLSL，并通过 DXC 编译为 SPIR-V。
 - 验证 D3：`cmake --preset msvc-vcpkg` 与 `cmake --build --preset msvc-vcpkg-debug` 通过。
 - 验证 D3：`cmake --preset msvc-legacy` 与 `cmake --build --preset msvc-legacy-debug` 通过。
+- 完成 D4：新增 `WindowGraphicsAPI`，窗口可选择 OpenGL 或 Vulkan。
+- 完成 D4：`WindowSpecification` 增加 `graphics_api` 与 `enable_vsync`。
+- 完成 D4：`WindowSystem` 在 OpenGL 路径创建 OpenGL context，在 Vulkan 路径创建 GLFW no-api window。
+- 完成 D4：`WindowService` 增加 `getGraphicsAPI()` 与 `getRequiredVulkanInstanceExtensions()`。
+- 完成 D4：新增 `NEXAUR_DEFAULT_GRAPHICS_API`，默认 OpenGL，可配置 Vulkan 验证 no-api window 编译路径。
+- 完成 D4：UI 系统在 Vulkan no-api 过渡期只启用 ImGui GLFW platform backend，不初始化 OpenGL renderer backend。
+- 验证 D4：`cmake --preset msvc-vcpkg` 与 `cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D4：`cmake --preset msvc-legacy` 与 `cmake --build --preset msvc-legacy-debug` 通过。
+- 验证 D4：`NEXAUR_DEFAULT_GRAPHICS_API=Vulkan` 独立 vcpkg 编译路径通过。
