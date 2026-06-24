@@ -10,3 +10,5 @@ assets/models/
 
 # plans 下的 Markdown 设计/清理文档需要入库，导出的 PDF 保持本地生成物。
 plans/*.pdf
+
+externalRenderer/
