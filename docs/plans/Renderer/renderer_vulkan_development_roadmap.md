@@ -59,8 +59,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D6 RenderDataPacket -> RenderView 已完成
-代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端可创建 instance / surface / device / swapchain，提交清屏帧，并把 RenderDataPacket 相机数据转换为 RendererV2 RenderView
+当前阶段：D7 VulkanRenderResourceCache 已完成
+代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端可创建 instance / surface / device / swapchain，提交清屏帧，把 RenderDataPacket 相机数据转换为 RendererV2 RenderView，并具备 AssetHandle -> Vulkan model resource 的资源缓存链路
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -77,6 +77,7 @@ externalRenderer：仅作为临时本地参考目录
 - D4：完成 Window graphics API 策略，OpenGL / Vulkan no-api window 可按配置选择。
 - D5：完成 RendererV2 / VulkanRendererSystem 骨架，Vulkan 后端可启动、清屏、present 和关闭。
 - D6：完成 `RenderDataPacket -> RenderView`，相机矩阵、clip range 和 viewport 尺寸进入 RendererV2 内部 view。
+- D7：完成 `VulkanRenderResourceCache`，模型 AssetHandle 可解析为 RendererV2 内部 Vulkan model resource。
 
 已确认：
 
@@ -102,7 +103,7 @@ externalRenderer：仅作为临时本地参考目录
 | D4 Window graphics API 策略 | 已完成 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
 | D5 RendererV2 / VulkanRendererSystem 骨架 | 已完成 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
 | D6 RenderView 转换 | 已完成 | NexAur 相机驱动新 Vulkan renderer | 总方案 |
-| D7 VulkanRenderResourceCache | 待开始 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
+| D7 VulkanRenderResourceCache | 已完成 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
 | D8 RenderScene 转换 | 待开始 | NexAur 场景模型提交给新 Vulkan renderer | 总方案 |
 | D9 Editor viewport 过渡 | 待开始 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
 | D10 Vulkan viewport image | 待开始 | Editor viewport 显示 Vulkan offscreen image | 接口文档 |
@@ -656,20 +657,215 @@ cmake --build --preset msvc-legacy-debug
 
 目标：
 
-- Vulkan 路径拥有独立 renderer resource cache。
+- Vulkan 路径拥有独立 RendererV2 resource cache。
+- 建立 `AssetHandle -> RendererV2 内部资源对象` 的稳定链路。
+- 为 D8 的 `RenderDataPacket -> RenderScene` 提供可引用的 `VulkanModelResource`。
+- 保持 Resource / Scene / Editor 不感知 Vulkan 原生类型。
 
-任务：
+当前状态：
 
-- 新增 `VulkanRenderResourceCache`。
-- `AssetHandle -> Vulkan renderer model resource`。
-- 使用 AssetManager 获取路径。
-- 第一版可参考 externalRenderer loader。
-- 支持 `clear()` / shutdown。
+```text
+已完成
+完成内容：
+- D5 已创建 VulkanRenderResourceCache 生命周期骨架
+- D6 已完成 RenderDataPacket -> RenderView
+- D7 已新增 RendererV2 resource 类型、VMA allocator、专用 upload command pool 和 AssetHandle -> VulkanModelResource 缓存
+- Vulkan device / queue 仍封装在 VulkanRendererSystem::Backend 内部，resource cache 只通过 VulkanResourceContext 获取最小必要句柄
+```
+
+设计原则：
+
+- `VulkanRenderResourceCache` 归 RendererV2 后端持有，不做全局 singleton。
+- cache key 使用 `AssetHandle`，资源对象生命周期覆盖后续 `RenderScene` 提交与绘制。
+- `AssetManager` 只负责资产身份、路径和 CPU 数据，GPU resource 创建属于 RendererV2。
+- 不复用旧 OpenGL `RenderModelData / Texture2D / VertexArray`。
+- externalRenderer 的 `ModelResource / MeshResource / TextureCache` 只作为职责参考，不直接暴露 `ark::` 类型。
+
+建议拆分：
+
+#### D7-A：定义 RendererV2 资源类型
+
+新增目录建议：
+
+```text
+source/Engine/Function/RendererV2/resources/
+```
+
+第一版建议新增：
+
+```text
+vulkan_model_resource.h / .cpp
+vulkan_mesh_resource.h / .cpp
+vulkan_material_resource.h / .cpp
+```
+
+最低字段：
+
+```cpp
+struct VulkanMeshResource {
+    uint32_t index_count = 0;
+};
+
+struct VulkanModelResource {
+    std::vector<VulkanMeshResource> meshes;
+    std::string debug_name;
+};
+```
+
+如果 D7 直接做几何 GPU 上传，则 `VulkanMeshResource` 后续放入 vertex buffer / index buffer / allocation 信息。即使加入 Vulkan handle，也只能停留在 RendererV2 内部。
+
+#### D7-B：新增 VulkanResourceContext
+
+当前 `VulkanRenderResourceCache::init()` 没有参数，不足以创建 GPU resource。建议新增 RendererV2 内部上下文：
+
+```cpp
+struct VulkanResourceContext {
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue graphics_queue = VK_NULL_HANDLE;
+    uint32_t graphics_queue_family = 0;
+};
+```
+
+本次 D7 让 `VulkanRenderResourceCache` 自己持有 VMA allocator 和专用 upload command pool。单次资源创建时由 cache 组装内部上传上下文：
+
+```cpp
+struct VulkanResourceUploadContext {
+    VmaAllocator allocator = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue graphics_queue = VK_NULL_HANDLE;
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+};
+```
+
+上下文由 `VulkanRendererSystem::Backend` 在 device 创建完成后组装，并传给 `resource_cache.init(context)`。
+
+#### D7-C：实现 cache API
+
+建议接口：
+
+```cpp
+void init(const VulkanResourceContext& context);
+void clear();
+void shutdown();
+
+VulkanModelResource* getOrCreateModel(
+    AssetHandle model_asset,
+    AssetManager& asset_manager);
+
+VulkanModelResource* getModel(AssetHandle model_asset) const;
+```
+
+内部缓存：
+
+```cpp
+std::unordered_map<AssetHandle, std::unique_ptr<VulkanModelResource>> m_model_cache;
+```
+
+要求：
+
+- 无效 handle 返回 `nullptr` 并输出 warn。
+- 非 Model 资产返回 `nullptr` 并输出 warn。
+- 加载失败返回 `nullptr` 并输出 error。
+- 同一个 `AssetHandle` 多次请求必须返回同一个资源对象。
+
+#### D7-D：AssetHandle -> CPU model
+
+第一版建议复用 NexAur 现有资源系统：
+
+```cpp
+std::shared_ptr<Model> cpu_model = asset_manager.loadModelCPU(model_asset);
+```
+
+不要在 D7 主路径中直接引入 externalRenderer `GltfLoader`，避免出现两套 asset pipeline。externalRenderer 的 glTF 数据结构可以作为后续 CPU asset contract 重构参考，但 D7 先保持 NexAur `AssetManager` 是唯一资产入口。
+
+#### D7-E：资源上传策略
+
+有两种可选落地方式。
+
+保守方案：
+
+- D7 只把 CPU model 转换为 `VulkanModelResource` 的内部描述。
+- 暂不创建真实 VkBuffer。
+- D8 可以先完成 RenderScene 提交流程。
+- 优点是风险低；缺点是 D8 后仍不能真正画模型。
+
+推荐方案：
+
+- D7 直接接入 VMA。
+- 为模型几何创建 vertex / index buffer。
+- 新增最小 immediate upload helper 或专用 upload command pool。
+- 材质和纹理先做 placeholder 或只记录路径。
+- D8 接 RenderScene 时，模型资源已经接近可绘制。
+
+推荐方案更接近最终 Vulkan renderer，但 D7 必须控制范围：只做几何 buffer 上传，不同时做完整 PBR 材质、纹理采样、shader、pipeline。
+
+本次落地选择推荐方案的受控版本：
+
+- `VulkanRenderResourceCache` 创建并销毁 VMA allocator。
+- `VulkanRenderResourceCache` 创建专用 transient upload command pool。
+- `VulkanMeshResource` 使用 staging buffer 上传 CPU mesh 顶点 / 索引数据。
+- 最终 vertex / index buffer 使用 device-local 倾向分配，供 D8 draw item 直接引用。
+- `VulkanMaterialResource` 第一版只记录材质调试名和纹理路径，不创建 texture / sampler。
+
+#### D7-F：生命周期和清理顺序
+
+资源释放顺序应保持：
+
+```text
+vkDeviceWaitIdle
+  -> resource_cache.shutdown()
+  -> command resources cleanup
+  -> swapchain cleanup
+  -> device destroy
+```
+
+当前 D5 的 shutdown 顺序已经接近这个结构。D7 需要让 `clear()` 真正释放缓存里的 RendererV2 resource，确保关闭时不泄漏 Vulkan buffer / allocation。
+
+本次实现中，`resource_cache.shutdown()` 会先清空 model cache，触发 mesh buffer / allocation 释放，再销毁 upload command pool，最后销毁 VMA allocator。
+
+D7 不做：
+
+- 不做 `RenderDataPacket -> RenderScene`，放到 D8。
+- 不提交模型 draw call。
+- 不做完整材质系统。
+- 不做 HDR / IBL。
+- 不做 Vulkan viewport image，放到 D10。
+- 不做 picking，放到 D11。
+- 不删除 OpenGL legacy。
 
 验收：
 
-- 同一模型不会重复创建 GPU resource。
-- 关闭时资源释放稳定。
+- 同一个 `AssetHandle` 多次请求不会重复创建 RendererV2 model resource。
+- 无效 handle / 错误资产类型 / 加载失败都有明确日志且不会崩溃。
+- `clear()` 和 `shutdown()` 能稳定释放缓存。
+- RendererV2 Vulkan 构建通过。
+- OpenGL legacy 构建仍通过。
+- Sandbox smoke check 不崩溃。
+- 暂时不要求画出模型；视觉提交留给 D8 及后续 pass。
+
+建议验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-renderer-v2-debug
+cmake --build --preset msvc-vcpkg-debug
+cmake --build --preset msvc-legacy-debug
+```
+
+当前状态：
+
+```text
+已完成
+验证：
+- cmake --build --preset msvc-vcpkg-renderer-v2-debug 通过
+- cmake --build --preset msvc-vcpkg-debug 通过
+- cmake --build --preset msvc-legacy-debug 通过
+- bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe 3 秒 smoke check 通过
+备注：
+- D7 已创建真实 Vulkan vertex / index buffer，但暂不提交 draw call。
+- 材质资源第一版只保存路径和调试名，texture / sampler 留给后续材质系统。
+```
 
 ### D8：RenderDataPacket -> RenderScene
 
@@ -795,7 +991,7 @@ cmake --build --preset msvc-legacy-debug
 | C++17 / C++20 不一致 | RendererV2 / externalRenderer 参考代码编译失败 | 推荐 NexAur 升级 C++20 |
 | ImGui OpenGL / Vulkan backend 冲突 | Editor viewport 无法显示或崩溃 | Vulkan 早期不嵌入 Editor viewport |
 | viewport output 仍绑定 OpenGL texture id | Vulkan 被迫模拟 OpenGL | D1 / D2 优先清理接口 |
-| AssetManager 与 externalRenderer loader 双轨 | 重复加载、缓存复杂 | 第一版接受重复，中期统一 CPU asset contract |
+| AssetManager 与 externalRenderer loader 双轨 | 重复加载、缓存复杂 | D7 已保持 AssetManager 为唯一入口，externalRenderer loader 只作参考；中期继续统一 CPU asset contract |
 | picking 延迟或不可用 | Editor 交互退化 | 先 graceful fallback，后续 D11 实现 |
 
 ## 8. 当前下一步
@@ -803,11 +999,11 @@ cmake --build --preset msvc-legacy-debug
 推荐下一步：
 
 ```text
-D7 开始：VulkanRenderResourceCache
-D8 准备：RenderDataPacket -> RenderScene
+D8 开始：RenderDataPacket -> RenderScene
+D9 准备：Editor viewport 过渡
 ```
 
-D7 / D8 开始前的已确认前提：
+D8 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
@@ -817,6 +1013,8 @@ D7 / D8 开始前的已确认前提：
 - WindowService 已能提供 graphics API 状态和 Vulkan instance extensions。
 - Vulkan no-api window 编译路径已验证通过。
 - RendererV2 Vulkan 后端已能启动、清屏、present 和关闭。
+- RendererV2 已具备 `RenderDataPacket -> RenderView` 转换。
+- RendererV2 已具备 `AssetHandle -> VulkanModelResource` 资源缓存链路。
 - OpenGL legacy 只作为过渡 fallback，不再继续增强。
 
 ## 9. 进度记录
@@ -879,3 +1077,13 @@ D7 / D8 开始前的已确认前提：
 - 验证 D6：`cmake --build --preset msvc-vcpkg-debug` 通过。
 - 验证 D6：`cmake --build --preset msvc-legacy-debug` 通过。
 - 验证 D6：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
+- 完成 D7：新增 RendererV2 内部资源目录 `resources/`，包含 `VulkanModelResource`、`VulkanMeshResource`、`VulkanMaterialResource`。
+- 完成 D7：新增 `VulkanResourceContext` 与 `VulkanResourceUploadContext`，将 Backend 的 Vulkan 句柄以最小上下文传给 resource cache。
+- 完成 D7：`VulkanRenderResourceCache` 持有 VMA allocator、专用 upload command pool 和 `AssetHandle -> VulkanModelResource` 缓存。
+- 完成 D7：`VulkanMeshResource` 使用 staging buffer 上传 CPU mesh 顶点 / 索引数据，并创建 device-local 倾向的 vertex / index buffer。
+- 完成 D7：`VulkanMaterialResource` 第一版只记录材质名和纹理路径，不创建 texture / sampler。
+- 完成 D7：`VulkanRendererSystem::Backend` 初始化时创建 resource cache，shutdown 时在 device 销毁前释放缓存资源。
+- 验证 D7：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- 验证 D7：`cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D7：`cmake --build --preset msvc-legacy-debug` 通过。
+- 验证 D7：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。

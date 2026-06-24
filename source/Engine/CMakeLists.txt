@@ -186,6 +186,13 @@ set(NEXAUR_ENGINE_RENDERER_V2_FILES)
 if(NEXAUR_BUILD_RENDERER_V2)
     list(APPEND NEXAUR_ENGINE_RENDERER_V2_FILES
         Function/RendererV2/render_view.h
+        Function/RendererV2/vulkan_resource_context.h
+        Function/RendererV2/resources/vulkan_material_resource.h
+        Function/RendererV2/resources/vulkan_material_resource.cpp
+        Function/RendererV2/resources/vulkan_mesh_resource.h
+        Function/RendererV2/resources/vulkan_mesh_resource.cpp
+        Function/RendererV2/resources/vulkan_model_resource.h
+        Function/RendererV2/resources/vulkan_model_resource.cpp
         Function/RendererV2/vulkan_renderer_system.h
         Function/RendererV2/vulkan_renderer_system.cpp
         Function/RendererV2/vulkan_render_data_translator.h

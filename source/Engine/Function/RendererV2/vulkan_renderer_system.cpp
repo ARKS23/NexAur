@@ -129,7 +129,11 @@ namespace NexAur {
                 return false;
             }
 
-            resource_cache.init();
+            if (!resource_cache.init(createResourceContext())) {
+                shutdown();
+                return false;
+            }
+
             initialized = true;
             NX_CORE_INFO(
                 "VulkanRendererSystem initialized: surface {}x{}, swapchain {} images.",
@@ -217,6 +221,16 @@ namespace NexAur {
         }
 
     private:
+        VulkanResourceContext createResourceContext() const {
+            VulkanResourceContext context;
+            context.instance = instance.instance;
+            context.physical_device = physical_device.physical_device;
+            context.device = device.device;
+            context.graphics_queue = graphics_queue;
+            context.graphics_queue_family = graphics_queue_family;
+            return context;
+        }
+
         bool createInstance(const std::vector<const char*>& required_extensions) {
             if (required_extensions.empty()) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to initialize: no Vulkan instance extensions were provided by WindowService.");
