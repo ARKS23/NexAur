@@ -8,6 +8,10 @@
 #include <ImGuizmo.h>
 
 namespace NexAur {
+    struct ViewportOutput;
+    struct ViewportPickRequest;
+    struct ViewportPickResult;
+
     class ViewportPanel : public EditorPanel {
     public:
         ViewportPanel(const std::string& name = "Viewport") : EditorPanel(name) {}
@@ -21,7 +25,9 @@ namespace NexAur {
         void beginViewportWindow();
         void updateViewportWindowState();
         void syncViewportResize();
-        void drawSceneTexture();
+        void drawViewportOutput();
+        void drawOpenGLViewport(const ViewportOutput& output);
+        void drawViewportPlaceholder(const char* message);
         void handleGizmoHotkeys();
         void drawGizmo();
         void endViewportWindow();
@@ -31,6 +37,7 @@ namespace NexAur {
 
         bool onMouseButtonPressed(MouseButtonPressedEvent& e);
         void pickEntityAtMouse();
+        void applyPickResult(const ViewportPickRequest& request, const ViewportPickResult& result);
 
     private:
         glm::vec2 m_viewport_size{ 1280, 720 };

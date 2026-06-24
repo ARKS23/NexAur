@@ -22,7 +22,7 @@ namespace NexAur {
 
         updateViewportWindowState();
         syncViewportResize();
-        drawSceneTexture();
+        drawViewportOutput();
         handleGizmoHotkeys();
         drawGizmo();
 
@@ -92,7 +92,7 @@ namespace NexAur {
         editor_camera->setViewportSize(static_cast<float>(target_w), static_cast<float>(target_h));
     }
 
-    void ViewportPanel::drawSceneTexture() {
+    void ViewportPanel::drawViewportOutput() {
         if (!m_context || !m_context->renderer_service) {
             return;
         }
@@ -100,13 +100,54 @@ namespace NexAur {
             return;
         }
 
-        const uint32_t texture_id = m_context->renderer_service->getViewportColorAttachment();
+        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        switch (output.kind) {
+        case ViewportOutputKind::OpenGLTexture:
+            drawOpenGLViewport(output);
+            break;
+        case ViewportOutputKind::VulkanImGuiTexture:
+            drawViewportPlaceholder("Vulkan viewport image");
+            break;
+        case ViewportOutputKind::ExternalSwapchain:
+            drawViewportPlaceholder("External swapchain output");
+            break;
+        case ViewportOutputKind::None:
+        default:
+            drawViewportPlaceholder("No viewport output");
+            break;
+        }
+    }
+
+    void ViewportPanel::drawOpenGLViewport(const ViewportOutput& output) {
+        if (!output.valid() || output.numeric_handle == 0) {
+            drawViewportPlaceholder("No viewport output");
+            return;
+        }
+
         ImGui::Image(
-            reinterpret_cast<void*>((intptr_t)texture_id),
+            reinterpret_cast<void*>(static_cast<intptr_t>(output.numeric_handle)),
             ImVec2(m_viewport_size.x, m_viewport_size.y),
             ImVec2(0.0f, 1.0f),
             ImVec2(1.0f, 0.0f)
         );
+    }
+
+    void ViewportPanel::drawViewportPlaceholder(const char* message) {
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const ImVec2 size(m_viewport_size.x, m_viewport_size.y);
+        const ImVec2 max(origin.x + size.x, origin.y + size.y);
+
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddRectFilled(origin, max, IM_COL32(20, 22, 26, 255));
+
+        const ImVec2 text_size = ImGui::CalcTextSize(message);
+        const ImVec2 text_pos(
+            origin.x + std::max(0.0f, (size.x - text_size.x) * 0.5f),
+            origin.y + std::max(0.0f, (size.y - text_size.y) * 0.5f)
+        );
+        draw_list->AddText(text_pos, IM_COL32(185, 190, 200, 255), message);
+
+        ImGui::InvisibleButton("##ViewportOutputPlaceholder", size);
     }
 
     void ViewportPanel::handleGizmoHotkeys() {
@@ -292,9 +333,24 @@ namespace NexAur {
         const int pixel_x = std::clamp(static_cast<int>(framebuffer_x), 0, static_cast<int>(framebuffer_width) - 1);
         const int pixel_y = std::clamp(static_cast<int>(framebuffer_y), 0, static_cast<int>(framebuffer_height) - 1);
 
-        int picked_id = m_context->renderer_service->readViewportEntityID(pixel_x, pixel_y);
+        ViewportPickRequest request;
+        request.x = pixel_x;
+        request.y = pixel_y;
+
+        const ViewportPickResult result = m_context->renderer_service->pickViewport(request);
+        applyPickResult(request, result);
+    }
+
+    void ViewportPanel::applyPickResult(const ViewportPickRequest& request, const ViewportPickResult& result) {
+        if (!result.supported || !result.ready) {
+            return;
+        }
+        if (!m_context || !m_context->active_scene) {
+            return;
+        }
+
         std::shared_ptr<SelectionService> selection_service = m_context->selection_service.lock();
-        if (picked_id < 0) {
+        if (result.entity_id < 0) {
             if (selection_service) {
                 selection_service->clearSelection();
             } else {
@@ -303,16 +359,16 @@ namespace NexAur {
             return;
         }
 
-        NX_CORE_WARN("Mouse Pick at ({}, {}), picked ID: {}", pixel_x, pixel_y, picked_id);
+        NX_CORE_WARN("Mouse Pick at ({}, {}), picked ID: {}", request.x, request.y, result.entity_id);
         auto& registry = m_context->active_scene->getRegistry();
-        entt::entity handle = static_cast<entt::entity>(picked_id);
+        entt::entity handle = static_cast<entt::entity>(result.entity_id);
         if (!registry.valid(handle)) {
             if (selection_service) {
                 selection_service->clearSelection();
             } else {
                 m_context->selected_entity = Entity();
             }
-            NX_CORE_FATAL("Picked invalid entity handle: {}", picked_id);
+            NX_CORE_FATAL("Picked invalid entity handle: {}", result.entity_id);
             return;
         }
 

@@ -58,8 +58,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D1 RendererService 接口清理已完成
-代码状态：RendererService 新契约已建立，OpenGL legacy 通过 wrapper 保持兼容
+当前阶段：D2 ViewportPanel 适配新输出已完成
+代码状态：Editor viewport 已迁移到 ViewportOutput / pickViewport，OpenGL legacy 路径保持可用
 OpenGL 后端：仍为当前可运行主路径
 ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 ```
@@ -71,6 +71,7 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 - 新增 vcpkg / CMake 构建方案文档。
 - 新建 `vulkanRenderer` 开发分支。
 - D1：完成 `RendererService` 后端无关 viewport / picking 契约。
+- D2：完成 `ViewportPanel` 对新 viewport output / picking 契约的适配。
 
 已确认：
 
@@ -89,9 +90,9 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 
 | 阶段 | 状态 | 目标 | 主要参考 |
 | --- | --- | --- | --- |
-| D0 文档与方向确认 | 进行中 | 固定路线、拆分参考文档、决定 externalRenderer 归属 | 本文档 / 总方案 |
+| D0 文档与方向确认 | 已完成 | 固定路线、拆分参考文档、决定 externalRenderer 归属 | 本文档 / 总方案 |
 | D1 RendererService 接口清理 | 已完成 | 降级 OpenGL texture id 接口，新增后端无关 viewport / picking 契约 | 接口文档 |
-| D2 ViewportPanel 适配新输出 | 待开始 | Editor 不再假设 viewport 是 OpenGL texture | 接口文档 |
+| D2 ViewportPanel 适配新输出 | 已完成 | Editor 不再假设 viewport 是 OpenGL texture | 接口文档 |
 | D3 vcpkg / CMake 预研落地 | 待开始 | 顶层 C++20 + vcpkg 方案可支撑 RendererV2 | 构建文档 |
 | D4 Window graphics API 策略 | 待开始 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
 | D5 RendererV2 / ArkVulkanRendererSystem 骨架 | 待开始 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
@@ -139,7 +140,7 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 当前状态：
 
 ```text
-进行中
+已完成
 ```
 
 ### D1：RendererService 接口清理
@@ -206,6 +207,14 @@ cmake --build build --config Debug
 - OpenGL viewport 正常显示。
 - texture id 为 0 或无输出时 Editor 不崩溃。
 - picking 仍能在 OpenGL 路径工作。
+
+当前状态：
+
+```text
+已完成
+验证：cmake --build build --config Debug 通过
+备注：现有 C4251 等 DLL 导出警告仍存在，非本次 D2 新增问题
+```
 
 ### D3：vcpkg / CMake 预研落地
 
@@ -448,12 +457,11 @@ cmake --build build --config Debug
 推荐下一步：
 
 ```text
-D0 收尾：同步并提交文档
-D2 开始：ViewportPanel 适配新输出
-D3 并行预研：顶层 C++20 + vcpkg 基线
+D3 开始：顶层 C++20 + vcpkg 基线
+D4 准备：Window graphics API 策略
 ```
 
-D1 / D3 开始前的已确认前提：
+D3 / D4 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
@@ -477,3 +485,8 @@ D1 / D3 开始前的已确认前提：
 - 完成 D1：旧 `getViewportColorAttachment()` / `readViewportEntityID()` 降级为迁移期 wrapper。
 - 完成 D1：OpenGL `RendererSystem` 实现新 viewport / picking 契约。
 - 验证 D1：`cmake --build build --config Debug` 通过。
+- 完成 D2：`ViewportPanel` 改用 `RendererService::getViewportOutput()` 显示 viewport。
+- 完成 D2：OpenGL 路径通过 `ViewportOutputKind::OpenGLTexture` 继续显示。
+- 完成 D2：`None` / `ExternalSwapchain` / `VulkanImGuiTexture` 输出走安全 placeholder。
+- 完成 D2：picking 改用 `RendererService::pickViewport()`，unsupported / not ready 不会清空当前选择。
+- 验证 D2：`cmake --build build --config Debug` 通过。
