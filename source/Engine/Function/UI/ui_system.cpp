@@ -2,6 +2,7 @@
 #include "ui_system.h"
 
 #include "Function/Platform/platform_services.h"
+#include "Function/Renderer/RHI/renderer_service.h"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -10,17 +11,22 @@
 #include <imgui_impl_opengl3.h>
 
 namespace NexAur {
-    void UISystem::init(std::shared_ptr<WindowService> window_service) {
+    void UISystem::init(std::shared_ptr<WindowService> window_service, std::shared_ptr<RendererService> renderer_service) {
         NX_CORE_ASSERT(window_service, "UISystem requires a valid WindowService.");
         m_window_service = std::move(window_service);
+        m_renderer_service = renderer_service;
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
 
+        const WindowGraphicsAPI graphics_api = m_window_service->getGraphicsAPI();
+
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        if (graphics_api == WindowGraphicsAPI::OpenGL) {
+            io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        }
 
         ImGui::StyleColorsDark();
 
@@ -33,15 +39,18 @@ namespace NexAur {
         GLFWwindow* window = static_cast<GLFWwindow*>(m_window_service->getNativeWindow());
         NX_CORE_ASSERT(window, "UISystem requires a valid native GLFW window.");
 
-        if (m_window_service->getGraphicsAPI() == WindowGraphicsAPI::OpenGL) {
+        if (graphics_api == WindowGraphicsAPI::OpenGL) {
             ImGui_ImplGlfw_InitForOpenGL(window, true);
             ImGui_ImplOpenGL3_Init("#version 450");
             m_backend = Backend::OpenGL;
         } else {
             ImGui_ImplGlfw_InitForVulkan(window, true);
-            io.Fonts->Build();
             m_backend = Backend::GlfwOnly;
-            NX_CORE_WARN("Vulkan ImGui renderer backend is not initialized yet; UI draw data will not be presented.");
+            NX_CORE_INFO("UI System initialized ImGui GLFW platform backend for Vulkan; RendererV2 owns the Vulkan ImGui renderer backend.");
+        }
+
+        if (std::shared_ptr<RendererService> renderer_service_locked = m_renderer_service.lock()) {
+            renderer_service_locked->onUIContextInitialized();
         }
 
         m_context_initialized = true;
@@ -50,6 +59,10 @@ namespace NexAur {
 
     void UISystem::shutdown() {
         if (m_context_initialized) {
+            if (std::shared_ptr<RendererService> renderer_service = m_renderer_service.lock()) {
+                renderer_service->onUIContextShutdown();
+            }
+
             if (m_backend == Backend::OpenGL) {
                 ImGui_ImplOpenGL3_Shutdown();
             }
@@ -63,6 +76,7 @@ namespace NexAur {
 
         m_context_initialized = false;
         m_backend = Backend::None;
+        m_renderer_service.reset();
         m_window_service.reset();
 
         NX_CORE_INFO("UI System shut down.");
@@ -75,6 +89,8 @@ namespace NexAur {
 
         if (m_backend == Backend::OpenGL) {
             ImGui_ImplOpenGL3_NewFrame();
+        } else if (std::shared_ptr<RendererService> renderer_service = m_renderer_service.lock()) {
+            renderer_service->beginUIFrame();
         }
 
         if (m_backend != Backend::None) {
@@ -86,7 +102,7 @@ namespace NexAur {
         ImGuizmo::BeginFrame();
     }
 
-    void UISystem::endFrameAndRender() {
+    void UISystem::finalizeFrame() {
         if (!m_context_initialized) {
             return;
         }
@@ -96,6 +112,14 @@ namespace NexAur {
         io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
 
         ImGui::Render();
+    }
+
+    void UISystem::renderBackend() {
+        if (!m_context_initialized) {
+            return;
+        }
+
+        ImGuiIO& io = ImGui::GetIO();
         if (m_backend != Backend::OpenGL) {
             return;
         }
@@ -108,6 +132,11 @@ namespace NexAur {
             ImGui::RenderPlatformWindowsDefault();
             glfwMakeContextCurrent(backup_current_context);
         }
+    }
+
+    void UISystem::endFrameAndRender() {
+        finalizeFrame();
+        renderBackend();
     }
 
     void UISystem::onEvent(Event& event) {

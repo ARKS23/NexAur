@@ -6,6 +6,8 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/RendererV2/render_scene_frame_builder.h"
 #include "Function/RendererV2/passes/vulkan_forward_pass.h"
+#include "Function/RendererV2/targets/vulkan_viewport_target.h"
+#include "Function/RendererV2/ui/vulkan_imgui_renderer.h"
 #include "Function/RendererV2/vulkan_draw_list_builder.h"
 #include "Function/RendererV2/vulkan_render_data_translator.h"
 #include "Function/RendererV2/vulkan_render_resource_cache.h"
@@ -146,6 +148,11 @@ namespace NexAur {
                 return false;
             }
 
+            if (!viewport_target.init(createResourceContext(), swapchain.image_format, surface_width, surface_height)) {
+                shutdown();
+                return false;
+            }
+
             initialized = true;
             NX_CORE_INFO(
                 "VulkanRendererSystem initialized: surface {}x{}, swapchain {} images, API {}.{}.{}.",
@@ -163,6 +170,8 @@ namespace NexAur {
                 vkDeviceWaitIdle(device.device);
             }
 
+            imgui_renderer.shutdown();
+            viewport_target.shutdown();
             resource_cache.shutdown();
             forward_pass.shutdown();
             cleanupSyncObjects();
@@ -202,7 +211,7 @@ namespace NexAur {
                 return;
             }
 
-            auto [render_width, render_height] = getRenderExtent();
+            auto [render_width, render_height] = getViewportRenderExtent();
             translator.resetFrame();
             const RenderView render_view = translator.buildRenderView(render_data, render_width, render_height);
             const RenderSceneFrame scene_frame = scene_frame_builder.buildRenderSceneFrame(render_data, render_view);
@@ -215,22 +224,49 @@ namespace NexAur {
         }
 
         void setViewportSize(uint32_t width, uint32_t height) {
-            (void)width;
-            (void)height;
+            if (!initialized || !viewport_target.isReady()) {
+                return;
+            }
+
+            width = std::max(1u, width);
+            height = std::max(1u, height);
+            const VkExtent2D current_extent = viewport_target.getExtent();
+            if (current_extent.width == width && current_extent.height == height) {
+                return;
+            }
+
+            vkDeviceWaitIdle(device.device);
+            imgui_renderer.releaseViewportTexture();
+            if (viewport_target.resize(width, height) && imgui_renderer.isInitialized()) {
+                registerViewportTexture();
+            }
         }
 
         std::pair<uint32_t, uint32_t> getViewportSize() const {
-            return getRenderExtent();
+            return getViewportRenderExtent();
         }
 
         ViewportOutput getViewportOutput() const {
             ViewportOutput output;
             output.backend = RendererBackendType::Vulkan;
-            output.kind = initialized ? ViewportOutputKind::ExternalSwapchain : ViewportOutputKind::None;
 
-            auto [width, height] = getRenderExtent();
-            output.width = width;
-            output.height = height;
+            if (!initialized) {
+                return output;
+            }
+
+            if (viewport_target.isReady() && imgui_renderer.hasViewportTexture()) {
+                const VkExtent2D extent = viewport_target.getExtent();
+                output.kind = ViewportOutputKind::VulkanImGuiTexture;
+                output.width = extent.width;
+                output.height = extent.height;
+                output.native_handle = imgui_renderer.getViewportTextureHandle();
+                return output;
+            }
+
+            output.kind = ViewportOutputKind::ExternalSwapchain;
+            auto [surface_render_width, surface_render_height] = getRenderExtent();
+            output.width = surface_render_width;
+            output.height = surface_render_height;
             return output;
         }
 
@@ -243,6 +279,23 @@ namespace NexAur {
             }
 
             swapchain_dirty = initialized;
+        }
+
+        void onUIContextInitialized() {
+            if (!initImGuiRenderer()) {
+                NX_CORE_WARN("VulkanRendererSystem could not initialize the ImGui Vulkan renderer backend yet.");
+            }
+        }
+
+        void beginUIFrame() {
+            imgui_renderer.beginFrame();
+        }
+
+        void onUIContextShutdown() {
+            if (device.device != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(device.device);
+            }
+            imgui_renderer.shutdown();
         }
 
     private:
@@ -263,6 +316,51 @@ namespace NexAur {
             }
 
             return { std::max(1u, surface_width), std::max(1u, surface_height) };
+        }
+
+        std::pair<uint32_t, uint32_t> getViewportRenderExtent() const {
+            if (viewport_target.isReady()) {
+                const VkExtent2D extent = viewport_target.getExtent();
+                return { extent.width, extent.height };
+            }
+
+            return getRenderExtent();
+        }
+
+        VulkanImGuiRendererContext createImGuiRendererContext() const {
+            VulkanImGuiRendererContext context;
+            context.instance = instance.instance;
+            context.physical_device = physical_device.physical_device;
+            context.device = device.device;
+            context.graphics_queue = graphics_queue;
+            context.graphics_queue_family = graphics_queue_family;
+            context.swapchain_color_format = swapchain.image_format;
+            context.min_image_count = std::max(2u, swapchain.image_count);
+            context.image_count = std::max(2u, swapchain.image_count);
+            context.api_version = device_api_version;
+            return context;
+        }
+
+        bool initImGuiRenderer() {
+            if (!initialized) {
+                return false;
+            }
+
+            if (!imgui_renderer.init(createImGuiRendererContext())) {
+                return false;
+            }
+
+            return registerViewportTexture();
+        }
+
+        bool registerViewportTexture() {
+            if (!viewport_target.isReady() || !imgui_renderer.isInitialized()) {
+                return false;
+            }
+
+            return imgui_renderer.registerViewportTexture(
+                viewport_target.getColorImageView(),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
 
         bool createInstance(const std::vector<const char*>& required_extensions) {
@@ -443,7 +541,12 @@ namespace NexAur {
             pass_context.color_format = swapchain.image_format;
             pass_context.extent = swapchain.extent;
             pass_context.color_images = swapchain_images;
-            return forward_pass.recreateSwapchainResources(pass_context);
+            const bool recreated_forward_pass = forward_pass.recreateSwapchainResources(pass_context);
+            if (recreated_forward_pass && imgui_renderer.isInitialized()) {
+                imgui_renderer.onSwapchainRecreated(std::max(2u, swapchain.image_count));
+            }
+
+            return recreated_forward_pass;
         }
 
         bool recreateSwapchain() {
@@ -556,7 +659,7 @@ namespace NexAur {
 
             vkResetFences(device.device, 1, &in_flight);
 
-            VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             VkSubmitInfo submit_info{};
             submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submit_info.waitSemaphoreCount = 1;
@@ -606,22 +709,50 @@ namespace NexAur {
 
             VkImage image = swapchain_images[image_index];
             const VkImageLayout old_layout = swapchain_image_layouts[image_index];
-            transitionImageLayout(
-                image,
-                old_layout,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-            if (!forward_pass.record(command_buffer, image_index, draw_list)) {
-                return false;
+            const bool render_to_viewport_image = imgui_renderer.isInitialized() && viewport_target.isReady();
+            if (render_to_viewport_image) {
+                transitionViewportTargetForRendering();
+                if (!forward_pass.record(command_buffer, viewport_target.getRenderTarget(), draw_list)) {
+                    return false;
+                }
+                transitionViewportColorForSampling();
+
+                transitionImageLayout(
+                    image,
+                    old_layout,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_ASPECT_COLOR_BIT,
+                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_MEMORY_READ_BIT,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+                if (!recordImGuiToSwapchain(image_index)) {
+                    return false;
+                }
+            } else {
+                transitionImageLayout(
+                    image,
+                    old_layout,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_ASPECT_COLOR_BIT,
+                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_MEMORY_READ_BIT,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+                if (!forward_pass.record(command_buffer, image_index, draw_list)) {
+                    return false;
+                }
             }
 
             transitionImageLayout(
                 image,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                 0,
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
@@ -630,23 +761,112 @@ namespace NexAur {
             return checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer");
         }
 
+        void transitionViewportTargetForRendering() {
+            const VkImageLayout color_old_layout = viewport_target.getColorLayout();
+            VkAccessFlags color_src_access = 0;
+            VkPipelineStageFlags color_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (color_old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                color_src_access = VK_ACCESS_SHADER_READ_BIT;
+                color_src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            } else if (color_old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+                color_src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                color_src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            }
+
+            transitionImageLayout(
+                viewport_target.getColorImage(),
+                color_old_layout,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                color_src_access,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                color_src_stage,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+            viewport_target.setColorLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            const VkImageLayout depth_old_layout = viewport_target.getDepthLayout();
+            transitionImageLayout(
+                viewport_target.getDepthImage(),
+                depth_old_layout,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_DEPTH_BIT,
+                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
+            viewport_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        }
+
+        void transitionViewportColorForSampling() {
+            transitionImageLayout(
+                viewport_target.getColorImage(),
+                viewport_target.getColorLayout(),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            viewport_target.setColorLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        bool recordImGuiToSwapchain(uint32_t image_index) {
+            VkImageView swapchain_view = forward_pass.getSwapchainColorImageView(image_index);
+            if (swapchain_view == VK_NULL_HANDLE) {
+                return false;
+            }
+
+            VkClearValue clear_value{};
+            clear_value.color.float32[0] = 0.08f;
+            clear_value.color.float32[1] = 0.10f;
+            clear_value.color.float32[2] = 0.14f;
+            clear_value.color.float32[3] = 1.0f;
+
+            VkRenderingAttachmentInfo color_attachment{};
+            color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            color_attachment.imageView = swapchain_view;
+            color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            color_attachment.clearValue = clear_value;
+
+            VkRenderingInfo rendering_info{};
+            rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+            rendering_info.renderArea.offset = { 0, 0 };
+            rendering_info.renderArea.extent = swapchain.extent;
+            rendering_info.layerCount = 1;
+            rendering_info.colorAttachmentCount = 1;
+            rendering_info.pColorAttachments = &color_attachment;
+
+            vkCmdBeginRendering(command_buffer, &rendering_info);
+            imgui_renderer.renderDrawData(command_buffer);
+            vkCmdEndRendering(command_buffer);
+            return true;
+        }
+
         void transitionImageLayout(
             VkImage image,
             VkImageLayout old_layout,
             VkImageLayout new_layout,
+            VkImageAspectFlags aspect_mask,
+            VkAccessFlags src_access_mask,
             VkAccessFlags dst_access_mask,
             VkPipelineStageFlags src_stage,
             VkPipelineStageFlags dst_stage) {
+            if (old_layout == new_layout) {
+                return;
+            }
+
             VkImageMemoryBarrier barrier{};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.srcAccessMask = old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_MEMORY_READ_BIT;
+            barrier.srcAccessMask = src_access_mask;
             barrier.dstAccessMask = dst_access_mask;
             barrier.oldLayout = old_layout;
             barrier.newLayout = new_layout;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.image = image;
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.aspectMask = aspect_mask;
             barrier.subresourceRange.baseMipLevel = 0;
             barrier.subresourceRange.levelCount = 1;
             barrier.subresourceRange.baseArrayLayer = 0;
@@ -698,6 +918,8 @@ namespace NexAur {
         RenderSceneFrameBuilder scene_frame_builder;
         VulkanDrawListBuilder draw_list_builder;
         VulkanForwardPass forward_pass;
+        VulkanViewportTarget viewport_target;
+        VulkanImGuiRenderer imgui_renderer;
     };
 
     VulkanRendererSystem::VulkanRendererSystem()
@@ -741,6 +963,18 @@ namespace NexAur {
         result.ready = false;
         result.entity_id = -1;
         return result;
+    }
+
+    void VulkanRendererSystem::onUIContextInitialized() {
+        m_backend->onUIContextInitialized();
+    }
+
+    void VulkanRendererSystem::beginUIFrame() {
+        m_backend->beginUIFrame();
+    }
+
+    void VulkanRendererSystem::onUIContextShutdown() {
+        m_backend->onUIContextShutdown();
     }
 
     void VulkanRendererSystem::onEvent(Event& event) {

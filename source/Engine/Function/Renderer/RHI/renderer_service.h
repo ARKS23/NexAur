@@ -23,6 +23,10 @@ namespace NexAur {
         virtual ViewportOutput getViewportOutput() const = 0;
         virtual ViewportPickResult pickViewport(const ViewportPickRequest& request) = 0;
 
+        virtual void onUIContextInitialized() {}
+        virtual void beginUIFrame() {}
+        virtual void onUIContextShutdown() {}
+
         // 迁移期兼容接口。旧 Editor viewport 仍可工作，新代码应使用 getViewportOutput()。
         virtual uint32_t getViewportColorAttachment() const {
             const ViewportOutput output = getViewportOutput();

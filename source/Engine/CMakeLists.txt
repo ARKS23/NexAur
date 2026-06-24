@@ -211,6 +211,10 @@ if(NEXAUR_BUILD_RENDERER_V2)
         Function/RendererV2/resources/vulkan_mesh_resource.cpp
         Function/RendererV2/resources/vulkan_model_resource.h
         Function/RendererV2/resources/vulkan_model_resource.cpp
+        Function/RendererV2/targets/vulkan_viewport_target.h
+        Function/RendererV2/targets/vulkan_viewport_target.cpp
+        Function/RendererV2/ui/vulkan_imgui_renderer.h
+        Function/RendererV2/ui/vulkan_imgui_renderer.cpp
         Function/RendererV2/vulkan_renderer_system.h
         Function/RendererV2/vulkan_renderer_system.cpp
         Function/RendererV2/vulkan_render_data_translator.h

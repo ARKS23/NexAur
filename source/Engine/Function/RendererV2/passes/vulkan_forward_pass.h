@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/RendererV2/vulkan_render_target.h"
 
 namespace NexAur {
     struct VulkanDrawList;
@@ -39,6 +40,8 @@ namespace NexAur {
         void shutdown();
 
         bool record(VkCommandBuffer command_buffer, uint32_t image_index, const VulkanDrawList& draw_list);
+        bool record(VkCommandBuffer command_buffer, const VulkanRenderTarget& target, const VulkanDrawList& draw_list);
+        VkImageView getSwapchainColorImageView(uint32_t image_index) const;
 
     private:
         bool createImageViews(const VulkanForwardPassSwapchainContext& context);

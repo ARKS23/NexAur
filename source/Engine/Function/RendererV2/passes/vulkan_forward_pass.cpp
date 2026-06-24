@@ -239,6 +239,32 @@ namespace NexAur {
             return false;
         }
 
+        transitionDepthImageToAttachment(
+            command_buffer,
+            m_depth_image,
+            m_depth_image_layout,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        m_depth_image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VulkanRenderTarget target;
+        target.color_view = m_color_image_views[image_index];
+        target.color_format = m_color_format;
+        target.depth_view = m_depth_image_view;
+        target.depth_format = m_depth_format;
+        target.extent = m_extent;
+        return record(command_buffer, target, draw_list);
+    }
+
+    bool VulkanForwardPass::record(VkCommandBuffer command_buffer, const VulkanRenderTarget& target, const VulkanDrawList& draw_list) {
+        if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
+            return false;
+        }
+
+        if (target.color_format != m_color_format || target.depth_format != m_depth_format) {
+            NX_CORE_ERROR("VulkanForwardPass target format does not match the current pipeline.");
+            return false;
+        }
+
         VkClearValue clear_value{};
         clear_value.color.float32[0] = 0.08f;
         clear_value.color.float32[1] = 0.10f;
@@ -247,18 +273,11 @@ namespace NexAur {
 
         VkRenderingAttachmentInfo color_attachment{};
         color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        color_attachment.imageView = m_color_image_views[image_index];
+        color_attachment.imageView = target.color_view;
         color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         color_attachment.clearValue = clear_value;
-
-        transitionDepthImageToAttachment(
-            command_buffer,
-            m_depth_image,
-            m_depth_image_layout,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        m_depth_image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         VkClearValue depth_clear{};
         depth_clear.depthStencil.depth = 1.0f;
@@ -266,7 +285,7 @@ namespace NexAur {
 
         VkRenderingAttachmentInfo depth_attachment{};
         depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        depth_attachment.imageView = m_depth_image_view;
+        depth_attachment.imageView = target.depth_view;
         depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -275,7 +294,7 @@ namespace NexAur {
         VkRenderingInfo rendering_info{};
         rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
         rendering_info.renderArea.offset = { 0, 0 };
-        rendering_info.renderArea.extent = m_extent;
+        rendering_info.renderArea.extent = target.extent;
         rendering_info.layerCount = 1;
         rendering_info.colorAttachmentCount = 1;
         rendering_info.pColorAttachments = &color_attachment;
@@ -286,15 +305,15 @@ namespace NexAur {
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = static_cast<float>(m_extent.width);
-        viewport.height = static_cast<float>(m_extent.height);
+        viewport.width = static_cast<float>(target.extent.width);
+        viewport.height = static_cast<float>(target.extent.height);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
         vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
         VkRect2D scissor{};
         scissor.offset = { 0, 0 };
-        scissor.extent = m_extent;
+        scissor.extent = target.extent;
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
         if (m_pipeline != VK_NULL_HANDLE && m_pipeline_layout != VK_NULL_HANDLE && !draw_list.opaque_items.empty()) {
@@ -327,6 +346,14 @@ namespace NexAur {
 
         vkCmdEndRendering(command_buffer);
         return true;
+    }
+
+    VkImageView VulkanForwardPass::getSwapchainColorImageView(uint32_t image_index) const {
+        if (image_index >= m_color_image_views.size()) {
+            return VK_NULL_HANDLE;
+        }
+
+        return m_color_image_views[image_index];
     }
 
     bool VulkanForwardPass::createDepthResources(const VulkanForwardPassSwapchainContext& context) {

@@ -59,7 +59,7 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D9 Editor viewport 过渡已完成
+当前阶段：D10 Vulkan viewport image 已完成
 代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端已对齐 Vulkan 1.3+，可创建 instance / surface / device / swapchain，把 RenderDataPacket 转换为 RenderView / RenderSceneFrame / VulkanDrawList，并通过 dynamic rendering forward pass 绘制 opaque mesh
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 externalRenderer：仅作为临时本地参考目录
@@ -80,6 +80,7 @@ externalRenderer：仅作为临时本地参考目录
 - D7：完成 `VulkanRenderResourceCache`，模型 AssetHandle 可解析为 RendererV2 内部 Vulkan model resource。
 - D8：完成 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 最小绘制链路。
 - D9：完成 Editor viewport 过渡，ExternalSwapchain 下有明确状态、尺寸策略和交互降级。
+- D10：完成 Vulkan viewport image，Editor viewport 可显示 RendererV2 offscreen image。
 
 已确认：
 
@@ -108,7 +109,7 @@ externalRenderer：仅作为临时本地参考目录
 | D7 VulkanRenderResourceCache | 已完成 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
 | D8 SceneFrame / DrawList / ForwardPass | 已完成 | Vulkan 1.3 + dynamic rendering 下提交并显示 NexAur 场景模型 | 总方案 |
 | D9 Editor viewport 过渡 | 已完成 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
-| D10 Vulkan viewport image | 待开始 | Editor viewport 显示 Vulkan offscreen image | 接口文档 |
+| D10 Vulkan viewport image | 已完成 | Editor viewport 显示 Vulkan offscreen image | 接口文档 |
 | D11 Vulkan picking | 待开始 | ObjectId pass / readback 接入 | 接口文档 |
 | D12 OpenGL legacy 退役 | 待开始 | 默认 Vulkan，旧 OpenGL 移除或隔离 | 总方案 |
 
@@ -1313,19 +1314,188 @@ D8 不做：
 目标：
 
 - Editor viewport 显示 Vulkan offscreen image。
+- Vulkan scene 不再只直接输出到主窗口 swapchain，而是先绘制到 RendererV2 内部 viewport target。
+- `ViewportPanel` 通过 `ViewportOutputKind::VulkanImGuiTexture` 显示 backend-owned descriptor。
+- 为 D11 Vulkan picking 预留同尺寸 ObjectId / readback pass 的接入位置。
 
-任务：
+设计边界：
 
-- Vulkan renderer 支持 offscreen viewport target。
-- 暴露 backend-owned image / descriptor token。
-- NexAur UI 使用 Vulkan ImGui descriptor 显示。
-- 统一 UI backend 生命周期。
+- D10 不做 picking；ObjectId pass / readback 留到 D11。
+- Editor / Scene / Resource 不 include Vulkan 头文件，不解释 `native_handle`。
+- `externalRenderer/` 仍只作参考，不直接作为长期子目录接入。
+- Vulkan 模式下可以先关闭 ImGui multi-viewport，优先保证主窗口 docking 和 embedded viewport image 稳定。
+- resize 可以先用 `vkDeviceWaitIdle()` 做保守重建，后续再优化为延迟销毁。
+
+关键问题：
+
+1. 当前 Engine frame order 不适合 Vulkan UI 合成。
+
+   当前主循环大致是：
+
+   ```text
+   UI begin
+   Editor 提交 ImGui
+   rendererTick()
+   UI endFrameAndRender()
+   window present
+   ```
+
+   OpenGL legacy 可以这样，因为 scene framebuffer 和 ImGui OpenGL backend 都在同一个 OpenGL context 下工作。Vulkan D10 需要让 `ImGui::Render()` 先生成 draw data，再由 `VulkanRendererSystem` 在同一个 swapchain command buffer 中提交 scene viewport image 和 ImGui draw data。
+
+2. D10 需要明确 Vulkan GPU ownership。
+
+   不建议让 `UISystem` 自己持有 Vulkan device / swapchain / command buffer，否则会形成第二套 renderer。推荐：
+
+   ```text
+   UISystem
+     owns ImGui context
+     owns GLFW platform backend
+     builds ImGui draw data
+
+   RendererV2 / VulkanRendererSystem
+     owns Vulkan device / swapchain / command buffer
+     owns Vulkan ImGui renderer backend bridge
+     records ImGui draw data into swapchain command buffer
+   ```
+
+3. `ViewportOutput` 仍然保持后端无关。
+
+   D10 完成后 Vulkan backend 返回：
+
+   ```cpp
+   output.backend = RendererBackendType::Vulkan;
+   output.kind = ViewportOutputKind::VulkanImGuiTexture;
+   output.width = viewport_width;
+   output.height = viewport_height;
+   output.native_handle = imgui_descriptor_token;
+   ```
+
+   `native_handle` 是不透明 token，只有 ImGui backend 解释，Editor 不知道它是 `VkDescriptorSet`。
+
+建议任务拆分：
+
+- D10-A：UI frame phase 拆分
+  - 将 `UIService::endFrameAndRender()` 拆成更明确的阶段，例如：
+
+    ```text
+    finalizeFrame()      // ImGui::Render(), 生成 ImDrawData
+    renderBackend()      // OpenGL legacy 提交 draw data；Vulkan 路径 no-op
+    ```
+
+  - Engine 推荐顺序调整为：
+
+    ```text
+    UI begin
+    Editor 提交 ImGui
+    UI finalizeFrame
+    RenderContext swapBuffers
+    rendererTick
+    UI renderBackend       // OpenGL only
+    Window present         // OpenGL only；Vulkan 由 RendererV2 present
+    ```
+
+  - `RendererV2` 可以在 `rendererTick()` 内部读取 `ImGui::GetDrawData()`，但调用点集中在 Vulkan ImGui bridge 中。
+
+- D10-B：新增 Vulkan viewport target
+  - 新增 RendererV2 内部资源，例如：
+
+    ```text
+    source/Engine/Function/RendererV2/targets/vulkan_viewport_target.h / .cpp
+    ```
+
+  - 负责创建：
+    - color image / image view / allocation
+    - depth image / image view / allocation
+    - sampler
+    - extent / format / layout 状态
+  - color image usage 建议包含：
+
+    ```text
+    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+    VK_IMAGE_USAGE_SAMPLED_BIT
+    VK_IMAGE_USAGE_TRANSFER_SRC_BIT   // 后续调试 / picking 辅助可用
+    ```
+
+  - depth image usage：
+
+    ```text
+    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+    ```
+
+- D10-C：`VulkanForwardPass` 支持通用 render target
+  - 不再只围绕 swapchain image index 录制。
+  - 抽出轻量 target 描述：
+
+    ```text
+    VulkanRenderTarget
+      color_image
+      color_view
+      color_format
+      depth_view
+      depth_format
+      extent
+    ```
+
+  - Forward pass 先绘制到 viewport target，结束后把 color image transition 到 `SHADER_READ_ONLY_OPTIMAL`。
+
+- D10-D：新增 Vulkan ImGui backend bridge
+  - 建议放在 RendererV2 内部，例如：
+
+    ```text
+    source/Engine/Function/RendererV2/ui/vulkan_imgui_renderer.h / .cpp
+    ```
+
+  - 负责：
+    - `ImGui_ImplVulkan_Init`
+    - descriptor pool
+    - font upload
+    - `ImGui_ImplVulkan_AddTexture`
+    - `ImGui_ImplVulkan_RemoveTexture`
+    - `ImGui_ImplVulkan_RenderDrawData`
+    - shutdown / swapchain recreate 资源同步
+  - 使用 Vulkan 1.3 dynamic rendering 路径初始化 ImGui Vulkan backend。
+
+- D10-E：`VulkanRendererSystem` frame flow 重排
+  - 每帧流程推荐：
+
+    ```text
+    build RenderView
+    build RenderSceneFrame
+    build VulkanDrawList
+
+    acquire swapchain image
+    record command buffer:
+      render scene into viewport target
+      transition viewport target -> shader read
+      render ImGui draw data into swapchain image
+      transition swapchain image -> present
+    submit
+    present
+    ```
+
+  - 若没有有效 ImGui draw data，仍能 fallback 到 clear / direct swapchain path，避免 runtime-only 模式崩溃。
+
+- D10-F：`RendererService::setViewportSize()` 恢复为 Vulkan viewport target resize
+  - D9 中 ExternalSwapchain 不响应 panel size。
+  - D10 中一旦返回 `VulkanImGuiTexture`，`ViewportPanel::syncViewportResize()` 会重新调用 `setViewportSize(panel_width, panel_height)`。
+  - VulkanRendererSystem 应把这个尺寸用于 offscreen viewport target，而不是 swapchain。
+
+- D10-G：文档和示例同步
+  - 更新本文档 D10 进度。
+  - 明确 D10 只是 viewport image，不包含 Vulkan picking。
+  - Sandbox / Editor 示例说明 Vulkan viewport image 的状态。
 
 验收：
 
 - ViewportPanel 显示 Vulkan 渲染画面。
 - Resize 稳定。
 - 不与 ImGui backend 冲突。
+- Vulkan backend 下 `getViewportOutput()` 返回 `VulkanImGuiTexture`，且 `native_handle` 非空。
+- OpenGL legacy viewport 显示、UI render 和 window present 不退化。
+- `cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `cmake --build --preset msvc-legacy-debug` 通过。
+- `bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` smoke check 通过。
 
 ### D11：Vulkan picking
 
@@ -1403,11 +1573,11 @@ D8 不做：
 推荐下一步：
 
 ```text
-D10 准备：Vulkan viewport image
 D11 准备：Vulkan picking
+D12 准备：OpenGL legacy 退役
 ```
 
-D9 开始前的已确认前提：
+D11 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
@@ -1512,3 +1682,15 @@ D9 开始前的已确认前提：
 - 完成 D9-D：Vulkan ExternalSwapchain 过渡期可作为全窗口临时输入目标，相机移动仍能驱动主 swapchain 场景。
 - 验证 D9：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 分步验证通过。
 - 验证 D9：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
+- 完成 D10-A：拆分 `UIService` frame phase，新增 `finalizeFrame()` / `renderBackend()`，Engine 调度改为先生成 ImGui draw data，再由 Renderer 消费。
+- 完成 D10-B：新增 RendererV2 内部 `VulkanViewportTarget`，持有 offscreen color/depth image、image view 和 sampler。
+- 完成 D10-C：`VulkanForwardPass` 新增通用 `VulkanRenderTarget` record 路径，旧 swapchain record 保留为 fallback wrapper。
+- 完成 D10-D：新增 RendererV2 内部 `VulkanImGuiRenderer`，负责 ImGui Vulkan backend、viewport texture descriptor 和 draw data 提交。
+- 完成 D10-E：`VulkanRendererSystem` frame flow 改为 viewport target scene pass -> shader read transition -> ImGui swapchain pass -> present。
+- 完成 D10-F：Vulkan backend 在 descriptor ready 后返回 `ViewportOutputKind::VulkanImGuiTexture`，`native_handle` 为 backend-owned ImGui texture token。
+- 完成 D10-F：`RendererService::setViewportSize()` 在 Vulkan path 下驱动 offscreen viewport target resize，不再驱动 swapchain 尺寸。
+- 修复 D10 启动断言：Vulkan 路径不再手动调用 `io.Fonts->Build()`，字体纹理由 ImGui Vulkan backend 接管。
+- 验证 D10：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- 验证 D10：`cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D10：`cmake --build --preset msvc-legacy-debug` 通过。
+- 验证 D10：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。

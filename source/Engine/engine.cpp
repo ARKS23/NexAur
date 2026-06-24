@@ -84,13 +84,15 @@ namespace NexAur {
             module_manager->renderUIModules(TickContext{ delta_time });
         }
 
+        ui_service->finalizeFrame();
+
         // 双缓冲交换：本帧写入的数据变成 Renderer 读取的数据。
         std::shared_ptr<RenderContext> render_context = getRequiredModuleService<RenderContext>();
         render_context->swapBuffers();
 
         rendererTick(delta_time);
 
-        ui_service->endFrameAndRender();
+        ui_service->renderBackend();
 
         std::shared_ptr<WindowService> window_service = getRequiredModuleService<WindowService>();
         // 当前 OpenGL 后端由 WindowSystem 负责 swap/poll；通过 WindowService 隔离 GLFW 细节。

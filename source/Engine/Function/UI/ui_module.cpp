@@ -6,6 +6,7 @@
 #include "Core/Module/engine_module.h"
 #include "Editor/editor_services.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Renderer/RHI/renderer_service.h"
 #include "Function/UI/ui_system.h"
 
 namespace NexAur {
@@ -25,7 +26,9 @@ namespace NexAur {
                 // 这里仍是模块顶层使用，不把 registry 继续传入深层业务对象。
                 m_registry = &context.registry;
                 m_ui_system = std::make_shared<UISystem>();
-                m_ui_system->init(context.registry.getService<WindowService>());
+                m_ui_system->init(
+                    context.registry.getService<WindowService>(),
+                    context.registry.getService<RendererService>());
 
                 context.registry.registerService<UIService>(std::static_pointer_cast<UIService>(m_ui_system));
                 context.registry.registerService<UISystem>(m_ui_system);
