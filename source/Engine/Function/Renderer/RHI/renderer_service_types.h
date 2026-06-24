@@ -8,7 +8,7 @@ namespace NexAur {
     enum class RendererBackendType {
         Unknown,
         OpenGLLegacy,
-        ArkVulkan,
+        Vulkan,
     };
 
     enum class ViewportOutputKind {

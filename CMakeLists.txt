@@ -17,8 +17,8 @@ option(NEXAUR_BUILD_RENDERER_V2 "Build RendererV2 integration." OFF)
 set(NEXAUR_DEFAULT_GRAPHICS_API "OpenGL" CACHE STRING "Default window graphics API. Valid values: OpenGL, Vulkan.")
 set_property(CACHE NEXAUR_DEFAULT_GRAPHICS_API PROPERTY STRINGS OpenGL Vulkan)
 
-if(NEXAUR_BUILD_RENDERER_V2)
-    message(WARNING "NEXAUR_BUILD_RENDERER_V2 is reserved for the later RendererV2 integration stage.")
+if(NEXAUR_BUILD_RENDERER_V2 AND NOT NEXAUR_USE_VCPKG_DEPS)
+    message(FATAL_ERROR "NEXAUR_BUILD_RENDERER_V2 currently requires NEXAUR_USE_VCPKG_DEPS=ON.")
 endif()
 
 if(NOT NEXAUR_BUILD_LEGACY_OPENGL)

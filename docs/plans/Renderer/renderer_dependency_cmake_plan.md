@@ -259,13 +259,13 @@ NexAur 当前是 C++17，ARKRenderer 是 C++20。
 
 推荐程度：高。
 
-### 方案 B：只让 ARK adapter target 使用 C++20
+### 方案 B：只让 RendererV2 Vulkan backend target 使用 C++20
 
 做法：
 
 ```text
 NexAurEngine C++17
-NexAurArkRendererBackend C++20
+RendererV2VulkanBackend C++20
 ARKRenderer C++20
 ```
 
@@ -553,7 +553,7 @@ imgui[docking-experimental,glfw-binding,opengl3-binding,vulkan-binding]
 推荐过渡策略：
 
 1. OpenGL backend 继续使用 NexAur 当前 UI。
-2. ArkVulkan backend 第一版不接 NexAur Editor viewport image，也不启用 ARK sandbox UI。
+2. Vulkan backend 第一版不接 NexAur Editor viewport image，也不启用 externalRenderer sandbox UI。
 3. 后续统一 NexAur UI backend 到 Vulkan。
 4. 再接 Vulkan viewport image / descriptor。
 
@@ -571,7 +571,7 @@ externalRenderer/shaders/*.hlsl
 接入 NexAur 后建议：
 
 - 第一版保留或复刻 ARKRenderer 的 HLSL -> SPIR-V 编译流程。
-- shader output dir 先由 RendererV2 / ARKRenderer 风格的 CMake 逻辑管理。
+- shader output dir 先由 RendererV2 专属 CMake 逻辑管理，可参考 externalRenderer 的做法。
 - 不要第一版就合并 NexAur 旧 OpenGL shader 与 RendererV2 Vulkan shader。
 - 新增 Vulkan shader 文件优先放在 RendererV2 专属目录中，避免和 legacy OpenGL shader 语义混在一起。
 

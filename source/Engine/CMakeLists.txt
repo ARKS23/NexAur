@@ -182,6 +182,18 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/Platform/OpenGL/opengl_vertex_array.cpp
 )
 
+set(NEXAUR_ENGINE_RENDERER_V2_FILES)
+if(NEXAUR_BUILD_RENDERER_V2)
+    list(APPEND NEXAUR_ENGINE_RENDERER_V2_FILES
+        Function/RendererV2/vulkan_renderer_system.h
+        Function/RendererV2/vulkan_renderer_system.cpp
+        Function/RendererV2/vulkan_render_data_translator.h
+        Function/RendererV2/vulkan_render_data_translator.cpp
+        Function/RendererV2/vulkan_render_resource_cache.h
+        Function/RendererV2/vulkan_render_resource_cache.cpp
+    )
+endif()
+
 set(NEXAUR_ENGINE_THIRD_PARTY_FILES)
 if(NEXAUR_USE_VCPKG_DEPS)
     list(APPEND NEXAUR_ENGINE_THIRD_PARTY_FILES
@@ -195,6 +207,7 @@ set(NEXAUR_ENGINE_FILES
     ${NEXAUR_ENGINE_EDITOR_FILES}
     ${NEXAUR_ENGINE_FUNCTION_FILES}
     ${NEXAUR_ENGINE_RENDERER_FILES}
+    ${NEXAUR_ENGINE_RENDERER_V2_FILES}
     ${NEXAUR_ENGINE_THIRD_PARTY_FILES}
 )
 
@@ -234,6 +247,13 @@ if(NEXAUR_USE_VCPKG_DEPS)
     find_package(spdlog CONFIG REQUIRED)
     find_package(Stb REQUIRED)
 
+    if(NEXAUR_BUILD_RENDERER_V2)
+        find_package(Vulkan REQUIRED)
+        find_package(vk-bootstrap CONFIG REQUIRED)
+        find_package(volk CONFIG REQUIRED)
+        find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+    endif()
+
     nexaur_select_dependency_target(NEXAUR_ASSIMP_TARGET assimp::assimp assimp)
     nexaur_select_dependency_target(NEXAUR_ENTT_TARGET EnTT::EnTT EnTT)
     nexaur_select_dependency_target(NEXAUR_GLAD_TARGET glad::glad glad)
@@ -257,6 +277,16 @@ if(NEXAUR_USE_VCPKG_DEPS)
         ${NEXAUR_IMGUIZMO_TARGET}
         ${NEXAUR_SPDLOG_TARGET}
     )
+
+    if(NEXAUR_BUILD_RENDERER_V2)
+        target_compile_definitions(NexAurEngine PRIVATE NEXAUR_RENDERER_V2_ENABLED=1)
+        target_link_libraries(NexAurEngine PRIVATE
+            Vulkan::Vulkan
+            vk-bootstrap::vk-bootstrap
+            volk::volk
+            GPUOpen::VulkanMemoryAllocator
+        )
+    endif()
 else()
     target_include_directories(NexAurEngine PUBLIC
         "${CMAKE_SOURCE_DIR}/external/entt/src"
