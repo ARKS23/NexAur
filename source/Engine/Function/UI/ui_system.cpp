@@ -6,8 +6,8 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <ImGuizmo.h>
-#include <backends/imgui_impl_glfw.h>
-#include <backends/imgui_impl_opengl3.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 
 namespace NexAur {
     void UISystem::init(std::shared_ptr<WindowService> window_service) {

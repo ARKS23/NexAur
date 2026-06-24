@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "nexaur",
+  "version-string": "0.1.0",
+  "description": "NexAur engine dependencies, including legacy OpenGL fallback and future RendererV2 Vulkan integration.",
+  "dependencies": [
+    "assimp",
+    {
+      "name": "directx-dxc",
+      "platform": "(windows & !arm32 & !uwp & !xbox) | (linux & x64)"
+    },
+    "entt",
+    "fmt",
+    {
+      "name": "glad",
+      "features": [
+        "gl-api-46"
+      ]
+    },
+    "glfw3",
+    "glm",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "glfw-binding",
+        "opengl3-binding",
+        "vulkan-binding"
+      ]
+    },
+    "imguizmo",
+    "ktx",
+    "spdlog",
+    "spirv-headers",
+    "spirv-reflect",
+    "stb",
+    "tinygltf",
+    "vk-bootstrap",
+    "volk",
+    "vulkan",
+    "vulkan-memory-allocator"
+  ]
+}

@@ -51,6 +51,7 @@
 - 新渲染模块落在 `source/Engine/Function/RendererV2/`，参考 ARKRenderer 架构并按 NexAur 模块系统重新适配。
 - 顶层工程升级到 C++20，避免引擎和新渲染模块出现语言标准双轨。
 - 顶层统一使用 vcpkg 管理第三方依赖，逐步移除或隔离重复的 vendored 依赖。
+- RendererV2 / Vulkan 路径后续统一使用 HLSL 编写新着色器，并通过 DXC 编译为 SPIR-V。
 - OpenGL 只作为迁移期 fallback，Vulkan 稳定后退役。
 - 每个阶段都保持可构建，可回退，可验证。
 
@@ -58,9 +59,9 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D2 ViewportPanel 适配新输出已完成
-代码状态：Editor viewport 已迁移到 ViewportOutput / pickViewport，OpenGL legacy 路径保持可用
-OpenGL 后端：仍为当前可运行主路径
+当前阶段：D3 vcpkg / CMake 预研落地已完成
+代码状态：顶层已升级 C++20；vcpkg preset 与 legacy fallback 均可配置和构建
+OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 ```
 
@@ -72,6 +73,7 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 - 新建 `vulkanRenderer` 开发分支。
 - D1：完成 `RendererService` 后端无关 viewport / picking 契约。
 - D2：完成 `ViewportPanel` 对新 viewport output / picking 契约的适配。
+- D3：完成顶层 C++20、vcpkg manifest / preset、依赖来源分支和特殊依赖收口。
 
 已确认：
 
@@ -93,7 +95,7 @@ ARKRenderer：`externalRenderer/` 仅作为临时本地参考目录
 | D0 文档与方向确认 | 已完成 | 固定路线、拆分参考文档、决定 externalRenderer 归属 | 本文档 / 总方案 |
 | D1 RendererService 接口清理 | 已完成 | 降级 OpenGL texture id 接口，新增后端无关 viewport / picking 契约 | 接口文档 |
 | D2 ViewportPanel 适配新输出 | 已完成 | Editor 不再假设 viewport 是 OpenGL texture | 接口文档 |
-| D3 vcpkg / CMake 预研落地 | 待开始 | 顶层 C++20 + vcpkg 方案可支撑 RendererV2 | 构建文档 |
+| D3 vcpkg / CMake 预研落地 | 已完成 | 顶层 C++20 + vcpkg 方案可支撑 RendererV2 | 构建文档 |
 | D4 Window graphics API 策略 | 待开始 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
 | D5 RendererV2 / ArkVulkanRendererSystem 骨架 | 待开始 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
 | D6 RenderView 转换 | 待开始 | NexAur 相机驱动 ARKRenderer | 总方案 |
@@ -223,6 +225,8 @@ cmake --build build --config Debug
 - NexAur 顶层统一具备 vcpkg 构建路径。
 - NexAur 顶层升级到 C++20。
 - `RendererV2` 能使用 ARKRenderer 所需的第三方依赖。
+- vcpkg 成为新默认依赖路径，旧 `external/` 只作为过渡 fallback 保留。
+- 尽量在 D3 解决构建地基问题，避免后续接 RendererV2 时混入双依赖、双 ImGui、双标准等隐患。
 
 任务：
 
@@ -232,10 +236,67 @@ cmake --build build --config Debug
 - C++ 标准提升到 C++20。
 - 新增：
   - `NEXAUR_USE_VCPKG_DEPS`
-  - `NEXAUR_BUILD_ARK_RENDERER`
+  - `NEXAUR_BUILD_RENDERER_V2`
   - `NEXAUR_BUILD_LEGACY_OPENGL`
 - 梳理旧 `external/` 与 vcpkg 重复依赖，先隔离重复构建，再逐步替换。
 - 不把 `externalRenderer/` 直接作为长期子目录接入；只抽取或重写需要进入 `RendererV2` 的代码和设计。
+
+建议拆分：
+
+```text
+D3-A：C++20 基线
+  -> 顶层 CMake 提升到 3.25
+  -> 顶层 / NexAurEngine 使用 C++20
+  -> 仍走当前 external 构建，先确认旧 OpenGL 路径不坏
+
+D3-B：vcpkg manifest / preset
+  -> 新增 vcpkg.json
+  -> 新增 CMakePresets.json
+  -> preset 使用 build/msvc-vcpkg，避免污染当前 build/
+
+D3-C：依赖来源分支
+  -> NEXAUR_USE_VCPKG_DEPS=ON 默认走 find_package
+  -> NEXAUR_USE_VCPKG_DEPS=OFF 保留 add_subdirectory(external) fallback
+  -> vcpkg 模式不再构建 external/glfw、external/glm、external/spdlog、external/imgui、external/assimp
+
+D3-D：特殊依赖收口
+  -> stb：vcpkg 通常只提供 header，需要 NexAur 自己提供一个 stb_image implementation translation unit
+  -> glad：OpenGL legacy 仍需要 loader，优先尝试 vcpkg glad；如果 target/profile 不匹配，只允许作为 legacy isolated exception 记录下来
+  -> imgui：vcpkg feature 同时启用 glfw/opengl3/vulkan binding，但 D3 不初始化 Vulkan ImGui backend
+
+D3-E：验证和文档同步
+  -> vcpkg preset 配置通过
+  -> vcpkg Debug 构建通过
+  -> 必要时 legacy external 构建仍可回退
+  -> 更新本文档状态和遗留风险
+```
+
+主要改动点：
+
+- `CMakeLists.txt`
+  - `cmake_minimum_required(VERSION 3.25)`
+  - C++20 基线
+  - 新增构建选项
+  - vcpkg 模式下不 `add_subdirectory(external)`
+- `source/Engine/CMakeLists.txt`
+  - vcpkg 模式下 `find_package`
+  - vcpkg 模式下链接 imported targets
+  - legacy 模式保留当前 external include / link
+- `vcpkg.json`
+  - 合并当前 NexAur 依赖和后续 RendererV2 依赖
+- `CMakePresets.json`
+  - 新增 `msvc-vcpkg` 配置和 Debug / Release build preset
+- 可能新增 `source/Engine/ThirdParty/stb_image.cpp`
+  - 只负责 `STB_IMAGE_IMPLEMENTATION`
+  - 避免继续依赖 `external/stb/stb_image.cpp`
+
+D3 不做：
+
+- 不 `add_subdirectory(externalRenderer)`。
+- 不创建完整 `RendererV2` 后端。
+- 不初始化 Vulkan ImGui backend。
+- 不删除旧 `external/` 目录和 submodule。
+- 不删除 OpenGL legacy。
 
 验收：
 
@@ -243,6 +304,28 @@ cmake --build build --config Debug
 - vcpkg preset 可配置。
 - 不重复构建 glfw / glm / spdlog / imgui 等依赖。
 - 顶层 C++20 构建通过。
+- `cmake --preset msvc-vcpkg` 通过。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- 如果保留 legacy fallback，则 `NEXAUR_USE_VCPKG_DEPS=OFF` 路径仍可构建。
+
+当前状态：
+
+```text
+已完成
+验证：
+- cmake -S . -B build -DNEXAUR_USE_VCPKG_DEPS=OFF 通过
+- cmake --build build --config Debug 通过
+- cmake --preset msvc-legacy 通过
+- cmake --build --preset msvc-legacy-debug 通过
+- cmake --preset msvc-vcpkg 通过
+- cmake --build --preset msvc-vcpkg-debug 通过
+备注：
+- vcpkg 模式已使用 find_package，不再 add_subdirectory(external)
+- legacy external fallback 保留，用于 OpenGL 迁移期回退
+- preset 产物已通过 NEXAUR_OUTPUT_ROOT 分流到 bin/msvc-vcpkg 与 bin/msvc-legacy
+- ImGui backend include 已改成兼容 vcpkg / vendored 布局的写法
+- legacy vendored Assimp 仍可能保留自身历史输出到 bin/Debug，后续 external cleanup 阶段处理
+```
 
 ### D4：Window graphics API 策略
 
@@ -457,17 +540,18 @@ cmake --build build --config Debug
 推荐下一步：
 
 ```text
-D3 开始：顶层 C++20 + vcpkg 基线
-D4 准备：Window graphics API 策略
+D4 开始：Window graphics API 策略
+D5 准备：RendererV2 / ArkVulkanRendererSystem 骨架
 ```
 
-D3 / D4 开始前的已确认前提：
+D4 / D5 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
-- NexAur 顶层升级到 C++20。
-- NexAur 顶层统一改为 vcpkg 管理第三方依赖。
-- OpenGL legacy 是否只作为过渡 fallback，不再继续增强。
+- NexAur 顶层已升级到 C++20。
+- NexAur 顶层已具备 vcpkg manifest / preset 构建路径。
+- RendererV2 新增 shader 统一使用 HLSL -> SPIR-V 流程。
+- OpenGL legacy 只作为过渡 fallback，不再继续增强。
 
 ## 9. 进度记录
 
@@ -490,3 +574,14 @@ D3 / D4 开始前的已确认前提：
 - 完成 D2：`None` / `ExternalSwapchain` / `VulkanImGuiTexture` 输出走安全 placeholder。
 - 完成 D2：picking 改用 `RendererService::pickViewport()`，unsupported / not ready 不会清空当前选择。
 - 验证 D2：`cmake --build build --config Debug` 通过。
+- 完成 D3：顶层 `cmake_minimum_required` 提升到 3.25，C++ 标准提升到 C++20。
+- 完成 D3：新增顶层 `vcpkg.json`，合并 OpenGL legacy 与后续 RendererV2 需要的第三方依赖。
+- 完成 D3：新增 `CMakePresets.json`，提供 `msvc-vcpkg` 与 `msvc-legacy` 两条固定构建入口。
+- 完成 D3：新增 `NEXAUR_USE_VCPKG_DEPS`、`NEXAUR_BUILD_LEGACY_OPENGL`、`NEXAUR_BUILD_RENDERER_V2` 构建选项。
+- 完成 D3：新增 `NEXAUR_OUTPUT_ROOT`，让 vcpkg / legacy preset 的主产物输出目录互相隔离。
+- 完成 D3：vcpkg 模式改用 `find_package` / imported targets，legacy 模式继续 `add_subdirectory(external)`。
+- 完成 D3：新增 `source/Engine/ThirdParty/stb_image.cpp`，在 vcpkg 模式下由引擎侧提供 `STB_IMAGE_IMPLEMENTATION`。
+- 完成 D3：`ui_system.cpp` 的 ImGui backend include 改为兼容 vcpkg / vendored 布局的写法。
+- 确认后续 RendererV2 新增 shader 统一使用 HLSL，并通过 DXC 编译为 SPIR-V。
+- 验证 D3：`cmake --preset msvc-vcpkg` 与 `cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D3：`cmake --preset msvc-legacy` 与 `cmake --build --preset msvc-legacy-debug` 通过。

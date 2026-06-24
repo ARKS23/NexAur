@@ -1,0 +1,61 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "msvc-vcpkg",
+      "displayName": "MSVC x64 + vcpkg",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/msvc-vcpkg",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_MANIFEST_MODE": "ON",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "NEXAUR_USE_VCPKG_DEPS": "ON",
+        "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
+        "NEXAUR_BUILD_RENDERER_V2": "OFF",
+        "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-vcpkg"
+      }
+    },
+    {
+      "name": "msvc-legacy",
+      "displayName": "MSVC x64 + vendored external",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/msvc-legacy",
+      "cacheVariables": {
+        "NEXAUR_USE_VCPKG_DEPS": "OFF",
+        "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
+        "NEXAUR_BUILD_RENDERER_V2": "OFF",
+        "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-legacy"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msvc-vcpkg-debug",
+      "configurePreset": "msvc-vcpkg",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc-vcpkg-release",
+      "configurePreset": "msvc-vcpkg",
+      "configuration": "Release"
+    },
+    {
+      "name": "msvc-legacy-debug",
+      "configurePreset": "msvc-legacy",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc-legacy-release",
+      "configurePreset": "msvc-legacy",
+      "configuration": "Release"
+    }
+  ]
+}

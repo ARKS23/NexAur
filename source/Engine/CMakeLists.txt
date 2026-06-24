@@ -4,6 +4,17 @@ project(NexAurEngine)
 # 动态库和静态库选项
 option(NEXAUR_BUILD_SHARED "Build engine as shared library" ON)
 
+function(nexaur_select_dependency_target output_name)
+    foreach(candidate IN LISTS ARGN)
+        if(TARGET ${candidate})
+            set(${output_name} ${candidate} PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+
+    message(FATAL_ERROR "None of the expected targets exist: ${ARGN}")
+endfunction()
+
 # 显式维护 Engine 主线源码，避免 legacy/实验文件因目录位置被自动编入主库。
 set(NEXAUR_ENGINE_ROOT_FILES
     NexAur.h
@@ -170,12 +181,20 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/Platform/OpenGL/opengl_vertex_array.cpp
 )
 
+set(NEXAUR_ENGINE_THIRD_PARTY_FILES)
+if(NEXAUR_USE_VCPKG_DEPS)
+    list(APPEND NEXAUR_ENGINE_THIRD_PARTY_FILES
+        ThirdParty/stb_image.cpp
+    )
+endif()
+
 set(NEXAUR_ENGINE_FILES
     ${NEXAUR_ENGINE_ROOT_FILES}
     ${NEXAUR_ENGINE_CORE_FILES}
     ${NEXAUR_ENGINE_EDITOR_FILES}
     ${NEXAUR_ENGINE_FUNCTION_FILES}
     ${NEXAUR_ENGINE_RENDERER_FILES}
+    ${NEXAUR_ENGINE_THIRD_PARTY_FILES}
 )
 
 # 创建对应的库类型
@@ -192,31 +211,72 @@ endif()
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${NEXAUR_ENGINE_FILES})
 
+target_compile_features(NexAurEngine PUBLIC cxx_std_20)
+
 # 预编译头
 target_precompile_headers(NexAurEngine PRIVATE pch.h)
 
 # 设置头文件路径
 target_include_directories(NexAurEngine PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_SOURCE_DIR}/external/entt/src"
-    "${CMAKE_SOURCE_DIR}/external/glm"
-    "${CMAKE_SOURCE_DIR}/external/spdlog/include"
-    "${CMAKE_SOURCE_DIR}/external/glfw/include"
-    "${CMAKE_SOURCE_DIR}/external/glad/include"
-    "${CMAKE_SOURCE_DIR}/external/stb"
-    "${CMAKE_SOURCE_DIR}/external/assimp/include"
-    "${CMAKE_SOURCE_DIR}/external/imgui"
-    "${CMAKE_SOURCE_DIR}/external/imgui/backends"
 )
 
 # 链接第三方库
-target_link_libraries(NexAurEngine PUBLIC
-    EnTT
-    glad
-    glfw
-    glm
-    spdlog
-    stb
-    assimp
-    imgui
-)
+if(NEXAUR_USE_VCPKG_DEPS)
+    find_package(assimp CONFIG REQUIRED)
+    find_package(EnTT CONFIG REQUIRED)
+    find_package(glad CONFIG REQUIRED)
+    find_package(glfw3 CONFIG REQUIRED)
+    find_package(glm CONFIG REQUIRED)
+    find_package(imgui CONFIG REQUIRED)
+    find_package(imguizmo CONFIG REQUIRED)
+    find_package(spdlog CONFIG REQUIRED)
+    find_package(Stb REQUIRED)
+
+    nexaur_select_dependency_target(NEXAUR_ASSIMP_TARGET assimp::assimp assimp)
+    nexaur_select_dependency_target(NEXAUR_ENTT_TARGET EnTT::EnTT EnTT)
+    nexaur_select_dependency_target(NEXAUR_GLAD_TARGET glad::glad glad)
+    nexaur_select_dependency_target(NEXAUR_GLFW_TARGET glfw glfw3::glfw glfw3)
+    nexaur_select_dependency_target(NEXAUR_GLM_TARGET glm::glm glm)
+    nexaur_select_dependency_target(NEXAUR_IMGUI_TARGET imgui::imgui imgui)
+    nexaur_select_dependency_target(NEXAUR_IMGUIZMO_TARGET imguizmo::imguizmo imguizmo)
+    nexaur_select_dependency_target(NEXAUR_SPDLOG_TARGET spdlog::spdlog spdlog)
+
+    target_include_directories(NexAurEngine PUBLIC
+        "${Stb_INCLUDE_DIR}"
+    )
+
+    target_link_libraries(NexAurEngine PUBLIC
+        ${NEXAUR_ASSIMP_TARGET}
+        ${NEXAUR_ENTT_TARGET}
+        ${NEXAUR_GLAD_TARGET}
+        ${NEXAUR_GLFW_TARGET}
+        ${NEXAUR_GLM_TARGET}
+        ${NEXAUR_IMGUI_TARGET}
+        ${NEXAUR_IMGUIZMO_TARGET}
+        ${NEXAUR_SPDLOG_TARGET}
+    )
+else()
+    target_include_directories(NexAurEngine PUBLIC
+        "${CMAKE_SOURCE_DIR}/external/entt/src"
+        "${CMAKE_SOURCE_DIR}/external/glm"
+        "${CMAKE_SOURCE_DIR}/external/spdlog/include"
+        "${CMAKE_SOURCE_DIR}/external/glfw/include"
+        "${CMAKE_SOURCE_DIR}/external/glad/include"
+        "${CMAKE_SOURCE_DIR}/external/stb"
+        "${CMAKE_SOURCE_DIR}/external/assimp/include"
+        "${CMAKE_SOURCE_DIR}/external/imgui"
+        "${CMAKE_SOURCE_DIR}/external/imgui/backends"
+    )
+
+    target_link_libraries(NexAurEngine PUBLIC
+        EnTT
+        glad
+        glfw
+        glm
+        spdlog
+        stb
+        assimp
+        imgui
+    )
+endif()

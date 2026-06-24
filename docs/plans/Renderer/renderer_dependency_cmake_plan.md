@@ -10,6 +10,16 @@ docs/plans/Renderer/renderer_vulkan_development_roadmap.md
 
 本文是包管理与构建参考文档；后续开发进度、阶段状态和完成记录以进度主文档为准。
 
+当前落地状态：
+
+```text
+D3 已完成。
+顶层已新增 vcpkg manifest / CMakePresets。
+顶层已升级到 CMake 3.25 + C++20。
+vcpkg 路径与 vendored external fallback 均已验证可构建。
+externalRenderer 仍只作为参考目录，不进入默认构建图。
+```
+
 ## 1. 文档目标
 
 本文档专门讨论 NexAur 接入 `externalRenderer` / ARKRenderer 时的包管理和 CMake 构建问题。
@@ -144,6 +154,7 @@ NexAur/
     "spirv-headers",
     "spirv-reflect",
     "glfw3",
+    "glad",
     "glm",
     "spdlog",
     "fmt",
@@ -170,6 +181,7 @@ NexAur/
 
 - `opengl3-binding` 只在 OpenGL legacy 过渡期需要。
 - OpenGL 删除后可以移除 `opengl3-binding` 和 `glad`。
+- 如果 vcpkg `glad` 的生成 profile / target 名称与当前 OpenGL legacy 不兼容，D3 可以暂时把 `external/glad` 作为 legacy isolated exception，但必须记录为待清理项，不能让它继续污染新 Vulkan 路径。
 - `fmt` 建议保留，因为 ARKRenderer 使用 `fmt`。
 - `directx-dxc` 在 Windows / Linux x64 平台用于 HLSL -> SPIR-V 编译。
 
@@ -195,7 +207,8 @@ NexAur/
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "VCPKG_MANIFEST_MODE": "ON"
+        "VCPKG_MANIFEST_MODE": "ON",
+        "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-vcpkg"
       }
     }
   ],
@@ -224,6 +237,7 @@ cmake_minimum_required(VERSION 3.25)
 
 - ARKRenderer 已要求 CMake 3.25。
 - 顶层统一版本可以减少子项目兼容分支。
+- `NEXAUR_OUTPUT_ROOT` 用来隔离不同 preset 的主产物，避免 vcpkg 与 legacy fallback 同时写入同一个 `bin/Debug`。
 
 ## 6. C++ 标准建议
 
@@ -283,18 +297,22 @@ target_compile_features(NexAurEngine PUBLIC cxx_std_20)
 
 ## 7. external/ 与 vcpkg 的过渡策略
 
-不建议一次性删除 `external/`。推荐分阶段：
+不建议一次性删除 `external/`。但既然后续主线已经确认统一到 vcpkg，D3 应该尽量把新路径做扎实，而不是只新增一个 manifest 留给后面收拾。
 
-### 阶段 1：保留 external，新增 vcpkg 预研
+### 阶段 1：C++20 基线先落地
+
+- 顶层 `cmake_minimum_required` 提升到 3.25。
+- 顶层 / `NexAurEngine` 提升到 C++20。
+- 仍使用当前 `external/` 构建一次，确认旧 OpenGL 路径没有被语言标准升级破坏。
+
+### 阶段 2：新增顶层 vcpkg manifest / preset
 
 - 新增顶层 `vcpkg.json`。
 - 新增顶层 `CMakePresets.json`。
-- 暂时保留 `external/`。
-- 不立即把 NexAur 全部依赖切到 vcpkg。
+- preset 使用独立构建目录，例如 `build/msvc-vcpkg`，避免污染当前 `build/`。
+- 顶层 manifest 包含当前 OpenGL legacy 和后续 RendererV2 依赖。
 
-风险：
-
-- 如果同时构建 external 和 vcpkg 版本的同一库，会冲突。
+### 阶段 3：CMake 支持双依赖来源，并让 vcpkg 成为默认
 
 控制方式：
 
@@ -303,8 +321,6 @@ target_compile_features(NexAurEngine PUBLIC cxx_std_20)
 ```cmake
 option(NEXAUR_USE_VCPKG_DEPS "Use vcpkg packages for third-party dependencies." ON)
 ```
-
-### 阶段 2：CMake 支持双依赖来源
 
 ```cmake
 if(NEXAUR_USE_VCPKG_DEPS)
@@ -344,21 +360,64 @@ else()
 endif()
 ```
 
-### 阶段 3：迁移 NexAur 依赖到 vcpkg
+### 阶段 4：处理特殊依赖
 
-按顺序迁移：
+#### stb
 
-1. glm。
-2. spdlog / fmt。
-3. glfw。
-4. entt。
-5. stb。
-6. imgui。
-7. assimp。
+`external/stb` 现在提供了 `stb_image.cpp`，而 vcpkg `stb` 通常只提供 header。D3 不应该继续依赖 `external/stb/stb_image.cpp`。
 
-每迁移一个依赖，都跑一次构建和 Sandbox。
+建议新增一个引擎侧实现文件：
 
-### 阶段 4：OpenGL legacy 退役后删除重复 external
+```text
+source/Engine/ThirdParty/stb_image.cpp
+```
+
+内容只做一件事：
+
+```cpp
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+```
+
+然后在 vcpkg 模式下把这个文件编入 `NexAurEngine`。
+
+#### glad
+
+OpenGL legacy 仍需要 `glad`。优先尝试 vcpkg `glad`，但这里最容易遇到 OpenGL profile / target 名称差异。
+
+建议策略：
+
+```text
+优先：vcpkg glad
+如果失败：external/glad 暂时作为 OpenGL legacy isolated exception
+禁止：RendererV2 / Vulkan 路径依赖 glad
+最终：OpenGL legacy 退役时删除 glad
+```
+
+#### imgui
+
+vcpkg feature 可以同时启用：
+
+```text
+imgui[docking-experimental,glfw-binding,opengl3-binding,vulkan-binding]
+```
+
+但 D3 只解决依赖来源，不改变 UI backend 生命周期：
+
+```text
+D3：NexAur 仍初始化 OpenGL ImGui backend
+D10：再处理 Vulkan viewport image / Vulkan ImGui descriptor
+```
+
+### 阶段 5：验证
+
+- `cmake --preset msvc-vcpkg`
+- `cmake --build --preset msvc-vcpkg-debug`
+- 旧 OpenGL viewport 仍能构建。
+- vcpkg 模式不重复构建 glfw / glm / spdlog / imgui / assimp。
+- 如果保留 legacy fallback，则 `NEXAUR_USE_VCPKG_DEPS=OFF` 仍可配置构建。
+
+### 阶段 6：OpenGL legacy 退役后删除重复 external
 
 当 Vulkan 后端稳定：
 
@@ -367,9 +426,17 @@ endif()
 - `.gitmodules` 同步清理。
 - `external/` 只保留确实不能或不想通过 vcpkg 管理的本地库。
 
-## 8. ARKRenderer CMake 调整建议
+## 8. RendererV2 / ARKRenderer 构建边界
 
-为了作为 NexAur 子项目接入，ARKRenderer CMake 建议增加几个选项：
+当前已确认 `externalRenderer/` 只是临时本地参考目录，最终渲染模块落在：
+
+```text
+source/Engine/Function/RendererV2/
+```
+
+因此 D3 不应该把 `externalRenderer` 直接加入 NexAur 顶层构建。D3 只需要保证 RendererV2 后续会用到的依赖已经由顶层 vcpkg 提供。
+
+如果后续为了对照或临时验证需要把 ARKRenderer 当独立样例项目构建，ARKRenderer 自己的 CMake 可以保留或增加这些选项：
 
 ```cmake
 option(ARK_BUILD_TESTS "Build ARKRenderer test executables." ON)
@@ -377,12 +444,17 @@ option(ARK_BUILD_APPS "Build ARKRenderer sample applications." ON)
 option(ARK_COMPILE_SHADERS "Compile ARKRenderer shaders." ON)
 ```
 
-NexAur 接入时：
+但这不属于 D3 的主线任务。D3 主线应该是：
 
-```cmake
-set(ARK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ARK_BUILD_APPS OFF CACHE BOOL "" FORCE)
-add_subdirectory(externalRenderer)
+```text
+NexAur 顶层 vcpkg manifest
+  -> 提供 Vulkan / VMA / volk / vk-bootstrap / imgui / ktx / dxc 等依赖
+
+RendererV2
+  -> 后续在 source/Engine/Function/RendererV2 中重写/适配需要的结构
+
+externalRenderer
+  -> 继续作为参考代码，不进入默认构建图
 ```
 
 说明：
@@ -424,7 +496,7 @@ cmake_minimum_required(VERSION 3.25)
 project(NexAur VERSION 0.1 LANGUAGES CXX)
 
 option(NEXAUR_USE_VCPKG_DEPS "Use vcpkg dependencies." ON)
-option(NEXAUR_BUILD_ARK_RENDERER "Build ARKRenderer backend." ON)
+option(NEXAUR_BUILD_RENDERER_V2 "Build RendererV2 integration." OFF)
 option(NEXAUR_BUILD_LEGACY_OPENGL "Build legacy OpenGL renderer." ON)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -436,28 +508,21 @@ else()
     add_subdirectory(external)
 endif()
 
-if(NEXAUR_BUILD_ARK_RENDERER)
-    set(ARK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(ARK_BUILD_APPS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(externalRenderer)
-endif()
-
 add_subdirectory(source)
 ```
 
-Engine target：
+D3 暂时不链接 ARKRenderer。等 D5 创建 `RendererV2` 后，再决定是否新增独立 target，例如：
 
 ```cmake
-if(NEXAUR_BUILD_ARK_RENDERER)
-    target_link_libraries(NexAurEngine PRIVATE ARKRenderer::ark_renderer)
-    target_compile_definitions(NexAurEngine PRIVATE NEXAUR_ENABLE_ARK_RENDERER=1)
+if(NEXAUR_BUILD_RENDERER_V2)
+    target_compile_definitions(NexAurEngine PRIVATE NEXAUR_ENABLE_RENDERER_V2=1)
 endif()
 ```
 
 注意：
 
 - 如果 `NexAurEngine` 是 DLL，并且 ARKRenderer 是 static lib，需要确认 runtime library、导出符号和链接顺序。
-- ARKRenderer public include 不一定要暴露给所有消费者，尽量 `PRIVATE` 链接和 include。
+- RendererV2 / ARKRenderer public include 不一定要暴露给所有消费者，尽量 `PRIVATE` 链接和 include。
 
 ## 11. ImGui 依赖策略
 
@@ -494,7 +559,9 @@ imgui[docking-experimental,glfw-binding,opengl3-binding,vulkan-binding]
 
 ## 12. Shader 编译策略
 
-ARKRenderer 当前使用 DXC 编译 HLSL 到 SPIR-V：
+后续 RendererV2 / Vulkan 路径的新 shader 统一使用 HLSL 编写，并通过 DXC 编译到 SPIR-V。GLSL 不再作为新 Vulkan 后端的主线 shader 语言。
+
+ARKRenderer 当前已经使用 DXC 编译 HLSL 到 SPIR-V：
 
 ```text
 externalRenderer/shaders/*.hlsl
@@ -503,38 +570,48 @@ externalRenderer/shaders/*.hlsl
 
 接入 NexAur 后建议：
 
-- 第一版保留 ARKRenderer 自己的 shader 编译流程。
-- shader output dir 继续由 ARKRenderer CMake 管理。
-- 不要第一版就合并 NexAur `assets/shaders` 和 ARKRenderer `shaders`。
+- 第一版保留或复刻 ARKRenderer 的 HLSL -> SPIR-V 编译流程。
+- shader output dir 先由 RendererV2 / ARKRenderer 风格的 CMake 逻辑管理。
+- 不要第一版就合并 NexAur 旧 OpenGL shader 与 RendererV2 Vulkan shader。
+- 新增 Vulkan shader 文件优先放在 RendererV2 专属目录中，避免和 legacy OpenGL shader 语义混在一起。
 
 长期可以考虑：
 
 ```text
 assets/shaders/opengl/*
-assets/shaders/vulkan/*
+assets/shaders/vulkan/hlsl/*
+assets/shaders/vulkan/generated_spv/*
 assets/shaders/common/*
 ```
 
-但这不是接入第一阶段重点。
+其中 `assets/shaders/vulkan/hlsl/*` 作为源文件目录，`generated_spv` 只放生成产物，不作为手写源码维护。这个目录归一可以放到 RendererV2 跑通后再执行。
 
-## 13. externalRenderer 仓库归属
+## 13. externalRenderer 归属
 
-当前 `externalRenderer/` 是未跟踪目录。
+当前已确认：
 
-可选方式：
+```text
+externalRenderer/ 是临时本地参考目录
+最终渲染模块在 source/Engine/Function/RendererV2 中重构
+```
 
-### 方式 A：直接纳入 NexAur 仓库
+因此 D3 不处理 externalRenderer 归属，也不把它纳入默认构建图。
 
-优点：
+后续可以按代码成熟度选择：
 
-- 最简单。
-- 接入时改 CMake 和代码方便。
+### 方式 A：RendererV2 手动重构吸收
 
-缺点：
+适合当前阶段。
 
-- ARKRenderer 独立项目历史会并入 NexAur。
+做法：
 
-### 方式 B：Git submodule
+```text
+参考 externalRenderer 架构
+  -> 在 RendererV2 中重写/适配 facade、scene、view、resource cache、Vulkan backend
+  -> 不直接暴露 externalRenderer app/sandbox 层
+```
+
+### 方式 B：externalRenderer 保持独立仓库 / submodule
 
 优点：
 
@@ -544,6 +621,7 @@ assets/shaders/common/*
 缺点：
 
 - 子模块使用复杂一点。
+- 与 `RendererV2` 主线会出现双源码边界，需要明确谁是权威实现。
 
 ### 方式 C：CMake package / install 后引用
 
@@ -558,9 +636,9 @@ assets/shaders/common/*
 建议：
 
 ```text
-短期：作为 externalRenderer 子目录接入验证
-中期：如果 ARKRenderer 仍独立开发，改为 git submodule
-长期：如果完全成为 NexAur 渲染核心，可合并进 source/Engine/Function/Renderer/Backend/ArkVulkan
+短期：externalRenderer 只作为参考，不进默认构建
+中期：RendererV2 在 source/Engine/Function/RendererV2 中形成稳定边界
+长期：如果 ARKRenderer 不再独立发展，可以把需要的代码正式迁入 RendererV2
 ```
 
 ## 14. 实施步骤
@@ -583,22 +661,18 @@ assets/shaders/common/*
 - vcpkg 模式使用 `find_package`。
 - legacy 模式继续 `add_subdirectory(external)`。
 
-### PR-C4：ARKRenderer 子目录接入
+### PR-C4：RendererV2 依赖预留，不直接接 externalRenderer
 
-- 新增 `NEXAUR_BUILD_ARK_RENDERER`。
-- `ARK_BUILD_TESTS=OFF`。
-- 新增 `ARK_BUILD_APPS` 后关闭 sandbox。
-- 链接 `ARKRenderer::ark_renderer`。
+- 新增 `NEXAUR_BUILD_RENDERER_V2` 作为后续开关。
+- D3 不 `add_subdirectory(externalRenderer)`。
+- D3 不链接 `ARKRenderer::ark_renderer`。
+- D3 只保证 RendererV2 后续需要的依赖已经可以由顶层 vcpkg 提供。
 
-### PR-C5：逐步迁移重复依赖
+### PR-C5：特殊依赖处理
 
-- glm。
-- spdlog / fmt。
-- glfw。
-- entt。
-- stb。
-- imgui。
-- assimp。
+- `stb`：新增 NexAur 自己的 `stb_image.cpp` 实现文件，vcpkg 只提供 header。
+- `glad`：优先 vcpkg；如不兼容，暂时隔离为 OpenGL legacy exception。
+- `imgui`：统一由 vcpkg 提供 core + glfw/opengl3/vulkan binding，但 D3 不初始化 Vulkan backend。
 
 ### PR-C6：清理 external legacy
 
@@ -623,8 +697,8 @@ NexAur 顶层 vcpkg manifest
   -> 管理 Engine + ARKRenderer 全部第三方依赖
 
 externalRenderer
-  -> 作为子目录或 submodule
-  -> 不单独决定依赖版本
+  -> 当前只作为临时本地参考目录
+  -> 不进入 NexAur 默认构建图
 
 external/
   -> 过渡期保留
