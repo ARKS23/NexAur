@@ -198,11 +198,28 @@ namespace NexAur {
             m_context->ui_service && m_context->ui_service->wantsTextInput();
 
         // 普通 ImGui 键盘捕获不阻止 viewport 相机；只有文本输入时才屏蔽 WASD。
-        if (!text_input_captured && (m_context->viewport_focused || m_context->viewport_hovered)) {
+        if (!text_input_captured && shouldUpdateViewportCamera()) {
             m_context->viewport_camera->onUpdate(delta_time);
         }
 
         syncViewportCameraToRenderPacket();
+    }
+
+    bool EditorLayer::shouldUpdateViewportCamera() const {
+        if (!m_context) {
+            return false;
+        }
+
+        if (m_context->viewport_focused || m_context->viewport_hovered) {
+            return true;
+        }
+
+        if (!m_context->renderer_service) {
+            return false;
+        }
+
+        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        return output.valid() && output.kind == ViewportOutputKind::ExternalSwapchain;
     }
 
     void EditorLayer::syncViewportCameraToRenderPacket() const {

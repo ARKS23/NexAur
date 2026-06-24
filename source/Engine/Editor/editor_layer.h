@@ -48,6 +48,7 @@ namespace NexAur {
         void endDockSpace();
         void syncPanelContext();
         void updateViewportCamera(TimeStep delta_time);
+        bool shouldUpdateViewportCamera() const;
         void syncViewportCameraToRenderPacket() const;
         
     private:

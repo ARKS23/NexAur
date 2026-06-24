@@ -130,8 +130,6 @@ namespace NexAur {
             auto [window_width, window_height] = service.getSize();
             surface_width = std::max(1u, window_width);
             surface_height = std::max(1u, window_height);
-            viewport_width = surface_width;
-            viewport_height = surface_height;
 
             if (!createInstance(service.getRequiredVulkanInstanceExtensions()) ||
                 !createSurface() ||
@@ -200,36 +198,39 @@ namespace NexAur {
                 return;
             }
 
+            if (swapchain_dirty && !recreateSwapchain()) {
+                return;
+            }
+
+            auto [render_width, render_height] = getRenderExtent();
             translator.resetFrame();
-            const RenderView render_view = translator.buildRenderView(render_data, viewport_width, viewport_height);
+            const RenderView render_view = translator.buildRenderView(render_data, render_width, render_height);
             const RenderSceneFrame scene_frame = scene_frame_builder.buildRenderSceneFrame(render_data, render_view);
             const VulkanDrawList draw_list = draw_list_builder.buildDrawList(
                 scene_frame,
                 resource_cache,
                 AssetManager::getInstance());
 
-            if (swapchain_dirty && !recreateSwapchain()) {
-                return;
-            }
-
             drawFrame(draw_list);
         }
 
         void setViewportSize(uint32_t width, uint32_t height) {
-            viewport_width = std::max(1u, width);
-            viewport_height = std::max(1u, height);
+            (void)width;
+            (void)height;
         }
 
         std::pair<uint32_t, uint32_t> getViewportSize() const {
-            return { viewport_width, viewport_height };
+            return getRenderExtent();
         }
 
         ViewportOutput getViewportOutput() const {
             ViewportOutput output;
             output.backend = RendererBackendType::Vulkan;
             output.kind = initialized ? ViewportOutputKind::ExternalSwapchain : ViewportOutputKind::None;
-            output.width = viewport_width;
-            output.height = viewport_height;
+
+            auto [width, height] = getRenderExtent();
+            output.width = width;
+            output.height = height;
             return output;
         }
 
@@ -254,6 +255,14 @@ namespace NexAur {
             context.graphics_queue_family = graphics_queue_family;
             context.api_version = device_api_version;
             return context;
+        }
+
+        std::pair<uint32_t, uint32_t> getRenderExtent() const {
+            if (swapchain.extent.width > 0 && swapchain.extent.height > 0) {
+                return { swapchain.extent.width, swapchain.extent.height };
+            }
+
+            return { std::max(1u, surface_width), std::max(1u, surface_height) };
         }
 
         bool createInstance(const std::vector<const char*>& required_extensions) {
@@ -659,8 +668,6 @@ namespace NexAur {
     private:
         GLFWwindow* window = nullptr;
 
-        uint32_t viewport_width = kDefaultViewportWidth;
-        uint32_t viewport_height = kDefaultViewportHeight;
         uint32_t surface_width = kDefaultViewportWidth;
         uint32_t surface_height = kDefaultViewportHeight;
 

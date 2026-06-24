@@ -59,7 +59,7 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D8 SceneFrame / DrawList / ForwardPass 已完成
+当前阶段：D9 Editor viewport 过渡已完成
 代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端已对齐 Vulkan 1.3+，可创建 instance / surface / device / swapchain，把 RenderDataPacket 转换为 RenderView / RenderSceneFrame / VulkanDrawList，并通过 dynamic rendering forward pass 绘制 opaque mesh
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 externalRenderer：仅作为临时本地参考目录
@@ -78,6 +78,8 @@ externalRenderer：仅作为临时本地参考目录
 - D5：完成 RendererV2 / VulkanRendererSystem 骨架，Vulkan 后端可启动、清屏、present 和关闭。
 - D6：完成 `RenderDataPacket -> RenderView`，相机矩阵、clip range 和 viewport 尺寸进入 RendererV2 内部 view。
 - D7：完成 `VulkanRenderResourceCache`，模型 AssetHandle 可解析为 RendererV2 内部 Vulkan model resource。
+- D8：完成 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 最小绘制链路。
+- D9：完成 Editor viewport 过渡，ExternalSwapchain 下有明确状态、尺寸策略和交互降级。
 
 已确认：
 
@@ -105,7 +107,7 @@ externalRenderer：仅作为临时本地参考目录
 | D6 RenderView 转换 | 已完成 | NexAur 相机驱动新 Vulkan renderer | 总方案 |
 | D7 VulkanRenderResourceCache | 已完成 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
 | D8 SceneFrame / DrawList / ForwardPass | 已完成 | Vulkan 1.3 + dynamic rendering 下提交并显示 NexAur 场景模型 | 总方案 |
-| D9 Editor viewport 过渡 | 待开始 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
+| D9 Editor viewport 过渡 | 已完成 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
 | D10 Vulkan viewport image | 待开始 | Editor viewport 显示 Vulkan offscreen image | 接口文档 |
 | D11 Vulkan picking | 待开始 | ObjectId pass / readback 接入 | 接口文档 |
 | D12 OpenGL legacy 退役 | 待开始 | 默认 Vulkan，旧 OpenGL 移除或隔离 | 总方案 |
@@ -1179,18 +1181,132 @@ D8 不做：
 
 目标：
 
-- Vulkan backend 下 Editor 可以稳定运行。
+- Vulkan backend 下 Editor 可以稳定运行，不因为 viewport 输出形态变化而崩溃或误导用户。
+- 明确 D8 之后的过渡状态：Vulkan 画面仍然直接输出到主窗口 swapchain，尚未嵌入 ImGui viewport panel。
+- 为 D10 的 Vulkan offscreen viewport image 和 D11 picking 留出清晰接口边界。
 
-任务：
+当前状态：
 
-- ViewportPanel 识别 Vulkan external swapchain / no output。
-- 显示明确状态。
-- 禁用或提示 picking 暂不可用。
+```text
+- D8 后 VulkanRendererSystem 已经可以把 scene draw list 直接绘制到主窗口 swapchain。
+- VulkanRendererSystem::getViewportOutput() 当前返回 ExternalSwapchain。
+- ViewportPanel 已能识别 ExternalSwapchain / None 并走 placeholder，不会把 Vulkan 输出伪装成 OpenGL texture。
+- Vulkan pickViewport() 仍返回 unsupported，正式 object id pass / readback 留给 D11。
+- Vulkan 下 UISystem 当前只初始化 ImGui GLFW platform backend，尚未初始化 Vulkan ImGui renderer backend，因此 Editor UI draw data 还没有真正提交到 Vulkan swapchain。
+```
+
+设计边界：
+
+- D9 不做 Vulkan offscreen viewport image；这属于 D10。
+- D9 不做 Vulkan picking；这属于 D11。
+- D9 不做完整 Vulkan ImGui texture descriptor 集成。
+- D9 的重点是“过渡期行为正确”：不崩溃、不假装可交互、不让 camera / viewport size 语义错位。
+- 如果希望 Vulkan backend 下 Editor UI 可见，需要单独引入最小 Vulkan ImGui overlay 或调整 frame order；这件事接近 D10，D9 只做必要预留和风险记录。
+
+关键问题：
+
+1. ExternalSwapchain 的 viewport size 不能继续被 ImGui panel 尺寸驱动。
+
+   当前 `ViewportPanel::syncViewportResize()` 会用 panel size 调用 `renderer_service->setViewportSize()`。这对 OpenGL offscreen framebuffer 是正确的，但 D8 Vulkan 是直接绘制到主窗口 swapchain。若继续用 panel size 作为 Vulkan `RenderView` 的 viewport size，会导致 projection aspect 和实际 swapchain render area 不一致。
+
+   D9 建议：
+
+   ```text
+   OpenGLTexture / VulkanImGuiTexture:
+     panel size -> RendererService::setViewportSize()
+     panel size -> EditorCamera::setViewportSize()
+
+   ExternalSwapchain:
+     不用 panel size 驱动 renderer viewport
+     renderer viewport / editor camera aspect 使用 swapchain 或 window surface size
+
+   None:
+     不改变 renderer viewport
+   ```
+
+2. ExternalSwapchain 下 picking / gizmo 不应该假装可用。
+
+   当前 Vulkan 画面不在 ImGui viewport panel 内，panel 坐标无法对应 Vulkan swapchain 像素。D9 需要确保：
+
+   - `ViewportPanel::pickEntityAtMouse()` 只在 embedded viewport 输出时执行。
+   - `ExternalSwapchain` 下点击 placeholder 不触发 picking，不清空已有 selection。
+   - `drawGizmo()` 只在 viewport image 真正嵌入 panel 时启用。
+   - `ExternalSwapchain` 下可以显示状态提示，但不绘制会误导用户的 gizmo overlay。
+
+3. ViewportPanel 状态显示需要更明确。
+
+   推荐把当前 placeholder 分成明确状态：
+
+   ```text
+   OpenGLTexture:
+     正常 ImGui::Image 显示
+
+   VulkanImGuiTexture:
+     D10 后显示 Vulkan descriptor-backed viewport image
+
+   ExternalSwapchain:
+     显示过渡期提示：Vulkan scene is rendered to the main swapchain.
+     说明 viewport image / picking / gizmo 暂不可用
+
+   None:
+     显示 no viewport output
+   ```
+
+4. Vulkan Editor UI 可见性需要独立决策。
+
+   目前 `UISystem` 在 Vulkan 模式下只调用 `ImGui_ImplGlfw_InitForVulkan()`，`endFrameAndRender()` 不会提交 ImGui draw data。这意味着即使 Editor panel 逻辑运行，Vulkan 后端也不会显示 Editor UI。
+
+   D9 有两个可选策略：
+
+   ```text
+   保守策略：
+     D9 只保证不崩溃，并在日志 / 文档中明确 Vulkan Editor UI 尚未呈现。
+     优点是改动小，不打乱 D8 绘制链路。
+     缺点是 Vulkan 模式下用户主要看到主 swapchain 场景，Editor UI 不可见。
+
+   增强策略：
+     D9 引入最小 Vulkan ImGui overlay，把 ImGui draw data 合成到主 swapchain。
+     优点是 Editor UI 可见。
+     缺点是需要调整 frame order 或让 VulkanRendererSystem 接收 ImGui draw data，容易提前触碰 D10 的生命周期和同步问题。
+   ```
+
+   建议采用保守策略完成 D9，再在 D10 统一处理 Vulkan ImGui renderer、offscreen viewport image 和 descriptor 生命周期。
+
+建议任务拆分：
+
+- D9-A：Viewport output policy 整理
+  - 明确 `ExternalSwapchain` 不代表 embedded viewport。
+  - `VulkanRendererSystem::getViewportOutput()` 返回 swapchain / surface 尺寸，而不是被 panel size 污染的尺寸。
+  - `ViewportPanel::syncViewportResize()` 根据 output kind 决定是否调用 `setViewportSize()`。
+
+- D9-B：ViewportPanel 状态 UI 清理
+  - 拆出 `drawExternalSwapchainNotice()` / `drawNoViewportOutputNotice()` 等小函数。
+  - 保持 placeholder 占位尺寸稳定，避免 layout 抖动。
+  - 状态文字短而明确，不写成大段教程。
+
+- D9-C：交互降级
+  - `OpenGLTexture` / `VulkanImGuiTexture` 才允许 picking 坐标换算。
+  - `ExternalSwapchain` / `None` 下 picking 直接跳过。
+  - `ExternalSwapchain` / `None` 下不绘制 gizmo。
+  - 不改变当前 selection，避免用户误点 placeholder 清空选择。
+
+- D9-D：Editor camera 与 RenderData 同步
+  - OpenGL embedded viewport 继续使用 panel size。
+  - Vulkan ExternalSwapchain 使用 renderer output size / window surface size。
+  - 相机移动仍能驱动 Vulkan swapchain 场景。
+
+- D9-E：文档和日志同步
+  - 文档明确 D9 不等于 Vulkan viewport image。
+  - Vulkan UI renderer 未接入时输出一次清晰 warning，避免用户误以为 Editor 崩溃。
+  - 更新 roadmap 进度记录。
 
 验收：
 
 - Editor UI 不崩溃。
 - 用户能理解当前 Vulkan viewport 状态。
+- Vulkan ExternalSwapchain 下不会执行错误的 panel-size resize、picking 或 gizmo。
+- OpenGL legacy viewport 显示、picking 和 gizmo 行为不退化。
+- Vulkan backend 下相机移动仍能驱动主 swapchain 画面。
 
 ### D10：Vulkan viewport image
 
@@ -1287,8 +1403,8 @@ D8 不做：
 推荐下一步：
 
 ```text
-D9 准备：Editor viewport 过渡
 D10 准备：Vulkan viewport image
+D11 准备：Vulkan picking
 ```
 
 D9 开始前的已确认前提：
@@ -1388,3 +1504,11 @@ D9 开始前的已确认前提：
 - 验证 D8：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
 - 验证 D8：`cmake --build --preset msvc-vcpkg-debug` 通过。
 - 验证 D8：`cmake --build --preset msvc-legacy-debug` 通过。
+- 补充 D9 方案：明确 Editor viewport 过渡期的 ExternalSwapchain 语义、viewport size 策略、picking/gizmo 降级和 Vulkan UI 可见性边界。
+- 完成 D9-A：Vulkan `ExternalSwapchain` 的 viewport output 改为描述 swapchain / surface 尺寸，`setViewportSize()` 不再被 panel size 污染。
+- 完成 D9-B：`ViewportPanel` 拆分 OpenGL texture、Vulkan ImGui texture、ExternalSwapchain 和 None 的显示策略。
+- 完成 D9-C：ExternalSwapchain / None 下跳过 picking 和 gizmo，不清空当前 selection。
+- 完成 D9-D：EditorCamera 在 OpenGL embedded viewport 下继续使用 panel size，在 Vulkan ExternalSwapchain 下使用 renderer output size。
+- 完成 D9-D：Vulkan ExternalSwapchain 过渡期可作为全窗口临时输入目标，相机移动仍能驱动主 swapchain 场景。
+- 验证 D9：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 分步验证通过。
+- 验证 D9：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。

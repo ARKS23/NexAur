@@ -13,6 +13,24 @@
 #include <glm/gtx/quaternion.hpp>
 
 namespace NexAur {
+    namespace {
+        bool isEmbeddedViewportOutput(const ViewportOutput& output) {
+            if (!output.valid()) {
+                return false;
+            }
+
+            if (output.kind == ViewportOutputKind::OpenGLTexture) {
+                return output.numeric_handle != 0;
+            }
+
+            if (output.kind == ViewportOutputKind::VulkanImGuiTexture) {
+                return output.native_handle != nullptr;
+            }
+
+            return false;
+        }
+    } // namespace
+
     void ViewportPanel::onUpdate(TimeStep delta_time) {
         (void)delta_time;
     }
@@ -72,24 +90,35 @@ namespace NexAur {
         }
 
         std::shared_ptr<RendererService> renderer_service = m_context->renderer_service;
-        std::shared_ptr<EditorCamera> editor_camera = m_context->viewport_camera;
-        if (!editor_camera) {
+        if (!m_context->viewport_camera) {
             return;
         }
 
-        auto [current_w, current_h] = renderer_service->getViewportSize();
         const uint32_t target_w = static_cast<uint32_t>(m_viewport_size.x);
         const uint32_t target_h = static_cast<uint32_t>(m_viewport_size.y);
 
         if (target_w == 0 || target_h == 0) {
             return;
         }
-        if (target_w == current_w && target_h == current_h) {
+
+        const ViewportOutput output = renderer_service->getViewportOutput();
+        if (output.kind == ViewportOutputKind::ExternalSwapchain) {
+            if (output.valid()) {
+                syncEditorCameraSize(output.width, output.height);
+            }
             return;
         }
 
-        renderer_service->setViewportSize(target_w, target_h);
-        editor_camera->setViewportSize(static_cast<float>(target_w), static_cast<float>(target_h));
+        if (output.kind == ViewportOutputKind::None) {
+            return;
+        }
+
+        auto [current_w, current_h] = renderer_service->getViewportSize();
+        if (target_w != current_w || target_h != current_h) {
+            renderer_service->setViewportSize(target_w, target_h);
+        }
+
+        syncEditorCameraSize(target_w, target_h);
     }
 
     void ViewportPanel::drawViewportOutput() {
@@ -106,14 +135,14 @@ namespace NexAur {
             drawOpenGLViewport(output);
             break;
         case ViewportOutputKind::VulkanImGuiTexture:
-            drawViewportPlaceholder("Vulkan viewport image");
+            drawVulkanImGuiViewport(output);
             break;
         case ViewportOutputKind::ExternalSwapchain:
-            drawViewportPlaceholder("External swapchain output");
+            drawExternalSwapchainNotice(output);
             break;
         case ViewportOutputKind::None:
         default:
-            drawViewportPlaceholder("No viewport output");
+            drawNoViewportOutputNotice();
             break;
         }
     }
@@ -132,7 +161,46 @@ namespace NexAur {
         );
     }
 
+    void ViewportPanel::drawVulkanImGuiViewport(const ViewportOutput& output) {
+        if (!output.valid() || !output.native_handle) {
+            drawViewportPlaceholder("Vulkan viewport image pending");
+            return;
+        }
+
+        ImGui::Image(
+            output.native_handle,
+            ImVec2(m_viewport_size.x, m_viewport_size.y),
+            ImVec2(0.0f, 1.0f),
+            ImVec2(1.0f, 0.0f)
+        );
+    }
+
+    void ViewportPanel::drawExternalSwapchainNotice(const ViewportOutput& output) {
+        std::vector<std::string> lines = {
+            "Vulkan renders to the main swapchain",
+            "Embedded viewport, picking, and gizmo are pending"
+        };
+
+        if (output.valid()) {
+            lines.push_back(
+                "Swapchain: " +
+                std::to_string(output.width) +
+                " x " +
+                std::to_string(output.height));
+        }
+
+        drawViewportPlaceholder(lines);
+    }
+
+    void ViewportPanel::drawNoViewportOutputNotice() {
+        drawViewportPlaceholder("No viewport output");
+    }
+
     void ViewportPanel::drawViewportPlaceholder(const char* message) {
+        drawViewportPlaceholder(std::vector<std::string>{ message });
+    }
+
+    void ViewportPanel::drawViewportPlaceholder(const std::vector<std::string>& lines) {
         const ImVec2 origin = ImGui::GetCursorScreenPos();
         const ImVec2 size(m_viewport_size.x, m_viewport_size.y);
         const ImVec2 max(origin.x + size.x, origin.y + size.y);
@@ -140,12 +208,19 @@ namespace NexAur {
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         draw_list->AddRectFilled(origin, max, IM_COL32(20, 22, 26, 255));
 
-        const ImVec2 text_size = ImGui::CalcTextSize(message);
-        const ImVec2 text_pos(
-            origin.x + std::max(0.0f, (size.x - text_size.x) * 0.5f),
-            origin.y + std::max(0.0f, (size.y - text_size.y) * 0.5f)
-        );
-        draw_list->AddText(text_pos, IM_COL32(185, 190, 200, 255), message);
+        const float line_height = ImGui::GetTextLineHeightWithSpacing();
+        const float total_text_height = line_height * static_cast<float>(lines.size());
+        float y = origin.y + std::max(0.0f, (size.y - total_text_height) * 0.5f);
+
+        for (const std::string& line : lines) {
+            const ImVec2 text_size = ImGui::CalcTextSize(line.c_str());
+            const ImVec2 text_pos(
+                origin.x + std::max(0.0f, (size.x - text_size.x) * 0.5f),
+                y
+            );
+            draw_list->AddText(text_pos, IM_COL32(185, 190, 200, 255), line.c_str());
+            y += line_height;
+        }
 
         ImGui::InvisibleButton("##ViewportOutputPlaceholder", size);
     }
@@ -155,6 +230,9 @@ namespace NexAur {
             return;
         }
         if (ImGui::GetIO().WantTextInput) {
+            return;
+        }
+        if (!canUseEmbeddedViewportOutput()) {
             return;
         }
 
@@ -177,6 +255,9 @@ namespace NexAur {
             return;
         }
         if (!m_context || !m_context->active_scene) {
+            return;
+        }
+        if (!canUseEmbeddedViewportOutput()) {
             return;
         }
         if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) {
@@ -248,6 +329,29 @@ namespace NexAur {
         m_was_using_gizmo_last_frame = using_now;
     }
 
+    bool ViewportPanel::canUseEmbeddedViewportOutput() const {
+        if (!m_context || !m_context->renderer_service) {
+            return false;
+        }
+
+        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        return isEmbeddedViewportOutput(output);
+    }
+
+    void ViewportPanel::syncEditorCameraSize(uint32_t width, uint32_t height) {
+        if (!m_context || !m_context->viewport_camera || width == 0 || height == 0) {
+            return;
+        }
+
+        const glm::vec2 target_size(static_cast<float>(width), static_cast<float>(height));
+        if (target_size == m_camera_viewport_size) {
+            return;
+        }
+
+        m_context->viewport_camera->setViewportSize(target_size.x, target_size.y);
+        m_camera_viewport_size = target_size;
+    }
+
     void ViewportPanel::setGizmoStyle() {
         ImGuizmo::Style& style = ImGuizmo::GetStyle();
         style.RotationLineThickness = 15.0f;
@@ -314,13 +418,19 @@ namespace NexAur {
             return;
         }
 
+        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        if (!isEmbeddedViewportOutput(output)) {
+            return;
+        }
+
         auto [mx, my] = m_context->input_service->getState().getMousePosition();
         if (mx < m_viewport_bounds[0].x || mx >= m_viewport_bounds[1].x ||
             my < m_viewport_bounds[0].y || my >= m_viewport_bounds[1].y) {
             return;
         }
 
-        auto [framebuffer_width, framebuffer_height] = m_context->renderer_service->getViewportSize();
+        const uint32_t framebuffer_width = output.width;
+        const uint32_t framebuffer_height = output.height;
         if (framebuffer_width == 0 || framebuffer_height == 0) {
             return;
         }
