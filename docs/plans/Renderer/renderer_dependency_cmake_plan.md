@@ -2,6 +2,14 @@
 
 日期：2026-06-24
 
+进度主文档：
+
+```text
+docs/plans/Renderer/renderer_vulkan_development_roadmap.md
+```
+
+本文是包管理与构建参考文档；后续开发进度、阶段状态和完成记录以进度主文档为准。
+
 ## 1. 文档目标
 
 本文档专门讨论 NexAur 接入 `externalRenderer` / ARKRenderer 时的包管理和 CMake 构建问题。

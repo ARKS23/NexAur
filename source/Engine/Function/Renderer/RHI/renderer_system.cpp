@@ -155,15 +155,34 @@ namespace NexAur {
         }
     }
 
-    int RendererSystem::readViewportEntityID(int x, int y) {
+    ViewportOutput RendererSystem::getViewportOutput() const {
+        ViewportOutput output;
+        output.backend = getBackendType();
+        output.width = m_viewport_width;
+        output.height = m_viewport_height;
+
         if (!m_viewport_framebuffer) {
-            return -1;
+            return output;
+        }
+
+        output.kind = ViewportOutputKind::OpenGLTexture;
+        output.numeric_handle = m_viewport_framebuffer->getColorAttachmentRendererID(0);
+        return output;
+    }
+
+    ViewportPickResult RendererSystem::pickViewport(const ViewportPickRequest& request) {
+        ViewportPickResult result;
+        result.supported = true;
+
+        if (!m_viewport_framebuffer) {
+            return result;
         }
 
         m_viewport_framebuffer->bind();
-        const int entity_id = m_viewport_framebuffer->readPixel(1, x, y);
+        result.entity_id = m_viewport_framebuffer->readPixel(1, request.x, request.y);
         m_viewport_framebuffer->unbind();
-        return entity_id;
+        result.ready = true;
+        return result;
     }
 
     bool RendererSystem::onWindowResize(WindowResizeEvent& e) {

@@ -2,6 +2,14 @@
 
 日期：2026-06-24
 
+进度主文档：
+
+```text
+docs/plans/Renderer/renderer_vulkan_development_roadmap.md
+```
+
+本文是总体架构参考文档；后续开发进度、阶段状态和完成记录以进度主文档为准。
+
 ## 1. 文档目标
 
 本文档记录 NexAur 渲染模块从当前 OpenGL 实现重构到新 Vulkan 渲染器 `ARKRenderer` 的总体路线。

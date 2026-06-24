@@ -25,10 +25,11 @@ namespace NexAur {
         void render(TimeStep ts, const RenderDataPacket& render_data) override { tick(ts, render_data); }
         void onEvent(Event& e);
 
+        RendererBackendType getBackendType() const override { return RendererBackendType::OpenGLLegacy; }
         void setViewportSize(uint32_t width, uint32_t height) override;
         std::pair<uint32_t, uint32_t> getViewportSize() const override { return { m_viewport_width, m_viewport_height }; }
-        uint32_t getViewportColorAttachment() const override { return m_viewport_framebuffer ? m_viewport_framebuffer->getColorAttachmentRendererID(0) : 0; }
-        int readViewportEntityID(int x, int y) override;
+        ViewportOutput getViewportOutput() const override;
+        ViewportPickResult pickViewport(const ViewportPickRequest& request) override;
 
     private:
         ResolvedRenderDataPacket resolveRenderData(const RenderDataPacket& render_data);

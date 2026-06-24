@@ -139,6 +139,7 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/RHI/renderer_command.h
     Function/Renderer/RHI/renderer_command.cpp
     Function/Renderer/RHI/renderer_service.h
+    Function/Renderer/RHI/renderer_service_types.h
     Function/Renderer/RHI/renderer_system.h
     Function/Renderer/RHI/renderer_system.cpp
     Function/Renderer/RHI/shader.h

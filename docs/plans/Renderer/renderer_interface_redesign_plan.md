@@ -2,6 +2,14 @@
 
 日期：2026-06-24
 
+进度主文档：
+
+```text
+docs/plans/Renderer/renderer_vulkan_development_roadmap.md
+```
+
+本文是接口设计参考文档；后续开发进度、阶段状态和完成记录以进度主文档为准。
+
 ## 1. 文档目标
 
 本文档专门讨论 NexAur 渲染模块的对外接口如何重构，目标是让接口足够清爽、干净、后端无关，并适合后续只保留新的 Vulkan renderer。
@@ -375,6 +383,26 @@ public:
 上层只按 output kind 做显示，不理解内部资源生命周期。
 
 ## 14. 实施步骤
+
+和主路线文档对齐时，建议这样拆：
+
+```text
+D1 RendererService 接口清理
+  -> PR-I1 新增接口类型
+  -> PR-I2 RendererService 增加新接口
+  -> PR-I4 OpenGL legacy 实现新接口
+  -> 旧 getViewportColorAttachment/readViewportEntityID 暂时保留为 wrapper
+
+D2 ViewportPanel 适配新输出
+  -> PR-I3 ViewportPanel 改用 ViewportOutput
+  -> picking 调用点改用 pickViewport
+
+后续 Vulkan 接入
+  -> PR-I5 ArkVulkanRendererSystem 实现新接口
+  -> PR-I6 删除旧 OpenGL 泄漏接口
+```
+
+D1 不要求马上删除旧函数，也不要求 ViewportPanel 立刻切到新接口。它的核心价值是先让 `RendererService` 的主契约变干净，同时保证当前 OpenGL 编辑器路径不破。
 
 ### PR-I1：新增接口类型
 
