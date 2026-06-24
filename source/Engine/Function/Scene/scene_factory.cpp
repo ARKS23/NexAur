@@ -18,6 +18,8 @@ namespace NexAur {
             Entity camera_entity = scene->createEntity("MainCamera");
             auto& camera = camera_entity.addComponent<CameraComponent>();
             camera.position = { 0.0f, 0.0f, 5.0f };
+            camera.nearClip = kDefaultNearClip;
+            camera.farClip = kDefaultFarClip;
             camera.viewMatrix = glm::lookAt(
                 camera.position,
                 glm::vec3(0.0f, 0.0f, 0.0f),

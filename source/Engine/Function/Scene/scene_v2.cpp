@@ -48,6 +48,8 @@ namespace NexAur {
             render_packet->camera_data.projection_matrix = cam_comp.projectionMatrix;
             render_packet->camera_data.view_projection_matrix = cam_comp.viewProjectionMatrix;
             render_packet->camera_data.position = cam_comp.position;
+            render_packet->camera_data.near_clip = cam_comp.nearClip;
+            render_packet->camera_data.far_clip = cam_comp.farClip;
             break; // 第一版只导出一个主相机，后续通过 ActiveCamera 标记选择。
         }
 

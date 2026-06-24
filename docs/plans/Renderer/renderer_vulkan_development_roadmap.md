@@ -59,8 +59,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D5 RendererV2 / VulkanRendererSystem 骨架已完成
-代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端可创建 instance / surface / device / swapchain 并提交清屏帧
+当前阶段：D6 RenderDataPacket -> RenderView 已完成
+代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端可创建 instance / surface / device / swapchain，提交清屏帧，并把 RenderDataPacket 相机数据转换为 RendererV2 RenderView
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -76,6 +76,7 @@ externalRenderer：仅作为临时本地参考目录
 - D3：完成顶层 C++20、vcpkg manifest / preset、依赖来源分支和特殊依赖收口。
 - D4：完成 Window graphics API 策略，OpenGL / Vulkan no-api window 可按配置选择。
 - D5：完成 RendererV2 / VulkanRendererSystem 骨架，Vulkan 后端可启动、清屏、present 和关闭。
+- D6：完成 `RenderDataPacket -> RenderView`，相机矩阵、clip range 和 viewport 尺寸进入 RendererV2 内部 view。
 
 已确认：
 
@@ -100,7 +101,7 @@ externalRenderer：仅作为临时本地参考目录
 | D3 vcpkg / CMake 预研落地 | 已完成 | 顶层 C++20 + vcpkg 方案可支撑 RendererV2 | 构建文档 |
 | D4 Window graphics API 策略 | 已完成 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
 | D5 RendererV2 / VulkanRendererSystem 骨架 | 已完成 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
-| D6 RenderView 转换 | 待开始 | NexAur 相机驱动新 Vulkan renderer | 总方案 |
+| D6 RenderView 转换 | 已完成 | NexAur 相机驱动新 Vulkan renderer | 总方案 |
 | D7 VulkanRenderResourceCache | 待开始 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
 | D8 RenderScene 转换 | 待开始 | NexAur 场景模型提交给新 Vulkan renderer | 总方案 |
 | D9 Editor viewport 过渡 | 待开始 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
@@ -470,19 +471,186 @@ D5 不做：
 
 目标：
 
-- NexAur 相机数据驱动新 Vulkan renderer。
+- NexAur 当前帧相机数据能够稳定驱动 RendererV2 的内部 `RenderView`。
+- 为 D7 资源缓存、D8 场景对象提交提前固定相机和 projection 契约。
+- 保持 `RendererService` 对外接口不变，Scene / Editor / Runtime 仍然只提交 `RenderDataPacket`。
 
-任务：
+当前状态：
 
-- 新增 `VulkanRenderDataTranslator`。
-- 实现 `buildRenderView()`。
-- 核对相机矩阵、投影矩阵、Vulkan Y flip、depth range。
+```text
+已完成
+验证：
+- cmake --build --preset msvc-vcpkg-debug 通过
+- cmake --build --preset msvc-vcpkg-renderer-v2-debug 通过
+- cmake --build --preset msvc-legacy-debug 通过
+- bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe 3 秒 smoke check 通过
+备注：
+- 新增 RendererV2 内部 RenderView，不暴露给 Scene / Editor / Gameplay
+- RendererCameraData / CameraComponent 补充 near / far clip
+- VulkanRenderDataTranslator 可构建 RenderView，并集中处理 Vulkan projection Y flip / 0..1 depth range
+- VulkanRendererSystem::render() 已消费 RenderDataPacket 并生成 RenderView，D6 仍不提交模型 draw call
+```
+
+设计原则：
+
+- `RenderView` 是 RendererV2 内部每帧视角数据，不暴露给 Scene / Editor / Gameplay。
+- D6 只做相机和 viewport 翻译，不做资源加载、模型提交、draw item 构建。
+- `RenderDataPacket` 继续作为跨模块契约；RendererV2 内部可以把它翻译成更适合渲染器使用的 `RenderView`。
+- 不直接引入 externalRenderer 的 `ark::RenderView` 命名或类型；只参考它的职责边界。
+
+建议拆分：
+
+#### D6-A：新增 RendererV2 内部 RenderView
+
+新增文件：
+
+```text
+source/Engine/Function/RendererV2/render_view.h
+```
+
+第一版只保留后续渲染必需的 per-view 数据：
+
+- `view_matrix`
+- `projection_matrix`
+- `view_projection_matrix`
+- `inverse_view_matrix`
+- `inverse_projection_matrix`
+- `camera_position`
+- `near_clip`
+- `far_clip`
+- `viewport_width`
+- `viewport_height`
+
+暂不放入 tone mapping、shadow、postprocess、visibility 等高级设置。这些可以在 D8 之后按功能逐步扩展，避免第一版 `RenderView` 变成大杂烩。
+
+#### D6-B：补齐 RendererCameraData 的最小相机元数据
+
+建议在 `RendererCameraData` 中补充：
+
+```cpp
+float near_clip = 0.1f;
+float far_clip = 1000.0f;
+```
+
+同步更新：
+
+- `EditorCamera` 提供 near / far getter。
+- `EditorLayer::syncViewportCameraToRenderPacket()` 写入 near / far。
+- `CameraComponent` 增加 near / far 默认值。
+- `SceneV2::extractSceneData()` 从 `CameraComponent` 写入 `RenderDataPacket`。
+- `SceneFactory` 创建默认相机时写入 near / far。
+
+这属于轻量跨模块契约补充，不应该改变 OpenGL legacy 的渲染行为。
+
+#### D6-C：实现 VulkanRenderDataTranslator::buildRenderView()
+
+建议接口：
+
+```cpp
+RenderView buildRenderView(
+    const RenderDataPacket& render_data,
+    uint32_t viewport_width,
+    uint32_t viewport_height) const;
+```
+
+职责：
+
+- 从 `render_data.camera_data` 读取 view、projection、camera position、near / far。
+- 使用 renderer 当前 viewport 尺寸填充 `RenderView`。
+- 修正或重建 Vulkan 路径需要的 projection。
+- 重新计算 `view_projection_matrix`，不要直接复用旧 packet 中可能属于 OpenGL 约定的缓存 VP。
+- 计算 inverse view / inverse projection，供后续 skybox、picking、postprocess、shadow 使用。
+- 对 viewport size、near / far、矩阵中的 NaN / Inf 做基础保护。
+
+禁止在 translator 里做：
+
+- Vulkan resource 创建。
+- AssetManager 查询。
+- 模型加载。
+- draw call 提交。
+- Editor / Scene 状态修改。
+
+#### D6-D：明确 projection 与 Vulkan 坐标约定
+
+D6 必须明确一条规则，避免后续出现双重翻转或 depth range 错误：
+
+```text
+RenderDataPacket 保存引擎侧相机输入。
+VulkanRenderDataTranslator 负责输出 Vulkan / HLSL / SPIR-V 需要的 RenderView projection。
+```
+
+重点检查：
+
+- 当前 `EditorCamera` 使用 `glm::perspective()`，更接近旧 OpenGL 路径。
+- Vulkan renderer 应使用 0..1 depth range。
+- Vulkan viewport / clip space 需要处理 Y flip。
+- externalRenderer 的参考做法是 `glm::perspectiveRH_ZO(...)` 后对 `projection[1][1]` 做一次翻转。
+
+短期策略：
+
+- D6 先在 translator 内集中处理 Vulkan projection 约定。
+- 不让 EditorCamera 为 Vulkan 特判 projection。
+- 不让 Scene / Editor 知道当前后端是否 Vulkan。
+
+长期策略：
+
+- 将 `RendererCameraData` 从“只传 baked projection matrix”逐步升级为“相机投影描述 + view matrix”。
+- 例如后续可增加 perspective / orthographic 描述，让每个后端自行构建 projection matrix。
+
+#### D6-E：接入 VulkanRendererSystem::render()
+
+`VulkanRendererSystem::Backend::render()` 应从：
+
+```cpp
+translator.resetFrame();
+drawFrame();
+```
+
+演进为：
+
+```cpp
+translator.resetFrame();
+RenderView render_view = translator.buildRenderView(
+    render_data,
+    viewport_width,
+    viewport_height);
+drawFrame(render_view);
+```
+
+D6 阶段 `drawFrame()` 仍然可以只 clear swapchain，但后端已经拿到了正确的 `RenderView`。D8 接模型渲染时，forward pass 可以直接消费该 view。
+
+D6 不做：
+
+- 不接 `AssetHandle -> GPU resource`，放到 D7。
+- 不接完整 `RenderDataPacket -> RenderScene`，放到 D8。
+- 不提交模型 draw call。
+- 不实现 Vulkan viewport image 嵌入 ImGui，放到 D10。
+- 不实现 picking，放到 D11。
+- 不删除 OpenGL legacy。
 
 验收：
 
-- 相机方向正确。
-- 窗口 resize 后 projection 正确。
-- 空场景渲染稳定。
+- `RenderView` 可以从 `RenderDataPacket` 稳定构建。
+- 相机移动后 `RenderView.view_matrix`、`camera_position` 跟随变化。
+- 窗口或 viewport resize 后 `RenderView.viewport_width / viewport_height` 和 projection 正确更新。
+- projection 没有双重 Y flip。
+- depth range 符合 Vulkan / HLSL / SPIR-V 约定。
+- 空场景 Vulkan clear swapchain 继续稳定。
+- OpenGL legacy 构建不受影响。
+
+建议验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-renderer-v2-debug
+cmake --build --preset msvc-legacy-debug
+```
+
+如新增 translator 单元级辅助函数，应覆盖：
+
+- 默认相机数据生成有效 `RenderView`。
+- viewport 宽高为 0 时会被夹到安全值。
+- near / far 非法时回退到默认值。
+- Vulkan projection 只做一次 Y flip。
 
 ### D7：VulkanRenderResourceCache
 
@@ -635,11 +803,11 @@ D5 不做：
 推荐下一步：
 
 ```text
-D6 开始：RenderDataPacket -> RenderView
-D7 准备：VulkanRenderResourceCache
+D7 开始：VulkanRenderResourceCache
+D8 准备：RenderDataPacket -> RenderScene
 ```
 
-D6 / D7 开始前的已确认前提：
+D7 / D8 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
@@ -702,3 +870,12 @@ D6 / D7 开始前的已确认前提：
 - 验证 D5：`cmake --build --preset msvc-legacy-debug` 通过，vendored external 回退路径未被破坏。
 - 验证 D5：`cmake --preset msvc-vcpkg-renderer-v2` 与 `cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
 - 验证 D5：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
+- 完成 D6：新增 RendererV2 内部 `RenderView`，保存 view / projection / inverse matrices、camera position、clip range 和 viewport size。
+- 完成 D6：`RendererCameraData`、`CameraComponent`、`EditorCamera` 同步链路补充 near / far clip。
+- 完成 D6：`VulkanRenderDataTranslator::buildRenderView()` 将 `RenderDataPacket` 转换为 RendererV2 `RenderView`。
+- 完成 D6：Vulkan projection 转换集中在 translator 内处理，Editor / Scene 不需要感知 Vulkan 后端。
+- 完成 D6：`VulkanRendererSystem::render()` 已消费 `RenderDataPacket` 并生成 `RenderView`，清屏帧生命周期保持稳定。
+- 验证 D6：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- 验证 D6：`cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D6：`cmake --build --preset msvc-legacy-debug` 通过。
+- 验证 D6：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。

@@ -185,6 +185,7 @@ set(NEXAUR_ENGINE_RENDERER_FILES
 set(NEXAUR_ENGINE_RENDERER_V2_FILES)
 if(NEXAUR_BUILD_RENDERER_V2)
     list(APPEND NEXAUR_ENGINE_RENDERER_V2_FILES
+        Function/RendererV2/render_view.h
         Function/RendererV2/vulkan_renderer_system.h
         Function/RendererV2/vulkan_renderer_system.cpp
         Function/RendererV2/vulkan_render_data_translator.h

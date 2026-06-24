@@ -43,6 +43,8 @@ namespace NexAur {
         glm::mat4 projectionMatrix{ 1.0f };
         glm::mat4 viewProjectionMatrix{ 1.0f }; // 缓存VP, shader中无需再次计算
         glm::vec3 position{ 0.0f };             // 摄像机世界坐标，用于高光/PBR计算
+        float nearClip = 0.1f;
+        float farClip = 1000.0f;
     };
 
     // 点光源组件

@@ -33,6 +33,8 @@ namespace NexAur {
 
         float getPitch() const { return m_pitch; }
         float getYaw() const { return m_yaw; }
+        float getNearClip() const { return m_near_clip; }
+        float getFarClip() const { return m_far_clip; }
 
     private:
         void updateProjection();

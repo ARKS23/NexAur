@@ -172,19 +172,19 @@ namespace NexAur {
 
         void render(TimeStep ts, const RenderDataPacket& render_data) {
             (void)ts;
-            (void)render_data;
 
             if (!initialized || surface_width == 0 || surface_height == 0) {
                 return;
             }
 
             translator.resetFrame();
+            const RenderView render_view = translator.buildRenderView(render_data, viewport_width, viewport_height);
 
             if (swapchain_dirty && !recreateSwapchain()) {
                 return;
             }
 
-            drawFrame();
+            drawFrame(render_view);
         }
 
         void setViewportSize(uint32_t width, uint32_t height) {
@@ -432,7 +432,7 @@ namespace NexAur {
             }
         }
 
-        void drawFrame() {
+        void drawFrame(const RenderView& render_view) {
             if (swapchain.swapchain == VK_NULL_HANDLE || swapchain_images.empty()) {
                 return;
             }
@@ -457,7 +457,7 @@ namespace NexAur {
                 return;
             }
 
-            if (!recordClearCommands(image_index)) {
+            if (!recordClearCommands(image_index, render_view)) {
                 return;
             }
 
@@ -495,7 +495,9 @@ namespace NexAur {
             checkVk(present_result, "vkQueuePresentKHR");
         }
 
-        bool recordClearCommands(uint32_t image_index) {
+        bool recordClearCommands(uint32_t image_index, const RenderView& render_view) {
+            (void)render_view;
+
             if (image_index >= swapchain_images.size()) {
                 return false;
             }
