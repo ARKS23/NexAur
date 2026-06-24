@@ -81,6 +81,20 @@ Backend internal
 
 上层只看到第一层。
 
+### 4.1 现代引擎接口参考
+
+Godot / Unreal / Unity 在接口设计上有一个共同点：上层不会拿着图形 API 原生对象到处传。它们会通过 service、server、module 或 pipeline 把“我要渲染什么”和“后端如何渲染”分开。
+
+对 NexAur 来说，这意味着：
+
+- `RendererService` 是引擎侧 facade，不应该变成 Vulkan 或 OpenGL 对象容器。
+- `RenderDataPacket` 表达一帧场景数据，不表达 descriptor set、framebuffer、pipeline state 这类后端细节。
+- `ViewportOutput` 只描述 Editor 如何展示结果，不让 Editor 解释 Vulkan image / sampler / descriptor 生命周期。
+- picking 用 `ViewportPickRequest` / `ViewportPickResult` 表达异步 GPU readback 的现实，不强迫所有后端同步返回。
+- `AssetHandle` 是资产身份，GPU buffer / image / material cache 由 renderer backend 自己持有。
+
+这个边界更接近 Godot 的 RenderingServer / driver 隔离、Unreal 的 RendererModule / RHI 隔离，以及 Unity 的 Scene 数据到 Render Pipeline 数据转换。它带来的直接好处是：D12 删除 OpenGL 时，主要删除 backend implementation 和过渡期 wrapper，而不是修改 Editor / Scene / Resource 的设计。
+
 ## 5. RendererBackendType
 
 建议新增：

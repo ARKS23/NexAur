@@ -185,6 +185,23 @@ NexAur/
 - `fmt` 建议保留，因为 ARKRenderer 使用 `fmt`。
 - `directx-dxc` 在 Windows / Linux x64 平台用于 HLSL -> SPIR-V 编译。
 
+### 4.1 现代引擎构建边界参考
+
+Godot / Unreal / Unity 的源码组织都体现了一个原则：模块边界应该和构建边界一致。一个模块能 include 什么、link 什么，应由它的职责决定，而不是因为顶层 CMake 方便就全部暴露。
+
+对应到 NexAur：
+
+- 类似 Unreal 的 module dependency：`RendererModule` 可以 `PRIVATE` 链接 Vulkan、VMA、vk-bootstrap、DXC、ImGui Vulkan backend；Editor / Scene / Resource 不应该直接链接这些后端依赖。
+- 类似 Godot 的 platform / rendering driver 分层：GLFW window、Vulkan surface、swapchain、render target 等实现细节只在 PlatformModule / RendererV2 的私有构建边界中出现。
+- 类似 Unity package / render pipeline 的隔离：shader 编译、generated SPIR-V、pipeline-specific resource helper 应归渲染管线 target 管理，不要散落成全局脚本或公共 include。
+
+落地规则：
+
+- vcpkg manifest 由 NexAur 顶层统一管理，但 CMake target 仍要控制依赖可见性。
+- 后端依赖默认使用 `PRIVATE`，只有真正属于引擎公共契约的头文件和库才允许 `PUBLIC`。
+- `externalRenderer/` 继续作为参考目录，不进入默认构建图，避免形成两个渲染器源码权威。
+- D12 删除 OpenGL 后，应同步移除 `glad`、`opengl3-binding`、OpenGL source list 和 legacy preset，避免构建层继续暗示 OpenGL 是主路径。
+
 ## 5. CMakePresets 建议
 
 顶层新增：

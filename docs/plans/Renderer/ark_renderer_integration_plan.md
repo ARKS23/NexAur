@@ -56,6 +56,29 @@ ARKRenderer 成为新的 Vulkan 渲染核心
   VulkanRenderDataTranslator
 ```
 
+### 2.1 现代引擎架构参考
+
+这次重构可以参考 Godot / Unreal / Unity 的共同点，但不需要照搬它们的完整复杂度。
+
+- Godot 的思路更接近“渲染服务 + 后端 driver”：上层通过 RenderingServer / RenderingDevice 风格的边界提交资源和绘制意图，Vulkan / OpenGL 等 API 细节留在后端内部。对应到 NexAur，就是上层只面向 `RendererService`、`RenderDataPacket` 和 `AssetHandle`，不直接持有 Vulkan image、buffer、descriptor 或 OpenGL texture id。
+- Unreal 的思路强调模块边界和渲染线程数据隔离：Game / Editor 模块不直接操作 RHI resource，而是把场景代理、材质、mesh 等数据交给 Renderer 模块。对应到 NexAur，就是 `RendererModule` 拥有 `VulkanRendererSystem`、`VulkanRenderResourceCache`、pass、target 和 GPU resource 生命周期，Scene / Editor 只提交后端无关帧数据。
+- Unity 的思路强调渲染管线接管 GPU 表达：Scene / Component 层描述对象和资产，SRP / render pipeline 决定如何转换成 draw list、pass 和 render target。对应到 NexAur，就是 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 的内部链路，避免把 draw call 细节散落在 Editor 或 Scene 中。
+
+因此 NexAur 的目标不是做一个过早通用化的双后端 RHI，而是形成清爽的三层：
+
+```text
+Engine-facing contract
+  RendererService / RenderDataPacket / AssetHandle / ViewportOutput
+
+Renderer module orchestration
+  RendererModule / VulkanRendererSystem / translators / resource cache
+
+Backend internal implementation
+  Vulkan device / swapchain / resources / passes / targets / ImGui renderer
+```
+
+这套结构的判断标准很简单：删除 OpenGL 后，上层模块不应该需要大面积改动；未来接入新物理、音频或脚本模块时，也应该沿用同样的“模块服务 + 私有实现”边界。
+
 ## 3. 为什么不继续扩展旧 OpenGL 渲染模块
 
 当前旧渲染模块的问题不是缺少一个 Vulkan backend 类，而是整体结构仍带有 OpenGL 时代的隐式假设：

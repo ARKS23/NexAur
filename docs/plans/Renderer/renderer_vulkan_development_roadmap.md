@@ -1651,19 +1651,102 @@ ImVec2(1.0f, 1.0f)
 目标：
 
 - Vulkan 成为默认主路径。
-- OpenGL 代码移入 legacy 或删除。
+- OpenGL 代码从默认构建和主线架构中移除。
+- `RendererService` / `RenderDataPacket` / `ViewportOutput` 保持为上层唯一可见契约。
+- Editor / Scene / Resource / Gameplay 不再感知 OpenGL 语义，也不直接感知 Vulkan 内部类型。
+
+设计原则：
+
+- 参考 Godot 的 RenderingServer / driver 边界：引擎上层只面向渲染服务契约，具体图形 API 只存在于后端实现内部。
+- 参考 Unreal 的模块边界：RendererModule 对外暴露稳定服务，backend 作为模块内部实现，退役一个 backend 不应牵动 Editor / Scene。
+- 参考 Unity 的渲染管线思路：Scene 提交的是后端无关帧数据，GPU resource / pass / target 生命周期由渲染后端自己管理。
+- D12 的目标是“删除历史假设”，不是继续维护一个通用双后端 RHI。
 
 任务：
 
-- 删除旧 OpenGL-only public interface。
-- 删除或隔离 `RendererFactory` / `RendererCommand`。
-- 清理 OpenGL resource cache。
-- 清理 glad / OpenGL ImGui backend 依赖。
+- D12-A：OpenGL 引用盘点与删除边界确认
+  - 使用 `rg` 盘点 `OpenGL`、`glad`、`GL_`、`RendererCommand`、`RendererFactory`、`OpenGLTexture`、`Texture2D`、`VertexArray`、`RendererSystem` 等旧路径引用。
+  - 将引用分成四类：
+    - public contract：必须删除或改成后端无关表达。
+    - Editor / Scene 调用点：必须迁移到 `RendererService` / `ViewportOutput` / `pickViewport()`。
+    - OpenGL backend implementation：可以整体删除。
+    - CMake / vcpkg / docs / sample：随代码删除同步清理。
+  - 若发现 OpenGL 类型仍出现在 public header 中，优先修契约再删除实现。
+
+- D12-B：冻结渲染模块 public contract
+  - 保留 `RendererService` 作为唯一渲染服务入口。
+  - 保留 `RenderDataPacket` 作为上层提交帧数据的契约。
+  - 保留 `ViewportOutput` / `ViewportCoordinateOrigin` / `ViewportPickRequest` / `ViewportPickResult`。
+  - 删除或下沉兼容期 OpenGL wrapper，例如 `getViewportColorAttachment()`、`readViewportEntityID()` 这类 OpenGL framebuffer / readPixel 语义接口。
+  - `RendererBackendType` 最终只保留 `Unknown` / `Vulkan`，或把 `OpenGLLegacy` 放到临时 legacy 编译开关内。
+
+- D12-C：默认 Vulkan 构建策略切换
+  - 顶层默认改为：
+    - `NEXAUR_BUILD_RENDERER_V2=ON`
+    - `NEXAUR_DEFAULT_GRAPHICS_API=Vulkan`
+    - `NEXAUR_BUILD_LEGACY_OPENGL=OFF` 或直接删除该选项。
+  - `msvc-vcpkg-debug` 默认应启动 Vulkan 路径。
+  - RendererV2 专用 preset 可以在稳定后并入默认 preset，避免长期保留“新后端专用构建”。
+  - 删除或改名旧 OpenGL legacy preset，避免误以为 OpenGL 仍是主路径。
+
+- D12-D：删除旧 OpenGL backend implementation
+  - 删除旧 OpenGL 渲染系统、OpenGL render device、OpenGL resource cache、OpenGL forward pipeline、OpenGL framebuffer / picking target。
+  - 删除或下沉 `RendererFactory` / `RendererCommand`，不要再保留静态 OpenGL 风格入口。
+  - 删除旧 `Renderer/Platform/OpenGL/` 相关实现。
+  - 删除旧 GPU resource wrapper，例如只服务 OpenGL 的 `Texture2D`、`TextureCubeMap`、`VertexArray`、`Shader`、`Framebuffer` 等。
+  - 若担心一次性删除回滚困难，可以先在删除前打一个 git tag 或保留远端分支作为历史回退，不建议在主线继续保留 inactive OpenGL 代码。
+
+- D12-E：UI backend 收口
+  - UI 模块只负责 ImGui context、platform backend、frame begin / finalize 和编辑器 UI 构建。
+  - Vulkan ImGui renderer 继续归 `VulkanRendererSystem` / RendererV2 内部管理。
+  - 删除 `ImGui_ImplOpenGL3` 初始化、渲染和 shutdown 路径。
+  - 评估是否移除 `UIService::renderBackend()`；如果 Vulkan 是唯一后端，Engine frame order 可以收口为：
+    ```text
+    UI beginFrame
+    Editor / Runtime build UI
+    UI finalizeFrame
+    RendererService::render consumes ImGui draw data
+    ```
+
+- D12-F：CMake / vcpkg / external 依赖清理
+  - 从 `vcpkg.json` 移除 `glad`、OpenGL-only ImGui backend feature、OpenGL-only loader 依赖。
+  - 从 CMake 删除 OpenGL backend source list、include path、compile definition 和 link target。
+  - 清理 `external/` 中只为 OpenGL legacy 服务的依赖入口。
+  - 确保 Vulkan / ImGui / GLFW / VMA / DXC / shader compile path 仍由 vcpkg 统一管理。
+
+- D12-G：目录和命名收口
+  - D12 内先保证删除 OpenGL 后项目结构可读。
+  - 删除后再评估是否把 `RendererV2` 收口为长期命名，例如：
+    ```text
+    source/Engine/Function/Renderer/
+      renderer_module.*
+      RHI/renderer_service.*
+      data/render_data.*
+      Vulkan/
+        vulkan_renderer_system.*
+        resources/
+        passes/
+        targets/
+        ui/
+        shaders/
+    ```
+  - 如果重命名影响面过大，可以把目录收口拆到 D12.1；但 D12 需要先把“旧 Renderer == OpenGL”的历史语义清干净。
+
+- D12-H：文档、示例和验证清理
+  - 更新本 roadmap，把 D12 进度从“待开始”推进到“进行中 / 已完成”。
+  - 更新架构文档，说明当前项目只有 Vulkan 主后端。
+  - 删除旧 OpenGL 示例、旧 GLSL shader、旧调试说明，或明确标为历史资料。
+  - 用 `rg` 确认 public header 中不再出现 OpenGL-only 类型。
 
 验收：
 
 - 默认 backend 为 Vulkan。
 - OpenGL-only 类型不再出现在 Scene / Resource / Editor 公开接口。
+- 默认 vcpkg Debug 构建通过。
+- Vulkan renderer preset 构建通过；若已并入默认 preset，则默认 preset 即为 Vulkan 验证路径。
+- Sandbox / Editor smoke check 通过，viewport image、picking、resize、UI docking 行为不退化。
+- `rg "glad|ImGui_ImplOpenGL3|OpenGLTexture|RendererCommand|RendererFactory|GL_" source/Engine` 不再命中主线 public contract；若仍有命中，必须只存在于明确标记的历史文档或临时 legacy 目录中。
+- `RendererService` 对外接口不包含 OpenGL texture id / OpenGL framebuffer / readPixel 语义。
 
 ## 6. 每个 PR 的固定流程
 
@@ -1698,17 +1781,17 @@ ImVec2(1.0f, 1.0f)
 | viewport output 仍绑定 OpenGL texture id | Vulkan 被迫模拟 OpenGL | D1 / D2 优先清理接口 |
 | AssetManager 与 externalRenderer loader 双轨 | 重复加载、缓存复杂 | D7 已保持 AssetManager 为唯一入口，externalRenderer loader 只作参考；中期继续统一 CPU asset contract |
 | picking 延迟或不可用 | Editor 交互退化 | 先 graceful fallback，后续 D11 实现 |
+| 一次性删除 OpenGL 破坏回退路径 | 构建失败后缺少可运行 baseline | 删除前确认 D10 / D11 Vulkan 路径稳定，必要时打 tag 或保留远端分支作为历史回退；主线不继续保留 inactive OpenGL |
 
 ## 8. 当前下一步
 
 推荐下一步：
 
 ```text
-D11 准备：Vulkan picking
 D12 准备：OpenGL legacy 退役
 ```
 
-D11 开始前的已确认前提：
+D12 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
@@ -1721,7 +1804,9 @@ D11 开始前的已确认前提：
 - RendererV2 已具备 `RenderDataPacket -> RenderView` 转换。
 - RendererV2 已具备 `AssetHandle -> VulkanModelResource` 资源缓存链路。
 - RendererV2 已具备 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 的最小绘制链路。
-- OpenGL legacy 只作为过渡 fallback，不再继续增强。
+- RendererV2 已具备 Vulkan viewport image，可嵌入 Editor viewport。
+- RendererV2 已具备 Vulkan ObjectId picking。
+- OpenGL legacy 只作为过渡 fallback，不再继续增强；D12 开始正式退役。
 
 ## 9. 进度记录
 
@@ -1835,3 +1920,4 @@ D11 开始前的已确认前提：
 - 验证 D11：`cmake --build --preset msvc-vcpkg-debug` 通过。
 - 验证 D11：`cmake --build --preset msvc-legacy-debug` 通过。
 - 验证 D11：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 5 秒 smoke check 通过，stderr 为空。
+- 补充 D12 方案：按 OpenGL 引用盘点、public contract 冻结、默认 Vulkan 切换、OpenGL backend 删除、UI backend 收口、CMake / vcpkg 清理、目录命名收口、文档验证八步拆分 OpenGL legacy 退役工作。
