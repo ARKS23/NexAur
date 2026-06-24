@@ -9,9 +9,6 @@
 
 namespace NexAur {
     class Model;
-    class Shader;
-    class Texture2D;
-    class TextureCubeMap;
 
     class NEXAUR_API AssetManager {
     public:
@@ -31,26 +28,20 @@ namespace NexAur {
         AssetHandle loadModelAsset(const std::string& path) { return importModelAsset(path); }
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
 
-        // 贴图资产：importTextureAsset 只登记身份，GPU Texture2D 优先交给 RenderResourceCache 创建。
+        // 贴图资产：AssetManager 只登记身份，GPU texture 由 Renderer 后端创建。
         AssetHandle importTextureAsset(const std::string& path);
         AssetHandle importTextureCubeAsset(const std::string& path);
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
         AssetHandle loadTextureAsset(const std::string& path) { return importTextureAsset(path); }
-        // Legacy GPU cache API：新代码请使用 AssetHandle -> RenderResourceCache。
-        std::shared_ptr<Texture2D> getTexture(const UUID& handle);
         UUID loadTextureCube(const std::string& path);
         AssetHandle loadTextureCubeAsset(const std::string& path) { return importTextureCubeAsset(path); }
-        // Legacy GPU cache API：新代码请使用 AssetHandle -> RenderResourceCache。
-        std::shared_ptr<TextureCubeMap> getTextureCube(const UUID& handle);
 
         // 着色器
         AssetHandle importShaderAsset(const std::string& name, const std::string& vertex_path, const std::string& fragment_path);
         UUID loadShader(const std::string name, const std::string& vertex_path, const std::string& fragment_path); // 过渡 API：只登记着色器身份并返回 UUID
         AssetHandle loadShaderAsset(const std::string name, const std::string& vertex_path, const std::string& fragment_path) { return importShaderAsset(name, vertex_path, fragment_path); }
-        // Legacy GPU cache API：新代码请使用 Renderer 侧资源创建路径。
-        std::shared_ptr<Shader> getShader(const UUID& handle);
 
-        // 环境 HDR 资产：Resource 只登记 HDR 身份，IBL 烘焙由 RenderResourceCache 负责。
+        // 环境 HDR 资产：Resource 只登记 HDR 身份，环境贴图资源由 Renderer 后端负责。
         AssetHandle importEnvironmentMapAsset(const std::string& hdr_path);
         UUID loadEnvironmentMap(const std::string& hdr_path); // 过渡 API：兼容旧调用，内部等价于 importEnvironmentMapAsset(hdr_path).id
         AssetHandle loadEnvironmentMapAsset(const std::string& hdr_path) { return importEnvironmentMapAsset(hdr_path); }
@@ -87,11 +78,5 @@ namespace NexAur {
         // 模型管理
         std::unordered_map<UUID, std::shared_ptr<Model>> m_uuid_cpu_model_cache;
 
-        // 材质管理
-        std::unordered_map<UUID, std::shared_ptr<Texture2D>> m_uuid_texture_cache;
-        std::unordered_map<UUID, std::shared_ptr<TextureCubeMap>> m_uuid_texture_cube_cache;
-
-        // 着色器管理
-        std::unordered_map<UUID, std::shared_ptr<Shader>> m_uuid_shader_cache;
     };
 } // namespace NexAur

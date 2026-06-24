@@ -17,41 +17,7 @@
         "VCPKG_MANIFEST_MODE": "ON",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
         "NEXAUR_USE_VCPKG_DEPS": "ON",
-        "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
-        "NEXAUR_BUILD_RENDERER_V2": "OFF",
-        "NEXAUR_DEFAULT_GRAPHICS_API": "OpenGL",
         "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-vcpkg"
-      }
-    },
-    {
-      "name": "msvc-legacy",
-      "displayName": "MSVC x64 + vendored external",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/msvc-legacy",
-      "cacheVariables": {
-        "NEXAUR_USE_VCPKG_DEPS": "OFF",
-        "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
-        "NEXAUR_BUILD_RENDERER_V2": "OFF",
-        "NEXAUR_DEFAULT_GRAPHICS_API": "OpenGL",
-        "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-legacy"
-      }
-    },
-    {
-      "name": "msvc-vcpkg-renderer-v2",
-      "displayName": "MSVC x64 + vcpkg + RendererV2 Vulkan",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
-      "binaryDir": "${sourceDir}/build/msvc-vcpkg-renderer-v2",
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_MANIFEST_MODE": "ON",
-        "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "NEXAUR_USE_VCPKG_DEPS": "ON",
-        "NEXAUR_BUILD_LEGACY_OPENGL": "ON",
-        "NEXAUR_BUILD_RENDERER_V2": "ON",
-        "NEXAUR_DEFAULT_GRAPHICS_API": "Vulkan",
-        "NEXAUR_OUTPUT_ROOT": "${sourceDir}/bin/msvc-vcpkg-renderer-v2"
       }
     }
   ],
@@ -64,26 +30,6 @@
     {
       "name": "msvc-vcpkg-release",
       "configurePreset": "msvc-vcpkg",
-      "configuration": "Release"
-    },
-    {
-      "name": "msvc-legacy-debug",
-      "configurePreset": "msvc-legacy",
-      "configuration": "Debug"
-    },
-    {
-      "name": "msvc-legacy-release",
-      "configurePreset": "msvc-legacy",
-      "configuration": "Release"
-    },
-    {
-      "name": "msvc-vcpkg-renderer-v2-debug",
-      "configurePreset": "msvc-vcpkg-renderer-v2",
-      "configuration": "Debug"
-    },
-    {
-      "name": "msvc-vcpkg-renderer-v2-release",
-      "configurePreset": "msvc-vcpkg-renderer-v2",
       "configuration": "Release"
     }
   ]

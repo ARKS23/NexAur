@@ -8,7 +8,6 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 
 namespace NexAur {
     void UISystem::init(std::shared_ptr<WindowService> window_service, std::shared_ptr<RendererService> renderer_service) {
@@ -20,13 +19,8 @@ namespace NexAur {
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
 
-        const WindowGraphicsAPI graphics_api = m_window_service->getGraphicsAPI();
-
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        if (graphics_api == WindowGraphicsAPI::OpenGL) {
-            io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-        }
 
         ImGui::StyleColorsDark();
 
@@ -39,15 +33,9 @@ namespace NexAur {
         GLFWwindow* window = static_cast<GLFWwindow*>(m_window_service->getNativeWindow());
         NX_CORE_ASSERT(window, "UISystem requires a valid native GLFW window.");
 
-        if (graphics_api == WindowGraphicsAPI::OpenGL) {
-            ImGui_ImplGlfw_InitForOpenGL(window, true);
-            ImGui_ImplOpenGL3_Init("#version 450");
-            m_backend = Backend::OpenGL;
-        } else {
-            ImGui_ImplGlfw_InitForVulkan(window, true);
-            m_backend = Backend::GlfwOnly;
-            NX_CORE_INFO("UI System initialized ImGui GLFW platform backend for Vulkan; RendererV2 owns the Vulkan ImGui renderer backend.");
-        }
+        ImGui_ImplGlfw_InitForVulkan(window, true);
+        m_backend = Backend::GlfwOnly;
+        NX_CORE_INFO("UI System initialized ImGui GLFW platform backend; VulkanRendererSystem owns the ImGui renderer backend.");
 
         if (std::shared_ptr<RendererService> renderer_service_locked = m_renderer_service.lock()) {
             renderer_service_locked->onUIContextInitialized();
@@ -61,10 +49,6 @@ namespace NexAur {
         if (m_context_initialized) {
             if (std::shared_ptr<RendererService> renderer_service = m_renderer_service.lock()) {
                 renderer_service->onUIContextShutdown();
-            }
-
-            if (m_backend == Backend::OpenGL) {
-                ImGui_ImplOpenGL3_Shutdown();
             }
 
             if (m_backend != Backend::None) {
@@ -87,9 +71,7 @@ namespace NexAur {
             return;
         }
 
-        if (m_backend == Backend::OpenGL) {
-            ImGui_ImplOpenGL3_NewFrame();
-        } else if (std::shared_ptr<RendererService> renderer_service = m_renderer_service.lock()) {
+        if (std::shared_ptr<RendererService> renderer_service = m_renderer_service.lock()) {
             renderer_service->beginUIFrame();
         }
 
@@ -112,31 +94,6 @@ namespace NexAur {
         io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
 
         ImGui::Render();
-    }
-
-    void UISystem::renderBackend() {
-        if (!m_context_initialized) {
-            return;
-        }
-
-        ImGuiIO& io = ImGui::GetIO();
-        if (m_backend != Backend::OpenGL) {
-            return;
-        }
-
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-            GLFWwindow* backup_current_context = glfwGetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            glfwMakeContextCurrent(backup_current_context);
-        }
-    }
-
-    void UISystem::endFrameAndRender() {
-        finalizeFrame();
-        renderBackend();
     }
 
     void UISystem::onEvent(Event& event) {

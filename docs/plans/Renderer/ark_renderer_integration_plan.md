@@ -103,10 +103,9 @@ Editor 继续依赖 OpenGL 语义
 因此推荐：
 
 ```text
-旧 OpenGL 后端只保留为过渡 fallback
 不继续大规模增强旧 OpenGL RHI
-新的主线渲染模块围绕 ARKRenderer adapter 重建
-Vulkan 跑通后逐步退役 OpenGL
+新的主线渲染模块围绕 Vulkan renderer adapter 重建
+D12 后 OpenGL legacy 已从主线退役
 ```
 
 ## 4. ARKRenderer 接入边界
@@ -149,32 +148,19 @@ RuntimeModule / EditorModule
 
 RendererModule
   owns RendererService implementation
-  chooses active renderer backend during transition
+  owns the Vulkan renderer backend
 ```
 
 ### 5.2 渲染模块内部
 
-过渡期：
+D12 后当前结构：
 
 ```text
 RendererModule
-  OpenGLLegacyRendererSystem
-    old OpenGL renderer path
-
   VulkanRendererSystem
-    owns ark::Renderer
     owns VulkanRenderResourceCache
     owns VulkanRenderDataTranslator
-```
-
-目标期：
-
-```text
-RendererModule
-  VulkanRendererSystem
-    the only runtime renderer implementation
-
-  Legacy OpenGL code removed or isolated outside default build
+    owns Vulkan passes / targets / ImGui renderer bridge
 ```
 
 ### 5.3 一帧数据流

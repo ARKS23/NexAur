@@ -56,8 +56,7 @@ virtual int readViewportEntityID(int x, int y) = 0;
 - `RenderDataPacket` 仍然是引擎层到渲染层的数据契约。
 - viewport 输出用后端无关结构描述。
 - picking 用 request / result 描述，不强制每个 backend 同步返回有效 ID。
-- OpenGL 可以作为 legacy adapter 临时实现新接口。
-- Vulkan 稳定后可以删除 OpenGL legacy，不影响上层接口。
+- D12 后 OpenGL legacy 已删除；接口只保留后端无关表达，不保留 OpenGL wrapper。
 
 ## 4. 推荐接口分层
 
@@ -71,12 +70,10 @@ Engine-facing contract
   PickRequest / PickResult
 
 Backend adapter
-  OpenGLLegacyRendererSystem
   VulkanRendererSystem
 
 Backend internal
-  OpenGL old classes
-  Vulkan renderer facade / RenderScene / RenderView / resources
+  Vulkan device / RenderSceneFrame / RenderView / draw list / resources / passes
 ```
 
 上层只看到第一层。
@@ -102,7 +99,6 @@ Godot / Unreal / Unity 在接口设计上有一个共同点：上层不会拿着
 ```cpp
 enum class RendererBackendType {
     Unknown,
-    OpenGLLegacy,
     Vulkan,
 };
 ```
@@ -112,7 +108,7 @@ enum class RendererBackendType {
 - Editor 判断当前 viewport output 如何显示。
 - 日志显示当前 renderer backend。
 - 配置系统选择 backend。
-- 后续删除 OpenGL 后仍保留 `Vulkan` 和 `Unknown` 即可。
+- D12 后主线只保留 `Vulkan` 和 `Unknown`。
 
 ## 6. ViewportOutput
 
@@ -123,7 +119,6 @@ enum class RendererBackendType {
 ```cpp
 enum class ViewportOutputKind {
     None,
-    OpenGLTexture,
     VulkanImGuiTexture,
     ExternalSwapchain,
 };
@@ -135,10 +130,7 @@ struct ViewportOutput {
     uint32_t width = 0;
     uint32_t height = 0;
 
-    // OpenGL legacy: texture id.
-    uint64_t numeric_handle = 0;
-
-    // Vulkan path: backend-owned descriptor / image token.
+    // Backend-owned descriptor / image token.
     // Editor 只能把它传回 Renderer/UI bridge，不能解释内部类型。
     void* native_handle = nullptr;
 
@@ -150,9 +142,8 @@ struct ViewportOutput {
 
 说明：
 
-- OpenGL 过渡期可以把 texture id 放入 `numeric_handle`。
 - Vulkan 早期可以返回 `ExternalSwapchain` 或 `None`。
-- Vulkan viewport 嵌入 Editor 后，可以返回 `VulkanImGuiTexture`。
+- Vulkan viewport 嵌入 Editor 后，返回 `VulkanImGuiTexture`。
 - `native_handle` 是不透明 token，不允许 Scene / Runtime 解释它。
 
 后续如果希望更类型安全，可以用 `std::variant` 或 backend-specific wrapper，但第一版先保持简单。
@@ -180,20 +171,11 @@ struct ViewportPickResult {
 virtual ViewportPickResult pickViewport(const ViewportPickRequest& request) = 0;
 ```
 
-OpenGL legacy：
-
-- 可以同步 readPixel。
-- 返回 `supported = true`，`ready = true`。
-
-Vulkan 第一版：
-
-- 返回 `supported = false`。
-
-Vulkan 后续：
+D11 后 Vulkan：
 
 - ObjectId pass 写 integer target。
 - copy 到 readback buffer。
-- 可以同步等待，也可以延迟一帧返回。
+- 当前可以同步等待，后续也可以优化为延迟一帧返回。
 - 如果延迟返回，则 `ready = false` 表示本帧没有结果。
 
 ## 8. RendererService 推荐形态
@@ -216,14 +198,7 @@ public:
 };
 ```
 
-如果想保留兼容期旧接口，可以临时提供非推荐 wrapper：
-
-```cpp
-uint32_t getViewportColorAttachmentLegacy() const;
-int readViewportEntityIDLegacy(int x, int y);
-```
-
-但不要继续把它们作为核心接口。
+D12 后不再保留 `getViewportColorAttachment()` / `readViewportEntityID()` 兼容 wrapper。
 
 ## 9. RenderDataPacket 保留策略
 

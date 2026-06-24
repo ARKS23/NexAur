@@ -8,7 +8,6 @@ namespace NexAur {
     // 前置声明
     class WindowSystem;
     class InputSystem;
-    class RendererSystem;
     class FileSystem;
     class SceneManager;
     class RenderContext;
@@ -41,7 +40,6 @@ namespace NexAur {
         std::shared_ptr<WindowSystem> m_window_system;
         std::shared_ptr<InputSystem> m_input_system;
         std::shared_ptr<SceneManager> m_scene_manager;
-        std::shared_ptr<RendererSystem> m_renderer_system;
         std::shared_ptr<RenderContext> m_render_context;
         std::shared_ptr<UISystem> m_ui_system;
 

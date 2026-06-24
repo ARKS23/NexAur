@@ -30,7 +30,6 @@ namespace NexAur {
         void updateViewportWindowState();
         void syncViewportResize();
         void drawViewportOutput();
-        void drawOpenGLViewport(const ViewportOutput& output);
         void drawVulkanImGuiViewport(const ViewportOutput& output);
         void drawExternalSwapchainNotice(const ViewportOutput& output);
         void drawNoViewportOutputNotice();

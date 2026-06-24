@@ -11,11 +11,7 @@
 namespace NexAur {
     namespace {
         WindowGraphicsAPI resolveDefaultWindowGraphicsAPI() {
-#if defined(NEXAUR_DEFAULT_GRAPHICS_API_VULKAN)
             return WindowGraphicsAPI::Vulkan;
-#else
-            return WindowGraphicsAPI::OpenGL;
-#endif
         }
 
         class WindowSystemService final : public WindowService {
@@ -28,7 +24,7 @@ namespace NexAur {
             }
 
             WindowGraphicsAPI getGraphicsAPI() const override {
-                return m_window_system ? m_window_system->getGraphicsAPI() : WindowGraphicsAPI::OpenGL;
+                return m_window_system ? m_window_system->getGraphicsAPI() : WindowGraphicsAPI::Vulkan;
             }
 
             std::vector<const char*> getRequiredVulkanInstanceExtensions() const override {

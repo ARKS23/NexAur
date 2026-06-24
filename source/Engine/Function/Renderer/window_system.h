@@ -8,7 +8,7 @@
 #include <functional>
 #include <vector>
 
-#include "GLFW/glfw3.h"
+#include <GLFW/glfw3.h>
 
 #include "Core/Base.h"
 #include "Core/Events/event.h"
@@ -16,15 +16,13 @@
 
 namespace NexAur
 {
-    class GraphicsContext;
-
     struct WindowSpecification {
         int width{1920};
         int height{1080};
         const char* title{"NexAur"};
         bool fullscreen{false};
         bool enable_vsync{true};
-        WindowGraphicsAPI graphics_api{WindowGraphicsAPI::OpenGL};
+        WindowGraphicsAPI graphics_api{WindowGraphicsAPI::Vulkan};
     };
 
 
@@ -61,8 +59,7 @@ namespace NexAur
 
     private:
         GLFWwindow* m_window{nullptr};
-        std::unique_ptr<GraphicsContext> m_context;
-        WindowGraphicsAPI m_graphics_api{WindowGraphicsAPI::OpenGL};
+        WindowGraphicsAPI m_graphics_api{WindowGraphicsAPI::Vulkan};
 
         bool is_focus_mode{false};
 

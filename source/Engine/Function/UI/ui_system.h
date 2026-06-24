@@ -18,8 +18,6 @@ namespace NexAur {
 
         virtual void beginFrame() = 0;
         virtual void finalizeFrame() = 0;
-        virtual void renderBackend() = 0;
-        virtual void endFrameAndRender() = 0;
 
         virtual void onEvent(Event& event) = 0;
         virtual bool isConsumingInput() const = 0;
@@ -38,8 +36,6 @@ namespace NexAur {
 
         void beginFrame() override;
         void finalizeFrame() override;
-        void renderBackend() override;
-        void endFrameAndRender() override;
 
         void onEvent(Event& event) override;
         bool isConsumingInput() const override;
@@ -51,7 +47,6 @@ namespace NexAur {
     private:
         enum class Backend {
             None,
-            OpenGL,
             GlfwOnly
         };
 

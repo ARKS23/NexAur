@@ -19,10 +19,6 @@ namespace NexAur {
                 return false;
             }
 
-            if (output.kind == ViewportOutputKind::OpenGLTexture) {
-                return output.numeric_handle != 0;
-            }
-
             if (output.kind == ViewportOutputKind::VulkanImGuiTexture) {
                 return output.native_handle != nullptr;
             }
@@ -131,9 +127,6 @@ namespace NexAur {
 
         const ViewportOutput output = m_context->renderer_service->getViewportOutput();
         switch (output.kind) {
-        case ViewportOutputKind::OpenGLTexture:
-            drawOpenGLViewport(output);
-            break;
         case ViewportOutputKind::VulkanImGuiTexture:
             drawVulkanImGuiViewport(output);
             break;
@@ -145,20 +138,6 @@ namespace NexAur {
             drawNoViewportOutputNotice();
             break;
         }
-    }
-
-    void ViewportPanel::drawOpenGLViewport(const ViewportOutput& output) {
-        if (!output.valid() || output.numeric_handle == 0) {
-            drawViewportPlaceholder("No viewport output");
-            return;
-        }
-
-        ImGui::Image(
-            reinterpret_cast<void*>(static_cast<intptr_t>(output.numeric_handle)),
-            ImVec2(m_viewport_size.x, m_viewport_size.y),
-            ImVec2(0.0f, 1.0f),
-            ImVec2(1.0f, 0.0f)
-        );
     }
 
     void ViewportPanel::drawVulkanImGuiViewport(const ViewportOutput& output) {

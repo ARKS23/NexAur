@@ -11,7 +11,7 @@ namespace NexAur {
     struct RenderDataPacket;
 
     // RendererModule 的对外门面。Editor/Runtime 只依赖这个接口，
-    // 不应该知道当前后端是 OpenGL、Vulkan 还是其他实现。
+    // 不应该知道当前具体后端实现和图形 API 细节。
     class NEXAUR_API RendererService {
     public:
         virtual ~RendererService() = default;
@@ -26,23 +26,5 @@ namespace NexAur {
         virtual void onUIContextInitialized() {}
         virtual void beginUIFrame() {}
         virtual void onUIContextShutdown() {}
-
-        // 迁移期兼容接口。旧 Editor viewport 仍可工作，新代码应使用 getViewportOutput()。
-        virtual uint32_t getViewportColorAttachment() const {
-            const ViewportOutput output = getViewportOutput();
-            if (output.kind != ViewportOutputKind::OpenGLTexture || !output.valid()) {
-                return 0;
-            }
-            return static_cast<uint32_t>(output.numeric_handle);
-        }
-
-        // 迁移期兼容接口。旧 picking 调用仍可工作，新代码应使用 pickViewport()。
-        virtual int readViewportEntityID(int x, int y) {
-            const ViewportPickResult result = pickViewport(ViewportPickRequest{ x, y });
-            if (!result.supported || !result.ready) {
-                return -1;
-            }
-            return result.entity_id;
-        }
     };
 } // namespace NexAur

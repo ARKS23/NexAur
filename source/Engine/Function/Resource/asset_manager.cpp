@@ -10,10 +10,6 @@ namespace NexAur {
     }
 
     void AssetManager::shutdown() {
-        m_uuid_texture_cube_cache.clear();
-        m_uuid_texture_cache.clear();
-        m_uuid_shader_cache.clear();
-
         m_uuid_cpu_model_cache.clear();
         m_uuid_metadata.clear();
         m_uuid_to_path.clear();
@@ -196,48 +192,6 @@ namespace NexAur {
 
         m_uuid_cpu_model_cache[handle.id] = model;
         return model;
-    }
-
-    std::shared_ptr<Texture2D> AssetManager::getTexture(const UUID& handle) {
-        if (handle == INVALID_UUID) {
-            NX_CORE_WARN("Attempted to get texture with invalid UUID.");
-            return nullptr;
-        }
-
-        auto it = m_uuid_texture_cache.find(handle);
-        if (it != m_uuid_texture_cache.end()) {
-            return it->second;
-        }
-
-        return nullptr;
-    }
-
-    std::shared_ptr<TextureCubeMap> AssetManager::getTextureCube(const UUID& handle) {
-        if (handle == INVALID_UUID) {
-            NX_CORE_WARN("Attempted to get cube texture with invalid UUID.");
-            return nullptr;
-        }
-
-        auto it = m_uuid_texture_cube_cache.find(handle);
-        if (it != m_uuid_texture_cube_cache.end()) {
-            return it->second;
-        }
-
-        return nullptr;
-    }
-
-    std::shared_ptr<Shader> AssetManager::getShader(const UUID& handle) {
-        if (handle == INVALID_UUID) {
-            NX_CORE_WARN("Attempted to get shader with invalid UUID.");
-            return nullptr;
-        }
-
-        auto it = m_uuid_shader_cache.find(handle);
-        if (it != m_uuid_shader_cache.end()) {
-            return it->second;
-        }
-
-        return nullptr;
     }
 
     const AssetMetadata* AssetManager::getMetadata(const UUID& handle) const {

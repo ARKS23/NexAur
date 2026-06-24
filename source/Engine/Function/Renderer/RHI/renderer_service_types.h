@@ -7,13 +7,11 @@
 namespace NexAur {
     enum class RendererBackendType {
         Unknown,
-        OpenGLLegacy,
         Vulkan,
     };
 
     enum class ViewportOutputKind {
         None,
-        OpenGLTexture,
         VulkanImGuiTexture,
         ExternalSwapchain,
     };
@@ -33,10 +31,7 @@ namespace NexAur {
         uint32_t height = 0;
         ViewportCoordinateOrigin coordinate_origin = ViewportCoordinateOrigin::TopLeft;
 
-        // OpenGL legacy 使用 numeric_handle 存 texture id。
-        uint64_t numeric_handle = 0;
-
-        // Vulkan 后续可使用不透明 token 交给 UI bridge 处理。
+        // 后端拥有的不透明 texture / descriptor token，上层只传递，不解释。
         void* native_handle = nullptr;
 
         bool valid() const { return kind != ViewportOutputKind::None && width > 0 && height > 0; }

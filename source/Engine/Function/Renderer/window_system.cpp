@@ -8,7 +8,6 @@
 #include "Core/Events/window_event.h"
 #include "Core/Events/key_event.h"
 #include "Core/Events/mouse_event.h"
-#include "Function/Renderer/Platform/OpenGL/opengl_graphics_context.h"
 
 namespace NexAur {
     WindowSystem::WindowSystem() = default;
@@ -33,14 +32,7 @@ namespace NexAur {
         m_graphics_api = specification.graphics_api;
 
         glfwDefaultWindowHints();
-        if (m_graphics_api == WindowGraphicsAPI::OpenGL) {
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        } else {
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        }
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         GLFWmonitor* monitor = specification.fullscreen ? glfwGetPrimaryMonitor() : nullptr;
         m_window = glfwCreateWindow(specification.width, specification.height, m_data.title.c_str(), monitor, nullptr);
@@ -50,13 +42,7 @@ namespace NexAur {
             return;
         }
 
-        if (m_graphics_api == WindowGraphicsAPI::OpenGL) {
-            m_context = std::make_unique<OpenGLGraphicsContext>(m_window);
-            m_context->init();
-            glfwSwapInterval(m_data.vsync ? 1 : 0);
-        } else {
-            NX_CORE_INFO("Created GLFW no-api window for Vulkan.");
-        }
+        NX_CORE_INFO("Created GLFW no-api window for Vulkan.");
 
         bindEvents(); // 绑定事件回调放这里，在ImGui初始化好之前绑定引擎回调,避免覆盖
     }
@@ -100,10 +86,7 @@ namespace NexAur {
     }
 
     void WindowSystem::update() {
-        // OpenGL 由 WindowSystem swap buffers；Vulkan 由 renderer/swapchain 负责 present。
-        if (m_context) {
-            m_context->swapBuffers();
-        }
+        // Vulkan 由 renderer/swapchain 负责 present；WindowSystem 只保留统一的服务入口。
     }
 
     void WindowSystem::bindEvents() {

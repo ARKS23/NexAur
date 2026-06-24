@@ -92,10 +92,8 @@ namespace NexAur {
 
         rendererTick(delta_time);
 
-        ui_service->renderBackend();
-
         std::shared_ptr<WindowService> window_service = getRequiredModuleService<WindowService>();
-        // 当前 OpenGL 后端由 WindowSystem 负责 swap/poll；通过 WindowService 隔离 GLFW 细节。
+        // Vulkan renderer 负责 swapchain present；WindowService 这里只处理平台事件。
         window_service->present();
         window_service->pollEvents();
         window_service->setTitle(std::string("NexAur: " + std::to_string(m_fps) + "FPS").c_str());

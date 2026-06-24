@@ -18,8 +18,7 @@
 // ECS
 #include "entt/entt.hpp"
 
-// 图形库
-#include <glad/glad.h>
+// Window / platform
 #include <GLFW/glfw3.h>
 
 // 数学库

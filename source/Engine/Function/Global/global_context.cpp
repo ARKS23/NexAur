@@ -8,7 +8,6 @@
 #include "Function/File/file_system_module.h"
 #include "Function/Input/input_system.h"
 #include "Function/Platform/platform_module.h"
-#include "Function/Renderer/RHI/renderer_system.h"
 #include "Function/Renderer/renderer_module.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/window_system.h"
@@ -86,7 +85,6 @@ namespace NexAur {
         m_window_system = registry->getService<WindowSystem>();
         m_input_system = registry->getService<InputSystem>();
         m_scene_manager = registry->getService<SceneManager>();
-        m_renderer_system = registry->getService<RendererSystem>();
         m_render_context = registry->getService<RenderContext>();
         m_ui_system = registry->getService<UISystem>();
     }
@@ -94,7 +92,6 @@ namespace NexAur {
     void RunTimeGlobalContext::clearCompatibilityServices() {
         m_ui_system.reset();
         m_scene_manager.reset();
-        m_renderer_system.reset();
         m_render_context.reset();
         m_input_system.reset();
         m_window_system.reset();

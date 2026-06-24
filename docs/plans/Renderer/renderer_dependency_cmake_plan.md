@@ -13,10 +13,11 @@ docs/plans/Renderer/renderer_vulkan_development_roadmap.md
 当前落地状态：
 
 ```text
-D3 已完成。
-顶层已新增 vcpkg manifest / CMakePresets。
+D12 已完成。
+顶层已新增 vcpkg manifest / CMakePresets，并统一为 vcpkg 主路径。
 顶层已升级到 CMake 3.25 + C++20。
-vcpkg 路径与 vendored external fallback 均已验证可构建。
+vendored external fallback 和 OpenGL legacy 构建入口已退役。
+glad 与 ImGui opengl3-binding 已从 vcpkg manifest 移除。
 externalRenderer 仍只作为参考目录，不进入默认构建图。
 ```
 
@@ -38,9 +39,9 @@ docs/plans/Renderer/renderer_interface_redesign_plan.md
 
 ## 2. 当前状态
 
-### 2.1 NexAur 当前依赖管理
+### 2.1 NexAur D3 前的依赖管理
 
-NexAur 现在主要使用 `external/` 下的 vendored/submodule 依赖：
+NexAur 在 D3 前主要使用 `external/` 下的 vendored/submodule 依赖：
 
 ```text
 external/glfw
@@ -154,7 +155,6 @@ NexAur/
     "spirv-headers",
     "spirv-reflect",
     "glfw3",
-    "glad",
     "glm",
     "spdlog",
     "fmt",
@@ -163,7 +163,6 @@ NexAur/
       "features": [
         "docking-experimental",
         "glfw-binding",
-        "opengl3-binding",
         "vulkan-binding"
       ]
     },
@@ -179,9 +178,8 @@ NexAur/
 
 说明：
 
-- `opengl3-binding` 只在 OpenGL legacy 过渡期需要。
-- OpenGL 删除后可以移除 `opengl3-binding` 和 `glad`。
-- 如果 vcpkg `glad` 的生成 profile / target 名称与当前 OpenGL legacy 不兼容，D3 可以暂时把 `external/glad` 作为 legacy isolated exception，但必须记录为待清理项，不能让它继续污染新 Vulkan 路径。
+- D12 后不再需要 `glad` 和 ImGui `opengl3-binding`。
+- 如果后续新增其他图形 API backend，也应通过独立 backend target 私有链接依赖，而不是重新把图形 API loader 暴露到全局。
 - `fmt` 建议保留，因为 ARKRenderer 使用 `fmt`。
 - `directx-dxc` 在 Windows / Linux x64 平台用于 HLSL -> SPIR-V 编译。
 

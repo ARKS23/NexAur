@@ -6,31 +6,9 @@ project(NexAur VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(NEXAUR_USE_VCPKG_DEPS_DEFAULT OFF)
-if(DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
-    set(NEXAUR_USE_VCPKG_DEPS_DEFAULT ON)
-endif()
-
-option(NEXAUR_USE_VCPKG_DEPS "Use vcpkg packages for third-party dependencies." ${NEXAUR_USE_VCPKG_DEPS_DEFAULT})
-option(NEXAUR_BUILD_LEGACY_OPENGL "Build legacy OpenGL renderer." ON)
-option(NEXAUR_BUILD_RENDERER_V2 "Build RendererV2 integration." OFF)
-set(NEXAUR_DEFAULT_GRAPHICS_API "OpenGL" CACHE STRING "Default window graphics API. Valid values: OpenGL, Vulkan.")
-set_property(CACHE NEXAUR_DEFAULT_GRAPHICS_API PROPERTY STRINGS OpenGL Vulkan)
-
-if(NEXAUR_BUILD_RENDERER_V2 AND NOT NEXAUR_USE_VCPKG_DEPS)
-    message(FATAL_ERROR "NEXAUR_BUILD_RENDERER_V2 currently requires NEXAUR_USE_VCPKG_DEPS=ON.")
-endif()
-
-if(NOT NEXAUR_BUILD_LEGACY_OPENGL)
-    message(FATAL_ERROR "NEXAUR_BUILD_LEGACY_OPENGL=OFF is not supported until RendererV2 replaces the legacy OpenGL path.")
-endif()
-
-if(NEXAUR_DEFAULT_GRAPHICS_API STREQUAL "OpenGL")
-    add_compile_definitions(NEXAUR_DEFAULT_GRAPHICS_API_OPENGL=1)
-elseif(NEXAUR_DEFAULT_GRAPHICS_API STREQUAL "Vulkan")
-    add_compile_definitions(NEXAUR_DEFAULT_GRAPHICS_API_VULKAN=1)
-else()
-    message(FATAL_ERROR "Unsupported NEXAUR_DEFAULT_GRAPHICS_API: ${NEXAUR_DEFAULT_GRAPHICS_API}. Use OpenGL or Vulkan.")
+option(NEXAUR_USE_VCPKG_DEPS "Use vcpkg packages for third-party dependencies." ON)
+if(NOT NEXAUR_USE_VCPKG_DEPS)
+    message(FATAL_ERROR "NexAur now uses the vcpkg dependency path. The vendored external fallback was retired with the legacy renderer.")
 endif()
 
 # 编译输出目录。默认保持旧路径；preset 可覆盖 NEXAUR_OUTPUT_ROOT 来隔离不同依赖来源的产物。
@@ -48,11 +26,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${NEXAUR_OUTPUT_ROOT}")
 add_compile_definitions(ENGINE_ROOT_DIR="${CMAKE_SOURCE_DIR}")
 
 # 子模块: 先编译依赖模块
-if(NEXAUR_USE_VCPKG_DEPS)
-    message(STATUS "NexAur: using vcpkg dependencies")
-else()
-    message(STATUS "NexAur: using vendored external dependencies")
-    add_subdirectory(external)
-endif()
+message(STATUS "NexAur: using vcpkg dependencies")
 add_subdirectory(source)
 

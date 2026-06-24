@@ -117,125 +117,57 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/window_system.cpp
     Function/Renderer/data/render_context.h
     Function/Renderer/data/render_data.h
-    Function/Renderer/Resources/render_ibl_builder.h
-    Function/Renderer/Resources/render_ibl_builder.cpp
-    Function/Renderer/Resources/render_resource_cache.h
-    Function/Renderer/Resources/render_resource_cache.cpp
-    Function/Renderer/Resources/render_resource_uploader.h
-    Function/Renderer/Resources/render_resource_uploader.cpp
-    Function/Renderer/Resources/procedural_model_factory.h
-    Function/Renderer/Resources/procedural_model_factory.cpp
-    Function/Renderer/Passes/interface_render_pass.h
-    Function/Renderer/Passes/interface_render_pass.cpp
-    Function/Renderer/Passes/shadow_pass_v2.h
-    Function/Renderer/Passes/shadow_pass_v2.cpp
-    Function/Renderer/Passes/skybox_pass_v2.h
-    Function/Renderer/Passes/skybox_pass_v2.cpp
-    Function/Renderer/RHI/buffer.h
-    Function/Renderer/RHI/buffer.cpp
-    Function/Renderer/RHI/definitions.h
-    Function/Renderer/RHI/framebuffer.h
-    Function/Renderer/RHI/framebuffer.cpp
-    Function/Renderer/RHI/graphics_context.h
-    Function/Renderer/RHI/graphics_context.cpp
-    Function/Renderer/RHI/material.h
-    Function/Renderer/RHI/material.cpp
-    Function/Renderer/RHI/render_device.h
-    Function/Renderer/RHI/render_device.cpp
-    Function/Renderer/RHI/render_forward_pipeline.h
-    Function/Renderer/RHI/render_forward_pipeline.cpp
-    Function/Renderer/RHI/render_pass_context.h
-    Function/Renderer/RHI/render_pipeline.h
-    Function/Renderer/RHI/renderer.h
-    Function/Renderer/RHI/renderer.cpp
-    Function/Renderer/RHI/renderer_API.h
-    Function/Renderer/RHI/renderer_API.cpp
-    Function/Renderer/RHI/renderer_command.h
-    Function/Renderer/RHI/renderer_command.cpp
     Function/Renderer/RHI/renderer_service.h
     Function/Renderer/RHI/renderer_service_types.h
-    Function/Renderer/RHI/renderer_system.h
-    Function/Renderer/RHI/renderer_system.cpp
-    Function/Renderer/RHI/shader.h
-    Function/Renderer/RHI/shader.cpp
-    Function/Renderer/RHI/texture.h
-    Function/Renderer/RHI/texture.cpp
-    Function/Renderer/RHI/uniform_buffer.h
-    Function/Renderer/RHI/uniform_buffer.cpp
-    Function/Renderer/RHI/vertex_array.h
-    Function/Renderer/RHI/vertex_array.cpp
-    Function/Renderer/Platform/OpenGL/opengl_buffer.h
-    Function/Renderer/Platform/OpenGL/opengl_buffer.cpp
-    Function/Renderer/Platform/OpenGL/opengl_framebuffer.h
-    Function/Renderer/Platform/OpenGL/opengl_framebuffer.cpp
-    Function/Renderer/Platform/OpenGL/opengl_graphics_context.h
-    Function/Renderer/Platform/OpenGL/opengl_graphics_context.cpp
-    Function/Renderer/Platform/OpenGL/opengl_renderer_api.h
-    Function/Renderer/Platform/OpenGL/opengl_renderer_api.cpp
-    Function/Renderer/Platform/OpenGL/opengl_render_device.h
-    Function/Renderer/Platform/OpenGL/opengl_render_device.cpp
-    Function/Renderer/Platform/OpenGL/opengl_shader.h
-    Function/Renderer/Platform/OpenGL/opengl_shader.cpp
-    Function/Renderer/Platform/OpenGL/opengl_texture.h
-    Function/Renderer/Platform/OpenGL/opengl_texture.cpp
-    Function/Renderer/Platform/OpenGL/opengl_uniform_buffer.h
-    Function/Renderer/Platform/OpenGL/opengl_uniform_buffer.cpp
-    Function/Renderer/Platform/OpenGL/opengl_vertex_array.h
-    Function/Renderer/Platform/OpenGL/opengl_vertex_array.cpp
 )
 
-set(NEXAUR_ENGINE_RENDERER_V2_FILES)
-if(NEXAUR_BUILD_RENDERER_V2)
-    set_source_files_properties(
-        Function/RendererV2/shaders/vulkan_forward.hlsl
-        Function/RendererV2/shaders/vulkan_object_id.hlsl
-        PROPERTIES
-            HEADER_FILE_ONLY TRUE
-            VS_TOOL_OVERRIDE "None"
-    )
+set_source_files_properties(
+    Function/RendererV2/shaders/vulkan_forward.hlsl
+    Function/RendererV2/shaders/vulkan_object_id.hlsl
+    PROPERTIES
+        HEADER_FILE_ONLY TRUE
+        VS_TOOL_OVERRIDE "None"
+)
 
-    list(APPEND NEXAUR_ENGINE_RENDERER_V2_FILES
-        Function/RendererV2/render_scene_frame.h
-        Function/RendererV2/render_scene_frame_builder.h
-        Function/RendererV2/render_scene_frame_builder.cpp
-        Function/RendererV2/render_view.h
-        Function/RendererV2/passes/vulkan_forward_pass.h
-        Function/RendererV2/passes/vulkan_forward_pass.cpp
-        Function/RendererV2/passes/vulkan_object_id_pass.h
-        Function/RendererV2/passes/vulkan_object_id_pass.cpp
-        Function/RendererV2/shaders/vulkan_forward.hlsl
-        Function/RendererV2/shaders/vulkan_object_id.hlsl
-        Function/RendererV2/vulkan_draw_list.h
-        Function/RendererV2/vulkan_draw_list_builder.h
-        Function/RendererV2/vulkan_draw_list_builder.cpp
-        Function/RendererV2/vulkan_resource_context.h
-        Function/RendererV2/resources/vulkan_material_resource.h
-        Function/RendererV2/resources/vulkan_material_resource.cpp
-        Function/RendererV2/resources/vulkan_mesh_resource.h
-        Function/RendererV2/resources/vulkan_mesh_resource.cpp
-        Function/RendererV2/resources/vulkan_model_resource.h
-        Function/RendererV2/resources/vulkan_model_resource.cpp
-        Function/RendererV2/targets/vulkan_viewport_target.h
-        Function/RendererV2/targets/vulkan_viewport_target.cpp
-        Function/RendererV2/targets/vulkan_picking_target.h
-        Function/RendererV2/targets/vulkan_picking_target.cpp
-        Function/RendererV2/ui/vulkan_imgui_renderer.h
-        Function/RendererV2/ui/vulkan_imgui_renderer.cpp
-        Function/RendererV2/vulkan_renderer_system.h
-        Function/RendererV2/vulkan_renderer_system.cpp
-        Function/RendererV2/vulkan_render_data_translator.h
-        Function/RendererV2/vulkan_render_data_translator.cpp
-        Function/RendererV2/vulkan_render_resource_cache.h
-        Function/RendererV2/vulkan_render_resource_cache.cpp
-    )
-endif()
+set(NEXAUR_ENGINE_RENDERER_V2_FILES
+    Function/RendererV2/render_scene_frame.h
+    Function/RendererV2/render_scene_frame_builder.h
+    Function/RendererV2/render_scene_frame_builder.cpp
+    Function/RendererV2/render_view.h
+    Function/RendererV2/passes/vulkan_forward_pass.h
+    Function/RendererV2/passes/vulkan_forward_pass.cpp
+    Function/RendererV2/passes/vulkan_object_id_pass.h
+    Function/RendererV2/passes/vulkan_object_id_pass.cpp
+    Function/RendererV2/shaders/vulkan_forward.hlsl
+    Function/RendererV2/shaders/vulkan_object_id.hlsl
+    Function/RendererV2/vulkan_draw_list.h
+    Function/RendererV2/vulkan_draw_list_builder.h
+    Function/RendererV2/vulkan_draw_list_builder.cpp
+    Function/RendererV2/vulkan_render_target.h
+    Function/RendererV2/vulkan_resource_context.h
+    Function/RendererV2/resources/vulkan_material_resource.h
+    Function/RendererV2/resources/vulkan_material_resource.cpp
+    Function/RendererV2/resources/vulkan_mesh_resource.h
+    Function/RendererV2/resources/vulkan_mesh_resource.cpp
+    Function/RendererV2/resources/vulkan_model_resource.h
+    Function/RendererV2/resources/vulkan_model_resource.cpp
+    Function/RendererV2/targets/vulkan_viewport_target.h
+    Function/RendererV2/targets/vulkan_viewport_target.cpp
+    Function/RendererV2/targets/vulkan_picking_target.h
+    Function/RendererV2/targets/vulkan_picking_target.cpp
+    Function/RendererV2/ui/vulkan_imgui_renderer.h
+    Function/RendererV2/ui/vulkan_imgui_renderer.cpp
+    Function/RendererV2/vulkan_renderer_system.h
+    Function/RendererV2/vulkan_renderer_system.cpp
+    Function/RendererV2/vulkan_render_data_translator.h
+    Function/RendererV2/vulkan_render_data_translator.cpp
+    Function/RendererV2/vulkan_render_resource_cache.h
+    Function/RendererV2/vulkan_render_resource_cache.cpp
+)
 
-set(NEXAUR_ENGINE_THIRD_PARTY_FILES)
-if(NEXAUR_USE_VCPKG_DEPS)
-    list(APPEND NEXAUR_ENGINE_THIRD_PARTY_FILES
-        ThirdParty/stb_image.cpp
-    )
-endif()
+set(NEXAUR_ENGINE_THIRD_PARTY_FILES
+    ThirdParty/stb_image.cpp
+)
 
 set(NEXAUR_ENGINE_FILES
     ${NEXAUR_ENGINE_ROOT_FILES}
@@ -272,99 +204,65 @@ target_include_directories(NexAurEngine PUBLIC
 )
 
 # 链接第三方库
-if(NEXAUR_USE_VCPKG_DEPS)
-    find_package(assimp CONFIG REQUIRED)
-    find_package(EnTT CONFIG REQUIRED)
-    find_package(glad CONFIG REQUIRED)
-    find_package(glfw3 CONFIG REQUIRED)
-    find_package(glm CONFIG REQUIRED)
-    find_package(imgui CONFIG REQUIRED)
-    find_package(imguizmo CONFIG REQUIRED)
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(Stb REQUIRED)
+find_package(assimp CONFIG REQUIRED)
+find_package(EnTT CONFIG REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
+find_package(imguizmo CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_package(Stb REQUIRED)
+find_package(Vulkan REQUIRED)
+find_package(directx-dxc CONFIG REQUIRED)
+find_package(vk-bootstrap CONFIG REQUIRED)
+find_package(volk CONFIG REQUIRED)
+find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 
-    if(NEXAUR_BUILD_RENDERER_V2)
-        find_package(Vulkan REQUIRED)
-        find_package(directx-dxc CONFIG REQUIRED)
-        find_package(vk-bootstrap CONFIG REQUIRED)
-        find_package(volk CONFIG REQUIRED)
-        find_package(VulkanMemoryAllocator CONFIG REQUIRED)
-    endif()
+nexaur_select_dependency_target(NEXAUR_ASSIMP_TARGET assimp::assimp assimp)
+nexaur_select_dependency_target(NEXAUR_ENTT_TARGET EnTT::EnTT EnTT)
+nexaur_select_dependency_target(NEXAUR_GLFW_TARGET glfw glfw3::glfw glfw3)
+nexaur_select_dependency_target(NEXAUR_GLM_TARGET glm::glm glm)
+nexaur_select_dependency_target(NEXAUR_IMGUI_TARGET imgui::imgui imgui)
+nexaur_select_dependency_target(NEXAUR_IMGUIZMO_TARGET imguizmo::imguizmo imguizmo)
+nexaur_select_dependency_target(NEXAUR_SPDLOG_TARGET spdlog::spdlog spdlog)
 
-    nexaur_select_dependency_target(NEXAUR_ASSIMP_TARGET assimp::assimp assimp)
-    nexaur_select_dependency_target(NEXAUR_ENTT_TARGET EnTT::EnTT EnTT)
-    nexaur_select_dependency_target(NEXAUR_GLAD_TARGET glad::glad glad)
-    nexaur_select_dependency_target(NEXAUR_GLFW_TARGET glfw glfw3::glfw glfw3)
-    nexaur_select_dependency_target(NEXAUR_GLM_TARGET glm::glm glm)
-    nexaur_select_dependency_target(NEXAUR_IMGUI_TARGET imgui::imgui imgui)
-    nexaur_select_dependency_target(NEXAUR_IMGUIZMO_TARGET imguizmo::imguizmo imguizmo)
-    nexaur_select_dependency_target(NEXAUR_SPDLOG_TARGET spdlog::spdlog spdlog)
+target_include_directories(NexAurEngine PUBLIC
+    "${Stb_INCLUDE_DIR}"
+)
 
-    target_include_directories(NexAurEngine PUBLIC
-        "${Stb_INCLUDE_DIR}"
-    )
+target_link_libraries(NexAurEngine PUBLIC
+    ${NEXAUR_ASSIMP_TARGET}
+    ${NEXAUR_ENTT_TARGET}
+    ${NEXAUR_GLFW_TARGET}
+    ${NEXAUR_GLM_TARGET}
+    ${NEXAUR_IMGUI_TARGET}
+    ${NEXAUR_IMGUIZMO_TARGET}
+    ${NEXAUR_SPDLOG_TARGET}
+)
 
-    target_link_libraries(NexAurEngine PUBLIC
-        ${NEXAUR_ASSIMP_TARGET}
-        ${NEXAUR_ENTT_TARGET}
-        ${NEXAUR_GLAD_TARGET}
-        ${NEXAUR_GLFW_TARGET}
-        ${NEXAUR_GLM_TARGET}
-        ${NEXAUR_IMGUI_TARGET}
-        ${NEXAUR_IMGUIZMO_TARGET}
-        ${NEXAUR_SPDLOG_TARGET}
-    )
+target_link_libraries(NexAurEngine PRIVATE
+    Vulkan::Vulkan
+    vk-bootstrap::vk-bootstrap
+    volk::volk
+    GPUOpen::VulkanMemoryAllocator
+)
 
-    if(NEXAUR_BUILD_RENDERER_V2)
-        target_compile_definitions(NexAurEngine PRIVATE NEXAUR_RENDERER_V2_ENABLED=1)
-        target_link_libraries(NexAurEngine PRIVATE
-            Vulkan::Vulkan
-            vk-bootstrap::vk-bootstrap
-            volk::volk
-            GPUOpen::VulkanMemoryAllocator
-        )
-
-        set(NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Function/RendererV2/shaders")
-        set(NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR "$<TARGET_FILE_DIR:NexAurEngine>/shaders/RendererV2")
-        add_custom_command(TARGET NexAurEngine POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}"
-            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
-                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.vert.spv"
-                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
-            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
-                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.frag.spv"
-                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
-            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
-                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_object_id.vert.spv"
-                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
-            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
-                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_object_id.frag.spv"
-                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
-            COMMENT "Compiling RendererV2 HLSL shaders"
-            VERBATIM
-        )
-    endif()
-else()
-    target_include_directories(NexAurEngine PUBLIC
-        "${CMAKE_SOURCE_DIR}/external/entt/src"
-        "${CMAKE_SOURCE_DIR}/external/glm"
-        "${CMAKE_SOURCE_DIR}/external/spdlog/include"
-        "${CMAKE_SOURCE_DIR}/external/glfw/include"
-        "${CMAKE_SOURCE_DIR}/external/glad/include"
-        "${CMAKE_SOURCE_DIR}/external/stb"
-        "${CMAKE_SOURCE_DIR}/external/assimp/include"
-        "${CMAKE_SOURCE_DIR}/external/imgui"
-        "${CMAKE_SOURCE_DIR}/external/imgui/backends"
-    )
-
-    target_link_libraries(NexAurEngine PUBLIC
-        EnTT
-        glad
-        glfw
-        glm
-        spdlog
-        stb
-        assimp
-        imgui
-    )
-endif()
+set(NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Function/RendererV2/shaders")
+set(NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR "$<TARGET_FILE_DIR:NexAurEngine>/shaders/RendererV2")
+add_custom_command(TARGET NexAurEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}"
+    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
+            -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.vert.spv"
+            "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
+    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
+            -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.frag.spv"
+            "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
+    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
+            -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_object_id.vert.spv"
+            "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
+    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
+            -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_object_id.frag.spv"
+            "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
+    COMMENT "Compiling RendererV2 HLSL shaders"
+    VERBATIM
+)

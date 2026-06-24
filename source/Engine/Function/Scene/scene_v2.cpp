@@ -86,7 +86,7 @@ namespace NexAur {
             AssetHandle environment_handle = env_comp.getEnvironmentHandle();
             if (!environment_handle) break;
 
-            // Scene 只输出 HDR 环境资产引用，IBL GPU 数据由 RendererSystem 解析。
+            // Scene 只输出 HDR 环境资产引用，GPU 环境资源由 Renderer 后端解析。
             render_packet->environment_data.environment_asset = environment_handle;
             render_packet->environment_data.intensity = env_comp.intensity;
             break;
@@ -99,7 +99,7 @@ namespace NexAur {
             if (!model_handle) return;
 
             RenderObjectData object_data;
-            // Scene 只输出资产引用，GPU 数据由 RendererSystem 在渲染前解析。
+            // Scene 只输出资产引用，GPU 数据由 Renderer 后端在渲染前解析。
             object_data.model_asset = model_handle;
             object_data.transform = transform_comp.getTransform();
             object_data.entity_id = static_cast<int>(static_cast<uint32_t>(entity)); // 标记实体ID，编辑器选中时需要
