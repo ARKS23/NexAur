@@ -1,11 +1,16 @@
 #pragma once
-#include "Function/Scene/scene_v2.h"
-#include "Function/Scene/component.h"
+
+#include <memory>
+#include <string>
+
 #include "Function/Resource/asset_manager.h"
+#include "Function/Resource/mesh.h"
+#include "Function/Scene/component.h"
 #include "Function/Scene/entity.h"
+#include "Function/Scene/scene_v2.h"
 
 namespace NexAur {
-    struct RendererMaterialData;
+    class Model;
 
     class SceneTestClass {
     public:
@@ -17,7 +22,13 @@ namespace NexAur {
         Entity addModelEntity(std::string name, const std::string& model_path, glm::vec3 position = glm::vec3(0.0f));
 
     private:
-        void setMaterial(RendererMaterialData& materail_data, const std::string& material_type);
+        Entity addRuntimeModelEntity(
+            const std::string& name,
+            const std::shared_ptr<Model>& model,
+            const glm::vec3& position,
+            const glm::vec3& rotation,
+            const glm::vec3& scale);
+        void setMaterial(MaterialData& material_data, const std::string& material_type);
 
     private:
         std::shared_ptr<SceneV2> m_scene;

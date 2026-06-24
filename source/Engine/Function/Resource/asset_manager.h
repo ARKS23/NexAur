@@ -62,6 +62,7 @@ namespace NexAur {
         std::string getPath(AssetHandle handle) const { return getPath(handle.id); }
         AssetType getAssetType(const UUID& handle) const;
         AssetType getAssetType(AssetHandle handle) const { return getAssetType(handle.id); }
+        AssetHandle registerRuntimeModel(const std::shared_ptr<Model>& model, const std::string& debug_name = "RuntimeModel");
 
         // 运行期资产只登记身份和元数据，底层 GPU 对象由对应 Renderer 缓存保存。
         AssetHandle registerRuntimeAsset(AssetType type, const std::string& debug_name = "");

@@ -131,7 +131,7 @@ namespace NexAur {
 
     bool VulkanRenderResourceCache::createAllocator(const VulkanResourceContext& context) {
         VmaAllocatorCreateInfo allocator_info{};
-        allocator_info.vulkanApiVersion = VK_API_VERSION_1_1;
+        allocator_info.vulkanApiVersion = context.api_version;
         allocator_info.instance = context.instance;
         allocator_info.physicalDevice = context.physical_device;
         allocator_info.device = context.device;

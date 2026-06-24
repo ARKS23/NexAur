@@ -274,6 +274,18 @@ namespace NexAur {
         return AssetHandle(new_uuid);
     }
 
+    AssetHandle AssetManager::registerRuntimeModel(const std::shared_ptr<Model>& model, const std::string& debug_name) {
+        if (!model || !model->isLoaded()) {
+            NX_CORE_ERROR("Attempted to register invalid runtime CPU model.");
+            return AssetHandle();
+        }
+
+        UUID new_uuid;
+        m_uuid_cpu_model_cache[new_uuid] = model;
+        recordAssetMetadata(new_uuid, AssetType::Model, "", true, debug_name);
+        return AssetHandle(new_uuid);
+    }
+
     void AssetManager::recordAssetMetadata(const UUID& handle, AssetType type, const std::string& path, bool runtime_generated, const std::string& debug_name) {
         AssetMetadata metadata;
         metadata.handle = AssetHandle(handle);

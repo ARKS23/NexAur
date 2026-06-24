@@ -23,7 +23,7 @@ namespace NexAur {
         VulkanRenderResourceCache& operator=(const VulkanRenderResourceCache&) = delete;
 
         bool init(const VulkanResourceContext& context);
-        // 调用方需要保证没有正在使用缓存资源的 GPU 命令；Backend::shutdown() 会先等待 device idle。
+        // Caller must make sure cached GPU resources are no longer referenced by in-flight commands.
         void clear();
         void shutdown();
 

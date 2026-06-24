@@ -87,6 +87,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/mesh.h
     Function/Resource/model.h
     Function/Resource/model.cpp
+    Function/Resource/procedural_model_builder.h
+    Function/Resource/procedural_model_builder.cpp
     Function/Scene/component.h
     Function/Scene/entity.h
     Function/Scene/entity.cpp
@@ -184,8 +186,24 @@ set(NEXAUR_ENGINE_RENDERER_FILES
 
 set(NEXAUR_ENGINE_RENDERER_V2_FILES)
 if(NEXAUR_BUILD_RENDERER_V2)
+    set_source_files_properties(
+        Function/RendererV2/shaders/vulkan_forward.hlsl
+        PROPERTIES
+            HEADER_FILE_ONLY TRUE
+            VS_TOOL_OVERRIDE "None"
+    )
+
     list(APPEND NEXAUR_ENGINE_RENDERER_V2_FILES
+        Function/RendererV2/render_scene_frame.h
+        Function/RendererV2/render_scene_frame_builder.h
+        Function/RendererV2/render_scene_frame_builder.cpp
         Function/RendererV2/render_view.h
+        Function/RendererV2/passes/vulkan_forward_pass.h
+        Function/RendererV2/passes/vulkan_forward_pass.cpp
+        Function/RendererV2/shaders/vulkan_forward.hlsl
+        Function/RendererV2/vulkan_draw_list.h
+        Function/RendererV2/vulkan_draw_list_builder.h
+        Function/RendererV2/vulkan_draw_list_builder.cpp
         Function/RendererV2/vulkan_resource_context.h
         Function/RendererV2/resources/vulkan_material_resource.h
         Function/RendererV2/resources/vulkan_material_resource.cpp
@@ -257,6 +275,7 @@ if(NEXAUR_USE_VCPKG_DEPS)
 
     if(NEXAUR_BUILD_RENDERER_V2)
         find_package(Vulkan REQUIRED)
+        find_package(directx-dxc CONFIG REQUIRED)
         find_package(vk-bootstrap CONFIG REQUIRED)
         find_package(volk CONFIG REQUIRED)
         find_package(VulkanMemoryAllocator CONFIG REQUIRED)
@@ -293,6 +312,20 @@ if(NEXAUR_USE_VCPKG_DEPS)
             vk-bootstrap::vk-bootstrap
             volk::volk
             GPUOpen::VulkanMemoryAllocator
+        )
+
+        set(NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Function/RendererV2/shaders")
+        set(NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR "$<TARGET_FILE_DIR:NexAurEngine>/shaders/RendererV2")
+        add_custom_command(TARGET NexAurEngine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}"
+            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
+                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.vert.spv"
+                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
+            COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
+                    -Fo "${NEXAUR_RENDERER_V2_SHADER_OUTPUT_DIR}/vulkan_forward.frag.spv"
+                    "${NEXAUR_RENDERER_V2_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
+            COMMENT "Compiling RendererV2 HLSL shaders"
+            VERBATIM
         )
     endif()
 else()

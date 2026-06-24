@@ -15,6 +15,7 @@ namespace NexAur {
     public:
         // 传递路径解析模型
         Model(const std::string& path);
+        Model(std::vector<Mesh> meshes, std::string debug_name);
         ~Model() = default;
 
         // 获取解析出来的子网格体

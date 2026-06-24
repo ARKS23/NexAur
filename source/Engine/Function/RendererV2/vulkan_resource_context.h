@@ -14,12 +14,14 @@ namespace NexAur {
         VkDevice device = VK_NULL_HANDLE;
         VkQueue graphics_queue = VK_NULL_HANDLE;
         uint32_t graphics_queue_family = 0;
+        uint32_t api_version = VK_API_VERSION_1_3;
 
         bool valid() const {
             return instance != VK_NULL_HANDLE &&
                    physical_device != VK_NULL_HANDLE &&
                    device != VK_NULL_HANDLE &&
-                   graphics_queue != VK_NULL_HANDLE;
+                   graphics_queue != VK_NULL_HANDLE &&
+                   api_version >= VK_API_VERSION_1_3;
         }
     };
 

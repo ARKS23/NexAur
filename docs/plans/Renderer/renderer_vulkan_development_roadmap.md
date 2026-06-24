@@ -34,7 +34,7 @@
   -> RendererV2 / VulkanRendererSystem 空后端
   -> RenderDataPacket -> RenderView
   -> VulkanRenderResourceCache
-  -> RenderDataPacket -> RenderScene
+  -> RenderDataPacket -> RenderSceneFrame -> VulkanDrawList
   -> Editor viewport 过渡
   -> Vulkan viewport image
   -> Vulkan picking
@@ -59,8 +59,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D7 VulkanRenderResourceCache 已完成
-代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端可创建 instance / surface / device / swapchain，提交清屏帧，把 RenderDataPacket 相机数据转换为 RendererV2 RenderView，并具备 AssetHandle -> Vulkan model resource 的资源缓存链路
+当前阶段：D8 SceneFrame / DrawList / ForwardPass 已完成
+代码状态：RendererModule 可在 OpenGL legacy 与 RendererV2 Vulkan 后端之间选择；Vulkan 后端已对齐 Vulkan 1.3+，可创建 instance / surface / device / swapchain，把 RenderDataPacket 转换为 RenderView / RenderSceneFrame / VulkanDrawList，并通过 dynamic rendering forward pass 绘制 opaque mesh
 OpenGL 后端：仍为当前可运行主路径，并保留 legacy fallback
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -104,7 +104,7 @@ externalRenderer：仅作为临时本地参考目录
 | D5 RendererV2 / VulkanRendererSystem 骨架 | 已完成 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
 | D6 RenderView 转换 | 已完成 | NexAur 相机驱动新 Vulkan renderer | 总方案 |
 | D7 VulkanRenderResourceCache | 已完成 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
-| D8 RenderScene 转换 | 待开始 | NexAur 场景模型提交给新 Vulkan renderer | 总方案 |
+| D8 SceneFrame / DrawList / ForwardPass | 已完成 | Vulkan 1.3 + dynamic rendering 下提交并显示 NexAur 场景模型 | 总方案 |
 | D9 Editor viewport 过渡 | 待开始 | Vulkan backend 下 Editor 不崩溃，有明确输出策略 | 接口文档 |
 | D10 Vulkan viewport image | 待开始 | Editor viewport 显示 Vulkan offscreen image | 接口文档 |
 | D11 Vulkan picking | 待开始 | ObjectId pass / readback 接入 | 接口文档 |
@@ -867,25 +867,313 @@ cmake --build --preset msvc-legacy-debug
 - 材质资源第一版只保存路径和调试名，texture / sampler 留给后续材质系统。
 ```
 
-### D8：RenderDataPacket -> RenderScene
+### D8：RenderDataPacket -> RenderSceneFrame -> VulkanDrawList
 
 目标：
 
-- NexAur scene objects 提交给新 Vulkan renderer。
+- RendererV2 明确对齐 Vulkan 1.3+ baseline，后续默认使用 dynamic rendering。
+- 建立现代引擎式三段数据流：`RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass`。
+- 让 `RenderDataPacket` 的模型、transform、entity id、灯光和环境强度先进入后端无关的帧场景，再由 Vulkan 后端解析成 draw item。
+- 第一版用最小 unlit / debug forward path 显示 opaque 模型，验证 transform 和相机方向。
 
-任务：
+当前状态：
 
-- 遍历 opaque / transparent objects。
-- 调用 `RenderScene::addModel()`。
-- 转换 directional light。
-- 转换 environment intensity。
-- 后续接 environment resource。
+```text
+已完成
+前置：
+- D6 已完成 RenderDataPacket -> RenderView
+- D7 已完成 AssetHandle -> VulkanModelResource
+- D8 已将 RendererV2 baseline 对齐到 Vulkan 1.3+，并启用 dynamic rendering 所需特性
+```
+
+设计原则：
+
+- `RenderSceneFrame` 是 RendererV2 内部每帧语义场景描述，不暴露给 Scene / Editor / Gameplay。
+- `RenderSceneFrame` 不保存 Vulkan resource 指针，只保存 asset handle、transform、entity id、灯光等后端无关数据。
+- `VulkanDrawList` 是 Vulkan 后端解析后的 draw item 列表，只在 RendererV2 / Vulkan 内部消费。
+- `VulkanForwardPass` 只负责 dynamic rendering 和 draw command，不负责解析 `RenderDataPacket`。
+- `RenderDataPacket` 继续作为跨模块契约；Scene 仍然只输出 `AssetHandle`、transform、灯光等后端无关数据。
+- D8 使用 Vulkan 1.3 dynamic rendering，不新增旧式 `VkRenderPass` / `VkFramebuffer` 长期路径。
+- 第一版只保证 opaque 模型可见；transparent sorting、PBR 材质、纹理采样、IBL、picking 和 viewport image 继续后移。
+- shader 使用 HLSL，并通过 DXC 编译为 SPIR-V。
+
+推荐数据流：
+
+```text
+RenderDataPacket
+  -> RenderView
+  -> RenderSceneFrame      // 每帧语义场景，仍使用 AssetHandle
+  -> VulkanDrawList        // Vulkan 后端资源解析后的 mesh draw item
+  -> VulkanForwardPass     // dynamic rendering + vkCmdDrawIndexed
+```
+
+建议拆分：
+
+#### D8-0：Vulkan 1.3 baseline 对齐
+
+当前 RendererV2 骨架还有 Vulkan 1.1 临时代码，需要先修正：
+
+```text
+source/Engine/Function/RendererV2/vulkan_renderer_system.cpp
+  -> require_api_version(1, 3, 0)
+  -> set_minimum_version(1, 3)
+
+source/Engine/Function/RendererV2/vulkan_render_resource_cache.cpp
+  -> VMA allocator vulkanApiVersion 改为 1.3 或实际 physical device apiVersion
+```
+
+设备特性建议显式查询和启用：
+
+```cpp
+VkPhysicalDeviceVulkan13Features features13{};
+features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+features13.dynamicRendering = VK_TRUE;
+features13.synchronization2 = VK_TRUE;
+features13.shaderDemoteToHelperInvocation = VK_TRUE; // 使用 alpha discard / demote shader 时需要
+```
+
+说明：
+
+- `dynamicRendering` 是 D8 绘制路径的核心前提。
+- `synchronization2` 不一定要在 D8 第一版大量使用，但建议 baseline 中一起打开，避免后续 barrier 体系双轨。
+- `shaderDemoteToHelperInvocation` 对 externalRenderer 的 alpha mask / discard 路径很重要；D8 unlit shader 可以暂时不用，但 baseline 可以提前对齐。
+- 初始化失败时应输出清晰日志，而不是静默 fallback 到 1.1。
+
+#### D8-A：新增 RenderSceneFrame
+
+建议新增：
+
+```text
+source/Engine/Function/RendererV2/render_scene_frame.h
+```
+
+`RenderSceneFrame` 是 RendererV2 内部的每帧语义场景。它仍然接近引擎提交数据，不直接绑定 Vulkan resource。
+
+```cpp
+struct RenderSceneFrameObject {
+    AssetHandle model_asset;
+    glm::mat4 transform{1.0f};
+    int entity_id = -1;
+};
+
+struct RenderSceneFrame {
+    RenderView view;
+    std::vector<RenderSceneFrameObject> opaque_objects;
+    std::vector<RenderSceneFrameObject> transparent_objects;
+
+    RenderFrameDirectionalLight directional_light;
+    std::vector<RenderFramePointLight> point_lights;
+
+    AssetHandle environment_asset;
+    float environment_intensity = 1.0f;
+};
+```
+
+注意：
+
+- `render_scene_frame.h` 尽量不要 include 旧 `Renderer/data/render_data.h`，因为旧文件里还带着 OpenGL legacy 的 RHI 类型。
+- 可以在 RendererV2 中定义轻量 `RenderFrameDirectionalLight` / `RenderFramePointLight`，由 builder 从 `RenderDataPacket` 拷贝。
+- `transparent_objects` 第一版可以构建但不绘制，避免一开始引入排序和混合。
+- `RenderSceneFrame` 每帧重建，不做持久 scene registry。后续如果要做大型场景和增量更新，再引入 persistent renderer scene。
+
+#### D8-B：新增 RenderSceneFrameBuilder
+
+建议新增：
+
+```text
+source/Engine/Function/RendererV2/render_scene_frame_builder.h / .cpp
+```
+
+职责：
+
+- 输入 `RenderDataPacket` 和 `RenderView`。
+- 输出 `RenderSceneFrame`。
+- 只做数据清洗、复制和分流，不解析 GPU resource。
+
+建议接口：
+
+```cpp
+RenderSceneFrame buildRenderSceneFrame(
+    const RenderDataPacket& render_data,
+    const RenderView& render_view) const;
+```
+
+转换规则：
+
+- `scene_frame.view = render_view`。
+- 遍历 `opaque_objects`，复制有效 `model_asset`、`transform`、`entity_id`。
+- 遍历 `transparent_objects`，复制有效对象，但第一版可以只进入列表不绘制。
+- 无效 handle 直接跳过并记录 warning。
+- 拷贝 `transform` 和 `entity_id`。
+- 拷贝 directional light。
+- 拷贝 point lights，必要时限制最大数量，避免后续 uniform 爆掉。
+- 拷贝 environment asset 和 intensity；D8 不烘焙 IBL。
+
+#### D8-C：新增 VulkanDrawList 和 DrawListBuilder
+
+建议新增：
+
+```text
+source/Engine/Function/RendererV2/vulkan_draw_list.h
+source/Engine/Function/RendererV2/vulkan_draw_list_builder.h / .cpp
+```
+
+`VulkanDrawList` 是 Vulkan 后端真正提交给 pass 的 draw item 列表。
+
+```cpp
+struct VulkanMeshDrawItem {
+    const VulkanMeshResource* mesh = nullptr;
+    glm::mat4 transform{1.0f};
+    int entity_id = -1;
+    uint64_t sort_key = 0;
+};
+
+struct VulkanDrawList {
+    RenderView view;
+    std::vector<VulkanMeshDrawItem> opaque_items;
+    std::vector<VulkanMeshDrawItem> transparent_items;
+};
+```
+
+`VulkanDrawListBuilder` 负责：
+
+- 输入 `RenderSceneFrame`。
+- 通过 `VulkanRenderResourceCache::getOrCreateModel()` 解析 `AssetHandle`。
+- 把 model flatten 成 mesh draw item。
+- 生成第一版 sort key。
+- 加载失败的对象不进入 draw list，并记录 warning / error。
+
+建议接口：
+
+```cpp
+VulkanDrawList buildDrawList(
+    const RenderSceneFrame& scene_frame,
+    VulkanRenderResourceCache& resource_cache,
+    AssetManager& asset_manager);
+```
+
+边界：
+
+- 资源解析只发生在 `VulkanDrawListBuilder`，不放进 `RenderSceneFrameBuilder`。
+- `VulkanForwardPass` 不关心 `AssetHandle`，只消费已经解析好的 `VulkanMeshDrawItem`。
+- 这一步类似 UE 的 MeshDrawCommand / Unity 的 RendererList / Godot 的 renderer draw list。
+
+#### D8-D：Backend 帧流程接入
+
+当前流程：
+
+```cpp
+translator.resetFrame();
+RenderView render_view = translator.buildRenderView(...);
+drawFrame(render_view);
+```
+
+D8 后演进为：
+
+```cpp
+translator.resetFrame();
+
+RenderView render_view = translator.buildRenderView(...);
+RenderSceneFrame scene_frame = scene_frame_builder.buildRenderSceneFrame(render_data, render_view);
+VulkanDrawList draw_list = draw_list_builder.buildDrawList(
+    scene_frame,
+    resource_cache,
+    asset_manager);
+
+drawFrame(draw_list);
+```
+
+实现要求：
+
+- `VulkanRendererSystem::Backend` 仍然是后端细节集中点。
+- `AssetManager` 第一版可以通过现有资源入口获取；后续如果 ResourceModule 暴露服务，再替换为服务注入。
+- 不要让 Scene / Editor include `RendererV2/render_scene_frame.h` 或 `vulkan_draw_list.h`。
+- resource upload 发生在 draw command recording 之前；上传失败的对象不进入 draw list。
+- `Backend` 只串联 view builder、scene frame builder、draw list builder 和 pass，不把所有逻辑写成一个巨型函数。
+
+#### D8-E：新增 VulkanForwardPass
+
+为了满足“Vulkan backend 显示 NexAur 场景模型”，D8 需要补最小 forward 绘制闭环。
+
+建议新增：
+
+```text
+source/Engine/Function/RendererV2/passes/vulkan_forward_pass.h / .cpp
+```
+
+需要新增或改造：
+
+- swapchain image view 创建和销毁。
+- depth image / depth image view 创建和销毁。
+- dynamic rendering begin/end：
+  - `VkRenderingAttachmentInfo`
+  - `VkRenderingInfo`
+  - `vkCmdBeginRendering`
+  - `vkCmdEndRendering`
+- graphics pipeline：
+  - `VkPipelineRenderingCreateInfo`
+  - color format = swapchain format
+  - depth format = depth image format
+- 最小 HLSL shader：
+  - vertex shader：position / normal / uv 输入，输出 clip position。
+  - fragment shader：先输出固定颜色或简单 lambert，不接纹理。
+- camera / model 数据：
+  - 第一版可以用 push constants 传 `view_projection` 和 `model`，保持 descriptor 系统后移。
+  - 如果 push constant 超限，再改为 camera uniform buffer + model push constant。
+- draw：
+  - 遍历 `draw_list.opaque_items`。
+  - bind vertex / index buffer。
+  - `vkCmdDrawIndexed`。
+
+不建议在 D8 第一版引入完整 descriptor/material system。D8 的目标是“能看见模型并验证提交链路”，不是完成最终 forward renderer。
+
+#### D8-F：验证和调试
+
+建议验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-renderer-v2-debug
+cmake --build --preset msvc-vcpkg-debug
+cmake --build --preset msvc-legacy-debug
+```
+
+运行验证：
+
+```text
+bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe 3 秒 smoke check
+```
+
+手动观察：
+
+- Vulkan backend 能启动并显示模型。
+- 相机移动后模型视角变化正确。
+- 模型 transform 正确。
+- resize 后 dynamic rendering 目标重建稳定。
+- 资源加载失败时不会崩溃。
+
+D8 不做：
+
+- 不做完整 PBR。
+- 不做 texture / sampler。
+- 不做 IBL / HDR。
+- 不做 transparent sorting 和 blending。
+- 不做 object picking。
+- 不做 Vulkan viewport image 嵌入 ImGui。
+- 不删除 OpenGL legacy。
+- 不让 Scene / Editor 依赖 Vulkan 或 RendererV2 内部类型。
 
 验收：
 
-- Vulkan backend 显示 NexAur 场景模型。
+- RendererV2 baseline 已切到 Vulkan 1.3+。
+- dynamic rendering feature 已启用，绘制路径不依赖旧式 `VkRenderPass` / `VkFramebuffer`。
+- `RenderSceneFrame` 可以从 `RenderDataPacket` 稳定构建，且不保存 Vulkan resource 指针。
+- `VulkanDrawList` 可以从 `RenderSceneFrame` 稳定构建，并完成 `AssetHandle -> VulkanModelResource -> mesh draw item` 解析。
+- 同一模型多次提交不会重复创建 `VulkanModelResource`。
+- Vulkan backend 能显示 NexAur 场景 opaque 模型。
 - Transform 正确。
-- 光照方向基本正确。
+- 相机 view / projection 与模型绘制匹配。
+- resize 后 swapchain / image view / depth / dynamic rendering 目标重建稳定。
+- OpenGL legacy 构建仍通过。
 
 ### D9：Editor viewport 过渡
 
@@ -999,11 +1287,11 @@ cmake --build --preset msvc-legacy-debug
 推荐下一步：
 
 ```text
-D8 开始：RenderDataPacket -> RenderScene
 D9 准备：Editor viewport 过渡
+D10 准备：Vulkan viewport image
 ```
 
-D8 开始前的已确认前提：
+D9 开始前的已确认前提：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
 - 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
@@ -1015,6 +1303,7 @@ D8 开始前的已确认前提：
 - RendererV2 Vulkan 后端已能启动、清屏、present 和关闭。
 - RendererV2 已具备 `RenderDataPacket -> RenderView` 转换。
 - RendererV2 已具备 `AssetHandle -> VulkanModelResource` 资源缓存链路。
+- RendererV2 已具备 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 的最小绘制链路。
 - OpenGL legacy 只作为过渡 fallback，不再继续增强。
 
 ## 9. 进度记录
@@ -1087,3 +1376,15 @@ D8 开始前的已确认前提：
 - 验证 D7：`cmake --build --preset msvc-vcpkg-debug` 通过。
 - 验证 D7：`cmake --build --preset msvc-legacy-debug` 通过。
 - 验证 D7：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
+- 补齐 D8 方案：明确 D8-0 先把 RendererV2 Vulkan baseline 从临时 1.1 对齐到 1.3+，后续绘制路径使用 dynamic rendering。
+- 补齐 D8 方案：拆分 `RenderSceneFrame`、`VulkanDrawList`、dynamic rendering 最小绘制路径和验收标准。
+- 改进 D8 方案：参考现代引擎分层，将 D8 数据流调整为 `RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass`，避免 `VulkanRendererSystem` 和 `RenderScene` 职责过重。
+- 完成 D8-0：RendererV2 Vulkan baseline 对齐到 1.3+，启用 `dynamicRendering`、`synchronization2` 和 `shaderDemoteToHelperInvocation`。
+- 完成 D8-A/B：新增 RendererV2 内部 `RenderSceneFrame` 和 `RenderSceneFrameBuilder`，从 `RenderDataPacket` 复制、清洗并分流对象、灯光和环境数据。
+- 完成 D8-C/D：新增 `VulkanDrawList` 和 `VulkanDrawListBuilder`，由 draw-list builder 负责 `AssetHandle -> VulkanModelResource -> VulkanMeshDrawItem` 解析，Backend 只做帧流程编排。
+- 完成 D8-E：新增 `VulkanForwardPass`，使用 HLSL -> DXC -> SPIR-V、Vulkan 1.3 dynamic rendering、swapchain image view、depth attachment 和最小 debug forward pipeline 绘制 opaque mesh。
+- 完成 D8 支撑项：新增 CPU runtime procedural model 路径，Sandbox 示例不再通过 legacy `RendererFactory` 创建过程模型 GPU 资源。
+- 验证 D8：`cmake --build --preset msvc-vcpkg-renderer-v2-debug` 通过。
+- 验证 D8：`bin/msvc-vcpkg-renderer-v2/Debug/Sandbox.exe` 3 秒 smoke check 通过。
+- 验证 D8：`cmake --build --preset msvc-vcpkg-debug` 通过。
+- 验证 D8：`cmake --build --preset msvc-legacy-debug` 通过。

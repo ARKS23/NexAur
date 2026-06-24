@@ -1,0 +1,49 @@
+#pragma once
+
+#include <vector>
+
+#include <glm/glm.hpp>
+
+#include "Core/Base.h"
+#include "Function/Resource/asset_handle.h"
+#include "Function/RendererV2/render_view.h"
+
+namespace NexAur {
+    struct RenderFrameDirectionalLight {
+        glm::vec3 direction{ -0.2f, -1.0f, -0.3f };
+        glm::vec3 color{ 1.0f };
+        float intensity = 1.0f;
+    };
+
+    struct RenderFramePointLight {
+        glm::vec3 position{ 0.0f };
+        glm::vec3 color{ 1.0f };
+        float intensity = 1.0f;
+        float constant = 1.0f;
+        float linear = 0.09f;
+        float quadratic = 0.032f;
+    };
+
+    struct RenderSceneFrameObject {
+        AssetHandle model_asset;
+        glm::mat4 transform{ 1.0f };
+        int entity_id = -1;
+    };
+
+    struct RenderSceneFrame {
+        RenderView view;
+
+        std::vector<RenderSceneFrameObject> opaque_objects;
+        std::vector<RenderSceneFrameObject> transparent_objects;
+
+        RenderFrameDirectionalLight directional_light;
+        std::vector<RenderFramePointLight> point_lights;
+
+        AssetHandle environment_asset;
+        float environment_intensity = 1.0f;
+
+        bool hasRenderableObjects() const {
+            return !opaque_objects.empty() || !transparent_objects.empty();
+        }
+    };
+} // namespace NexAur
