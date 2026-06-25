@@ -1804,26 +1804,32 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-D12.1 可选：RendererV2 目录命名收口
+继续 D12.1：Renderer 模块目录和职责边界收口
 或进入后续：补全材质、纹理、灯光、场景模块，准备小游戏 demo
 ```
 
-D12 完成后的已确认状态：
+D12 / D12.1 已确认状态：
 
 - `externalRenderer/` 仅作为临时本地参考目录。
-- 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构。
+- 新渲染模块已从迁移期 `RendererV2` 收口到 `source/Engine/Function/Renderer/Vulkan/`。
+- Renderer frame data 已收口到 `source/Engine/Function/Renderer/data/`。
+- Renderer backend-neutral frontend 已收口到 `source/Engine/Function/Renderer/frontend/`。
+- Vulkan draw data frontend 已收口到 `source/Engine/Function/Renderer/Vulkan/frontend/`。
 - NexAur 顶层已升级到 C++20。
 - NexAur 顶层已具备 vcpkg manifest / preset 构建路径。
-- RendererV2 新增 shader 统一使用 HLSL -> SPIR-V 流程。
+- Vulkan renderer 新增 shader 统一使用 HLSL -> SPIR-V 流程。
 - WindowService 已能提供 graphics API 状态和 Vulkan instance extensions。
 - Vulkan no-api window 编译路径已验证通过。
-- RendererV2 Vulkan 后端已能启动、清屏、present 和关闭。
-- RendererV2 已具备 `RenderDataPacket -> RenderView` 转换。
-- RendererV2 已具备 `AssetHandle -> VulkanModelResource` 资源缓存链路。
-- RendererV2 已具备 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 的最小绘制链路。
-- RendererV2 已具备 Vulkan viewport image，可嵌入 Editor viewport。
-- RendererV2 已具备 Vulkan ObjectId picking。
+- Vulkan 后端已能启动、清屏、present 和关闭。
+- Vulkan renderer 已具备 `RenderDataPacket -> RenderView` 转换。
+- Vulkan renderer 已具备 `AssetHandle -> VulkanModelResource` 资源缓存链路。
+- Vulkan renderer 已具备 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 的最小绘制链路。
+- Vulkan renderer 已具备 Vulkan viewport image，可嵌入 Editor viewport。
+- Vulkan renderer 已具备 Vulkan ObjectId picking。
 - OpenGL legacy 已从默认构建、vcpkg 依赖、UI backend 和主线源码中退役。
+- D12.1 已完成 PR-R12.1-A：`RendererService` 移出旧 `Renderer/RHI` 语义。
+- D12.1 已完成 PR-R12.1-B：`RendererV2` 源码目录收口为 `Renderer/Vulkan`。
+- D12.1 已完成 PR-R12.1-C：`Renderer/data`、`Renderer/frontend`、`Renderer/Vulkan/frontend` 职责边界收口。
 
 ## 9. 进度记录
 

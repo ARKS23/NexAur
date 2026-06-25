@@ -6,8 +6,8 @@
 #include <glm/glm.hpp>
 
 #include "Core/Base.h"
-#include "Function/Renderer/Vulkan/render_scene_frame.h"
-#include "Function/Renderer/Vulkan/render_view.h"
+#include "Function/Renderer/data/render_scene_frame.h"
+#include "Function/Renderer/data/render_view.h"
 
 namespace NexAur {
     class VulkanMaterialResource;

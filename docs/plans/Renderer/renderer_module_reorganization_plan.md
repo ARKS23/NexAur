@@ -176,20 +176,15 @@ source/Engine/Function/Renderer/
   renderer_service.h
   renderer_service_types.h
 
-  Data/
+  data/
     render_context.h
     render_data.h
     render_view.h
     render_scene_frame.h
+
+  frontend/
     render_scene_frame_builder.h
     render_scene_frame_builder.cpp
-
-  Frontend/
-    vulkan_render_data_translator.h
-    vulkan_render_data_translator.cpp
-    vulkan_draw_list.h
-    vulkan_draw_list_builder.h
-    vulkan_draw_list_builder.cpp
 
   Vulkan/
     vulkan_renderer_system.h
@@ -199,13 +194,20 @@ source/Engine/Function/Renderer/
     vulkan_render_resource_cache.h
     vulkan_render_resource_cache.cpp
 
-    Passes/
+    frontend/
+      vulkan_render_data_translator.h
+      vulkan_render_data_translator.cpp
+      vulkan_draw_list.h
+      vulkan_draw_list_builder.h
+      vulkan_draw_list_builder.cpp
+
+    passes/
       vulkan_forward_pass.h
       vulkan_forward_pass.cpp
       vulkan_object_id_pass.h
       vulkan_object_id_pass.cpp
 
-    Resources/
+    resources/
       vulkan_material_resource.h
       vulkan_material_resource.cpp
       vulkan_mesh_resource.h
@@ -213,13 +215,13 @@ source/Engine/Function/Renderer/
       vulkan_model_resource.h
       vulkan_model_resource.cpp
 
-    Targets/
+    targets/
       vulkan_viewport_target.h
       vulkan_viewport_target.cpp
       vulkan_picking_target.h
       vulkan_picking_target.cpp
 
-    UI/
+    ui/
       vulkan_imgui_renderer.h
       vulkan_imgui_renderer.cpp
 
@@ -368,53 +370,69 @@ Renderer
 
 ### PR-R12.1-C：整理 Renderer Data / Frontend
 
+执行状态：已完成。
+
+完成记录：
+
+- `RenderView` / `RenderSceneFrame` 已移动到 `Renderer/data`。
+- `RenderSceneFrameBuilder` 已移动到 `Renderer/frontend`。
+- `VulkanRenderDataTranslator` / `VulkanDrawList` / `VulkanDrawListBuilder` 已移动到 `Renderer/Vulkan/frontend`。
+- `source/Engine/CMakeLists.txt` 和相关 include path 已同步更新。
+- 已验证中立 `Renderer/data` / `Renderer/frontend` 不依赖 Vulkan backend。
+
 目标：
 
-- `render_data.h`、`render_context.h` 进入 `Renderer/Data`。
-- `render_view.h`、`render_scene_frame.*` 进入 `Renderer/Data`。
-- `vulkan_render_data_translator.*`、`vulkan_draw_list.*`、`vulkan_draw_list_builder.*` 进入 `Renderer/Frontend` 或 `Renderer/Vulkan/Frontend`。
+- 固定 `Renderer/data` 作为上层可理解的 frame data 层。
+- 固定 `Renderer/frontend` 作为 backend-neutral frame builder 层。
+- 固定 `Renderer/Vulkan/frontend` 作为 Vulkan draw data 构建层。
+- 让 `VulkanRendererSystem` 只编排 frame flow，不继续承担数据清洗和 draw list 构建职责。
 
 建议：
 
-- 如果 `VulkanDrawList` 绑定了 Vulkan resource 类型，应放到 `Renderer/Vulkan/Frontend`。
-- 如果未来想做 backend-neutral render graph，再把更通用的 frame data 保持在 `Renderer/Data`。
+- `render_data.h`、`render_context.h` 已在 `Renderer/data`，继续保留为模块外部数据契约。
+- `render_view.h`、`render_scene_frame.h` 不包含 Vulkan handle，应该移动到 `Renderer/data`。
+- `render_scene_frame_builder.*` 只把 `RenderDataPacket` 清洗成 `RenderSceneFrame`，应该移动到 `Renderer/frontend`。
+- `vulkan_render_data_translator.*` 处理 Vulkan clip space / projection policy，应该移动到 `Renderer/Vulkan/frontend`。
+- `vulkan_draw_list.*`、`vulkan_draw_list_builder.*` 绑定 Vulkan GPU resource，必须留在 `Renderer/Vulkan/frontend`。
+- 如果后续引入 backend-neutral RenderGraph，只能依赖 `Renderer/data` 里的数据，不依赖 `Renderer/Vulkan/frontend`。
 
 更明确的推荐目标结构：
 
 ```text
 source/Engine/Function/Renderer/
-  Data/
+  data/
     render_context.h
     render_data.h
     render_view.h
     render_scene_frame.h
 
-  Frontend/
+  frontend/
     render_scene_frame_builder.h
     render_scene_frame_builder.cpp
 
   Vulkan/
-    Frontend/
+    frontend/
       vulkan_render_data_translator.h
       vulkan_render_data_translator.cpp
       vulkan_draw_list.h
       vulkan_draw_list_builder.h
       vulkan_draw_list_builder.cpp
 
-    Passes/
-    Resources/
-    Targets/
-    UI/
+    passes/
+    resources/
+    targets/
+    ui/
 ```
 
 分层原则：
 
-- `Renderer/Data` 只放 backend-neutral frame data，不包含 Vulkan 类型。
-- `Renderer/Frontend` 负责把 Scene / Editor 提交的数据整理成 renderer 可消费的场景帧。
-- `Renderer/Vulkan/Frontend` 负责把 renderer frame data 转换成 Vulkan draw data。
-- `Renderer/Vulkan/Passes` 只负责具体 pass 的 GPU 执行逻辑。
-- `Renderer/Vulkan/Resources` 只负责 GPU 资源缓存和创建。
-- `Renderer/Vulkan/Targets` 只负责 viewport、picking、swapchain-adjacent render target。
+- `Renderer/data` 只放 backend-neutral frame data，不包含 Vulkan 类型。
+- `Renderer/frontend` 只负责把 Scene / Editor 提交的数据整理成 renderer 可消费的场景帧。
+- `Renderer/Vulkan/frontend` 只负责把 renderer frame data 转换成 Vulkan draw data。
+- `Renderer/Vulkan/passes` 只负责具体 pass 的 GPU 执行逻辑。
+- `Renderer/Vulkan/resources` 只负责 GPU 资源缓存和创建。
+- `Renderer/Vulkan/targets` 只负责 viewport、picking、swapchain-adjacent render target。
+- `Renderer/Vulkan/ui` 只负责 ImGui draw data 到 Vulkan command 的提交，不拥有 UI 系统生命周期。
 
 推荐数据流：
 
@@ -427,6 +445,40 @@ RenderDataPacket
 ```
 
 PR-R12.1-C 不应该改变渲染行为，也不应该开始实现 RenderGraph。它只是把现有数据阶段摆正，让后续 RenderGraph 有一个干净的插入点。
+
+#### 拆分步骤
+
+1. C1：移动 backend-neutral data。
+   - 将 `Renderer/Vulkan/render_view.h` 移到 `Renderer/data/render_view.h`。
+   - 将 `Renderer/Vulkan/render_scene_frame.h` 移到 `Renderer/data/render_scene_frame.h`。
+   - 更新 include path，确保 `Renderer/data` 不 include `Renderer/Vulkan`。
+
+2. C2：移动 backend-neutral frontend。
+   - 将 `Renderer/Vulkan/render_scene_frame_builder.*` 移到 `Renderer/frontend/render_scene_frame_builder.*`。
+   - `RenderSceneFrameBuilder` 只依赖 `RenderDataPacket`、`RenderView`、`RenderSceneFrame`、`AssetHandle` 和 math 类型。
+   - 不允许 builder 访问 `VulkanRenderResourceCache`、`Vk*`、descriptor、pipeline 或 command buffer。
+
+3. C3：移动 Vulkan frontend。
+   - 将 `vulkan_render_data_translator.*` 移到 `Renderer/Vulkan/frontend`。
+   - 将 `vulkan_draw_list.*`、`vulkan_draw_list_builder.*` 移到 `Renderer/Vulkan/frontend`。
+   - `VulkanDrawList` 可以持有 `VulkanMeshResource` / `VulkanMaterialResource` 指针，但不能暴露到 `RendererService`、Scene、Resource、Editor。
+
+4. C4：收口 `VulkanRendererSystem` include。
+   - `VulkanRendererSystem` 只 include `Renderer/data`、`Renderer/frontend`、`Renderer/Vulkan/frontend` 和 Vulkan backend 内部服务。
+   - frame flow 保持为 `build view -> build scene frame -> prepare resources -> build draw list -> execute passes`。
+   - 不在 `VulkanRendererSystem` 内部直接解析 `RenderDataPacket` 的 mesh / material / light 细节。
+
+5. C5：更新 CMake 和文档。
+   - 更新 `source/Engine/CMakeLists.txt` 文件列表。
+   - 更新本文件和 roadmap 的 PR 状态。
+   - 保留 `Renderer/data` / `Renderer/frontend` / `Renderer/Vulkan/frontend` 的边界说明。
+
+验收：
+
+- `rg "Function/Renderer/Vulkan/render_view|Function/Renderer/Vulkan/render_scene_frame|Function/Renderer/Vulkan/render_scene_frame_builder" source/Engine` 无命中。
+- `rg "Vk|Vulkan" source/Engine/Function/Renderer/data source/Engine/Function/Renderer/frontend` 无 Vulkan native 类型或 Vulkan backend include 命中。
+- `rg "vulkan_draw_list|VulkanDrawList|VulkanMeshResource|VulkanMaterialResource" source/Engine/Editor source/Engine/Function/Scene source/Engine/Function/Resource` 无命中。
+- 构建通过，Sandbox smoke 通过。
 
 #### 后续 RenderGraph 接入方向
 
@@ -444,7 +496,7 @@ RenderDataPacket
 第一版 RenderGraph 建议做成 Vulkan-only，不急着抽象成通用 RHI graph：
 
 ```text
-Renderer/Vulkan/Graph/
+Renderer/Vulkan/graph/
   vulkan_render_graph.h
   vulkan_render_graph.cpp
   vulkan_render_graph_builder.h
@@ -454,6 +506,13 @@ Renderer/Vulkan/Graph/
   vulkan_graph_executor.h
   vulkan_graph_executor.cpp
 ```
+
+RenderGraph 的输入不应该回头读取 `RenderDataPacket`，也不应该直接访问 Scene / Editor。它只消费已经准备好的 renderer frame 数据：
+
+- view：来自 `RenderView`。
+- scene：来自 `RenderSceneFrame`。
+- draw data：来自 `VulkanDrawList`。
+- resources：来自 `VulkanRenderResourceCache` 和 graph 内部声明的 transient resources。
 
 第一版只解决必要问题：
 

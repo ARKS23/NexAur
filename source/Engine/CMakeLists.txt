@@ -134,17 +134,19 @@ set_source_files_properties(
 )
 
 set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
-    Function/Renderer/Vulkan/render_scene_frame.h
-    Function/Renderer/Vulkan/render_scene_frame_builder.h
-    Function/Renderer/Vulkan/render_scene_frame_builder.cpp
-    Function/Renderer/Vulkan/render_view.h
+    Function/Renderer/data/render_scene_frame.h
+    Function/Renderer/data/render_view.h
+    Function/Renderer/frontend/render_scene_frame_builder.h
+    Function/Renderer/frontend/render_scene_frame_builder.cpp
+    Function/Renderer/Vulkan/frontend/vulkan_draw_list.h
+    Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.h
+    Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.cpp
+    Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h
+    Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.h
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.cpp
-    Function/Renderer/Vulkan/vulkan_draw_list.h
-    Function/Renderer/Vulkan/vulkan_draw_list_builder.h
-    Function/Renderer/Vulkan/vulkan_draw_list_builder.cpp
     Function/Renderer/Vulkan/vulkan_render_target.h
     Function/Renderer/Vulkan/vulkan_resource_context.h
     Function/Renderer/Vulkan/resources/vulkan_material_resource.h
@@ -161,8 +163,6 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.cpp
     Function/Renderer/Vulkan/vulkan_renderer_system.h
     Function/Renderer/Vulkan/vulkan_renderer_system.cpp
-    Function/Renderer/Vulkan/vulkan_render_data_translator.h
-    Function/Renderer/Vulkan/vulkan_render_data_translator.cpp
     Function/Renderer/Vulkan/vulkan_render_resource_cache.h
     Function/Renderer/Vulkan/vulkan_render_resource_cache.cpp
 )
