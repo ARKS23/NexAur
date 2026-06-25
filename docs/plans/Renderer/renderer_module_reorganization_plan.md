@@ -15,7 +15,7 @@ D12 之后，NexAur 已经完成旧 OpenGL legacy renderer 的退役：
 
 - `RendererV2` 是迁移期版本名，长期保留会让读代码的人误以为还有 RendererV1 / RendererV2 双线架构；PR-R12.1-B 已将源码目录收口为 `Renderer/Vulkan`。
 - PR-R12.1-A 前 `Renderer/RHI` 只剩 `RendererService`，它已经不是传统 RHI，而是引擎侧 renderer facade；PR-R12.1-A 后已移动到 `Renderer` 根目录。
-- `WindowSystem` 仍在 `Renderer` 目录下，但窗口和图形 API 创建策略更属于 Platform 层。
+- PR-R12.1-D 前 `WindowSystem` 仍在 `Renderer` 目录下，但窗口和图形 API 创建策略更属于 Platform 层；PR-R12.1-D 后已移动到 Platform。
 - `Camera` / `EditorCamera` 的所有权需要进一步明确，避免 Renderer 目录变成“和画面有关的所有东西”的杂物间。
 
 本阶段目标是让渲染模块的目录结构和架构语义更清爽、稳定、易读，为后续接入更完整的 Vulkan renderer、RenderGraph、材质系统、阴影、后处理和小游戏 demo 打基础。
@@ -135,7 +135,7 @@ Vulkan backend 内部类型不应该泄漏到公共接口：
 
 - `RendererV2` 是迁移期名字，长期保留会让后续代码读者误以为引擎存在 RendererV1 / RendererV2 双线架构；该风险已通过 PR-R12.1-B 收口。
 - PR-R12.1-A 前 `Renderer/RHI` 只剩 facade 类型，名字已经不准确，容易被误解成 UE 风格通用 RHI；PR-R12.1-A 后该 facade 已移出 `RHI`。
-- `WindowSystem` 仍放在 Renderer 目录下，容易让 Platform 和 Renderer 的职责重新缠在一起。
+- PR-R12.1-D 前 `WindowSystem` 仍放在 Renderer 目录下，容易让 Platform 和 Renderer 的职责重新缠在一起；该风险已通过 PR-R12.1-D 收口。
 - `Camera` / `EditorCamera` 的所有权还不够清晰，后续容易把和画面相关的工具类都塞进 Renderer。
 - shader source、compiled SPIR-V output、runtime asset load path 需要固定边界，否则后续材质和 shader pipeline 容易混乱。
 - 当前还没有稳定的 RenderGraph / PassGraph 组织方式，后续添加 shadow、post process、skybox、debug draw 时需要避免直接堆在 `VulkanRendererSystem` 中。
@@ -565,17 +565,71 @@ present
 
 ### PR-R12.1-D：移动 WindowSystem 到 Platform
 
+执行状态：已完成。
+
+完成记录：
+
+- `window_system.h` / `.cpp` 已移动到 `Function/Platform`。
+- `platform_module.cpp` 和 `global_context.cpp` 已改用 `Function/Platform/window_system.h`。
+- `source/Engine/CMakeLists.txt` 已将 `window_system.*` 从 Renderer 文件组移动到 Function / Platform 文件组。
+- Renderer 源码不再 include 或引用 concrete `WindowSystem`。
+
+背景：
+
+`WindowSystem` 已经由 `PlatformModule` 创建、持有、注册，`RendererModule` 也只通过 `WindowService` 消费窗口信息。PR-R12.1-D 将源码文件从 `Renderer/window_system.*` 移到 `Platform/window_system.*`，只做所有权和目录语义收口，不改变窗口创建、输入、事件和 Vulkan surface 初始化行为。
+
 目标：
 
-- `window_system.*` 移到 `Platform`。
-- PlatformModule include 使用新路径。
-- GlobalContext 兼容桥更新 include。
+- 将 `Function/Renderer/window_system.h` / `.cpp` 移到 `Function/Platform/window_system.h` / `.cpp`。
+- `PlatformModule` 使用新路径 include `WindowSystem`。
+- `GlobalContext` 兼容桥使用新路径 include `WindowSystem`。
+- `source/Engine/CMakeLists.txt` 将 `window_system.*` 从 Renderer 文件组移动到 Platform / Function 文件组。
+- Renderer 模块继续只依赖 `WindowService`，不直接 include `WindowSystem`。
+
+拆分步骤：
+
+1. D1：移动源码文件。
+   - `source/Engine/Function/Renderer/window_system.h` -> `source/Engine/Function/Platform/window_system.h`。
+   - `source/Engine/Function/Renderer/window_system.cpp` -> `source/Engine/Function/Platform/window_system.cpp`。
+   - namespace 和类名保持 `NexAur::WindowSystem` 不变。
+
+2. D2：更新 include path。
+   - `platform_module.cpp` 改为 include `Function/Platform/window_system.h`。
+   - `global_context.cpp` 改为 include `Function/Platform/window_system.h`。
+   - 搜索并清理所有 `Function/Renderer/window_system.h` 和 `Renderer/window_system` 命中。
+
+3. D3：更新 CMake 文件分组。
+   - 从 `NEXAUR_ENGINE_RENDERER_FILES` 移除 `Function/Renderer/window_system.h` / `.cpp`。
+   - 加入 `NEXAUR_ENGINE_FUNCTION_FILES` 的 Platform 区域。
+   - 保持 `WindowGraphicsAPI` 和 `WindowService` 仍位于 Platform。
+
+4. D4：保持兼容桥不变。
+   - `PlatformModule` 仍可临时注册 concrete `WindowSystem` 服务。
+   - `RunTimeGlobalContext` / `GlobalContext` 兼容桥仍可保存 `std::shared_ptr<WindowSystem>`。
+   - 本 PR 不删除 `WindowSystem` concrete service 注册，避免把兼容桥清理混入目录迁移。
+
+5. D5：验证依赖方向。
+   - Renderer backend 只能通过 `WindowService` 获取 native window、graphics API 和 Vulkan instance extensions。
+   - `WindowSystem` 不知道 renderer pass、swapchain frame、viewport target、ImGui renderer backend。
+   - `InputSystemGLFW` 仍从 `PlatformModule` 拿 GLFW native window 初始化。
+
+不做：
+
+- 不修改 `WindowService` 接口。
+- 不修改 GLFW no-api window 创建策略。
+- 不修改 Vulkan surface / swapchain 初始化逻辑。
+- 不删除 `RunTimeGlobalContext` 对 `WindowSystem` 的兼容字段。
+- 不把 `WindowSystem` 暴露给 Renderer / Editor 新代码使用。
 
 验收：
 
-- `rg "Renderer/window_system" source/Engine` 无命中。
+- `rg "Renderer/window_system|Function/Renderer/window_system" source/Engine` 无命中。
+- `rg "WindowSystem" source/Engine/Function/Renderer` 只允许出现在明确历史文档或无命中；Renderer 源码应继续依赖 `WindowService`。
 - Window 仍创建 GLFW no-api window。
 - VulkanRendererSystem 仍通过 `WindowService` 初始化 surface。
+- `cmake --preset msvc-vcpkg` 通过。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- Sandbox 3 秒 smoke 通过。
 
 ### PR-R12.1-E：文档与命名清理
 

@@ -6,7 +6,7 @@
 #include "Core/Module/engine_module.h"
 #include "Function/Input/input_system_glfw.h"
 #include "Function/Platform/platform_services.h"
-#include "Function/Renderer/window_system.h"
+#include "Function/Platform/window_system.h"
 
 namespace NexAur {
     namespace {

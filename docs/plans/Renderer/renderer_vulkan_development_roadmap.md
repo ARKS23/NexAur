@@ -1830,6 +1830,7 @@ D12 / D12.1 已确认状态：
 - D12.1 已完成 PR-R12.1-A：`RendererService` 移出旧 `Renderer/RHI` 语义。
 - D12.1 已完成 PR-R12.1-B：`RendererV2` 源码目录收口为 `Renderer/Vulkan`。
 - D12.1 已完成 PR-R12.1-C：`Renderer/data`、`Renderer/frontend`、`Renderer/Vulkan/frontend` 职责边界收口。
+- D12.1 已完成 PR-R12.1-D：`WindowSystem` 源码目录从 Renderer 移动到 Platform。
 
 ## 9. 进度记录
 

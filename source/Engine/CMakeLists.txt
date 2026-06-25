@@ -78,6 +78,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Platform/platform_module.cpp
     Function/Platform/platform_services.h
     Function/Platform/window_graphics_api.h
+    Function/Platform/window_system.h
+    Function/Platform/window_system.cpp
     Function/Resource/asset_handle.h
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
@@ -113,8 +115,6 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/editor_camera.cpp
     Function/Renderer/renderer_module.h
     Function/Renderer/renderer_module.cpp
-    Function/Renderer/window_system.h
-    Function/Renderer/window_system.cpp
     Function/Renderer/data/render_context.h
     Function/Renderer/data/render_data.h
     Function/Renderer/renderer_service.h
