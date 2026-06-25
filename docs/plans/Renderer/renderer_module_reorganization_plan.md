@@ -14,7 +14,7 @@ D12 之后，NexAur 已经完成旧 OpenGL legacy renderer 的退役：
 当前主要问题不是功能重复，而是命名和职责边界仍带有迁移期痕迹：
 
 - `RendererV2` 是迁移期版本名，长期保留会让读代码的人误以为还有 RendererV1 / RendererV2 双线架构。
-- `Renderer/RHI` 现在只剩 `RendererService`，它已经不是传统 RHI，而是引擎侧 renderer facade。
+- PR-R12.1-A 前 `Renderer/RHI` 只剩 `RendererService`，它已经不是传统 RHI，而是引擎侧 renderer facade；PR-R12.1-A 后已移动到 `Renderer` 根目录。
 - `WindowSystem` 仍在 `Renderer` 目录下，但窗口和图形 API 创建策略更属于 Platform 层。
 - `Camera` / `EditorCamera` 的所有权需要进一步明确，避免 Renderer 目录变成“和画面有关的所有东西”的杂物间。
 
@@ -134,7 +134,7 @@ Vulkan backend 内部类型不应该泄漏到公共接口：
 但它还不是最终清爽状态。剩余风险主要来自目录语义和职责边界：
 
 - `RendererV2` 是迁移期名字，长期保留会让后续代码读者误以为引擎存在 RendererV1 / RendererV2 双线架构。
-- `Renderer/RHI` 现在只剩 facade 类型，名字已经不准确，容易被误解成 UE 风格通用 RHI。
+- PR-R12.1-A 前 `Renderer/RHI` 只剩 facade 类型，名字已经不准确，容易被误解成 UE 风格通用 RHI；PR-R12.1-A 后该 facade 已移出 `RHI`。
 - `WindowSystem` 仍放在 Renderer 目录下，容易让 Platform 和 Renderer 的职责重新缠在一起。
 - `Camera` / `EditorCamera` 的所有权还不够清晰，后续容易把和画面相关的工具类都塞进 Renderer。
 - shader source、compiled SPIR-V output、runtime asset load path 需要固定边界，否则后续材质和 shader pipeline 容易混乱。
@@ -245,7 +245,7 @@ assets/
 
 ### 5.1 WindowSystem 迁到 Platform
 
-当前：
+迁移前：
 
 ```text
 source/Engine/Function/Renderer/window_system.h
@@ -253,7 +253,7 @@ source/Engine/Function/Renderer/window_system.cpp
 source/Engine/Function/Platform/window_graphics_api.h
 ```
 
-建议变为：
+当前已变为：
 
 ```text
 source/Engine/Function/Platform/window_system.h
@@ -330,6 +330,8 @@ Renderer
 ## 6. 推荐迁移步骤
 
 ### PR-R12.1-A：移动 RendererService
+
+执行状态：已完成。
 
 目标：
 

@@ -6,7 +6,7 @@
 #include "Editor/editor_services.h"
 #include "Function/Global/global_context.h"
 #include "Function/Platform/platform_services.h"
-#include "Function/Renderer/RHI/renderer_service.h"
+#include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/Scene/scene_v2.h"

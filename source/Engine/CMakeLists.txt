@@ -117,8 +117,8 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/window_system.cpp
     Function/Renderer/data/render_context.h
     Function/Renderer/data/render_data.h
-    Function/Renderer/RHI/renderer_service.h
-    Function/Renderer/RHI/renderer_service_types.h
+    Function/Renderer/renderer_service.h
+    Function/Renderer/renderer_service_types.h
 )
 
 set_source_files_properties(

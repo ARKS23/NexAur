@@ -5,7 +5,7 @@
 
 #include "Core/Base.h"
 #include "Core/Time/TimeStep.h"
-#include "Function/Renderer/RHI/renderer_service_types.h"
+#include "Function/Renderer/renderer_service_types.h"
 
 namespace NexAur {
     struct RenderDataPacket;

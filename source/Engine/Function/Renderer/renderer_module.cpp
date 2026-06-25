@@ -5,7 +5,7 @@
 #include "Core/Module/builtin_module_names.h"
 #include "Core/Module/engine_module.h"
 #include "Function/Platform/platform_services.h"
-#include "Function/Renderer/RHI/renderer_service.h"
+#include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Platform/window_graphics_api.h"
 #include "Function/RendererV2/vulkan_renderer_system.h"

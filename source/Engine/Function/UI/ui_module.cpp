@@ -6,7 +6,7 @@
 #include "Core/Module/engine_module.h"
 #include "Editor/editor_services.h"
 #include "Function/Platform/platform_services.h"
-#include "Function/Renderer/RHI/renderer_service.h"
+#include "Function/Renderer/renderer_service.h"
 #include "Function/UI/ui_system.h"
 
 namespace NexAur {
