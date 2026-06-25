@@ -2,8 +2,8 @@
 #include "vulkan_forward_pass.h"
 
 #include "Function/Resource/mesh.h"
-#include "Function/RendererV2/resources/vulkan_mesh_resource.h"
-#include "Function/RendererV2/vulkan_draw_list.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
+#include "Function/Renderer/Vulkan/vulkan_draw_list.h"
 
 #ifdef NX_PLATFORM_WINDOWS
     #include <Windows.h>
@@ -44,7 +44,7 @@ namespace NexAur {
         }
 
         std::filesystem::path shaderPath(const char* file_name) {
-            return executableDirectory() / "shaders" / "RendererV2" / file_name;
+            return executableDirectory() / "shaders" / "Renderer" / "Vulkan" / file_name;
         }
 
         std::vector<char> readBinaryFile(const std::filesystem::path& path) {

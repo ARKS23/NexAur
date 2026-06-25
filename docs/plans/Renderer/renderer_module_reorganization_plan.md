@@ -7,13 +7,13 @@ D12 之后，NexAur 已经完成旧 OpenGL legacy renderer 的退役：
 - 默认构建路径已经收口为 vcpkg + Vulkan。
 - `RendererService` 不再暴露 OpenGL texture id / readPixel 语义。
 - 旧 OpenGL RHI、OpenGL platform implementation、legacy render pass 和 legacy GPU resource cache 已从主线删除。
-- 当前 Vulkan 后端仍位于 `source/Engine/Function/RendererV2`。
+- PR-R12.1-B 后，当前 Vulkan 后端已位于 `source/Engine/Function/Renderer/Vulkan`。
 
 这意味着“功能迁移”已经完成，但“目录语义”和“模块所有权”还没有完全收口。
 
 当前主要问题不是功能重复，而是命名和职责边界仍带有迁移期痕迹：
 
-- `RendererV2` 是迁移期版本名，长期保留会让读代码的人误以为还有 RendererV1 / RendererV2 双线架构。
+- `RendererV2` 是迁移期版本名，长期保留会让读代码的人误以为还有 RendererV1 / RendererV2 双线架构；PR-R12.1-B 已将源码目录收口为 `Renderer/Vulkan`。
 - PR-R12.1-A 前 `Renderer/RHI` 只剩 `RendererService`，它已经不是传统 RHI，而是引擎侧 renderer facade；PR-R12.1-A 后已移动到 `Renderer` 根目录。
 - `WindowSystem` 仍在 `Renderer` 目录下，但窗口和图形 API 创建策略更属于 Platform 层。
 - `Camera` / `EditorCamera` 的所有权需要进一步明确，避免 Renderer 目录变成“和画面有关的所有东西”的杂物间。
@@ -116,7 +116,7 @@ Vulkan backend 内部类型不应该泄漏到公共接口：
 
 ### 3.4 目录语义不要带版本号
 
-`RendererV2` 是迁移阶段的名字，不适合长期保留。版本信息应该存在于 git 历史、tag、roadmap 中，而不是长期目录名中。
+`RendererV2` 是迁移阶段的名字，不适合长期保留。版本信息应该存在于 git 历史、tag、roadmap 中，而不是长期目录名中。PR-R12.1-B 已将源码目录收口为 `Renderer/Vulkan`。
 
 ### 3.5 当前架构审查结论
 
@@ -133,7 +133,7 @@ Vulkan backend 内部类型不应该泄漏到公共接口：
 
 但它还不是最终清爽状态。剩余风险主要来自目录语义和职责边界：
 
-- `RendererV2` 是迁移期名字，长期保留会让后续代码读者误以为引擎存在 RendererV1 / RendererV2 双线架构。
+- `RendererV2` 是迁移期名字，长期保留会让后续代码读者误以为引擎存在 RendererV1 / RendererV2 双线架构；该风险已通过 PR-R12.1-B 收口。
 - PR-R12.1-A 前 `Renderer/RHI` 只剩 facade 类型，名字已经不准确，容易被误解成 UE 风格通用 RHI；PR-R12.1-A 后该 facade 已移出 `RHI`。
 - `WindowSystem` 仍放在 Renderer 目录下，容易让 Platform 和 Renderer 的职责重新缠在一起。
 - `Camera` / `EditorCamera` 的所有权还不够清晰，后续容易把和画面相关的工具类都塞进 Renderer。
@@ -346,6 +346,8 @@ Renderer
 
 ### PR-R12.1-B：移动 RendererV2 到 Renderer/Vulkan
 
+执行状态：已完成。
+
 目标：
 
 - `RendererV2` 整体移动到 `Renderer/Vulkan`。
@@ -361,8 +363,8 @@ Renderer
 
 注意：
 
-- 运行时 shader 输出目录可以暂时保留 `shaders/RendererV2` 以降低风险，也可以同步改成 `shaders/Renderer/Vulkan`。
-- 如果同步改 shader 输出目录，需要一起更新 Vulkan pass 中的 shader load path。
+- 运行时 shader 输出目录已同步改成 `shaders/Renderer/Vulkan`。
+- Vulkan pass 中的 shader load path 已同步更新。
 
 ### PR-R12.1-C：整理 Renderer Data / Frontend
 
@@ -476,7 +478,7 @@ Platform -> Renderer/Vulkan/*
 建议按以下顺序执行：
 
 1. 移动 `RendererService`，先消除 `RHI` 命名误导。
-2. 移动 `RendererV2` 到 `Renderer/Vulkan`，消除版本目录。
+2. 移动 `RendererV2` 到 `Renderer/Vulkan`，消除版本目录。（已完成）
 3. 修正 CMake 和 shader 输出路径。
 4. 移动 `WindowSystem` 到 Platform。
 5. 评估 `Camera` / `EditorCamera` 所有权。

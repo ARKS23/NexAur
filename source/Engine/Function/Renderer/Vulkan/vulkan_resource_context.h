@@ -6,7 +6,7 @@
 #include <vulkan/vulkan.h>
 
 namespace NexAur {
-    // RendererV2 初始化 GPU 资源缓存时传入的后端上下文。
+    // Vulkan renderer 初始化 GPU 资源缓存时传入的后端上下文。
     // 这里只保存创建资源必需的 Vulkan 句柄，不向 Scene / Editor 暴露。
     struct VulkanResourceContext {
         VkInstance instance = VK_NULL_HANDLE;

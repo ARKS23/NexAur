@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Base.h"
-#include "Function/RendererV2/render_scene_frame.h"
+#include "Function/Renderer/Vulkan/render_scene_frame.h"
 
 namespace NexAur {
     struct RenderDataPacket;

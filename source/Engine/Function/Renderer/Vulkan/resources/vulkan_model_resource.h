@@ -4,9 +4,9 @@
 #include <vector>
 
 #include "Core/Base.h"
-#include "Function/RendererV2/resources/vulkan_material_resource.h"
-#include "Function/RendererV2/resources/vulkan_mesh_resource.h"
-#include "Function/RendererV2/vulkan_resource_context.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_material_resource.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
+#include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
     class Model;

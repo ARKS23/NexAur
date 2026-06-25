@@ -11,7 +11,7 @@ namespace NexAur {
     class WindowService;
     struct RenderDataPacket;
 
-    // RendererV2 的第一版 Vulkan 后端。公开接口只实现 RendererService，
+    // Vulkan 后端。公开接口只实现 RendererService，
     // Vulkan instance/device/swapchain 等细节隐藏在 Backend 中。
     class NEXAUR_API VulkanRendererSystem final : public RendererService {
     public:

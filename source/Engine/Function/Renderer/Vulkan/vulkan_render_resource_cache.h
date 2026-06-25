@@ -8,8 +8,8 @@
 
 #include "Core/Base.h"
 #include "Function/Resource/asset_handle.h"
-#include "Function/RendererV2/resources/vulkan_model_resource.h"
-#include "Function/RendererV2/vulkan_resource_context.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
+#include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
     class AssetManager;

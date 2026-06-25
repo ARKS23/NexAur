@@ -5,8 +5,8 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
-#include "Function/RendererV2/vulkan_render_target.h"
-#include "Function/RendererV2/vulkan_resource_context.h"
+#include "Function/Renderer/Vulkan/vulkan_render_target.h"
+#include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
     class NEXAUR_API VulkanViewportTarget {
