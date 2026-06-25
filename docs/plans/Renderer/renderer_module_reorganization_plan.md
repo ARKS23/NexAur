@@ -379,6 +379,131 @@ Renderer
 - 如果 `VulkanDrawList` 绑定了 Vulkan resource 类型，应放到 `Renderer/Vulkan/Frontend`。
 - 如果未来想做 backend-neutral render graph，再把更通用的 frame data 保持在 `Renderer/Data`。
 
+更明确的推荐目标结构：
+
+```text
+source/Engine/Function/Renderer/
+  Data/
+    render_context.h
+    render_data.h
+    render_view.h
+    render_scene_frame.h
+
+  Frontend/
+    render_scene_frame_builder.h
+    render_scene_frame_builder.cpp
+
+  Vulkan/
+    Frontend/
+      vulkan_render_data_translator.h
+      vulkan_render_data_translator.cpp
+      vulkan_draw_list.h
+      vulkan_draw_list_builder.h
+      vulkan_draw_list_builder.cpp
+
+    Passes/
+    Resources/
+    Targets/
+    UI/
+```
+
+分层原则：
+
+- `Renderer/Data` 只放 backend-neutral frame data，不包含 Vulkan 类型。
+- `Renderer/Frontend` 负责把 Scene / Editor 提交的数据整理成 renderer 可消费的场景帧。
+- `Renderer/Vulkan/Frontend` 负责把 renderer frame data 转换成 Vulkan draw data。
+- `Renderer/Vulkan/Passes` 只负责具体 pass 的 GPU 执行逻辑。
+- `Renderer/Vulkan/Resources` 只负责 GPU 资源缓存和创建。
+- `Renderer/Vulkan/Targets` 只负责 viewport、picking、swapchain-adjacent render target。
+
+推荐数据流：
+
+```text
+RenderDataPacket
+  -> RenderView
+  -> RenderSceneFrame
+  -> VulkanDrawList
+  -> Vulkan pass execution
+```
+
+PR-R12.1-C 不应该改变渲染行为，也不应该开始实现 RenderGraph。它只是把现有数据阶段摆正，让后续 RenderGraph 有一个干净的插入点。
+
+#### 后续 RenderGraph 接入方向
+
+后续如果要做 RenderGraph，建议接在 `VulkanDrawList` 之后、具体 pass 执行之前：
+
+```text
+RenderDataPacket
+  -> RenderView
+  -> RenderSceneFrame
+  -> VulkanDrawList
+  -> VulkanRenderGraph
+  -> Vulkan command buffer
+```
+
+第一版 RenderGraph 建议做成 Vulkan-only，不急着抽象成通用 RHI graph：
+
+```text
+Renderer/Vulkan/Graph/
+  vulkan_render_graph.h
+  vulkan_render_graph.cpp
+  vulkan_render_graph_builder.h
+  vulkan_render_graph_builder.cpp
+  vulkan_render_graph_pass.h
+  vulkan_graph_resource.h
+  vulkan_graph_executor.h
+  vulkan_graph_executor.cpp
+```
+
+第一版只解决必要问题：
+
+- pass 顺序声明。
+- pass 读写资源声明。
+- color / depth / object id target 管理。
+- image layout transition。
+- Vulkan 1.3 dynamic rendering begin/end。
+- transient render target 生命周期。
+
+暂时不要做：
+
+- async compute。
+- multi-queue scheduling。
+- resource aliasing。
+- 完整通用 RHI。
+- 复杂 shader reflection binding 系统。
+
+最小可用 pass 模型可以类似：
+
+```cpp
+graph.addPass("ObjectId")
+    .write(object_id_target)
+    .write(depth_target)
+    .execute(...);
+
+graph.addPass("Forward")
+    .read(draw_list)
+    .write(scene_color)
+    .write(depth_target)
+    .execute(...);
+
+graph.addPass("ImGui")
+    .read(scene_color)
+    .write(swapchain)
+    .execute(...);
+```
+
+这样 `VulkanRendererSystem` 后续可以逐步变成 frame orchestrator：
+
+```text
+prepare frame data
+prepare resources
+build graph
+execute graph
+present
+```
+
+而不是继续把 pass 调度、资源转换、layout barrier、UI 合成、swapchain present 全部堆在一个类里。
+
 ### PR-R12.1-D：移动 WindowSystem 到 Platform
 
 目标：
