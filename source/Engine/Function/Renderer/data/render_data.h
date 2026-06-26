@@ -61,9 +61,11 @@ namespace NexAur {
 
         std::vector<RenderObjectData> opaque_objects;   // 不透明物体
         std::vector<RenderObjectData> transparent_objects; // 透明物体
+        RenderDebugVisualizationOptions debug_visualization_options;
         RenderDebugDrawData debug_draw;
 
         void clear() {
+            const RenderDebugVisualizationOptions current_debug_options = debug_visualization_options;
             // 清空完整帧状态，避免缺少相机或灯光组件时沿用上一帧数据。
             camera_data = RendererCameraData();
             directional_light_data = RendererDirectionalLightData();
@@ -71,6 +73,7 @@ namespace NexAur {
             point_lights_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
+            debug_visualization_options = current_debug_options;
             debug_draw.clear();
         }
     };

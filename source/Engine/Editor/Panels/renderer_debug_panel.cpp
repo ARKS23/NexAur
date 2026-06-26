@@ -2,6 +2,7 @@
 #include "renderer_debug_panel.h"
 
 #include "Function/Renderer/renderer_debug_service.h"
+#include "Function/Renderer/data/render_context.h"
 
 #include <imgui.h>
 
@@ -70,6 +71,7 @@ namespace NexAur {
         const RendererDebugSnapshot snapshot =
             m_context->renderer_debug_service->getDebugSnapshot();
 
+        drawDebugVisualizationSection();
         drawRendererSection(snapshot);
         drawFrameSection(snapshot);
         drawViewSection(snapshot);
@@ -77,6 +79,38 @@ namespace NexAur {
         drawResourcesSection(snapshot);
 
         ImGui::End();
+    }
+
+    void RendererDebugPanel::drawDebugVisualizationSection() {
+        if (!ImGui::CollapsingHeader("Debug Visualization", ImGuiTreeNodeFlags_DefaultOpen)) {
+            return;
+        }
+
+        if (!m_context || !m_context->render_context) {
+            ImGui::TextDisabled("Render context is unavailable.");
+            return;
+        }
+
+        RenderDebugVisualizationOptions options =
+            m_context->render_context->getDebugVisualizationOptions();
+
+        bool changed = false;
+        changed |= ImGui::Checkbox("Debug Draw", &options.enabled);
+
+        if (!options.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        changed |= ImGui::Checkbox("Camera Frustum", &options.camera_frustum);
+        changed |= ImGui::Checkbox("Light Gizmos", &options.light_gizmos);
+
+        if (!options.enabled) {
+            ImGui::EndDisabled();
+        }
+
+        if (changed) {
+            m_context->render_context->setDebugVisualizationOptions(options);
+        }
     }
 
     void RendererDebugPanel::drawRendererSection(const RendererDebugSnapshot& snapshot) {

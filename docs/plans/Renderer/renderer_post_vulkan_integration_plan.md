@@ -1754,6 +1754,36 @@ Resources
 - `cmake --build --preset msvc-vcpkg-debug` 通过。
 - Sandbox smoke 通过。
 
+### PR-R25：Editor debug visualization controls
+
+执行状态：已完成。
+
+目标：
+
+- 给 debug draw 增加 Editor 可控开关，避免默认场景被 camera frustum / light gizmo 线条遮挡。
+- 让 debug draw 统计和实际绘制行为保持一致：关闭后 `Debug Lines` 应为 0。
+- 保持 Editor / Scene / Renderer 边界清晰，不在 Editor 侧直接访问 Vulkan backend。
+
+完成记录：
+
+- 新增 `RenderDebugVisualizationOptions`，提供 debug draw 总开关、camera frustum 开关和 light gizmo 开关。
+- `RenderContext` 持久保存 debug visualization options，Engine 在每帧 scene extraction 前写入 `RenderDataPacket`。
+- `SceneV2::extractSceneData()` 根据 options 决定是否生成 active camera frustum、directional light gizmo 和 point light gizmo。
+- `RendererDebugPanel` 增加 `Debug Visualization` 分组，提供 `Debug Draw`、`Camera Frustum`、`Light Gizmos` 三个 checkbox。
+- 默认关闭 `Debug Draw`，避免新打开项目时自动显示辅助线；子项默认开启，便于勾选总开关后快速恢复调试可视化。
+- Vulkan debug draw pass 不需要新增开关；当 line list 为空时沿用已有 skip 逻辑。
+
+验收：
+
+- 默认打开 Sandbox 时不显示 camera frustum / light gizmo debug line。
+- 打开 `Renderer Debug -> Debug Visualization -> Debug Draw` 后能恢复 debug line 显示。
+- 关闭 `Camera Frustum` 后只保留 light gizmo。
+- 关闭 `Light Gizmos` 后只保留 camera frustum。
+- 关闭 `Debug Draw` 后 `Debug Lines` 统计回到 0。
+- Editor 仍不 include `Renderer/Vulkan/*`。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- Sandbox smoke 通过。
+
 ## 10. 推荐执行顺序
 
 建议下一阶段按下面顺序推进：
@@ -1771,6 +1801,7 @@ PR-R21 Skybox / Environment
 PR-R22 Shadow 第一版
 PR-R23 Debug draw
 PR-R24 Renderer debug panel
+PR-R25 Editor debug visualization controls
 ```
 
 如果目标是尽快进入小游戏 demo，建议先做：

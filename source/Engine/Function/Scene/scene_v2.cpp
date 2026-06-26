@@ -51,6 +51,8 @@ namespace NexAur {
         if (!render_packet) return;
 
         render_packet->clear();
+        const RenderDebugVisualizationOptions& debug_options =
+            render_packet->debug_visualization_options;
 
         // GameView 使用场景 active camera；没有 active 标记时保留第一相机 fallback。
         bool camera_written = false;
@@ -74,7 +76,7 @@ namespace NexAur {
             }
         }
 
-        if (camera_written) {
+        if (camera_written && debug_options.enabled && debug_options.camera_frustum) {
             RenderDebugDrawBuilder::addFrustum(
                 render_packet->debug_draw,
                 render_packet->camera_data.view_projection_matrix,
@@ -97,11 +99,13 @@ namespace NexAur {
             if (const TransformComponent* transform = m_Registry.try_get<TransformComponent>(entity)) {
                 light_position = transform->translation;
             }
-            RenderDebugDrawBuilder::addDirectionalLightGizmo(
-                render_packet->debug_draw,
-                light_position,
-                dir_light_comp.direction,
-                glm::vec4{ dir_light_comp.color, 1.0f });
+            if (debug_options.enabled && debug_options.light_gizmos) {
+                RenderDebugDrawBuilder::addDirectionalLightGizmo(
+                    render_packet->debug_draw,
+                    light_position,
+                    dir_light_comp.direction,
+                    glm::vec4{ dir_light_comp.color, 1.0f });
+            }
             break; // 目前版本只支持一个方向光
         }
 
@@ -118,11 +122,13 @@ namespace NexAur {
             point_light_data.quadratic = point_light_comp.quadratic;
 
             render_packet->point_lights_data.push_back(point_light_data);
-            RenderDebugDrawBuilder::addPointLightGizmo(
-                render_packet->debug_draw,
-                point_light_data.position,
-                0.35f,
-                glm::vec4{ point_light_data.color, 1.0f });
+            if (debug_options.enabled && debug_options.light_gizmos) {
+                RenderDebugDrawBuilder::addPointLightGizmo(
+                    render_packet->debug_draw,
+                    point_light_data.position,
+                    0.35f,
+                    glm::vec4{ point_light_data.color, 1.0f });
+            }
         });
 
 

@@ -5,6 +5,12 @@
 #include <glm/glm.hpp>
 
 namespace NexAur {
+    struct RenderDebugVisualizationOptions {
+        bool enabled = false;
+        bool camera_frustum = true;
+        bool light_gizmos = true;
+    };
+
     struct RenderDebugLine {
         glm::vec3 start{ 0.0f };
         glm::vec3 end{ 0.0f };

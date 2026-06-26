@@ -112,6 +112,7 @@ namespace NexAur {
         // Scene 只提取轻量 RenderDataPacket；GPU 资源解析交给 RendererModule。
         std::shared_ptr<RenderContext> render_context = getRequiredModuleService<RenderContext>();
         RenderDataPacket* write_packet = &render_context->getWriteData();
+        write_packet->debug_visualization_options = render_context->getDebugVisualizationOptions();
         active_scene->extractSceneData(write_packet);
     }
 
