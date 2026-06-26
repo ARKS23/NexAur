@@ -13,13 +13,21 @@ docs/plans/Renderer/renderer_vulkan_development_roadmap.md
 当前落地状态：
 
 ```text
-D12 已完成。
+D12 / D12.1 已完成到 Renderer 模块目录收口阶段。
 顶层已新增 vcpkg manifest / CMakePresets，并统一为 vcpkg 主路径。
 顶层已升级到 CMake 3.25 + C++20。
 vendored external fallback 和 OpenGL legacy 构建入口已退役。
 glad 与 ImGui opengl3-binding 已从 vcpkg manifest 移除。
 externalRenderer 仍只作为参考目录，不进入默认构建图。
+迁移期源码目录已收口为 source/Engine/Function/Renderer/Vulkan。
+Renderer/Vulkan 新 shader 统一使用 HLSL -> SPIR-V。
 ```
+
+命名说明：
+
+- 本文早期方案中的 `RendererV2` 是 D5-D12 期间的迁移期名称。
+- 当前代码和后续开发文档统一使用 `Renderer/Vulkan`、`Vulkan renderer` 或 `Vulkan backend`。
+- 历史方案段落中保留 `RendererV2` 时，只表示当时的过渡目录名，不表示当前源码边界。
 
 ## 1. 文档目标
 
@@ -190,7 +198,7 @@ Godot / Unreal / Unity 的源码组织都体现了一个原则：模块边界应
 对应到 NexAur：
 
 - 类似 Unreal 的 module dependency：`RendererModule` 可以 `PRIVATE` 链接 Vulkan、VMA、vk-bootstrap、DXC、ImGui Vulkan backend；Editor / Scene / Resource 不应该直接链接这些后端依赖。
-- 类似 Godot 的 platform / rendering driver 分层：GLFW window、Vulkan surface、swapchain、render target 等实现细节只在 PlatformModule / RendererV2 的私有构建边界中出现。
+- 类似 Godot 的 platform / rendering driver 分层：GLFW window、Vulkan surface、swapchain、render target 等实现细节只在 PlatformModule / Renderer/Vulkan 的私有构建边界中出现。
 - 类似 Unity package / render pipeline 的隔离：shader 编译、generated SPIR-V、pipeline-specific resource helper 应归渲染管线 target 管理，不要散落成全局脚本或公共 include。
 
 落地规则：
@@ -325,7 +333,7 @@ target_compile_features(NexAurEngine PUBLIC cxx_std_20)
 - 新增顶层 `vcpkg.json`。
 - 新增顶层 `CMakePresets.json`。
 - preset 使用独立构建目录，例如 `build/msvc-vcpkg`，避免污染当前 `build/`。
-- 顶层 manifest 包含当前 OpenGL legacy 和后续 RendererV2 依赖。
+- 顶层 manifest 包含当时 OpenGL legacy 和后续 Vulkan renderer 依赖。
 
 ### 阶段 3：CMake 支持双依赖来源，并让 vcpkg 成为默认
 

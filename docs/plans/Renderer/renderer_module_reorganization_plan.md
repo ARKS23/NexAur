@@ -160,14 +160,14 @@ Vulkan backend 内部类型不应该泄漏到公共接口：
 
 ## 4. 推荐目标目录
 
-推荐将当前：
+迁移前存在两个渲染源码入口：
 
 ```text
 source/Engine/Function/Renderer/
-source/Engine/Function/RendererV2/
+source/Engine/Function/RendererV2/  // 历史迁移期目录
 ```
 
-收口为：
+PR-R12.1-B 后已收口为：
 
 ```text
 source/Engine/Function/Renderer/
@@ -632,6 +632,15 @@ present
 - Sandbox 3 秒 smoke 通过。
 
 ### PR-R12.1-E：文档与命名清理
+
+执行状态：已完成。
+
+完成记录：
+
+- `source/Engine`、`CMakeLists.txt`、`CMakePresets.json`、`vcpkg.json` 中已无 `RendererV2` / `renderer-v2` / `NEXAUR_BUILD_RENDERER_V2` 主线命中。
+- `renderer_vulkan_development_roadmap.md` 当前态、总体路线和阶段看板已改为 `Renderer/Vulkan` / `Vulkan renderer` 表达。
+- `renderer_interface_redesign_plan.md` 已标记 OpenGL 接口泄漏为历史问题，并同步当前 `ViewportOutputKind`。
+- `renderer_dependency_cmake_plan.md` 和 `ark_renderer_integration_plan.md` 已补充当前落地状态与迁移期命名说明。
 
 目标：
 

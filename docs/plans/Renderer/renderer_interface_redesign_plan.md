@@ -10,6 +10,16 @@ docs/plans/Renderer/renderer_vulkan_development_roadmap.md
 
 本文是接口设计参考文档；后续开发进度、阶段状态和完成记录以进度主文档为准。
 
+当前落地状态：
+
+```text
+D12 / D12.1 后，OpenGL legacy 已从主线删除。
+RendererService 只保留后端无关接口。
+RendererBackendType 当前为 Unknown / Vulkan。
+ViewportOutputKind 当前为 None / VulkanImGuiTexture / ExternalSwapchain。
+Vulkan 后端实现位于 source/Engine/Function/Renderer/Vulkan。
+```
+
 ## 1. 文档目标
 
 本文档专门讨论 NexAur 渲染模块的对外接口如何重构，目标是让接口足够清爽、干净、后端无关，并适合后续只保留新的 Vulkan renderer。
@@ -26,11 +36,11 @@ docs/plans/Renderer/renderer_dependency_cmake_plan.md
 docs/plans/Renderer/ark_renderer_integration_plan.md
 ```
 
-## 2. 当前接口问题
+## 2. 历史接口问题
 
-当前 `RendererService` 的方向是正确的：Editor / Runtime 不直接依赖 `RendererSystem` 或 OpenGL 实现。
+D1 / D12 前 `RendererService` 的方向是正确的：Editor / Runtime 不直接依赖 `RendererSystem` 或 OpenGL 实现。
 
-但接口里仍然有 OpenGL 时代的泄漏：
+但当时接口里仍然有 OpenGL 时代的泄漏：
 
 ```cpp
 virtual uint32_t getViewportColorAttachment() const = 0;
@@ -45,7 +55,7 @@ virtual int readViewportEntityID(int x, int y) = 0;
 - `readViewportEntityID()` 默认是同步 readPixel 思路，Vulkan 需要 readback / staging / frame latency 设计。
 - 接口没有表达当前 backend 类型、viewport 输出是否有效、输出是 swapchain 还是 offscreen image。
 
-如果这些接口不改，Vulkan backend 会被迫伪装成 OpenGL，这会污染新的渲染模块。
+这些接口已经在 D12 前后删除或降级完毕；保留本节是为了说明为什么当前接口必须保持 backend-neutral。
 
 ## 3. 重构目标
 
@@ -293,9 +303,6 @@ ImGui::Image(reinterpret_cast<ImTextureID>(texture_id), size);
 ViewportOutput output = renderer_service->getViewportOutput();
 
 switch (output.kind) {
-case ViewportOutputKind::OpenGLTexture:
-    drawOpenGLViewport(output);
-    break;
 case ViewportOutputKind::VulkanImGuiTexture:
     drawVulkanViewport(output);
     break;
@@ -308,7 +315,7 @@ case ViewportOutputKind::None:
 }
 ```
 
-第一版 Vulkan backend 可以只做到：
+迁移期第一版 Vulkan backend 可以只做到：
 
 ```text
 ViewportOutputKind::ExternalSwapchain
@@ -320,11 +327,11 @@ ViewportOutputKind::ExternalSwapchain
 ViewportOutputKind::None
 ```
 
-这样 Editor 不会因为 texture id 为 0 崩溃。
+当前 Vulkan backend 已支持 `VulkanImGuiTexture`，Editor 不再依赖 OpenGL texture id。
 
-## 12. OpenGL Legacy 适配
+## 12. OpenGL Legacy 历史适配
 
-短期为了保持现有功能，可以让旧 OpenGL backend 实现新接口：
+D12 前，为了保持迁移期功能，可以让旧 OpenGL backend 实现新接口：
 
 ```text
 getBackendType() -> OpenGLLegacy
@@ -334,7 +341,7 @@ pickViewport() -> readPixel
 
 但是不要继续为 OpenGL 添加新的抽象能力。它只是迁移期 fallback。
 
-当 Vulkan backend 覆盖 viewport 和 picking 后：
+D12 后，OpenGL legacy 已退役，主线只保留 Vulkan backend。历史清理方向是：
 
 - 删除 `getViewportColorAttachmentLegacy()`。
 - 删除旧 `Framebuffer` 对 Editor 的公开依赖。

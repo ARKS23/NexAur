@@ -31,7 +31,7 @@
   -> RendererService 接口清理
   -> vcpkg / CMake 构建统一
   -> WindowSystem 支持 OpenGL / Vulkan 创建策略
-  -> RendererV2 / VulkanRendererSystem 空后端
+  -> Renderer/Vulkan / VulkanRendererSystem 空后端
   -> RenderDataPacket -> RenderView
   -> VulkanRenderResourceCache
   -> RenderDataPacket -> RenderSceneFrame -> VulkanDrawList
@@ -46,12 +46,12 @@
 - 不继续把旧 OpenGL RHI 打磨成长期通用 RHI。
 - `RendererService` 是 NexAur 对外唯一渲染入口。
 - `RenderDataPacket` 继续作为 Scene / Editor / Runtime 到 Renderer 的数据契约。
-- 新 Vulkan renderer 通过 RendererV2 adapter 接入，不把 Vulkan 类型泄漏到 Scene / Resource / Editor。
+- 新 Vulkan renderer 位于 `source/Engine/Function/Renderer/Vulkan/`，不把 Vulkan 类型泄漏到 Scene / Resource / Editor。
 - `externalRenderer/` 只作为临时本地参考目录，不作为最终引擎模块源码边界。
-- 新渲染模块落在 `source/Engine/Function/RendererV2/`，参考 `externalRenderer/` 架构并按 NexAur 模块系统重新适配。
+- 新渲染模块已收口在 `source/Engine/Function/Renderer/`，其中 `data` / `frontend` / `Vulkan` 分别承担帧数据、前端转换和 Vulkan 后端实现。
 - 顶层工程升级到 C++20，避免引擎和新渲染模块出现语言标准双轨。
 - 顶层统一使用 vcpkg 管理第三方依赖，逐步移除或隔离重复的 vendored 依赖。
-- RendererV2 / Vulkan 路径后续统一使用 HLSL 编写新着色器，并通过 DXC 编译为 SPIR-V。
+- Renderer/Vulkan 路径后续统一使用 HLSL 编写新着色器，并通过 DXC 编译为 SPIR-V。
 - OpenGL 只作为迁移期 fallback，Vulkan 稳定后退役。
 - 每个阶段都保持可构建，可回退，可验证。
 
@@ -59,8 +59,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D12 OpenGL legacy 退役已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除
+当前阶段：D12.1 Renderer 模块目录和命名收口进行中
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -75,25 +75,33 @@ externalRenderer：仅作为临时本地参考目录
 - D2：完成 `ViewportPanel` 对新 viewport output / picking 契约的适配。
 - D3：完成顶层 C++20、vcpkg manifest / preset、依赖来源分支和特殊依赖收口。
 - D4：完成 Window graphics API 策略，OpenGL / Vulkan no-api window 可按配置选择。
-- D5：完成 RendererV2 / VulkanRendererSystem 骨架，Vulkan 后端可启动、清屏、present 和关闭。
-- D6：完成 `RenderDataPacket -> RenderView`，相机矩阵、clip range 和 viewport 尺寸进入 RendererV2 内部 view。
-- D7：完成 `VulkanRenderResourceCache`，模型 AssetHandle 可解析为 RendererV2 内部 Vulkan model resource。
+- D5：完成 Renderer/Vulkan / VulkanRendererSystem 骨架，Vulkan 后端可启动、清屏、present 和关闭。
+- D6：完成 `RenderDataPacket -> RenderView`，相机矩阵、clip range 和 viewport 尺寸进入 Vulkan renderer 内部 view。
+- D7：完成 `VulkanRenderResourceCache`，模型 AssetHandle 可解析为 Vulkan renderer 内部 model resource。
 - D8：完成 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList -> VulkanForwardPass` 最小绘制链路。
 - D9：完成 Editor viewport 过渡，ExternalSwapchain 下有明确状态、尺寸策略和交互降级。
-- D10：完成 Vulkan viewport image，Editor viewport 可显示 RendererV2 offscreen image。
+- D10：完成 Vulkan viewport image，Editor viewport 可显示 Vulkan renderer offscreen image。
 - D11：完成 Vulkan picking，Editor viewport 可通过 ObjectId pass / readback 选中实体。
 - D12：完成 OpenGL legacy 退役，默认 Vulkan/vcpkg 主路径，旧 OpenGL 实现和依赖已从主线移除。
+- D12.1-A：完成 `RendererService` 移出旧 `Renderer/RHI` 语义。
+- D12.1-B：完成迁移期源码目录收口为 `Renderer/Vulkan`。
+- D12.1-C：完成 Renderer data / frontend / Vulkan frontend 边界收口。
+- D12.1-D：完成 `WindowSystem` 源码目录从 Renderer 移动到 Platform。
 
 已确认：
 
 - `externalRenderer/` 不直接作为最终集成目录，后续只作为架构和实现参考。
-- 新渲染模块在 `source/Engine/Function/RendererV2/` 中重构，不在旧 `Renderer/` 目录里继续堆叠大改。
+- 新渲染模块位于 `source/Engine/Function/Renderer/`，Vulkan 后端位于 `source/Engine/Function/Renderer/Vulkan/`。
 - 顶层直接升级到 C++20，作为 NexAur 后续主线标准。
 - 顶层统一改为 vcpkg manifest 管理第三方依赖；旧 `external/` 依赖按阶段隔离、替换或移除。
 
+命名说明：
+
+- `RendererV2` 是 D5-D12 期间的迁移期名字；D12.1 后当前源码目录统一使用 `Renderer/Vulkan`。
+- 本文较早的 D5-D12 原始方案和进度记录中如出现 `RendererV2`，均指迁移期历史名称，不代表当前目录或长期架构。
+
 需要注意：
 
-- `RendererV2` 仍是当前目录名，D12 先完成 OpenGL 退役；是否收口为 `Renderer/Vulkan` 可放到 D12.1 单独处理。
 - 顶层依赖现在以 vcpkg manifest 为唯一主路径，旧 vendored external fallback 不再进入默认构建图。
 - GLFW 的 vcpkg 输出仍可能在说明文本里提到 OpenGL，这是 GLFW 包自身说明，不代表 NexAur 主线仍依赖 OpenGL backend。
 
@@ -104,9 +112,9 @@ externalRenderer：仅作为临时本地参考目录
 | D0 文档与方向确认 | 已完成 | 固定路线、拆分参考文档、决定 externalRenderer 归属 | 本文档 / 总方案 |
 | D1 RendererService 接口清理 | 已完成 | 降级 OpenGL texture id 接口，新增后端无关 viewport / picking 契约 | 接口文档 |
 | D2 ViewportPanel 适配新输出 | 已完成 | Editor 不再假设 viewport 是 OpenGL texture | 接口文档 |
-| D3 vcpkg / CMake 预研落地 | 已完成 | 顶层 C++20 + vcpkg 方案可支撑 RendererV2 | 构建文档 |
+| D3 vcpkg / CMake 预研落地 | 已完成 | 顶层 C++20 + vcpkg 方案可支撑 Vulkan renderer | 构建文档 |
 | D4 Window graphics API 策略 | 已完成 | OpenGL context 与 Vulkan no-api window 可按 backend 选择 | 总方案 / 构建文档 |
-| D5 RendererV2 / VulkanRendererSystem 骨架 | 已完成 | 在 RendererV2 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
+| D5 Renderer/Vulkan / VulkanRendererSystem 骨架 | 已完成 | 在 Renderer/Vulkan 中创建新 Vulkan 渲染模块骨架，跑通空场景 / swapchain | 总方案 |
 | D6 RenderView 转换 | 已完成 | NexAur 相机驱动新 Vulkan renderer | 总方案 |
 | D7 VulkanRenderResourceCache | 已完成 | AssetHandle 解析到 Vulkan renderer resources | 总方案 |
 | D8 SceneFrame / DrawList / ForwardPass | 已完成 | Vulkan 1.3 + dynamic rendering 下提交并显示 NexAur 场景模型 | 总方案 |
@@ -125,6 +133,12 @@ externalRenderer：仅作为临时本地参考目录
 ```
 
 ## 5. 阶段细化
+
+说明：
+
+- 本节保留 D0-D12 的原始拆分和阶段记录，属于历史方案区。
+- 其中出现的 `RendererV2`、`renderer-v2`、`NEXAUR_BUILD_RENDERER_V2`、`OpenGLTexture` 等名字只表示当时的迁移期状态。
+- 当前源码和后续开发以 `Renderer/Vulkan`、`Renderer/data`、`Renderer/frontend`、`WindowSystem in Platform` 为准。
 
 ### D0：文档与方向确认
 
@@ -292,7 +306,7 @@ D3-E：验证和文档同步
   - vcpkg 模式下链接 imported targets
   - legacy 模式保留当前 external include / link
 - `vcpkg.json`
-  - 合并当前 NexAur 依赖和后续 RendererV2 依赖
+  - 合并当前 NexAur 依赖和后续 Vulkan renderer 依赖
 - `CMakePresets.json`
   - 新增 `msvc-vcpkg` 配置和 Debug / Release build preset
 - 可能新增 `source/Engine/ThirdParty/stb_image.cpp`
@@ -477,7 +491,7 @@ D5 不做：
 
 目标：
 
-- NexAur 当前帧相机数据能够稳定驱动 RendererV2 的内部 `RenderView`。
+- NexAur 当前帧相机数据能够稳定驱动 Vulkan renderer 的内部 `RenderView`。
 - 为 D7 资源缓存、D8 场景对象提交提前固定相机和 projection 契约。
 - 保持 `RendererService` 对外接口不变，Scene / Editor / Runtime 仍然只提交 `RenderDataPacket`。
 
@@ -721,7 +735,7 @@ struct VulkanModelResource {
 
 #### D7-B：新增 VulkanResourceContext
 
-当前 `VulkanRenderResourceCache::init()` 没有参数，不足以创建 GPU resource。建议新增 RendererV2 内部上下文：
+当前 `VulkanRenderResourceCache::init()` 没有参数，不足以创建 GPU resource。建议新增 Renderer/Vulkan 内部上下文：
 
 ```cpp
 struct VulkanResourceContext {
@@ -826,7 +840,7 @@ vkDeviceWaitIdle
   -> device destroy
 ```
 
-当前 D5 的 shutdown 顺序已经接近这个结构。D7 需要让 `clear()` 真正释放缓存里的 RendererV2 resource，确保关闭时不泄漏 Vulkan buffer / allocation。
+当前 D5 的 shutdown 顺序已经接近这个结构。D7 需要让 `clear()` 真正释放缓存里的 Vulkan renderer resource，确保关闭时不泄漏 Vulkan buffer / allocation。
 
 本次实现中，`resource_cache.shutdown()` 会先清空 model cache，触发 mesh buffer / allocation 释放，再销毁 upload command pool，最后销毁 VMA allocator。
 
@@ -916,7 +930,7 @@ RenderDataPacket
 
 #### D8-0：Vulkan 1.3 baseline 对齐
 
-当前 RendererV2 骨架还有 Vulkan 1.1 临时代码，需要先修正：
+当前 Vulkan renderer 骨架还有 Vulkan 1.1 临时代码，需要先修正：
 
 ```text
 source/Engine/Function/RendererV2/vulkan_renderer_system.cpp

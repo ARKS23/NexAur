@@ -10,6 +10,15 @@ docs/plans/Renderer/renderer_vulkan_development_roadmap.md
 
 本文是总体架构参考文档；后续开发进度、阶段状态和完成记录以进度主文档为准。
 
+当前落地状态：
+
+```text
+D12 / D12.1 后，OpenGL legacy 已退役。
+externalRenderer 仍只作为临时本地参考，不直接成为引擎源码边界。
+NexAur 当前 Vulkan 后端位于 source/Engine/Function/Renderer/Vulkan。
+Renderer/data 与 Renderer/frontend 保存 backend-neutral frame data 和转换逻辑。
+```
+
 ## 1. 文档目标
 
 本文档记录 NexAur 渲染模块从当前 OpenGL 实现重构到新 Vulkan 渲染器 `ARKRenderer` 的总体路线。
@@ -193,7 +202,7 @@ AssetHandle
 推荐新增目录：
 
 ```text
-source/Engine/Function/RendererV2/
+source/Engine/Function/Renderer/Vulkan/
   vulkan_renderer_system.h
   vulkan_renderer_system.cpp
   vulkan_render_resource_cache.h
@@ -341,7 +350,7 @@ renderer_dependency_cmake_plan.md
 
 验收：
 
-- NexAur CMake 能提供 RendererV2 后续需要的 Vulkan / shader / asset 相关依赖。
+- NexAur CMake 能提供 Renderer/Vulkan 后续需要的 Vulkan / shader / asset 相关依赖。
 - 不重复构建 glfw / glm / spdlog / imgui 等依赖。
 
 ### PR-R4：WindowSystem graphics API 策略
