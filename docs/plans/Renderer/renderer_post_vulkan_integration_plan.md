@@ -1191,17 +1191,217 @@ Skybox
 
 ### PR-R22：Shadow 第一版
 
+执行状态：已完成。
+
+完成记录：
+
+- `DirectionalLightComponent`、`RendererDirectionalLightData`、`RenderFrameDirectionalLight` 和 `VulkanDrawList` 已增加 cast shadow、strength、bias、distance 等后端无关阴影字段。
+- 新增 `VulkanShadowMapTarget`，负责 sampled depth image / image view / sampler、shadow map extent 和 image layout 记录。
+- 新增 `assets/shaders/Renderer/Vulkan/vulkan_shadow_depth.hlsl`，通过 HLSL + DXC 编译为 vertex-only shadow depth shader。
+- `VulkanShaderLibrary` 增加 `ShadowDepth` shader program id，`VulkanPipelineCache` 支持 depth-only / vertex-only pipeline。
+- 新增 `VulkanShadowPass`，使用 Vulkan dynamic rendering 写入 directional light shadow depth。
+- `FrameGlobal` descriptor 增加 shadow sampled image / sampler，frame uniform 增加 shadow light VP 和 shadow params。
+- `vulkan_forward.hlsl` 增加 shadow depth sampling 和 3x3 PCF，第一版只衰减 directional direct light。
+- PassGraph 已接入 `DirectionalShadowMap -> Skybox -> ForwardScene`，viewport target 和 fallback swapchain 两条路径都覆盖。
+- 构建、HLSL shader 编译和 Sandbox smoke 已通过。
+
 目标：
 
 - directional light shadow map。
 - shadow pass 写 depth。
 - forward pass 采样 shadow map。
 
+建议范围：
+
+- 第一版只支持一个 directional light shadow map。
+- shadow map 分辨率先固定为 `2048x2048`，后续再暴露为项目配置或组件参数。
+- 使用 Vulkan dynamic rendering 的 depth-only pass。
+- 使用 HLSL shader，编译到 Vulkan 1.3 SPIR-V。
+- 使用最小 shadow compare，可先做 hard shadow；如果实现成本很低，可以加 3x3 PCF，但不要扩展成完整阴影质量系统。
+- shadow 只影响 direct light，不影响 procedural skybox / ambient / environment baseline。
+
+建议数据流：
+
+```text
+DirectionalLightComponent
+  -> RenderDataPacket
+  -> RenderSceneFrame
+  -> VulkanDrawList
+  -> VulkanShadowPass
+  -> VulkanForwardPass
+```
+
+Scene / Resource / Editor 不直接 include Vulkan shadow 类型。Scene 层只表达“是否投射阴影”和少量后端无关参数，GPU shadow map、sampler、descriptor、pipeline 都留在 Vulkan backend 内部。
+
+建议给 directional light 增加的最小参数：
+
+```cpp
+bool cast_shadow = true;
+float shadow_strength = 0.65f;
+float shadow_bias = 0.002f;
+float shadow_distance = 30.0f;
+```
+
+这些参数进入 `RendererDirectionalLightData` / `RenderFrameDirectionalLight` / `VulkanDrawList`，但不携带 Vulkan handle。
+
+建议新增结构：
+
+```text
+Renderer/Vulkan/targets/
+  vulkan_shadow_map_target.h
+  vulkan_shadow_map_target.cpp
+
+Renderer/Vulkan/passes/
+  vulkan_shadow_pass.h
+  vulkan_shadow_pass.cpp
+
+assets/shaders/Renderer/Vulkan/
+  vulkan_shadow_depth.hlsl
+```
+
+`VulkanShadowMapTarget` 职责：
+
+- 创建 depth image / image view / sampler。
+- 维护 shadow map image layout。
+- 提供 depth-only render target 描述。
+- 提供 shader read image view / sampler 给 frame descriptor。
+
+`VulkanShadowPass` 职责：
+
+- 只消费 `VulkanDrawList.opaque_items`。
+- 只绑定 mesh vertex / index buffer。
+- 不绑定 material descriptor。
+- 不采样 texture。
+- 使用 depth-only pipeline 记录 draw command。
+- push constants 可以先使用 `light_view_projection + model`，两个 `mat4` 正好 128 bytes，保持在 Vulkan 最小 push constant 限制内。
+
+`VulkanPipelineCache` 需要补充：
+
+- 支持 depth-only pipeline，也就是 `colorAttachmentCount = 0`。
+- 支持 vertex-only shader program，shadow depth pass 不需要 fragment shader。
+- `VulkanGraphicsPipelineDesc` 的合法性检查不能强制要求 color format。
+
+`VulkanShaderLibrary` 需要补充：
+
+- 增加 `VulkanShaderProgramId::ShadowDepth`。
+- 支持只加载 vertex stage，或让 shader program 显式声明 stage 列表。
+- 不建议为了 shadow pass 伪造无意义 fragment shader。
+
+Frame descriptor 建议：
+
+当前 `VulkanFrameLightingResource` 实际已经管理 camera / light / environment 等 frame-global 数据。接入 shadow 后建议重命名或逐步迁移为：
+
+```text
+VulkanFrameGlobalResource
+```
+
+如果不想在 PR-R22 扩大改名范围，也可以先保留旧类名，但要避免继续把大量非 lighting 职责塞进类内部。较清爽的长期边界是：
+
+```text
+VulkanFrameGlobalResource
+  - frame uniform buffer
+  - point light storage buffer
+  - shadow map image descriptor
+  - shadow sampler descriptor
+```
+
+FrameGlobal descriptor 第一版可以扩展为：
+
+```text
+set 0 binding 0: FrameGlobals uniform buffer
+set 0 binding 1: PointLights storage buffer
+set 0 binding 2: ShadowMap sampled image
+set 0 binding 3: ShadowSampler
+```
+
+Forward shader 需要补充：
+
+- `FrameGlobals` 增加 `shadow_light_view_projection`。
+- `FrameGlobals` 或 shadow params 增加 enabled / strength / bias / map size。
+- VS 输出 world position。
+- PS 将 world position 变换到 light clip space。
+- light clip space 转 shadow map uv / depth。
+- 采样 shadow map 并比较深度。
+- shadow 只衰减 directional / point direct lighting 中需要的部分；第一版建议先只衰减 directional light。
+
+Light view projection 计算：
+
+- 第一版可以在 Vulkan backend 内部基于 directional light direction、camera position 和 `shadow_distance` 计算一个固定 orthographic shadow box。
+- 当前相机投影已有 Vulkan clip space 转换逻辑；shadow orthographic projection 也需要同样进入 Vulkan clip space，避免 Y / depth 范围错误。
+- 不建议第一版做 scene bounds 精确包围，因为当前 mesh resource 还没有稳定 bounds 数据。
+- 后续可在 model / mesh resource 中补 bounds，再做 tighter shadow frustum 或 CSM。
+
+PassGraph 接入：
+
+```text
+DirectionalShadowMap
+  writes ShadowDepth as DepthStencilAttachment
+
+Skybox
+  writes ViewportColor / SwapchainColor as ColorAttachment
+
+ForwardScene
+  reads ShadowDepth as ShaderRead
+  writes scene color / depth
+```
+
+需要让 `VulkanGraphImageUsage` 覆盖 shadow depth 的 shader read 状态。当前已有 `ShaderRead` usage，可先复用；如果后续需要更准确的 depth aspect / sampled depth 状态，再细化 usage 名称。
+
+建议拆分：
+
+1. PR-R22-A：Shadow data contract。
+   - `DirectionalLightComponent` 增加 cast shadow / strength / bias / distance。
+   - `RendererDirectionalLightData`、`RenderFrameDirectionalLight`、`VulkanDrawList` 同步字段。
+   - 默认场景 directional light 默认开启 shadow。
+
+2. PR-R22-B：新增 `VulkanShadowMapTarget`。
+   - 创建 `VK_FORMAT_D32_SFLOAT` 或支持格式探测。
+   - usage 包含 `VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT`。
+   - 创建 sampler，第一版可以使用 clamp-to-border。
+   - 维护 depth image layout。
+
+3. PR-R22-C：Pipeline / Shader 基础能力。
+   - `VulkanPipelineCache` 支持 depth-only pipeline。
+   - `VulkanShaderLibrary` 支持 `ShadowDepth` vertex-only program。
+   - CMake HLSL 编译 helper 增加 shadow depth shader。
+
+4. PR-R22-D：新增 `VulkanShadowPass`。
+   - 使用 dynamic rendering 写 shadow depth。
+   - 使用 mesh vertex / index buffer 绘制 opaque items。
+   - 不绑定 material / texture。
+   - 验证 shadow pass 可以单独录制不崩溃。
+
+5. PR-R22-E：FrameGlobal descriptor 接入 shadow map。
+   - 扩展 builtin `FrameGlobal` descriptor layout。
+   - 更新 frame resource descriptor set。
+   - 在 frame uniform 中写入 shadow light VP 和 shadow params。
+
+6. PR-R22-F：Forward shader shadow sampling。
+   - `vulkan_forward.hlsl` 采样 shadow depth。
+   - 对 directional direct light 应用 shadow attenuation。
+   - 调整 bias，避免明显 shadow acne。
+
+7. PR-R22-G：PassGraph flow 迁移。
+   - viewport target 路径：`DirectionalShadowMap -> Skybox -> ForwardScene -> ObjectIdPicking -> ImGuiComposite -> PresentTransition`。
+   - fallback swapchain 路径：`DirectionalShadowMap -> Skybox -> ForwardScene -> ObjectIdPicking -> PresentTransition`。
+   - shadow depth pass 后进入 shader read，再给 ForwardScene 使用。
+
+8. PR-R22-H：验证和文档。
+   - 默认场景能看到物体投影。
+   - 关闭 directional shadow 后画面恢复无阴影。
+   - camera 移动时 shadow 稳定，不出现明显闪烁。
+   - ObjectId picking 不受 shadow pass 影响。
+   - 构建、HLSL shader 编译和 Sandbox smoke 通过。
+
 暂时不做：
 
 - cascaded shadow maps。
 - point light shadow cube map。
 - contact shadow / screen-space shadow。
+- transparent shadow。
+- shadow atlas。
+- contact hardening shadow / VSM / EVSM。
+- editor shadow map debug viewer。
 
 ## 9. 第六优先级：Editor 和 Debug 工具
 

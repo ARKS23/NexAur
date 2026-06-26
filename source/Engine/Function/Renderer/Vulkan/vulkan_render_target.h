@@ -19,4 +19,17 @@ namespace NexAur {
                    extent.height > 0;
         }
     };
+
+    struct VulkanDepthRenderTarget {
+        VkImageView depth_view = VK_NULL_HANDLE;
+        VkFormat depth_format = VK_FORMAT_UNDEFINED;
+        VkExtent2D extent{};
+
+        bool valid() const {
+            return depth_view != VK_NULL_HANDLE &&
+                   depth_format != VK_FORMAT_UNDEFINED &&
+                   extent.width > 0 &&
+                   extent.height > 0;
+        }
+    };
 } // namespace NexAur

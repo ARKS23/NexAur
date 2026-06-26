@@ -13,6 +13,10 @@ namespace NexAur {
         glm::vec3 direction{ -0.2f, -1.0f, -0.3f };
         glm::vec3 color{ 1.0f };
         float intensity = 1.0f;
+        bool cast_shadow = true;
+        float shadow_strength = 0.65f;
+        float shadow_bias = 0.002f;
+        float shadow_distance = 30.0f;
     };
 
     struct RenderFramePointLight {

@@ -37,7 +37,7 @@ namespace NexAur {
         std::string debug_name;
 
         bool valid() const {
-            return color_format != VK_FORMAT_UNDEFINED &&
+            return (color_format != VK_FORMAT_UNDEFINED || depth_format != VK_FORMAT_UNDEFINED) &&
                    (!(depth_test_enable || depth_write_enable) || depth_format != VK_FORMAT_UNDEFINED);
         }
     };

@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R21 Skybox / Environment 已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline；Skybox pass 已接入 PassGraph，支持 environment background color / intensity procedural skybox baseline
+当前阶段：Post Vulkan PR-R22 Shadow 第一版已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline；Skybox pass 已接入 PassGraph，支持 environment background color / intensity procedural skybox baseline；directional light shadow map baseline 已接入 ShadowDepth pass、FrameGlobal descriptor、Forward shader shadow sampling 和 PassGraph flow
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -97,6 +97,7 @@ externalRenderer：仅作为临时本地参考目录
 - PR-R19：完成 Vulkan-only PassGraph 骨架。
 - PR-R20：完成 Lighting baseline。
 - PR-R21：完成 Skybox / Environment baseline。
+- PR-R22：完成 Shadow 第一版 baseline。
 
 已确认：
 
@@ -1832,6 +1833,21 @@ ImVec2(1.0f, 1.0f)
 或先做 PR-R21.1：TextureCube / EnvironmentResource
 ```
 
+PR-R22 建议执行拆分：
+
+```text
+PR-R22-A Shadow data contract
+PR-R22-B VulkanShadowMapTarget
+PR-R22-C PipelineCache / ShaderLibrary 支持 depth-only vertex-only pipeline
+PR-R22-D VulkanShadowPass
+PR-R22-E FrameGlobal descriptor 接入 shadow map
+PR-R22-F Forward shader shadow sampling
+PR-R22-G PassGraph 接入 DirectionalShadowMap -> Skybox -> ForwardScene
+PR-R22-H 验证、文档和 Sandbox smoke
+```
+
+PR-R22 第一版建议只做 directional light shadow map baseline。暂不做 cascaded shadow maps、point light shadow cube map、transparent shadow、shadow atlas、VSM / EVSM、contact shadow 或 editor shadow debug viewer。核心目标是打通 shadow target、depth-only shadow pass、Forward shader shadow sampling 和 PassGraph 顺序。
+
 PR-R21 已完成拆分：
 
 ```text
@@ -1953,6 +1969,7 @@ D12 / D12.1 已确认状态：
 - PR-R19 已完成：Vulkan-only PassGraph 收口 pass 顺序和 image layout transition。
 - PR-R20 已完成：Forward pass 接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline。
 - PR-R21 已完成：Skybox / Environment baseline 接入，procedural skybox 在 ForwardScene 前绘制。
+- PR-R22 已完成：Directional shadow map baseline 接入，ForwardScene 可采样 shadow depth 并衰减 directional direct light。
 
 ## 9. 进度记录
 
@@ -1965,6 +1982,13 @@ D12 / D12.1 已确认状态：
 - 完成 PR-R21：`VulkanForwardPass` 增加 color load op options，Skybox 后的 ForwardScene 保留 color 并清 depth。
 - 完成 PR-R21：PassGraph flow 迁移为 `Skybox -> ForwardScene`，viewport target 和 fallback swapchain 路径均覆盖。
 - 完成 PR-R21：构建、HLSL shader 编译和 Sandbox smoke 通过。
+- 完成 PR-R22：`DirectionalLightComponent -> RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 已携带 cast shadow、strength、bias、distance 等后端无关阴影参数。
+- 完成 PR-R22：新增 `VulkanShadowMapTarget`，管理 sampled depth image / image view / sampler 和 shadow depth layout。
+- 完成 PR-R22：新增 `vulkan_shadow_depth.hlsl`、`VulkanShaderProgramId::ShadowDepth`，`VulkanPipelineCache` 支持 depth-only / vertex-only pipeline。
+- 完成 PR-R22：新增 `VulkanShadowPass`，使用 dynamic rendering 记录 directional shadow depth pass。
+- 完成 PR-R22：FrameGlobal descriptor 增加 shadow sampled image / sampler，forward shader 支持 3x3 PCF shadow visibility。
+- 完成 PR-R22：PassGraph flow 迁移为 `DirectionalShadowMap -> Skybox -> ForwardScene`，viewport target 和 fallback swapchain 路径均覆盖。
+- 完成 PR-R22：构建、HLSL shader 编译和 Sandbox smoke 通过。
 - 完成 PR-R13：`EditorCamera` 从 Renderer 目录移动到 `source/Engine/Editor/Camera`。
 - 完成 PR-R13：删除旧 `Function/Renderer/camera.h` 空基类和旧 `Function/Renderer/editor_camera.*`。
 - 完成 PR-R13：`EditorLayer`、`ViewportPanel` 和 `source/Engine/CMakeLists.txt` 已同步新路径。

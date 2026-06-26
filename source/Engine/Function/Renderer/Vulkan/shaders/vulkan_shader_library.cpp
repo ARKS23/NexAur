@@ -45,9 +45,15 @@ namespace NexAur {
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_object_id.vert.spv" : "vulkan_object_id.frag.spv";
                 case VulkanShaderProgramId::Skybox:
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_skybox.vert.spv" : "vulkan_skybox.frag.spv";
+                case VulkanShaderProgramId::ShadowDepth:
+                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_shadow_depth.vert.spv" : nullptr;
                 default:
                     return nullptr;
             }
+        }
+
+        bool hasFragmentStage(VulkanShaderProgramId program_id) {
+            return program_id != VulkanShaderProgramId::ShadowDepth;
         }
 
         uint64_t shaderModuleKey(VulkanShaderProgramId program_id, VkShaderStageFlagBits stage) {
@@ -105,8 +111,11 @@ namespace NexAur {
 
     VulkanShaderProgram VulkanShaderLibrary::getProgram(VulkanShaderProgramId program_id) {
         VulkanShaderProgram program;
+        program.has_fragment_stage = hasFragmentStage(program_id);
         program.vertex_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_VERTEX_BIT);
-        program.fragment_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_FRAGMENT_BIT);
+        if (program.has_fragment_stage) {
+            program.fragment_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_FRAGMENT_BIT);
+        }
         return program;
     }
 

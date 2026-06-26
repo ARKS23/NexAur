@@ -11,7 +11,8 @@ namespace NexAur {
     enum class VulkanShaderProgramId : uint8_t {
         Forward = 0,
         ObjectId,
-        Skybox
+        Skybox,
+        ShadowDepth
     };
 
     struct VulkanShaderProgram {
@@ -19,12 +20,13 @@ namespace NexAur {
         VkShaderModule fragment_module = VK_NULL_HANDLE;
         const char* vertex_entry = "VSMain";
         const char* fragment_entry = "PSMain";
+        bool has_fragment_stage = true;
 
         bool valid() const {
             return vertex_module != VK_NULL_HANDLE &&
-                   fragment_module != VK_NULL_HANDLE &&
                    vertex_entry != nullptr &&
-                   fragment_entry != nullptr;
+                   (!has_fragment_stage ||
+                    (fragment_module != VK_NULL_HANDLE && fragment_entry != nullptr));
         }
     };
 

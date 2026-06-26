@@ -36,6 +36,17 @@ namespace NexAur {
             return isFinite(value) && value >= 0.0f ? value : fallback;
         }
 
+        float sanitizeUnit(float value, float fallback) {
+            if (!isFinite(value)) {
+                return fallback;
+            }
+            return std::clamp(value, 0.0f, 1.0f);
+        }
+
+        float sanitizeMin(float value, float fallback, float minimum) {
+            return isFinite(value) && value >= minimum ? value : fallback;
+        }
+
         glm::vec3 sanitizeColor(const glm::vec3& color) {
             if (!isFinite(color)) {
                 return glm::vec3{ 1.0f };
@@ -59,6 +70,10 @@ namespace NexAur {
             light.direction = sanitizeDirection(source.direction);
             light.color = sanitizeColor(source.color);
             light.intensity = sanitizeNonNegative(source.intensity, 1.0f);
+            light.cast_shadow = source.cast_shadow;
+            light.shadow_strength = sanitizeUnit(source.shadow_strength, 0.65f);
+            light.shadow_bias = sanitizeMin(source.shadow_bias, 0.002f, 0.0f);
+            light.shadow_distance = sanitizeMin(source.shadow_distance, 30.0f, 1.0f);
             return light;
         }
 

@@ -9,6 +9,7 @@ struct VSOutput {
     float2 texcoord : TEXCOORD0;
     float3 world_position : TEXCOORD1;
     float3 world_normal : TEXCOORD2;
+    float4 shadow_position : TEXCOORD3;
 };
 
 struct PushConstants {
@@ -21,10 +22,12 @@ PushConstants g_push_constants;
 
 struct FrameGlobals {
     float4x4 view_projection;
+    float4x4 shadow_light_view_projection;
     float4 camera_position_environment_intensity;
     float4 directional_direction_intensity;
     float4 directional_color_point_count;
     float4 ambient_color_intensity;
+    float4 shadow_params; // x: enabled, y: strength, z: bias, w: shadow map size
 };
 
 struct PointLightData {
@@ -38,6 +41,12 @@ ConstantBuffer<FrameGlobals> g_frame;
 
 [[vk::binding(1, 0)]]
 StructuredBuffer<PointLightData> g_point_lights;
+
+[[vk::binding(2, 0)]]
+Texture2D<float> g_shadow_map;
+
+[[vk::binding(3, 0)]]
+SamplerState g_shadow_sampler;
 
 struct MaterialConstants {
     float4 base_color_factor;
@@ -60,6 +69,7 @@ VSOutput VSMain(VSInput input) {
     output.world_position = world_position.xyz;
     output.world_normal = normalize(mul((float3x3)g_push_constants.normal_matrix, input.normal));
     output.texcoord = input.texcoord;
+    output.shadow_position = mul(g_frame.shadow_light_view_projection, world_position);
     return output;
 }
 
@@ -119,6 +129,40 @@ float3 EvaluateDirectLight(
     return (diffuse + specular) * radiance * ndotl;
 }
 
+float EvaluateShadowVisibility(float4 shadow_position) {
+    if (g_frame.shadow_params.x < 0.5f || shadow_position.w <= 0.0f) {
+        return 1.0f;
+    }
+
+    float3 projected = shadow_position.xyz / shadow_position.w;
+    float2 uv = projected.xy * 0.5f + 0.5f;
+    float current_depth = projected.z;
+
+    if (uv.x < 0.0f || uv.x > 1.0f ||
+        uv.y < 0.0f || uv.y > 1.0f ||
+        current_depth < 0.0f || current_depth > 1.0f) {
+        return 1.0f;
+    }
+
+    const float bias = max(g_frame.shadow_params.z, 0.0f);
+    const float strength = saturate(g_frame.shadow_params.y);
+    const float texel_size = 1.0f / max(g_frame.shadow_params.w, 1.0f);
+
+    float shadow = 0.0f;
+    [unroll]
+    for (int y = -1; y <= 1; ++y) {
+        [unroll]
+        for (int x = -1; x <= 1; ++x) {
+            const float2 sample_uv = uv + float2((float)x, (float)y) * texel_size;
+            const float closest_depth = g_shadow_map.SampleLevel(g_shadow_sampler, sample_uv, 0.0f);
+            shadow += current_depth - bias > closest_depth ? 1.0f : 0.0f;
+        }
+    }
+
+    shadow /= 9.0f;
+    return lerp(1.0f, 1.0f - strength, shadow);
+}
+
 float4 PSMain(VSOutput input) : SV_Target0 {
     float4 base_color = g_base_color_texture.Sample(g_base_color_sampler, input.texcoord) * g_material.base_color_factor;
     if (g_material.factors.w > 0.5f && g_material.factors.w < 1.5f) {
@@ -134,7 +178,8 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     float3 directional_light_dir = normalize(-g_frame.directional_direction_intensity.xyz);
     float3 directional_radiance = g_frame.directional_color_point_count.rgb * g_frame.directional_direction_intensity.w;
-    lit_color += EvaluateDirectLight(
+    const float directional_shadow = EvaluateShadowVisibility(input.shadow_position);
+    lit_color += directional_shadow * EvaluateDirectLight(
         base_color.rgb,
         metallic,
         roughness,

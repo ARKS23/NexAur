@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
@@ -26,7 +27,11 @@ namespace NexAur {
             VulkanDescriptorAllocator& descriptor_allocator);
         void shutdown();
 
-        bool update(const VulkanDrawList& draw_list);
+        bool update(
+            const VulkanDrawList& draw_list,
+            const glm::mat4& shadow_light_view_projection,
+            float shadow_map_size);
+        bool updateShadowMap(VkImageView shadow_map_view, VkSampler shadow_sampler);
 
         bool isReady() const { return m_ready; }
         VkDescriptorSet getDescriptorSet() const { return m_descriptor_set; }

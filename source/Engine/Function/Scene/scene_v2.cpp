@@ -79,6 +79,10 @@ namespace NexAur {
             render_packet->directional_light_data.direction = dir_light_comp.direction;
             render_packet->directional_light_data.color = dir_light_comp.color;
             render_packet->directional_light_data.intensity = dir_light_comp.intensity;
+            render_packet->directional_light_data.cast_shadow = dir_light_comp.cast_shadow;
+            render_packet->directional_light_data.shadow_strength = dir_light_comp.shadow_strength;
+            render_packet->directional_light_data.shadow_bias = dir_light_comp.shadow_bias;
+            render_packet->directional_light_data.shadow_distance = dir_light_comp.shadow_distance;
             break; // 目前版本只支持一个方向光
         }
 

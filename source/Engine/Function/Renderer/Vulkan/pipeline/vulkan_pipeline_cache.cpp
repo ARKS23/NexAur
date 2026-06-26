@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 namespace NexAur {
     namespace {
@@ -138,13 +139,16 @@ namespace NexAur {
         vertex_stage.module = shader_program.vertex_module;
         vertex_stage.pName = shader_program.vertex_entry;
 
-        VkPipelineShaderStageCreateInfo fragment_stage{};
-        fragment_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        fragment_stage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragment_stage.module = shader_program.fragment_module;
-        fragment_stage.pName = shader_program.fragment_entry;
-
-        const std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages{ vertex_stage, fragment_stage };
+        std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
+        shader_stages.push_back(vertex_stage);
+        if (shader_program.has_fragment_stage) {
+            VkPipelineShaderStageCreateInfo fragment_stage{};
+            fragment_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            fragment_stage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            fragment_stage.module = shader_program.fragment_module;
+            fragment_stage.pName = shader_program.fragment_entry;
+            shader_stages.push_back(fragment_stage);
+        }
 
         VkVertexInputBindingDescription binding{};
         std::array<VkVertexInputAttributeDescription, 3> attributes{};
@@ -192,8 +196,9 @@ namespace NexAur {
 
         VkPipelineColorBlendStateCreateInfo color_blend{};
         color_blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        color_blend.attachmentCount = 1;
-        color_blend.pAttachments = &color_blend_attachment;
+        const bool has_color_attachment = desc.color_format != VK_FORMAT_UNDEFINED;
+        color_blend.attachmentCount = has_color_attachment ? 1u : 0u;
+        color_blend.pAttachments = has_color_attachment ? &color_blend_attachment : nullptr;
 
         const std::array<VkDynamicState, 2> dynamic_states{
             VK_DYNAMIC_STATE_VIEWPORT,
@@ -219,8 +224,8 @@ namespace NexAur {
 
         VkPipelineRenderingCreateInfo rendering_info{};
         rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-        rendering_info.colorAttachmentCount = 1;
-        rendering_info.pColorAttachmentFormats = &desc.color_format;
+        rendering_info.colorAttachmentCount = has_color_attachment ? 1u : 0u;
+        rendering_info.pColorAttachmentFormats = has_color_attachment ? &desc.color_format : nullptr;
         rendering_info.depthAttachmentFormat = desc.depth_format;
 
         VkGraphicsPipelineCreateInfo pipeline_info{};

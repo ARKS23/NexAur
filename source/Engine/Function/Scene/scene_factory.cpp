@@ -51,6 +51,10 @@ namespace NexAur {
             directional_light.direction = glm::normalize(glm::vec3(-0.6f, -0.6f, 0.6f));
             directional_light.color = glm::vec3(1.0f);
             directional_light.intensity = 3.3f;
+            directional_light.cast_shadow = true;
+            directional_light.shadow_strength = 0.7f;
+            directional_light.shadow_bias = 0.003f;
+            directional_light.shadow_distance = 35.0f;
 
             Entity point_light_entity = scene->createEntity("PointLight");
             auto& point_light = point_light_entity.addComponent<PointLightComponent>();
