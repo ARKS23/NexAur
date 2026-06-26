@@ -733,7 +733,81 @@ shader_library shutdown
 
 目标：
 
-让 `VulkanRendererSystem` 从巨型执行类逐步变成 frame orchestrator。
+让 `VulkanRendererSystem` 从巨型执行类逐步变成 frame orchestrator，避免后续 skybox、shadow、post process、debug draw 继续堆进同一个 command recording 流程里。
+
+当前问题：
+
+- `VulkanRendererSystem` 仍直接串联 swapchain acquire / command buffer begin / viewport target transition / forward pass / object id pass / ImGui composite / present transition。
+- viewport image、picking image、swapchain image 的 layout transition 逻辑分散在 Backend 私有函数中。
+- 后续新增 pass 时，很容易继续扩大 `recordCommandBuffer()` 或类似帧录制函数。
+- 当前 pass 之间的资源读写关系主要靠代码顺序表达，缺少显式“这个 pass 读什么、写什么”的结构。
+
+PR-R19 的目标不是实现完整现代 RenderGraph，而是先建立 Vulkan-only 的轻量 PassGraph：
+
+```text
+VulkanRendererSystem
+  prepare frame data
+  prepare resources
+  build VulkanPassGraph
+  execute VulkanPassGraph
+  present
+```
+
+建议目录：
+
+```text
+Renderer/Vulkan/graph/
+  vulkan_graph_resource.h
+  vulkan_pass_graph.h
+  vulkan_pass_graph.cpp
+  vulkan_graph_executor.h
+  vulkan_graph_executor.cpp
+```
+
+建议核心概念：
+
+1. `VulkanGraphResource`。
+   - 表达当前帧 graph 中可读写的 Vulkan image resource。
+   - 第一版只引用已有资源，不拥有资源。
+   - 可包装 swapchain image、viewport color/depth、picking object id/depth。
+   - 记录 image、image view、format、extent、aspect mask、current layout。
+
+2. `VulkanGraphPass`。
+   - 表达一个 pass 的名字、读资源、写资源和 execute callback。
+   - 第一版不需要复杂反射或自动调度；按添加顺序执行即可。
+   - 读写声明用于 executor 插入 layout transition 和辅助调试。
+
+3. `VulkanPassGraph`。
+   - 每帧临时构建。
+   - 输入来自已经准备好的 `VulkanDrawList`、viewport target、picking target、swapchain image。
+   - 不回头访问 Scene / Editor / Resource。
+
+4. `VulkanGraphExecutor`。
+   - 遍历 pass。
+   - 根据资源使用声明插入 image layout transition。
+   - 调用 pass execute callback。
+   - 更新 graph resource 的 current layout。
+
+第一版推荐 pass：
+
+```text
+ForwardScene
+  read: draw_list
+  write: viewport_color or swapchain_color
+  write: scene_depth
+
+ObjectIdPicking
+  read: draw_list
+  write: picking_object_id
+  write: picking_depth
+
+ImGuiComposite
+  read: viewport_color as shader read
+  write: swapchain_color
+
+PresentTransition
+  write: swapchain_color -> present layout
+```
 
 推荐数据流：
 
@@ -752,7 +826,72 @@ present
 - pass 输入输出声明。
 - color / depth / object id target 管理。
 - image layout transition。
-- Vulkan 1.3 dynamic rendering begin/end。
+- 现有 pass record 调用的统一编排。
+
+第一版可以继续让 `VulkanForwardPass` / `VulkanObjectIdPass` 自己负责 dynamic rendering begin/end。PassGraph 先收口 pass 顺序和 image layout 状态，后续再逐步把 dynamic rendering attachment begin/end 进一步下沉到 graph executor。
+
+示例形态：
+
+```cpp
+graph.addPass("ForwardScene")
+    .writeColor(viewport_color)
+    .writeDepth(viewport_depth)
+    .execute([&](VkCommandBuffer command_buffer) {
+        forward_pass.record(command_buffer, viewport_target.getRenderTarget(), draw_list);
+    });
+
+graph.addPass("ObjectIdPicking")
+    .writeColor(picking_object_id)
+    .writeDepth(picking_depth)
+    .execute([&](VkCommandBuffer command_buffer) {
+        object_id_pass.record(command_buffer, picking_target.getRenderTarget(), draw_list);
+    });
+
+graph.addPass("ImGuiComposite")
+    .read(viewport_color)
+    .writeColor(swapchain_color)
+    .execute([&](VkCommandBuffer command_buffer) {
+        imgui_renderer.renderDrawData(command_buffer);
+    });
+```
+
+建议拆分：
+
+1. PR-R19-A：盘点并封装当前 frame flow。
+   - 明确现在 command buffer recording 中的 pass 顺序。
+   - 明确 viewport / picking / swapchain 的 layout 状态转换。
+   - 提取 graph execute 所需的轻量 frame context。
+
+2. PR-R19-B：新增 graph resource / usage 类型。
+   - 定义 color attachment、depth attachment、shader read、transfer src、present 等 usage。
+   - 定义 usage 到 Vulkan layout / access / stage 的映射。
+   - 第一版继续使用 `vkCmdPipelineBarrier`，后续可切换到 synchronization2。
+
+3. PR-R19-C：新增 `VulkanPassGraph` 和 pass declaration。
+   - 支持 `addPass()`。
+   - 支持 read/write resource 声明。
+   - 支持 execute callback。
+   - 第一版按添加顺序执行，不做复杂拓扑排序。
+
+4. PR-R19-D：新增 `VulkanGraphExecutor`。
+   - 在 pass 前插入必要 layout transition。
+   - 调用 pass execute。
+   - 更新 resource layout。
+
+5. PR-R19-E：迁移当前 pass flow。
+   - viewport target 路径：ForwardScene -> ObjectIdPicking -> ImGuiComposite -> Present。
+   - fallback swapchain 路径：ForwardScene -> ObjectIdPicking -> Present。
+   - 保持现有 viewport output / picking 行为不变。
+
+6. PR-R19-F：清理 `VulkanRendererSystem`。
+   - `recordCommandBuffer()` 或等价函数只负责构建 graph、执行 graph 和 end command buffer。
+   - transition helper 从 Backend 私有散落逻辑收口到 graph executor。
+
+7. PR-R19-G：验证和文档。
+   - Editor viewport 仍正常显示。
+   - ObjectId picking 仍可用。
+   - ImGui composite 和 swapchain present 正常。
+   - 构建和 Sandbox smoke 通过。
 
 暂时不做：
 
@@ -760,6 +899,29 @@ present
 - multi-queue scheduling。
 - resource aliasing。
 - 通用跨后端 RenderGraph。
+- transient render target allocator。
+- pass 自动裁剪。
+- 完整拓扑排序。
+- render thread / job system。
+- shader reflection 驱动的资源自动绑定。
+
+验收：
+
+- `VulkanRendererSystem` 不再直接堆大量 pass 顺序和 image layout transition 细节。
+- Forward / ObjectId / ImGui 的现有行为保持不变。
+- 新增一个 pass 时优先注册 graph pass，而不是继续扩大 Backend command recording 逻辑。
+- Resource / Scene / Editor 不 include `Renderer/Vulkan/graph`。
+- 构建、shader 编译和 Sandbox smoke 通过。
+
+完成状态：
+
+- 新增 `Renderer/Vulkan/graph`，包含 graph image resource、pass declaration、pass graph 和 graph executor。
+- `VulkanGraphExecutor` 统一维护 image usage 到 Vulkan layout / access / stage 的转换，第一版继续使用 `vkCmdPipelineBarrier`。
+- `VulkanRendererSystem::recordDrawCommands()` 已改为构建并执行 graph，viewport 路径为 `ForwardScene -> ObjectIdPicking -> ImGuiComposite -> PresentTransition`。
+- fallback swapchain 路径为 `ForwardScene -> ObjectIdPicking -> PresentTransition`。
+- viewport color/depth、picking object id/depth、swapchain color 的 layout 状态通过 graph commit 回写到各自 target / swapchain layout cache。
+- `VulkanForwardPass` / `VulkanObjectIdPass` 仍负责各自 dynamic rendering begin/end；PassGraph 第一版只收口帧内顺序和 image transition。
+- 构建、HLSL shader 编译和 Sandbox smoke 已通过。
 
 ## 8. 第五优先级：基础视觉能力
 

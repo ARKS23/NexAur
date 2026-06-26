@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R18 DescriptorAllocator 和 DescriptorLayoutCache 已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services
+当前阶段：Post Vulkan PR-R19 Vulkan-only PassGraph 骨架已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -1825,9 +1825,23 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R19：Vulkan-only PassGraph 骨架
-或为了更快进入小游戏 demo，先推进 PR-R20：Lighting baseline
+进入 PR-R20：Lighting baseline
+或先继续增强 PR-R19 PassGraph 的 debug dump / synchronization2 版本
 ```
+
+PR-R19 已完成拆分：
+
+```text
+PR-R19-A 盘点并封装当前 frame flow
+PR-R19-B Graph resource / usage 类型
+PR-R19-C VulkanPassGraph 和 pass declaration
+PR-R19-D VulkanGraphExecutor 和 layout transition
+PR-R19-E 迁移 Forward / ObjectId / ImGui / Present 当前 flow
+PR-R19-F 清理 VulkanRendererSystem command recording
+PR-R19-G 验收、文档和 Sandbox smoke
+```
+
+PR-R19 第一版已完成轻量 Vulkan-only PassGraph。当前 graph 按注册顺序执行 pass，集中处理 graph image usage 到 Vulkan layout / access / stage 的转换；`VulkanForwardPass` / `VulkanObjectIdPass` 仍负责各自 dynamic rendering begin/end。暂不引入 async compute、resource aliasing、transient render target allocator、完整拓扑排序或跨后端通用 RenderGraph。
 
 PR-R18 已完成拆分：
 

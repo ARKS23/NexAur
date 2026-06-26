@@ -157,6 +157,11 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.cpp
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
+    Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
+    Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp
+    Function/Renderer/Vulkan/graph/vulkan_graph_resource.h
+    Function/Renderer/Vulkan/graph/vulkan_pass_graph.h
+    Function/Renderer/Vulkan/graph/vulkan_pass_graph.cpp
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.h
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h

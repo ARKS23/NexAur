@@ -10,6 +10,8 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
+#include "Function/Renderer/Vulkan/graph/vulkan_graph_executor.h"
+#include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
@@ -32,6 +34,7 @@
 #endif
 
 #include <algorithm>
+#include <utility>
 
 namespace NexAur {
     namespace {
@@ -778,166 +781,174 @@ namespace NexAur {
                 return false;
             }
 
-            VkImage image = swapchain_images[image_index];
-            const VkImageLayout old_layout = swapchain_image_layouts[image_index];
-
+            VulkanPassGraph graph;
             const bool render_to_viewport_image = imgui_renderer.isInitialized() && viewport_target.isReady();
-            if (render_to_viewport_image) {
-                transitionViewportTargetForRendering();
-                if (!forward_pass.record(command_buffer, viewport_target.getRenderTarget(), draw_list)) {
-                    return false;
-                }
-                if (!recordObjectIdPass(draw_list)) {
-                    return false;
-                }
-                transitionViewportColorForSampling();
-
-                transitionImageLayout(
-                    image,
-                    old_layout,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_IMAGE_ASPECT_COLOR_BIT,
-                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_MEMORY_READ_BIT,
-                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-                if (!recordImGuiToSwapchain(image_index)) {
-                    return false;
-                }
-            } else {
-                transitionImageLayout(
-                    image,
-                    old_layout,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_IMAGE_ASPECT_COLOR_BIT,
-                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_MEMORY_READ_BIT,
-                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                    old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-                if (!forward_pass.record(command_buffer, image_index, draw_list)) {
-                    return false;
-                }
-                if (!recordObjectIdPass(draw_list)) {
-                    return false;
-                }
+            const bool graph_built = render_to_viewport_image ?
+                buildViewportRenderGraph(graph, image_index, draw_list) :
+                buildSwapchainRenderGraph(graph, image_index, draw_list);
+            if (!graph_built) {
+                return false;
             }
 
-            transitionImageLayout(
-                image,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                0,
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-            swapchain_image_layouts[image_index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            if (!graph_executor.execute(graph, command_buffer)) {
+                return false;
+            }
 
-            return checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer");
+            if (!checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer")) {
+                return false;
+            }
+
+            graph.commitImageLayouts();
+            return true;
         }
 
-        bool recordObjectIdPass(const VulkanDrawList& draw_list) {
+        bool buildViewportRenderGraph(VulkanPassGraph& graph, uint32_t image_index, const VulkanDrawList& draw_list) {
+            const VulkanGraphImageHandle viewport_color = addViewportColorImage(graph);
+            const VulkanGraphImageHandle viewport_depth = addViewportDepthImage(graph);
+            const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
+            if (!viewport_color.valid() || !viewport_depth.valid() || !swapchain_color.valid()) {
+                return false;
+            }
+
+            graph.addPass("ForwardScene")
+                .writeImage(viewport_color, VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(viewport_depth, VulkanGraphImageUsage::DepthStencilAttachment)
+                .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
+                    return forward_pass.record(target_command_buffer, viewport_target.getRenderTarget(), draw_list);
+                });
+
+            if (!addObjectIdPass(graph, draw_list)) {
+                return false;
+            }
+
+            graph.addPass("ImGuiComposite")
+                .readImage(viewport_color, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(swapchain_color, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, image_index](VkCommandBuffer target_command_buffer) {
+                    return recordImGuiToSwapchain(target_command_buffer, image_index);
+                });
+
+            graph.addPass("PresentTransition")
+                .writeImage(swapchain_color, VulkanGraphImageUsage::Present);
+
+            return true;
+        }
+
+        bool buildSwapchainRenderGraph(VulkanPassGraph& graph, uint32_t image_index, const VulkanDrawList& draw_list) {
+            const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
+            if (!swapchain_color.valid()) {
+                return false;
+            }
+
+            graph.addPass("ForwardScene")
+                .writeImage(swapchain_color, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
+                    return forward_pass.record(target_command_buffer, image_index, draw_list);
+                });
+
+            if (!addObjectIdPass(graph, draw_list)) {
+                return false;
+            }
+
+            graph.addPass("PresentTransition")
+                .writeImage(swapchain_color, VulkanGraphImageUsage::Present);
+
+            return true;
+        }
+
+        bool addObjectIdPass(VulkanPassGraph& graph, const VulkanDrawList& draw_list) {
             if (!picking_target.isReady()) {
                 return true;
             }
 
-            transitionPickingTargetForRendering();
-            if (!object_id_pass.record(command_buffer, picking_target.getRenderTarget(), draw_list)) {
+            const VulkanGraphImageHandle object_id = addPickingObjectIdImage(graph);
+            const VulkanGraphImageHandle depth = addPickingDepthImage(graph);
+            if (!object_id.valid() || !depth.valid()) {
                 return false;
             }
 
-            picking_recorded_this_frame = true;
+            graph.addPass("ObjectIdPicking")
+                .writeImage(object_id, VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(depth, VulkanGraphImageUsage::DepthStencilAttachment)
+                .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
+                    if (!object_id_pass.record(target_command_buffer, picking_target.getRenderTarget(), draw_list)) {
+                        return false;
+                    }
+
+                    picking_recorded_this_frame = true;
+                    return true;
+                });
+
             return true;
         }
 
-        void transitionViewportTargetForRendering() {
-            const VkImageLayout color_old_layout = viewport_target.getColorLayout();
-            VkAccessFlags color_src_access = 0;
-            VkPipelineStageFlags color_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            if (color_old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                color_src_access = VK_ACCESS_SHADER_READ_BIT;
-                color_src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            } else if (color_old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-                color_src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                color_src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VulkanGraphImageHandle addSwapchainColorImage(VulkanPassGraph& graph, uint32_t image_index) {
+            if (image_index >= swapchain_images.size() || image_index >= swapchain_image_layouts.size()) {
+                return {};
             }
 
-            transitionImageLayout(
-                viewport_target.getColorImage(),
-                color_old_layout,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                color_src_access,
-                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                color_src_stage,
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-            viewport_target.setColorLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-            const VkImageLayout depth_old_layout = viewport_target.getDepthLayout();
-            transitionImageLayout(
-                viewport_target.getDepthImage(),
-                depth_old_layout,
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_ASPECT_DEPTH_BIT,
-                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
-            viewport_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            VulkanGraphImageDesc desc;
+            desc.name = "SwapchainColor";
+            desc.image = swapchain_images[image_index];
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = swapchain_image_layouts[image_index];
+            desc.commit_layout = [this, image_index](VkImageLayout layout) {
+                if (image_index < swapchain_image_layouts.size()) {
+                    swapchain_image_layouts[image_index] = layout;
+                }
+            };
+            return graph.addImage(std::move(desc));
         }
 
-        void transitionPickingTargetForRendering() {
-            const VkImageLayout object_id_old_layout = picking_target.getObjectIdLayout();
-            VkAccessFlags object_id_src_access = 0;
-            VkPipelineStageFlags object_id_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            if (object_id_old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
-                object_id_src_access = VK_ACCESS_TRANSFER_READ_BIT;
-                object_id_src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            } else if (object_id_old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-                object_id_src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                object_id_src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            }
-
-            transitionImageLayout(
-                picking_target.getObjectIdImage(),
-                object_id_old_layout,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                object_id_src_access,
-                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                object_id_src_stage,
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-            picking_target.setObjectIdLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-            const VkImageLayout depth_old_layout = picking_target.getDepthLayout();
-            transitionImageLayout(
-                picking_target.getDepthImage(),
-                depth_old_layout,
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_ASPECT_DEPTH_BIT,
-                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                depth_old_layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
-            picking_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        VulkanGraphImageHandle addViewportColorImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "ViewportColor";
+            desc.image = viewport_target.getColorImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = viewport_target.getColorLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                viewport_target.setColorLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
         }
 
-        void transitionViewportColorForSampling() {
-            transitionImageLayout(
-                viewport_target.getColorImage(),
-                viewport_target.getColorLayout(),
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                VK_ACCESS_SHADER_READ_BIT,
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-            viewport_target.setColorLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        VulkanGraphImageHandle addViewportDepthImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "ViewportDepth";
+            desc.image = viewport_target.getDepthImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.initial_layout = viewport_target.getDepthLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                viewport_target.setDepthLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
         }
 
-        bool recordImGuiToSwapchain(uint32_t image_index) {
+        VulkanGraphImageHandle addPickingObjectIdImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "PickingObjectId";
+            desc.image = picking_target.getObjectIdImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = picking_target.getObjectIdLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                picking_target.setObjectIdLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addPickingDepthImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "PickingDepth";
+            desc.image = picking_target.getDepthImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.initial_layout = picking_target.getDepthLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                picking_target.setDepthLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        bool recordImGuiToSwapchain(VkCommandBuffer target_command_buffer, uint32_t image_index) {
             VkImageView swapchain_view = forward_pass.getSwapchainColorImageView(image_index);
             if (swapchain_view == VK_NULL_HANDLE) {
                 return false;
@@ -965,9 +976,9 @@ namespace NexAur {
             rendering_info.colorAttachmentCount = 1;
             rendering_info.pColorAttachments = &color_attachment;
 
-            vkCmdBeginRendering(command_buffer, &rendering_info);
-            imgui_renderer.renderDrawData(command_buffer);
-            vkCmdEndRendering(command_buffer);
+            vkCmdBeginRendering(target_command_buffer, &rendering_info);
+            imgui_renderer.renderDrawData(target_command_buffer);
+            vkCmdEndRendering(target_command_buffer);
             return true;
         }
 
@@ -1170,6 +1181,7 @@ namespace NexAur {
         VulkanRenderDataTranslator translator;
         RenderSceneFrameBuilder scene_frame_builder;
         VulkanDrawListBuilder draw_list_builder;
+        VulkanGraphExecutor graph_executor;
         VulkanForwardPass forward_pass;
         VulkanObjectIdPass object_id_pass;
         VulkanViewportTarget viewport_target;
