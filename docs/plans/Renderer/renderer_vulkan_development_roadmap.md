@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R20 Lighting baseline 已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline
+当前阶段：Post Vulkan PR-R21 Skybox / Environment 已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline；Skybox pass 已接入 PassGraph，支持 environment background color / intensity procedural skybox baseline
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -94,6 +94,9 @@ externalRenderer：仅作为临时本地参考目录
 - PR-R16：完成 MaterialAsset、VulkanMaterialResource、base color texture 采样和 fallback material 链路。
 - PR-R17：完成 VulkanShaderLibrary、VulkanPipelineCache、ForwardPass / ObjectIdPass pipeline 创建收口和 HLSL 编译 helper。
 - PR-R18：完成 VulkanDescriptorLayoutCache、VulkanDescriptorAllocator、VulkanDescriptorWriter 和 material descriptor 迁移。
+- PR-R19：完成 Vulkan-only PassGraph 骨架。
+- PR-R20：完成 Lighting baseline。
+- PR-R21：完成 Skybox / Environment baseline。
 
 已确认：
 
@@ -1825,9 +1828,31 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R21：Skybox / Environment
-或先继续增强 PR-R19 PassGraph 的 debug dump / synchronization2 版本
+进入 PR-R22：Shadow 第一版
+或先做 PR-R21.1：TextureCube / EnvironmentResource
 ```
+
+PR-R21 已完成拆分：
+
+```text
+PR-R21-A Environment data contract 和 background color
+PR-R21-B Skybox HLSL shader、ShaderLibrary 和 PipelineCache no-vertex-input 支持
+PR-R21-C VulkanSkyboxPass procedural sky / environment color
+PR-R21-D VulkanForwardPass color load op 支持
+PR-R21-E PassGraph 接入 Skybox -> ForwardScene
+PR-R21-F 验证、文档和 Sandbox smoke
+```
+
+PR-R21 第一版建议只做 environment color / procedural skybox baseline，不消费真实 HDR / cubemap asset。`environment_asset` 继续作为后续入口，TextureCube、HDR equirectangular import、cubemap conversion、IBL irradiance / prefilter 和 BRDF LUT 留给后续专项。
+
+PR-R21 完成记录：
+
+- `EnvironmentComponent -> RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 已携带 background / environment color 和 intensity。
+- 新增 `VulkanSkyboxPass` 与 `vulkan_skybox.hlsl`，使用 full-screen triangle 绘制 procedural sky。
+- `VulkanPipelineCache` 支持 no-vertex-input pipeline，供 skybox / post process 类 pass 复用。
+- `VulkanForwardPass` 支持 color load op，Skybox 后的 ForwardScene 使用 `LOAD` color、`CLEAR` depth。
+- PassGraph 现在覆盖 `Skybox -> ForwardScene -> ObjectIdPicking -> ImGuiComposite -> PresentTransition`。
+- `cmake --build build/msvc-vcpkg --config Debug --target Sandbox` 和 Sandbox smoke 已通过。
 
 PR-R20 已完成拆分：
 
@@ -1925,12 +1950,21 @@ D12 / D12.1 已确认状态：
 - PR-R16 已完成：Resource 可表达 `MaterialAsset`，Vulkan backend 可创建 material constants / descriptor set，Forward shader 可采样 base color texture。
 - PR-R17 已完成：Vulkan backend 内部新增 `VulkanShaderLibrary` / `VulkanPipelineCache`，Forward / ObjectId pass 不再直接创建 shader module 和 graphics pipeline。
 - PR-R18 已完成：Vulkan backend 内部新增 descriptor layout cache / allocator / writer，material descriptor layout / pool / set update 已从 resource cache 和 material resource 中收口。
+- PR-R19 已完成：Vulkan-only PassGraph 收口 pass 顺序和 image layout transition。
+- PR-R20 已完成：Forward pass 接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline。
+- PR-R21 已完成：Skybox / Environment baseline 接入，procedural skybox 在 ForwardScene 前绘制。
 
 ## 9. 进度记录
 
 ### 2026-06-26
 
 - 新增 `renderer_post_vulkan_integration_plan.md` 作为 Vulkan 后端接入后的 Renderer 后续任务文档。
+- 完成 PR-R21：新增 environment background color 数据链路，Scene 不再要求 environment asset 必须有效才能输出环境参数。
+- 完成 PR-R21：新增 `vulkan_skybox.hlsl`、Skybox shader program id 和 no-vertex-input pipeline 支持。
+- 完成 PR-R21：新增 `VulkanSkyboxPass`，通过 full-screen triangle 绘制 procedural sky / environment color。
+- 完成 PR-R21：`VulkanForwardPass` 增加 color load op options，Skybox 后的 ForwardScene 保留 color 并清 depth。
+- 完成 PR-R21：PassGraph flow 迁移为 `Skybox -> ForwardScene`，viewport target 和 fallback swapchain 路径均覆盖。
+- 完成 PR-R21：构建、HLSL shader 编译和 Sandbox smoke 通过。
 - 完成 PR-R13：`EditorCamera` 从 Renderer 目录移动到 `source/Engine/Editor/Camera`。
 - 完成 PR-R13：删除旧 `Function/Renderer/camera.h` 空基类和旧 `Function/Renderer/editor_camera.*`。
 - 完成 PR-R13：`EditorLayer`、`ViewportPanel` 和 `source/Engine/CMakeLists.txt` 已同步新路径。

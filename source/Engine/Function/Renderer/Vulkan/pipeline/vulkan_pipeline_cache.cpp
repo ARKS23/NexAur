@@ -146,15 +146,19 @@ namespace NexAur {
 
         const std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages{ vertex_stage, fragment_stage };
 
-        const VkVertexInputBindingDescription binding = meshVertexBindingDescription();
-        const std::array<VkVertexInputAttributeDescription, 3> attributes = meshVertexAttributeDescriptions();
+        VkVertexInputBindingDescription binding{};
+        std::array<VkVertexInputAttributeDescription, 3> attributes{};
 
         VkPipelineVertexInputStateCreateInfo vertex_input{};
         vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertex_input.vertexBindingDescriptionCount = 1;
-        vertex_input.pVertexBindingDescriptions = &binding;
-        vertex_input.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
-        vertex_input.pVertexAttributeDescriptions = attributes.data();
+        if (desc.vertex_layout == VulkanPipelineVertexLayout::MeshPositionNormalTexcoord) {
+            binding = meshVertexBindingDescription();
+            attributes = meshVertexAttributeDescriptions();
+            vertex_input.vertexBindingDescriptionCount = 1;
+            vertex_input.pVertexBindingDescriptions = &binding;
+            vertex_input.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
+            vertex_input.pVertexAttributeDescriptions = attributes.data();
+        }
 
         VkPipelineInputAssemblyStateCreateInfo input_assembly{};
         input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

@@ -14,6 +14,7 @@
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
+#include "Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
@@ -198,6 +199,7 @@ namespace NexAur {
             }
 
             imgui_renderer.shutdown();
+            skybox_pass.shutdown();
             object_id_pass.shutdown();
             picking_target.shutdown();
             viewport_target.shutdown();
@@ -614,7 +616,14 @@ namespace NexAur {
             pass_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
             pass_context.material_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Material);
             pass_context.pipeline_cache = &pipeline_cache;
-            const bool recreated_forward_pass = forward_pass.recreateSwapchainResources(pass_context);
+
+            VulkanSkyboxPassContext skybox_context;
+            skybox_context.device = device.device;
+            skybox_context.color_format = swapchain.image_format;
+            skybox_context.pipeline_cache = &pipeline_cache;
+
+            const bool recreated_skybox_pass = skybox_pass.recreateResources(skybox_context);
+            const bool recreated_forward_pass = recreated_skybox_pass && forward_pass.recreateSwapchainResources(pass_context);
             if (recreated_forward_pass && imgui_renderer.isInitialized()) {
                 imgui_renderer.onSwapchainRecreated(std::max(2u, swapchain.image_count));
             }
@@ -633,6 +642,7 @@ namespace NexAur {
         }
 
         void cleanupSwapchain() {
+            skybox_pass.cleanupResources();
             forward_pass.cleanupSwapchainResources();
             swapchain_images.clear();
             swapchain_image_layouts.clear();
@@ -817,15 +827,21 @@ namespace NexAur {
                 return false;
             }
 
+            if (!addSkyboxPass(graph, viewport_color, makeViewportSkyboxTarget(), draw_list)) {
+                return false;
+            }
+
             graph.addPass("ForwardScene")
                 .writeImage(viewport_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(viewport_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
+                    VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
                     return forward_pass.record(
                         target_command_buffer,
                         viewport_target.getRenderTarget(),
                         draw_list,
-                        frame_lighting_resource.getDescriptorSet());
+                        frame_lighting_resource.getDescriptorSet(),
+                        options);
                 });
 
             if (!addObjectIdPass(graph, draw_list)) {
@@ -851,14 +867,20 @@ namespace NexAur {
                 return false;
             }
 
+            if (!addSkyboxPass(graph, swapchain_color, makeSwapchainSkyboxTarget(image_index), draw_list)) {
+                return false;
+            }
+
             graph.addPass("ForwardScene")
                 .writeImage(swapchain_color, VulkanGraphImageUsage::ColorAttachment)
                 .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
+                    VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
                     return forward_pass.record(
                         target_command_buffer,
                         image_index,
                         draw_list,
-                        frame_lighting_resource.getDescriptorSet());
+                        frame_lighting_resource.getDescriptorSet(),
+                        options);
                 });
 
             if (!addObjectIdPass(graph, draw_list)) {
@@ -868,6 +890,23 @@ namespace NexAur {
             graph.addPass("PresentTransition")
                 .writeImage(swapchain_color, VulkanGraphImageUsage::Present);
 
+            return true;
+        }
+
+        bool addSkyboxPass(
+            VulkanPassGraph& graph,
+            VulkanGraphImageHandle color_image,
+            VulkanSkyboxRenderTarget target,
+            const VulkanDrawList& draw_list) {
+            if (!color_image.valid() || !target.valid()) {
+                return false;
+            }
+
+            graph.addPass("Skybox")
+                .writeImage(color_image, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, target, &draw_list](VkCommandBuffer target_command_buffer) {
+                    return skybox_pass.record(target_command_buffer, target, draw_list);
+                });
             return true;
         }
 
@@ -961,6 +1000,31 @@ namespace NexAur {
                 picking_target.setDepthLayout(layout);
             };
             return graph.addImage(std::move(desc));
+        }
+
+        VulkanSkyboxRenderTarget makeViewportSkyboxTarget() const {
+            VulkanSkyboxRenderTarget target;
+            target.color_view = viewport_target.getColorImageView();
+            target.color_format = viewport_target.getColorFormat();
+            target.extent = viewport_target.getExtent();
+            return target;
+        }
+
+        VulkanSkyboxRenderTarget makeSwapchainSkyboxTarget(uint32_t image_index) const {
+            VulkanSkyboxRenderTarget target;
+            target.color_view = forward_pass.getSwapchainColorImageView(image_index);
+            target.color_format = swapchain.image_format;
+            target.extent = swapchain.extent;
+            return target;
+        }
+
+        VulkanForwardPassRenderOptions forwardAfterSkyboxOptions() const {
+            VulkanForwardPassRenderOptions options;
+            options.color_load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
+            options.depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            options.depth_clear_value.depthStencil.depth = 1.0f;
+            options.depth_clear_value.depthStencil.stencil = 0;
+            return options;
         }
 
         bool recordImGuiToSwapchain(VkCommandBuffer target_command_buffer, uint32_t image_index) {
@@ -1198,6 +1262,7 @@ namespace NexAur {
         RenderSceneFrameBuilder scene_frame_builder;
         VulkanDrawListBuilder draw_list_builder;
         VulkanGraphExecutor graph_executor;
+        VulkanSkyboxPass skybox_pass;
         VulkanForwardPass forward_pass;
         VulkanObjectIdPass object_id_pass;
         VulkanViewportTarget viewport_target;

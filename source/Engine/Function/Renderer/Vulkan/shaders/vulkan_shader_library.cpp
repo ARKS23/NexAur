@@ -43,6 +43,8 @@ namespace NexAur {
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_forward.vert.spv" : "vulkan_forward.frag.spv";
                 case VulkanShaderProgramId::ObjectId:
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_object_id.vert.spv" : "vulkan_object_id.frag.spv";
+                case VulkanShaderProgramId::Skybox:
+                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_skybox.vert.spv" : "vulkan_skybox.frag.spv";
                 default:
                     return nullptr;
             }

@@ -26,6 +26,7 @@ namespace NexAur {
 
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;
+        glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };
         float environment_intensity = 1.0f;
 
         std::vector<VulkanMeshDrawItem> opaque_items;

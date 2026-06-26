@@ -1051,16 +1051,143 @@ Shader 策略：
 
 ### PR-R21：Skybox / Environment
 
+执行状态：已完成。
+
+完成记录：
+
+- `EnvironmentComponent`、`RendererEnvironmentData`、`RenderSceneFrame` 和 `VulkanDrawList` 已增加 background / environment color 数据链路。
+- `SceneV2::extractSceneData()` 不再要求 environment asset 必须有效；procedural skybox 可以只依赖 background color 和 intensity。
+- 新增 `assets/shaders/Renderer/Vulkan/vulkan_skybox.hlsl`，使用 HLSL + DXC 编译到 Vulkan 1.3 SPIR-V。
+- `VulkanShaderLibrary` 增加 Skybox shader program id，`VulkanPipelineCache` 增加 no-vertex-input pipeline 支持。
+- 新增 `VulkanSkyboxPass`，使用 Vulkan dynamic rendering 和 full-screen triangle 绘制 procedural sky / environment color。
+- `VulkanForwardPass` 增加 render options，支持 color attachment `LOAD`，Skybox 之后的 ForwardScene 只清 depth。
+- PassGraph 已接入 `Skybox -> ForwardScene`，viewport target 和 fallback swapchain 两条路径都覆盖。
+- Editor `PropertiesPanel` 已为 `EnvironmentComponent` 暴露 background color 和 intensity。
+- 构建、HLSL shader 编译和 Sandbox smoke 已通过。
+
 目标：
 
 - 支持 environment asset。
 - 支持简单 skybox 或 environment color。
 - 为 IBL 预留资源结构。
 
-第一版可以只做：
+- 第一版建议只做 baseline：
 
-- cubemap 或纯色环境。
+- environment color / procedural skybox。
+- 不消费真实 HDR / cubemap asset。
 - 不做完整 prefilter / BRDF LUT。
+
+当前状态：
+
+- Scene 层已有 `EnvironmentComponent`。
+- `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 已经携带 `environment_asset` 和 `environment_intensity`。
+- `SceneFactory` 会默认注册一个 HDR environment asset。
+- `AssetManager` 当前只登记 `EnvironmentMap` / `TextureCube` 身份，还没有真实 HDR / cubemap CPU loader。
+- Vulkan 侧当前只有 2D texture resource，还没有 cube texture resource。
+- 旧 `assets/shaders/skybox` 是 GLSL 风格，不能直接复用到当前 HLSL Vulkan 路线。
+
+R21 第一版推荐路线：
+
+```text
+RenderSceneFrame.environment
+  -> VulkanDrawList.environment
+  -> VulkanSkyboxPass
+  -> procedural sky / environment color
+```
+
+推荐 pass 顺序：
+
+```text
+Skybox
+  -> ForwardScene
+  -> ObjectIdPicking
+  -> ImGuiComposite
+  -> PresentTransition
+```
+
+关键设计：
+
+1. `EnvironmentComponent` / renderer environment data。
+   - 可以补充 `environment_color` 或 `background_color`。
+   - `environment_intensity` 继续保留。
+   - `environment_asset` 继续作为后续 HDR / cubemap 入口，但第一版不强制加载。
+
+2. `VulkanSkyboxPass`。
+   - 放在 `Renderer/Vulkan/passes`。
+   - 第一版可以画 full-screen triangle 或 procedural sky。
+   - 不需要 mesh vertex buffer。
+   - 不需要 cube texture。
+   - 只负责写 color attachment，不写 depth。
+
+3. `VulkanForwardPass` 支持 color load op。
+   - 当前 Forward pass 会 clear color。
+   - 如果 Skybox 先画，ForwardScene 必须 `LOAD` color，否则 skybox 会被清掉。
+   - depth attachment 仍然可以 `CLEAR`。
+   - 推荐通过轻量 record options 或 render target options 表达，不要把 skybox 特例写死进 ForwardPass。
+
+4. `VulkanPipelineCache` 支持无 vertex input pipeline。
+   - 给 `VulkanPipelineVertexLayout` 增加 `None`。
+   - Skybox full-screen triangle 通过 `vkCmdDraw(3, 1, 0, 0)` 绘制。
+
+5. 新增 HLSL shader。
+   - 新增 `assets/shaders/Renderer/Vulkan/vulkan_skybox.hlsl`。
+   - 第一版使用 procedural gradient / environment color。
+   - HLSL 编译接入 CMake。
+   - `VulkanShaderLibrary` 增加 Skybox shader program id。
+
+6. PassGraph 接入。
+   - viewport target 路径：`Skybox -> ForwardScene -> ObjectIdPicking -> ImGuiComposite -> PresentTransition`。
+   - fallback swapchain 路径：`Skybox -> ForwardScene -> ObjectIdPicking -> PresentTransition`。
+   - Skybox 和 ForwardScene 共享同一个 color target。
+   - Skybox 写 color 后，ForwardScene 对 color 使用 load，不需要额外 image layout transition。
+
+建议拆分：
+
+1. PR-R21-A：Environment data contract。
+   - 增加 environment color / background color。
+   - 保持 `environment_asset` 只作为 identity，不在本 PR 强制加载。
+
+2. PR-R21-B：Skybox shader 和 pipeline。
+   - 新增 HLSL skybox shader。
+   - `VulkanShaderLibrary` / CMake 接入 skybox shader。
+   - `VulkanPipelineCache` 支持 `VulkanPipelineVertexLayout::None`。
+
+3. PR-R21-C：新增 `VulkanSkyboxPass`。
+   - 使用 dynamic rendering。
+   - 绘制 full-screen triangle。
+   - 写入当前 viewport / swapchain color target。
+
+4. PR-R21-D：ForwardPass load op 支持。
+   - color attachment 支持 `LOAD`。
+   - depth attachment 仍默认 `CLEAR`。
+   - 保持没有 Skybox 时仍可 clear 到 fallback background。
+
+5. PR-R21-E：PassGraph flow 迁移。
+   - 在 ForwardScene 前注册 Skybox pass。
+   - viewport 和 fallback swapchain 两条路径都覆盖。
+
+6. PR-R21-F：验证和文档。
+   - Editor viewport 能看到背景色 / procedural sky。
+   - Forward mesh 能叠在 skybox 上。
+   - ObjectId picking 不受影响。
+   - 构建、shader 编译和 Sandbox smoke 通过。
+
+暂时不做：
+
+- HDR 加载。
+- equirectangular HDR -> cubemap。
+- Vulkan cube texture resource。
+- samplerCube skybox。
+- irradiance / prefilter cubemap。
+- BRDF LUT。
+- IBL diffuse / specular。
+- environment asset 热更新。
+
+后续建议：
+
+- PR-R21.1：TextureCube / EnvironmentResource。
+- PR-R21.2：HDR equirectangular import 和 cubemap conversion。
+- PR-R21.3：IBL diffuse irradiance / specular prefilter / BRDF LUT。
 
 ### PR-R22：Shadow 第一版
 

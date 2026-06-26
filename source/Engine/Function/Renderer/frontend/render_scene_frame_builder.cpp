@@ -127,6 +127,7 @@ namespace NexAur {
         }
 
         frame.environment_asset = render_data.environment_data.environment_asset;
+        frame.environment_color = sanitizeColor(render_data.environment_data.background_color);
         frame.environment_intensity = sanitizeNonNegative(
             render_data.environment_data.intensity,
             kDefaultEnvironmentIntensity);

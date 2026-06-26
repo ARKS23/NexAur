@@ -34,6 +34,13 @@ namespace NexAur {
         }
     };
 
+    struct VulkanForwardPassRenderOptions {
+        VkAttachmentLoadOp color_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        VkAttachmentLoadOp depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        VkClearValue color_clear_value{};
+        VkClearValue depth_clear_value{};
+    };
+
     class NEXAUR_API VulkanForwardPass {
     public:
         VulkanForwardPass() = default;
@@ -53,9 +60,21 @@ namespace NexAur {
             VkDescriptorSet frame_descriptor_set);
         bool record(
             VkCommandBuffer command_buffer,
+            uint32_t image_index,
+            const VulkanDrawList& draw_list,
+            VkDescriptorSet frame_descriptor_set,
+            const VulkanForwardPassRenderOptions& options);
+        bool record(
+            VkCommandBuffer command_buffer,
             const VulkanRenderTarget& target,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set);
+        bool record(
+            VkCommandBuffer command_buffer,
+            const VulkanRenderTarget& target,
+            const VulkanDrawList& draw_list,
+            VkDescriptorSet frame_descriptor_set,
+            const VulkanForwardPassRenderOptions& options);
         VkImageView getSwapchainColorImageView(uint32_t image_index) const;
 
     private:

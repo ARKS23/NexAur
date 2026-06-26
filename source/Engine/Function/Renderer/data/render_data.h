@@ -34,6 +34,7 @@ namespace NexAur {
 
     struct RendererEnvironmentData {
         AssetHandle environment_asset;
+        glm::vec3 background_color{ 0.08f, 0.10f, 0.14f };
         float intensity = 1.0f;
     };
 

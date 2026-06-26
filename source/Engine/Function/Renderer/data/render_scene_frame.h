@@ -40,6 +40,7 @@ namespace NexAur {
         std::vector<RenderFramePointLight> point_lights;
 
         AssetHandle environment_asset;
+        glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };
         float environment_intensity = 1.0f;
 
         bool hasRenderableObjects() const {

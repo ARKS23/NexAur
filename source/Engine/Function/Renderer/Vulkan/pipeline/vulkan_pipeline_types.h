@@ -11,7 +11,8 @@
 
 namespace NexAur {
     enum class VulkanPipelineVertexLayout {
-        MeshPositionNormalTexcoord = 0
+        None = 0,
+        MeshPositionNormalTexcoord
     };
 
     struct VulkanGraphicsPipelineDesc {
@@ -37,7 +38,7 @@ namespace NexAur {
 
         bool valid() const {
             return color_format != VK_FORMAT_UNDEFINED &&
-                   depth_format != VK_FORMAT_UNDEFINED;
+                   (!(depth_test_enable || depth_write_enable) || depth_format != VK_FORMAT_UNDEFINED);
         }
     };
 

@@ -74,6 +74,17 @@ namespace NexAur {
             return VK_FORMAT_UNDEFINED;
         }
 
+        VulkanForwardPassRenderOptions defaultRenderOptions() {
+            VulkanForwardPassRenderOptions options;
+            options.color_clear_value.color.float32[0] = 0.08f;
+            options.color_clear_value.color.float32[1] = 0.10f;
+            options.color_clear_value.color.float32[2] = 0.14f;
+            options.color_clear_value.color.float32[3] = 1.0f;
+            options.depth_clear_value.depthStencil.depth = 1.0f;
+            options.depth_clear_value.depthStencil.stencil = 0;
+            return options;
+        }
+
         void transitionDepthImageToAttachment(
             VkCommandBuffer command_buffer,
             VkImage depth_image,
@@ -171,6 +182,15 @@ namespace NexAur {
         uint32_t image_index,
         const VulkanDrawList& draw_list,
         VkDescriptorSet frame_descriptor_set) {
+        return record(command_buffer, image_index, draw_list, frame_descriptor_set, defaultRenderOptions());
+    }
+
+    bool VulkanForwardPass::record(
+        VkCommandBuffer command_buffer,
+        uint32_t image_index,
+        const VulkanDrawList& draw_list,
+        VkDescriptorSet frame_descriptor_set,
+        const VulkanForwardPassRenderOptions& options) {
         if (command_buffer == VK_NULL_HANDLE || image_index >= m_color_image_views.size()) {
             return false;
         }
@@ -188,7 +208,7 @@ namespace NexAur {
         target.depth_view = m_depth_image_view;
         target.depth_format = m_depth_format;
         target.extent = m_extent;
-        return record(command_buffer, target, draw_list, frame_descriptor_set);
+        return record(command_buffer, target, draw_list, frame_descriptor_set, options);
     }
 
     bool VulkanForwardPass::record(
@@ -196,6 +216,15 @@ namespace NexAur {
         const VulkanRenderTarget& target,
         const VulkanDrawList& draw_list,
         VkDescriptorSet frame_descriptor_set) {
+        return record(command_buffer, target, draw_list, frame_descriptor_set, defaultRenderOptions());
+    }
+
+    bool VulkanForwardPass::record(
+        VkCommandBuffer command_buffer,
+        const VulkanRenderTarget& target,
+        const VulkanDrawList& draw_list,
+        VkDescriptorSet frame_descriptor_set,
+        const VulkanForwardPassRenderOptions& options) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
         }
@@ -205,31 +234,21 @@ namespace NexAur {
             return false;
         }
 
-        VkClearValue clear_value{};
-        clear_value.color.float32[0] = 0.08f;
-        clear_value.color.float32[1] = 0.10f;
-        clear_value.color.float32[2] = 0.14f;
-        clear_value.color.float32[3] = 1.0f;
-
         VkRenderingAttachmentInfo color_attachment{};
         color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         color_attachment.imageView = target.color_view;
         color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.loadOp = options.color_load_op;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        color_attachment.clearValue = clear_value;
-
-        VkClearValue depth_clear{};
-        depth_clear.depthStencil.depth = 1.0f;
-        depth_clear.depthStencil.stencil = 0;
+        color_attachment.clearValue = options.color_clear_value;
 
         VkRenderingAttachmentInfo depth_attachment{};
         depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depth_attachment.imageView = target.depth_view;
         depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_attachment.loadOp = options.depth_load_op;
         depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depth_attachment.clearValue = depth_clear;
+        depth_attachment.clearValue = options.depth_clear_value;
 
         VkRenderingInfo rendering_info{};
         rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;

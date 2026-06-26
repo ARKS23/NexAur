@@ -10,7 +10,8 @@
 namespace NexAur {
     enum class VulkanShaderProgramId : uint8_t {
         Forward = 0,
-        ObjectId
+        ObjectId,
+        Skybox
     };
 
     struct VulkanShaderProgram {

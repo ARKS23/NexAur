@@ -118,7 +118,7 @@ namespace NexAur {
             draw_list.directional_light.color,
             static_cast<float>(point_light_count));
         frame_globals.ambient_color_intensity = glm::vec4(
-            glm::vec3{ 1.0f },
+            glm::max(draw_list.environment_color, glm::vec3{ 0.0f }),
             std::max(0.0f, draw_list.environment_intensity) * kFallbackAmbientIntensity);
 
         std::array<VulkanGpuPointLight, kMaxPointLights> point_lights{};

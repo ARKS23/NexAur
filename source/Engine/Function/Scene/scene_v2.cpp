@@ -102,11 +102,9 @@ namespace NexAur {
         auto view_env = m_Registry.view<EnvironmentComponent>();
         for (auto entity : view_env) {
             const auto& env_comp = view_env.get<EnvironmentComponent>(entity);
-            AssetHandle environment_handle = env_comp.getEnvironmentHandle();
-            if (!environment_handle) break;
-
-            // Scene 只输出 HDR 环境资产引用，GPU 环境资源由 Renderer 后端解析。
-            render_packet->environment_data.environment_asset = environment_handle;
+            // Scene only exports environment identity; GPU resources are resolved by the renderer backend.
+            render_packet->environment_data.environment_asset = env_comp.getEnvironmentHandle();
+            render_packet->environment_data.background_color = env_comp.background_color;
             render_packet->environment_data.intensity = env_comp.intensity;
             break;
         }
