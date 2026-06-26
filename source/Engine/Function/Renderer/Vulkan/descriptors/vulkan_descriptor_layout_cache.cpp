@@ -23,6 +23,15 @@ namespace NexAur {
             };
             return desc;
         }
+
+        VulkanDescriptorSetLayoutDesc frameGlobalDescriptorLayoutDesc() {
+            VulkanDescriptorSetLayoutDesc desc;
+            desc.bindings = {
+                { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT },
+                { 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
+            };
+            return desc;
+        }
     } // namespace
 
     VulkanDescriptorLayoutCache::~VulkanDescriptorLayoutCache() {
@@ -83,7 +92,7 @@ namespace NexAur {
     VkDescriptorSetLayout VulkanDescriptorLayoutCache::getBuiltinLayout(VulkanDescriptorSetLayoutId layout_id) {
         switch (layout_id) {
             case VulkanDescriptorSetLayoutId::FrameGlobal:
-                return getOrCreateLayout({});
+                return getOrCreateLayout(frameGlobalDescriptorLayoutDesc());
             case VulkanDescriptorSetLayoutId::Material:
                 return getOrCreateLayout(materialDescriptorLayoutDesc());
             default:

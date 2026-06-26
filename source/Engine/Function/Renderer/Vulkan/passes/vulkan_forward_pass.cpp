@@ -9,15 +9,25 @@
 
 #include <array>
 #include <cstddef>
+#include <cmath>
+#include <glm/gtc/matrix_inverse.hpp>
 
 namespace NexAur {
     namespace {
         struct VulkanForwardPushConstants {
-            glm::mat4 view_projection{ 1.0f };
             glm::mat4 model{ 1.0f };
+            glm::mat4 normal_matrix{ 1.0f };
         };
 
-        static_assert(sizeof(VulkanForwardPushConstants) <= 128, "D8 forward pass push constants exceed Vulkan minimum limit.");
+        static_assert(sizeof(VulkanForwardPushConstants) <= 128, "Forward pass push constants exceed Vulkan minimum limit.");
+
+        glm::mat4 buildNormalMatrix(const glm::mat4& model) {
+            if (std::abs(glm::determinant(model)) <= 0.000001f) {
+                return glm::mat4{ 1.0f };
+            }
+
+            return glm::transpose(glm::inverse(model));
+        }
 
         bool checkVk(VkResult result, const char* operation) {
             if (result == VK_SUCCESS) {
@@ -156,7 +166,11 @@ namespace NexAur {
         m_device = VK_NULL_HANDLE;
     }
 
-    bool VulkanForwardPass::record(VkCommandBuffer command_buffer, uint32_t image_index, const VulkanDrawList& draw_list) {
+    bool VulkanForwardPass::record(
+        VkCommandBuffer command_buffer,
+        uint32_t image_index,
+        const VulkanDrawList& draw_list,
+        VkDescriptorSet frame_descriptor_set) {
         if (command_buffer == VK_NULL_HANDLE || image_index >= m_color_image_views.size()) {
             return false;
         }
@@ -174,10 +188,14 @@ namespace NexAur {
         target.depth_view = m_depth_image_view;
         target.depth_format = m_depth_format;
         target.extent = m_extent;
-        return record(command_buffer, target, draw_list);
+        return record(command_buffer, target, draw_list, frame_descriptor_set);
     }
 
-    bool VulkanForwardPass::record(VkCommandBuffer command_buffer, const VulkanRenderTarget& target, const VulkanDrawList& draw_list) {
+    bool VulkanForwardPass::record(
+        VkCommandBuffer command_buffer,
+        const VulkanRenderTarget& target,
+        const VulkanDrawList& draw_list,
+        VkDescriptorSet frame_descriptor_set) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
         }
@@ -238,8 +256,21 @@ namespace NexAur {
         scissor.extent = target.extent;
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        if (m_pipeline != VK_NULL_HANDLE && m_pipeline_layout != VK_NULL_HANDLE && !draw_list.opaque_items.empty()) {
+        if (m_pipeline != VK_NULL_HANDLE &&
+            m_pipeline_layout != VK_NULL_HANDLE &&
+            frame_descriptor_set != VK_NULL_HANDLE &&
+            !draw_list.opaque_items.empty()) {
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+
+            vkCmdBindDescriptorSets(
+                command_buffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_pipeline_layout,
+                0,
+                1,
+                &frame_descriptor_set,
+                0,
+                nullptr);
 
             for (const VulkanMeshDrawItem& item : draw_list.opaque_items) {
                 if (!item.mesh || !item.mesh->isReady() || !item.material || !item.material->isReady()) {
@@ -252,8 +283,8 @@ namespace NexAur {
                 vkCmdBindIndexBuffer(command_buffer, item.mesh->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
                 VulkanForwardPushConstants push_constants;
-                push_constants.view_projection = draw_list.view.view_projection_matrix;
                 push_constants.model = item.transform;
+                push_constants.normal_matrix = buildNormalMatrix(item.transform);
                 vkCmdPushConstants(
                     command_buffer,
                     m_pipeline_layout,

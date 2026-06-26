@@ -15,6 +15,7 @@
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_picking_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_viewport_target.h"
@@ -149,6 +150,7 @@ namespace NexAur {
                 !shader_library.init(device.device) ||
                 !descriptor_layout_cache.init(device.device) ||
                 !descriptor_allocator.init(device.device) ||
+                !frame_lighting_resource.init(createResourceContext(), descriptor_layout_cache, descriptor_allocator) ||
                 !pipeline_cache.init(device.device, shader_library) ||
                 !resource_cache.init(createResourceContext(), descriptor_layout_cache, descriptor_allocator) ||
                 !createSwapchain() ||
@@ -202,6 +204,7 @@ namespace NexAur {
             forward_pass.shutdown();
             cleanupSwapchain();
             resource_cache.shutdown();
+            frame_lighting_resource.shutdown();
             pipeline_cache.shutdown();
             descriptor_allocator.shutdown();
             descriptor_layout_cache.shutdown();
@@ -705,6 +708,10 @@ namespace NexAur {
 
             vkWaitForFences(device.device, 1, &in_flight, VK_TRUE, UINT64_MAX);
 
+            if (!frame_lighting_resource.update(draw_list)) {
+                return;
+            }
+
             uint32_t image_index = 0;
             VkResult acquire_result = vkAcquireNextImageKHR(
                 device.device,
@@ -814,7 +821,11 @@ namespace NexAur {
                 .writeImage(viewport_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(viewport_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
-                    return forward_pass.record(target_command_buffer, viewport_target.getRenderTarget(), draw_list);
+                    return forward_pass.record(
+                        target_command_buffer,
+                        viewport_target.getRenderTarget(),
+                        draw_list,
+                        frame_lighting_resource.getDescriptorSet());
                 });
 
             if (!addObjectIdPass(graph, draw_list)) {
@@ -843,7 +854,11 @@ namespace NexAur {
             graph.addPass("ForwardScene")
                 .writeImage(swapchain_color, VulkanGraphImageUsage::ColorAttachment)
                 .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
-                    return forward_pass.record(target_command_buffer, image_index, draw_list);
+                    return forward_pass.record(
+                        target_command_buffer,
+                        image_index,
+                        draw_list,
+                        frame_lighting_resource.getDescriptorSet());
                 });
 
             if (!addObjectIdPass(graph, draw_list)) {
@@ -1177,6 +1192,7 @@ namespace NexAur {
         VulkanDescriptorLayoutCache descriptor_layout_cache;
         VulkanDescriptorAllocator descriptor_allocator;
         VulkanPipelineCache pipeline_cache;
+        VulkanFrameLightingResource frame_lighting_resource;
         VulkanRenderResourceCache resource_cache;
         VulkanRenderDataTranslator translator;
         RenderSceneFrameBuilder scene_frame_builder;

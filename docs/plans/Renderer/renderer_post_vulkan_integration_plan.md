@@ -932,11 +932,122 @@ graph.addPass("ImGuiComposite")
 - 稳定 directional light。
 - 支持多个 point lights 的基础 forward lighting。
 - light data 进入 uniform / storage buffer，而不是硬编码 push constant。
+- 建立 PBR-ready 的直接光照 baseline，但不在本 PR 内实现完整 PBR 生态。
+
+PR-R20 开始前状态：
+
+- Scene 层已有 `DirectionalLightComponent` / `PointLightComponent`。
+- `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 已经携带 directional light 和 point lights。
+- `vulkan_forward.hlsl` 当前只采样 base color texture 并乘以 base color factor，没有使用灯光数据。
+- `MaterialAsset` / `VulkanMaterialResource` 已经具备 base color、metallic、roughness 等 PBR-ready 材质参数。
+- `FrameGlobal` descriptor set layout 当时仍为空；camera / light 数据还没有正式进入 GPU frame descriptor。
+
+推荐设计：
+
+```text
+set 0: FrameGlobal
+  binding 0: frame / camera / directional light uniform buffer
+  binding 1: point light uniform/storage buffer
+
+set 1: Material
+  binding 0: material constants
+  binding 1: base color image
+  binding 2: base color sampler
+```
+
+`FrameGlobal` 第一版建议包含：
+
+- `view_projection`。
+- `camera_position`。
+- directional light direction / color / intensity。
+- point light count。
+- environment intensity 或 fallback ambient intensity。
+
+point light 第一版建议：
+
+- 保持当前 `RenderSceneFrameBuilder` 的 64 个 point light 上限。
+- 可以先使用 uniform buffer 数组；如果后续灯光数量增加，再切换到 storage buffer。
+- HLSL / C++ 结构必须按 `float4` 对齐，避免 `vec3` packing 造成跨语言布局问题。
+
+Forward pass 调整：
+
+- `VulkanForwardPass` 每帧绑定 set 0。
+- 每个 draw item 继续绑定 set 1 material descriptor。
+- push constants 建议只保留 per-object 数据：
+  - `model`。
+  - 可选 `normal_matrix`。
+- `view_projection` 从 push constants 迁移到 frame uniform，避免后续 camera / light 数据继续挤压 push constant 上限。
+
+Shader 策略：
+
+- PR-R20 可以实现 direct-light PBR baseline：
+  - base color。
+  - metallic。
+  - roughness。
+  - directional light。
+  - point lights attenuation。
+  - camera vector 用于 specular。
+- 不建议在 PR-R20 做完整 PBR：
+  - 不做 IBL。
+  - 不做 BRDF LUT。
+  - 不做 irradiance / prefilter cubemap。
+  - 不做 normal map / AO / emissive。
+  - 不做 shadow。
+  - 不做 HDR / tonemapping。
+
+拆分：
+
+1. PR-R20-A：确认 light data contract。
+   - 明确 directional light direction 语义。
+   - 明确 point light attenuation 参数语义。
+   - 保持 Scene / Renderer data 结构不暴露 Vulkan 类型。
+
+2. PR-R20-B：新增 Vulkan frame lighting resource。
+   - 负责创建 / 更新 frame global buffer。
+   - 负责创建 / 更新 point light buffer。
+   - 第一版可以按当前单帧 in-flight 设计，但类名和接口要为多帧资源预留空间。
+
+3. PR-R20-C：完善 `FrameGlobal` descriptor layout。
+   - `VulkanDescriptorLayoutCache` 的 `FrameGlobal` builtin layout 从空 layout 升级为正式 layout。
+   - descriptor allocation / update 仍使用 PR-R18 的 allocator / writer。
+
+4. PR-R20-D：迁移 `VulkanForwardPass` 绑定。
+   - pipeline layout 继续使用 set 0 + set 1。
+   - draw 前绑定 frame descriptor set。
+   - material descriptor set 仍按 draw item 绑定。
+
+5. PR-R20-E：更新 HLSL forward lighting。
+   - VS 输出 world position / world normal / texcoord。
+   - PS 读取 frame globals、point lights、material constants。
+   - 实现 directional + point lights 的 direct lighting。
+   - 无灯光或环境很弱时保留一个很小的 fallback ambient，避免默认场景全黑。
+
+6. PR-R20-F：默认场景、验证和文档。
+   - 默认 directional light / point light 能明显影响画面。
+   - 摄像机移动时 specular 方向变化合理。
+   - base color texture 仍正常。
+   - 构建、shader 编译和 Sandbox smoke 通过。
 
 验收：
 
 - Scene 中灯光组件变化能影响画面。
-- Forward pass 不再只依赖固定颜色。
+- Directional light 和至少多个 point lights 能同时参与 Forward lighting。
+- `VulkanForwardPass` 不再依赖硬编码固定颜色或只返回 base color。
+- camera / light 数据进入 frame descriptor，而不是继续塞进 push constants。
+- Material 的 base color / metallic / roughness 参与 direct-light shading。
+- 本 PR 不要求完整 IBL / shadow / normal map / tonemapping。
+
+完成状态：
+
+- 新增 `VulkanFrameLightingResource`，负责 frame global uniform buffer、point light storage buffer 和 set 0 descriptor set。
+- `FrameGlobal` builtin descriptor layout 已升级为：
+  - binding 0：frame / camera / directional light uniform buffer。
+  - binding 1：point light storage buffer。
+- `VulkanRendererSystem` 在 fence wait 之后更新 frame lighting buffer，避免覆盖 GPU 仍在读取的 frame data。
+- `VulkanForwardPass` 每帧绑定 set 0 frame descriptor，每个 draw item 继续绑定 set 1 material descriptor。
+- Forward push constants 已收口为 per-object `model` + `normal_matrix`，`view_projection` 迁移到 frame uniform。
+- `vulkan_forward.hlsl` 已实现 directional light + point lights 的 direct-light PBR baseline，使用 base color、metallic、roughness、camera vector 和 fallback ambient。
+- 构建、HLSL shader 编译和 Sandbox smoke 已通过。
 
 ### PR-R21：Skybox / Environment
 

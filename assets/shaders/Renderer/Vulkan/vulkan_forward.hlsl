@@ -6,17 +6,38 @@ struct VSInput {
 
 struct VSOutput {
     float4 position : SV_Position;
-    float3 normal : NORMAL0;
     float2 texcoord : TEXCOORD0;
+    float3 world_position : TEXCOORD1;
+    float3 world_normal : TEXCOORD2;
 };
 
 struct PushConstants {
-    float4x4 view_projection;
     float4x4 model;
+    float4x4 normal_matrix;
 };
 
 [[vk::push_constant]]
 PushConstants g_push_constants;
+
+struct FrameGlobals {
+    float4x4 view_projection;
+    float4 camera_position_environment_intensity;
+    float4 directional_direction_intensity;
+    float4 directional_color_point_count;
+    float4 ambient_color_intensity;
+};
+
+struct PointLightData {
+    float4 position_intensity;
+    float4 color;
+    float4 attenuation;
+};
+
+[[vk::binding(0, 0)]]
+ConstantBuffer<FrameGlobals> g_frame;
+
+[[vk::binding(1, 0)]]
+StructuredBuffer<PointLightData> g_point_lights;
 
 struct MaterialConstants {
     float4 base_color_factor;
@@ -35,10 +56,67 @@ SamplerState g_base_color_sampler;
 VSOutput VSMain(VSInput input) {
     VSOutput output;
     float4 world_position = mul(g_push_constants.model, float4(input.position, 1.0f));
-    output.position = mul(g_push_constants.view_projection, world_position);
-    output.normal = normalize(mul((float3x3)g_push_constants.model, input.normal));
+    output.position = mul(g_frame.view_projection, world_position);
+    output.world_position = world_position.xyz;
+    output.world_normal = normalize(mul((float3x3)g_push_constants.normal_matrix, input.normal));
     output.texcoord = input.texcoord;
     return output;
+}
+
+static const float PI = 3.14159265359f;
+
+float DistributionGGX(float3 normal, float3 half_vector, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float ndoth = max(dot(normal, half_vector), 0.0f);
+    float ndoth2 = ndoth * ndoth;
+
+    float denominator = ndoth2 * (a2 - 1.0f) + 1.0f;
+    denominator = PI * denominator * denominator;
+    return a2 / max(denominator, 0.000001f);
+}
+
+float GeometrySchlickGGX(float ndotv, float roughness) {
+    float r = roughness + 1.0f;
+    float k = (r * r) / 8.0f;
+    return ndotv / max(ndotv * (1.0f - k) + k, 0.000001f);
+}
+
+float GeometrySmith(float3 normal, float3 view_dir, float3 light_dir, float roughness) {
+    float ndotv = max(dot(normal, view_dir), 0.0f);
+    float ndotl = max(dot(normal, light_dir), 0.0f);
+    return GeometrySchlickGGX(ndotv, roughness) * GeometrySchlickGGX(ndotl, roughness);
+}
+
+float3 FresnelSchlick(float cos_theta, float3 f0) {
+    return f0 + (1.0f - f0) * pow(saturate(1.0f - cos_theta), 5.0f);
+}
+
+float3 EvaluateDirectLight(
+    float3 base_color,
+    float metallic,
+    float roughness,
+    float3 normal,
+    float3 view_dir,
+    float3 light_dir,
+    float3 radiance) {
+    float3 half_vector = normalize(view_dir + light_dir);
+    float ndotl = max(dot(normal, light_dir), 0.0f);
+    if (ndotl <= 0.0f) {
+        return 0.0f;
+    }
+
+    float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), base_color, metallic);
+    float normal_distribution = DistributionGGX(normal, half_vector, roughness);
+    float geometry = GeometrySmith(normal, view_dir, light_dir, roughness);
+    float3 fresnel = FresnelSchlick(max(dot(half_vector, view_dir), 0.0f), f0);
+
+    float3 numerator = normal_distribution * geometry * fresnel;
+    float denominator = max(4.0f * max(dot(normal, view_dir), 0.0f) * ndotl, 0.000001f);
+    float3 specular = numerator / denominator;
+
+    float3 diffuse = (1.0f - fresnel) * (1.0f - metallic) * base_color / PI;
+    return (diffuse + specular) * radiance * ndotl;
 }
 
 float4 PSMain(VSOutput input) : SV_Target0 {
@@ -47,5 +125,47 @@ float4 PSMain(VSOutput input) : SV_Target0 {
         clip(base_color.a - g_material.factors.z);
     }
 
-    return base_color;
+    float metallic = saturate(g_material.factors.x);
+    float roughness = clamp(g_material.factors.y, 0.04f, 1.0f);
+    float3 normal = normalize(input.world_normal);
+    float3 view_dir = normalize(g_frame.camera_position_environment_intensity.xyz - input.world_position);
+
+    float3 lit_color = g_frame.ambient_color_intensity.rgb * g_frame.ambient_color_intensity.w * base_color.rgb;
+
+    float3 directional_light_dir = normalize(-g_frame.directional_direction_intensity.xyz);
+    float3 directional_radiance = g_frame.directional_color_point_count.rgb * g_frame.directional_direction_intensity.w;
+    lit_color += EvaluateDirectLight(
+        base_color.rgb,
+        metallic,
+        roughness,
+        normal,
+        view_dir,
+        directional_light_dir,
+        directional_radiance);
+
+    uint point_light_count = (uint)g_frame.directional_color_point_count.w;
+    [loop]
+    for (uint index = 0; index < point_light_count; ++index) {
+        PointLightData light = g_point_lights[index];
+        float3 light_vector = light.position_intensity.xyz - input.world_position;
+        float distance_to_light = length(light_vector);
+        float3 point_light_dir = light_vector / max(distance_to_light, 0.0001f);
+        float attenuation = 1.0f / max(
+            light.attenuation.x +
+            light.attenuation.y * distance_to_light +
+            light.attenuation.z * distance_to_light * distance_to_light,
+            0.0001f);
+        float3 radiance = light.color.rgb * light.position_intensity.w * attenuation;
+
+        lit_color += EvaluateDirectLight(
+            base_color.rgb,
+            metallic,
+            roughness,
+            normal,
+            view_dir,
+            point_light_dir,
+            radiance);
+    }
+
+    return float4(lit_color, base_color.a);
 }

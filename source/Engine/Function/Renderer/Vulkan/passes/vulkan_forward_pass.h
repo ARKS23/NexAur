@@ -46,8 +46,16 @@ namespace NexAur {
         void cleanupSwapchainResources();
         void shutdown();
 
-        bool record(VkCommandBuffer command_buffer, uint32_t image_index, const VulkanDrawList& draw_list);
-        bool record(VkCommandBuffer command_buffer, const VulkanRenderTarget& target, const VulkanDrawList& draw_list);
+        bool record(
+            VkCommandBuffer command_buffer,
+            uint32_t image_index,
+            const VulkanDrawList& draw_list,
+            VkDescriptorSet frame_descriptor_set);
+        bool record(
+            VkCommandBuffer command_buffer,
+            const VulkanRenderTarget& target,
+            const VulkanDrawList& draw_list,
+            VkDescriptorSet frame_descriptor_set);
         VkImageView getSwapchainColorImageView(uint32_t image_index) const;
 
     private:

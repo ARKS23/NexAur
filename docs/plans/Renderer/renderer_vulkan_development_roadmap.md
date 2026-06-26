@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R19 Vulkan-only PassGraph 骨架已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph
+当前阶段：Post Vulkan PR-R20 Lighting baseline 已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -1825,9 +1825,22 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R20：Lighting baseline
+进入 PR-R21：Skybox / Environment
 或先继续增强 PR-R19 PassGraph 的 debug dump / synchronization2 版本
 ```
+
+PR-R20 已完成拆分：
+
+```text
+PR-R20-A Light data contract 和坐标语义确认
+PR-R20-B Vulkan frame lighting resource / buffer
+PR-R20-C FrameGlobal descriptor layout 和 descriptor set
+PR-R20-D VulkanForwardPass 绑定 set 0 frame descriptor
+PR-R20-E HLSL direct-light PBR baseline
+PR-R20-F 默认场景、验证和文档
+```
+
+PR-R20 第一版已完成 PBR-ready 的直接光照 baseline，而不是完整 PBR。当前使用 base color / metallic / roughness 计算 directional light 和 point lights 的 direct lighting；IBL、BRDF LUT、normal map、AO、emissive、shadow、HDR / tonemapping 留给后续 PR。
 
 PR-R19 已完成拆分：
 

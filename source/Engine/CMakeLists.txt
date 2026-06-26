@@ -173,6 +173,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/shaders/vulkan_shader_library.cpp
     Function/Renderer/Vulkan/vulkan_render_target.h
     Function/Renderer/Vulkan/vulkan_resource_context.h
+    Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h
+    Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.cpp
     Function/Renderer/Vulkan/resources/vulkan_material_resource.h
     Function/Renderer/Vulkan/resources/vulkan_material_resource.cpp
     Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h
