@@ -3,6 +3,7 @@
 #include "scene_v2.h"
 #include "component.h"
 #include "Function/Renderer/data/render_data.h"
+#include "Function/Renderer/data/render_debug_draw_builder.h"
 
 namespace NexAur {
     namespace {
@@ -68,8 +69,16 @@ namespace NexAur {
             auto camera_view = m_Registry.view<CameraComponent>();
             for (auto entity : camera_view) {
                 writeCameraData(*render_packet, camera_view.get<CameraComponent>(entity));
+                camera_written = true;
                 break;
             }
+        }
+
+        if (camera_written) {
+            RenderDebugDrawBuilder::addFrustum(
+                render_packet->debug_draw,
+                render_packet->camera_data.view_projection_matrix,
+                glm::vec4{ 0.35f, 0.65f, 1.0f, 1.0f });
         }
 
         // 方向光数据
@@ -83,6 +92,16 @@ namespace NexAur {
             render_packet->directional_light_data.shadow_strength = dir_light_comp.shadow_strength;
             render_packet->directional_light_data.shadow_bias = dir_light_comp.shadow_bias;
             render_packet->directional_light_data.shadow_distance = dir_light_comp.shadow_distance;
+
+            glm::vec3 light_position{ 0.0f };
+            if (const TransformComponent* transform = m_Registry.try_get<TransformComponent>(entity)) {
+                light_position = transform->translation;
+            }
+            RenderDebugDrawBuilder::addDirectionalLightGizmo(
+                render_packet->debug_draw,
+                light_position,
+                dir_light_comp.direction,
+                glm::vec4{ dir_light_comp.color, 1.0f });
             break; // 目前版本只支持一个方向光
         }
 
@@ -99,6 +118,11 @@ namespace NexAur {
             point_light_data.quadratic = point_light_comp.quadratic;
 
             render_packet->point_lights_data.push_back(point_light_data);
+            RenderDebugDrawBuilder::addPointLightGizmo(
+                render_packet->debug_draw,
+                point_light_data.position,
+                0.35f,
+                glm::vec4{ point_light_data.color, 1.0f });
         });
 
 

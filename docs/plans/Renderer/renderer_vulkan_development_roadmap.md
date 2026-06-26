@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R22 Shadow 第一版已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline；Skybox pass 已接入 PassGraph，支持 environment background color / intensity procedural skybox baseline；directional light shadow map baseline 已接入 ShadowDepth pass、FrameGlobal descriptor、Forward shader shadow sampling 和 PassGraph flow
+当前阶段：Post Vulkan PR-R23 Debug draw 已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services；Forward / ObjectId / ImGui / Present 的帧内顺序和 image layout transition 已收口到 Vulkan-only PassGraph；Forward pass 已接入 FrameGlobal descriptor、directional light、point lights 和 direct-light PBR baseline；Skybox pass 已接入 PassGraph，支持 environment background color / intensity procedural skybox baseline；directional light shadow map baseline 已接入 ShadowDepth pass、FrameGlobal descriptor、Forward shader shadow sampling 和 PassGraph flow；Debug draw baseline 已接入 RenderDataPacket、VulkanDebugDrawBuffer、VulkanDebugDrawPass 和 PassGraph flow
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -98,6 +98,7 @@ externalRenderer：仅作为临时本地参考目录
 - PR-R20：完成 Lighting baseline。
 - PR-R21：完成 Skybox / Environment baseline。
 - PR-R22：完成 Shadow 第一版 baseline。
+- PR-R23：完成 Debug draw baseline。
 
 已确认：
 
@@ -1829,9 +1830,34 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R22：Shadow 第一版
-或先做 PR-R21.1：TextureCube / EnvironmentResource
+下一步进入 PR-R24：Renderer debug panel
+PR-R21.1：TextureCube / EnvironmentResource 可作为后续 environment 专项
 ```
+
+PR-R23 建议执行拆分：
+
+```text
+PR-R23-A Debug draw data contract
+PR-R23-B Debug draw builder helpers
+PR-R23-C ShaderLibrary / PipelineCache 支持 line list debug pipeline
+PR-R23-D VulkanDebugDrawBuffer
+PR-R23-E VulkanDebugDrawPass
+PR-R23-F PassGraph 接入 ForwardScene -> DebugDraw -> ObjectIdPicking
+PR-R23-G 验证、文档和 Sandbox smoke
+```
+
+PR-R23 第一版建议只做 line segment、AABB、camera frustum 和 light gizmo。Debug draw 数据应从 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 进入渲染器，Vulkan backend 只消费展开后的 line list。暂不做文字标签、category/filter 面板、persistent lifetime、physics debug draw 完整适配、shadow map debug viewer 或 profiler。
+
+PR-R23 完成记录：
+
+- 新增 `RenderDebugLine` / `RenderDebugDrawData`，`RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 已携带 debug line list。
+- 新增 `RenderDebugDrawBuilder`，支持 line、AABB、frustum、directional light gizmo、point light gizmo 展开。
+- `SceneV2::extractSceneData()` 默认输出 active camera frustum、directional light gizmo 和 point light gizmo。
+- 新增 `VulkanDebugDrawBuffer`，每帧上传 depth-tested line vertices。
+- 新增 `vulkan_debug_draw.hlsl`、`VulkanShaderProgramId::DebugDraw` 和 debug position/color line-list vertex layout。
+- 新增 `VulkanDebugDrawPass`，使用 FrameGlobal descriptor 和 scene color / depth dynamic rendering 绘制 line list。
+- PassGraph 已接入 `ForwardScene -> DebugDraw -> ObjectIdPicking`，viewport target 和 fallback swapchain 两条路径都覆盖。
+- `cmake --build build/msvc-vcpkg --config Debug --target Sandbox` 和 Sandbox smoke 已通过。
 
 PR-R22 建议执行拆分：
 

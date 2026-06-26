@@ -339,6 +339,16 @@ namespace NexAur {
         return m_color_image_views[image_index];
     }
 
+    VulkanRenderTarget VulkanForwardPass::getSwapchainRenderTarget(uint32_t image_index) const {
+        VulkanRenderTarget target;
+        target.color_view = getSwapchainColorImageView(image_index);
+        target.color_format = m_color_format;
+        target.depth_view = m_depth_image_view;
+        target.depth_format = m_depth_format;
+        target.extent = m_extent;
+        return target;
+    }
+
     bool VulkanForwardPass::createDepthResources(const VulkanForwardPassSwapchainContext& context) {
         m_depth_format = findDepthFormat(context.physical_device);
         if (m_depth_format == VK_FORMAT_UNDEFINED) {

@@ -2,6 +2,7 @@
 #include "vulkan_pipeline_cache.h"
 
 #include "Function/Resource/mesh.h"
+#include "Function/Renderer/Vulkan/frontend/vulkan_debug_draw_types.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
 
 #include <array>
@@ -44,6 +45,30 @@ namespace NexAur {
             attributes[2].binding = 0;
             attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
             attributes[2].offset = offsetof(Vertex, texCoords);
+
+            return attributes;
+        }
+
+        VkVertexInputBindingDescription debugDrawVertexBindingDescription() {
+            VkVertexInputBindingDescription binding{};
+            binding.binding = 0;
+            binding.stride = sizeof(VulkanDebugDrawVertex);
+            binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            return binding;
+        }
+
+        std::array<VkVertexInputAttributeDescription, 2> debugDrawVertexAttributeDescriptions() {
+            std::array<VkVertexInputAttributeDescription, 2> attributes{};
+
+            attributes[0].location = 0;
+            attributes[0].binding = 0;
+            attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attributes[0].offset = offsetof(VulkanDebugDrawVertex, position);
+
+            attributes[1].location = 1;
+            attributes[1].binding = 0;
+            attributes[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+            attributes[1].offset = offsetof(VulkanDebugDrawVertex, color);
 
             return attributes;
         }
@@ -152,6 +177,7 @@ namespace NexAur {
 
         VkVertexInputBindingDescription binding{};
         std::array<VkVertexInputAttributeDescription, 3> attributes{};
+        std::array<VkVertexInputAttributeDescription, 2> debug_attributes{};
 
         VkPipelineVertexInputStateCreateInfo vertex_input{};
         vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -162,6 +188,13 @@ namespace NexAur {
             vertex_input.pVertexBindingDescriptions = &binding;
             vertex_input.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
             vertex_input.pVertexAttributeDescriptions = attributes.data();
+        } else if (desc.vertex_layout == VulkanPipelineVertexLayout::DebugPositionColor) {
+            binding = debugDrawVertexBindingDescription();
+            debug_attributes = debugDrawVertexAttributeDescriptions();
+            vertex_input.vertexBindingDescriptionCount = 1;
+            vertex_input.pVertexBindingDescriptions = &binding;
+            vertex_input.vertexAttributeDescriptionCount = static_cast<uint32_t>(debug_attributes.size());
+            vertex_input.pVertexAttributeDescriptions = debug_attributes.data();
         }
 
         VkPipelineInputAssemblyStateCreateInfo input_assembly{};

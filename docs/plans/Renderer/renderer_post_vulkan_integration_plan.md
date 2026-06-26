@@ -1407,6 +1407,21 @@ ForwardScene
 
 ### PR-R23：Debug draw
 
+执行状态：已完成。
+
+完成记录：
+
+- 新增 `RenderDebugLine` / `RenderDebugDrawData`，debug draw 数据从 `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 进入渲染器。
+- 新增 `RenderDebugDrawBuilder`，支持 line、AABB、camera frustum、directional light gizmo 和 point light gizmo 展开。
+- `SceneV2::extractSceneData()` 默认输出 active camera frustum、directional light gizmo 和 point light gizmo。
+- 新增 `VulkanDebugDrawBuffer`，将后端无关 debug lines 上传为 `position + color` vertex buffer。
+- 新增 `assets/shaders/Renderer/Vulkan/vulkan_debug_draw.hlsl`，通过 HLSL + DXC 编译为 DebugDraw VS / PS。
+- `VulkanShaderLibrary` 增加 DebugDraw shader program id，`VulkanPipelineCache` 增加 debug position/color line-list vertex layout。
+- 新增 `VulkanDebugDrawPass`，使用 scene color / depth dynamic rendering 绘制 depth-tested line list。
+- `VulkanForwardPass` 暴露 swapchain scene render target / depth layout，让 fallback swapchain 路径也能通过 PassGraph 接入 DebugDraw。
+- PassGraph 已接入 `ForwardScene -> DebugDraw -> ObjectIdPicking`，DebugDraw 不参与 ObjectId picking。
+- 构建、HLSL shader 编译和 Sandbox smoke 已通过。
+
 目标：
 
 - 线段。
@@ -1415,6 +1430,161 @@ ForwardScene
 - light gizmo 辅助显示。
 
 Debug draw 对 demo 和后续物理调试很重要，建议在完整后处理之前做。
+
+设计原则：
+
+- Debug draw 是后端无关的调试图元数据，不是 Vulkan pass 的私有功能。
+- Scene / Editor / Physics 只提交 line、color、depth test 等语义，不接触 Vulkan buffer、descriptor、pipeline。
+- Renderer frontend 负责把高级 debug shape 展开为线段列表。
+- Vulkan backend 只消费已经展开好的 debug line list。
+- Debug draw 不参与 ObjectId picking，避免调试线影响实体选中。
+
+建议数据流：
+
+```text
+Editor / Scene / Physics
+  -> DebugDrawData / RenderDataPacket
+  -> RenderSceneFrame
+  -> VulkanDrawList
+  -> VulkanDebugDrawBuffer
+  -> VulkanDebugDrawPass
+```
+
+第一版建议新增后端无关数据：
+
+```cpp
+struct RenderDebugLine {
+    glm::vec3 start;
+    glm::vec3 end;
+    glm::vec4 color;
+    bool depth_test = true;
+};
+
+struct RenderDebugDrawData {
+    std::vector<RenderDebugLine> lines;
+};
+```
+
+如果希望第一版更简单，可以只支持 depth-tested lines，把 xray / always-on-top line 留给后续。更清爽的长期结构是按 render mode 分组：
+
+```text
+depth_tested_lines
+overlay_lines
+```
+
+建议 helper：
+
+- `addLine(start, end, color)`。
+- `addAABB(min, max, color)`，展开为 12 条线。
+- `addFrustum(corners, color)` 或 `addFrustum(view_projection_inverse, color)`，展开为 12 条线。
+- `addDirectionalLightGizmo(position, direction, color)`，第一版用 arrow + small cross 即可。
+- `addPointLightGizmo(position, radius, color)`，第一版可用三轴 circle 或 cross，不要求光照体积精确。
+
+建议新增文件：
+
+```text
+Renderer/data/
+  render_debug_draw.h
+
+Renderer/data/
+  render_debug_draw_builder.h
+  render_debug_draw_builder.cpp
+
+Renderer/Vulkan/passes/
+  vulkan_debug_draw_pass.h
+  vulkan_debug_draw_pass.cpp
+
+Renderer/Vulkan/resources/
+  vulkan_debug_draw_buffer.h
+  vulkan_debug_draw_buffer.cpp
+
+assets/shaders/Renderer/Vulkan/
+  vulkan_debug_draw.hlsl
+```
+
+`VulkanDebugDrawBuffer` 职责：
+
+- 管理一块 host-visible dynamic vertex buffer。
+- 每帧上传 `position + color` 顶点。
+- 按 debug line count 自动扩容，但不要每条线创建 buffer。
+- 第一版可以单 buffer + fence wait 后更新；后续再升级为 per-frame ring buffer。
+
+`VulkanDebugDrawPass` 职责：
+
+- 使用 `VK_PRIMITIVE_TOPOLOGY_LINE_LIST`。
+- 绑定 `FrameGlobal` descriptor，复用当前 view projection。
+- 不绑定 material descriptor。
+- 不采样 texture。
+- 关闭 blend 或使用 alpha blend，第一版建议先 alpha blend 开启，方便半透明调试线。
+- depth-tested 模式使用现有 scene depth，`depthWriteEnable = false`。
+
+PassGraph 接入建议：
+
+```text
+DirectionalShadowMap
+  -> Skybox
+  -> ForwardScene
+  -> DebugDraw
+  -> ObjectIdPicking
+  -> ImGuiComposite
+  -> PresentTransition
+```
+
+说明：
+
+- DebugDraw 在 ForwardScene 之后绘制，才能叠加在模型上。
+- DebugDraw 读取 / 使用 scene depth，但不写 depth。
+- ObjectIdPicking 仍使用独立 picking target，不消费 debug draw。
+- viewport target 路径第一版必须支持，因为 Debug draw 首先服务 Editor。
+- fallback swapchain 路径可以同步支持；如果现有 swapchain depth 仍由 `VulkanForwardPass` 私有持有，需要先给 DebugDraw 暴露只读 depth target，或把 swapchain scene depth 从 ForwardPass 中抽出成更明确的 target。
+
+建议拆分：
+
+1. PR-R23-A：Debug draw data contract。
+   - 新增 `RenderDebugLine` / `RenderDebugDrawData`。
+   - `RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 携带 debug lines。
+   - 不引入 Vulkan 类型。
+
+2. PR-R23-B：Debug draw builder helpers。
+   - 实现 line / AABB / frustum / light gizmo 展开。
+   - 第一版可以由 Editor 临时注入选中实体 AABB、camera frustum、light gizmo。
+
+3. PR-R23-C：Vulkan debug draw shader / pipeline。
+   - 新增 `vulkan_debug_draw.hlsl`。
+   - `VulkanShaderLibrary` 增加 DebugDraw program id。
+   - `VulkanPipelineCache` 使用 line list topology 创建 pipeline。
+
+4. PR-R23-D：VulkanDebugDrawBuffer。
+   - host-visible dynamic vertex buffer。
+   - 每帧上传 debug vertices。
+   - 空 line list 时 pass 直接跳过。
+
+5. PR-R23-E：VulkanDebugDrawPass。
+   - 绑定 FrameGlobal descriptor。
+   - 绑定 debug vertex buffer。
+   - 使用 scene color / depth dynamic rendering 绘制 line list。
+
+6. PR-R23-F：PassGraph 接入。
+   - viewport target 路径：`ForwardScene -> DebugDraw -> ObjectIdPicking -> ImGuiComposite`。
+   - fallback swapchain 路径尽量同步；如果成本过高，文档标明第一版只支持 embedded viewport debug draw。
+
+7. PR-R23-G：验证和文档。
+   - 默认场景能显示 selected entity AABB。
+   - SceneView 能显示 active camera frustum。
+   - Directional / point light 有简单 gizmo。
+   - debug draw 不影响 picking。
+   - 构建、HLSL shader 编译和 Sandbox smoke 通过。
+
+暂时不做：
+
+- 文字标签。
+- debug draw 分类面板。
+- 持久化 lifetime / duration。
+- physics debug draw 完整适配。
+- navmesh / path finding debug draw。
+- GPU profiler。
+- shadow map debug viewer。
+- gizmo 交互逻辑替代 ImGuizmo。
 
 ### PR-R24：Renderer debug panel
 

@@ -124,6 +124,9 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/renderer_module.cpp
     Function/Renderer/data/render_context.h
     Function/Renderer/data/render_data.h
+    Function/Renderer/data/render_debug_draw_builder.h
+    Function/Renderer/data/render_debug_draw_builder.cpp
+    Function/Renderer/data/render_debug_draw.h
     Function/Renderer/renderer_service.h
     Function/Renderer/renderer_service_types.h
 )
@@ -133,6 +136,7 @@ set(NEXAUR_ENGINE_VULKAN_SHADER_FILES
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_object_id.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_skybox.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_shadow_depth.hlsl"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_debug_draw.hlsl"
 )
 
 set_source_files_properties(
@@ -157,6 +161,7 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/frontend/vulkan_draw_list.h
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.h
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.cpp
+    Function/Renderer/Vulkan/frontend/vulkan_debug_draw_types.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
@@ -164,6 +169,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/graph/vulkan_graph_resource.h
     Function/Renderer/Vulkan/graph/vulkan_pass_graph.h
     Function/Renderer/Vulkan/graph/vulkan_pass_graph.cpp
+    Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.h
+    Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.h
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h
@@ -179,6 +186,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/shaders/vulkan_shader_library.cpp
     Function/Renderer/Vulkan/vulkan_render_target.h
     Function/Renderer/Vulkan/vulkan_resource_context.h
+    Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h
+    Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.cpp
     Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h
     Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.cpp
     Function/Renderer/Vulkan/resources/vulkan_material_resource.h
@@ -313,6 +322,8 @@ nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_obje
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_skybox.hlsl vs_6_0 VSMain vulkan_skybox.vert.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_skybox.hlsl ps_6_0 PSMain vulkan_skybox.frag.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_shadow_depth.hlsl vs_6_0 VSMain vulkan_shadow_depth.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_debug_draw.hlsl vs_6_0 VSMain vulkan_debug_draw.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_debug_draw.hlsl ps_6_0 PSMain vulkan_debug_draw.frag.spv)
 
 add_custom_command(TARGET NexAurEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}"

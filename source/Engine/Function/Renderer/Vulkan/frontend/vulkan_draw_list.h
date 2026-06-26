@@ -31,6 +31,7 @@ namespace NexAur {
 
         std::vector<VulkanMeshDrawItem> opaque_items;
         std::vector<VulkanMeshDrawItem> transparent_items;
+        RenderDebugDrawData debug_draw;
 
         bool hasRenderableItems() const {
             return !opaque_items.empty() || !transparent_items.empty();

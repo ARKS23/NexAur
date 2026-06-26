@@ -76,6 +76,11 @@ namespace NexAur {
             VkDescriptorSet frame_descriptor_set,
             const VulkanForwardPassRenderOptions& options);
         VkImageView getSwapchainColorImageView(uint32_t image_index) const;
+        VulkanRenderTarget getSwapchainRenderTarget(uint32_t image_index) const;
+        VkImage getDepthImage() const { return m_depth_image; }
+        VkImageLayout getDepthImageLayout() const { return m_depth_image_layout; }
+        void setDepthImageLayout(VkImageLayout layout) { m_depth_image_layout = layout; }
+        VkFormat getDepthFormat() const { return m_depth_format; }
 
     private:
         bool createImageViews(const VulkanForwardPassSwapchainContext& context);

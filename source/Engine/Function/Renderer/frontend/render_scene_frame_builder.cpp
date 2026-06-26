@@ -21,6 +21,10 @@ namespace NexAur {
             return isFinite(value.x) && isFinite(value.y) && isFinite(value.z);
         }
 
+        bool isFinite(const glm::vec4& value) {
+            return isFinite(value.x) && isFinite(value.y) && isFinite(value.z) && isFinite(value.w);
+        }
+
         bool isFinite(const glm::mat4& value) {
             for (int column = 0; column < 4; ++column) {
                 for (int row = 0; row < 4; ++row) {
@@ -115,6 +119,46 @@ namespace NexAur {
                     list_name);
             }
         }
+
+        void appendDebugLines(
+            const RenderDebugDrawData& source,
+            RenderDebugDrawData& target) {
+            constexpr size_t kMaxDebugLines = 65536;
+
+            const size_t line_count = std::min(source.lines.size(), kMaxDebugLines);
+            target.lines.reserve(line_count);
+
+            size_t invalid_count = 0;
+            for (size_t index = 0; index < line_count; ++index) {
+                const RenderDebugLine& source_line = source.lines[index];
+                if (!isFinite(source_line.start) ||
+                    !isFinite(source_line.end) ||
+                    !isFinite(source_line.color)) {
+                    ++invalid_count;
+                    continue;
+                }
+
+                RenderDebugLine line;
+                line.start = source_line.start;
+                line.end = source_line.end;
+                line.color = glm::max(source_line.color, glm::vec4{ 0.0f });
+                line.depth_test = source_line.depth_test;
+                target.lines.push_back(line);
+            }
+
+            if (source.lines.size() > kMaxDebugLines) {
+                NX_CORE_WARN(
+                    "RenderSceneFrameBuilder truncated debug lines from {} to {}.",
+                    source.lines.size(),
+                    kMaxDebugLines);
+            }
+
+            if (invalid_count > 0) {
+                NX_CORE_WARN(
+                    "RenderSceneFrameBuilder skipped {} invalid debug line(s).",
+                    invalid_count);
+            }
+        }
     } // namespace
 
     RenderSceneFrame RenderSceneFrameBuilder::buildRenderSceneFrame(
@@ -146,6 +190,7 @@ namespace NexAur {
         frame.environment_intensity = sanitizeNonNegative(
             render_data.environment_data.intensity,
             kDefaultEnvironmentIntensity);
+        appendDebugLines(render_data.debug_draw, frame.debug_draw);
 
         return frame;
     }

@@ -12,11 +12,13 @@
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_executor.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
+#include "Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_shadow_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_picking_target.h"
@@ -178,6 +180,7 @@ namespace NexAur {
                 !frame_lighting_resource.init(createResourceContext(), descriptor_layout_cache, descriptor_allocator) ||
                 !pipeline_cache.init(device.device, shader_library) ||
                 !resource_cache.init(createResourceContext(), descriptor_layout_cache, descriptor_allocator) ||
+                !debug_draw_buffer.init(createResourceContext()) ||
                 !createSwapchain() ||
                 !createCommandResources() ||
                 !createSyncObjects()) {
@@ -238,6 +241,7 @@ namespace NexAur {
             }
 
             imgui_renderer.shutdown();
+            debug_draw_pass.shutdown();
             skybox_pass.shutdown();
             shadow_pass.shutdown();
             object_id_pass.shutdown();
@@ -246,6 +250,7 @@ namespace NexAur {
             viewport_target.shutdown();
             forward_pass.shutdown();
             cleanupSwapchain();
+            debug_draw_buffer.shutdown();
             resource_cache.shutdown();
             frame_lighting_resource.shutdown();
             pipeline_cache.shutdown();
@@ -708,11 +713,25 @@ namespace NexAur {
 
             const bool recreated_skybox_pass = skybox_pass.recreateResources(skybox_context);
             const bool recreated_forward_pass = recreated_skybox_pass && forward_pass.recreateSwapchainResources(pass_context);
-            if (recreated_forward_pass && imgui_renderer.isInitialized()) {
+            if (!recreated_forward_pass) {
+                return false;
+            }
+
+            VulkanDebugDrawPassContext debug_draw_context;
+            debug_draw_context.device = device.device;
+            debug_draw_context.color_format = swapchain.image_format;
+            debug_draw_context.depth_format = forward_pass.getDepthFormat();
+            debug_draw_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
+            debug_draw_context.pipeline_cache = &pipeline_cache;
+            if (!debug_draw_pass.recreateResources(debug_draw_context)) {
+                return false;
+            }
+
+            if (imgui_renderer.isInitialized()) {
                 imgui_renderer.onSwapchainRecreated(std::max(2u, swapchain.image_count));
             }
 
-            return recreated_forward_pass;
+            return true;
         }
 
         bool recreateSwapchain() {
@@ -726,6 +745,7 @@ namespace NexAur {
         }
 
         void cleanupSwapchain() {
+            debug_draw_pass.cleanupResources();
             skybox_pass.cleanupResources();
             forward_pass.cleanupSwapchainResources();
             swapchain_images.clear();
@@ -807,6 +827,10 @@ namespace NexAur {
                     draw_list,
                     shadow_frame.light_view_projection,
                     getShadowMapSize())) {
+                return;
+            }
+
+            if (!debug_draw_buffer.upload(draw_list.debug_draw)) {
                 return;
             }
 
@@ -945,6 +969,10 @@ namespace NexAur {
                         options);
                 });
 
+            if (!addDebugDrawPass(graph, viewport_color, viewport_depth, viewport_target.getRenderTarget())) {
+                return false;
+            }
+
             if (!addObjectIdPass(graph, draw_list)) {
                 return false;
             }
@@ -969,7 +997,8 @@ namespace NexAur {
             const VulkanShadowFrame& shadow_frame) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
-            if (!shadow_depth.valid() || !swapchain_color.valid()) {
+            const VulkanGraphImageHandle swapchain_depth = addSwapchainDepthImage(graph);
+            if (!shadow_depth.valid() || !swapchain_color.valid() || !swapchain_depth.valid()) {
                 return false;
             }
 
@@ -984,15 +1013,20 @@ namespace NexAur {
             graph.addPass("ForwardScene")
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(swapchain_color, VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(swapchain_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
                     VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
                     return forward_pass.record(
                         target_command_buffer,
-                        image_index,
+                        forward_pass.getSwapchainRenderTarget(image_index),
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
                         options);
                 });
+
+            if (!addDebugDrawPass(graph, swapchain_color, swapchain_depth, forward_pass.getSwapchainRenderTarget(image_index))) {
+                return false;
+            }
 
             if (!addObjectIdPass(graph, draw_list)) {
                 return false;
@@ -1042,6 +1076,31 @@ namespace NexAur {
             return true;
         }
 
+        bool addDebugDrawPass(
+            VulkanPassGraph& graph,
+            VulkanGraphImageHandle color_image,
+            VulkanGraphImageHandle depth_image,
+            VulkanRenderTarget target) {
+            if (!debug_draw_buffer.hasVertices()) {
+                return true;
+            }
+            if (!color_image.valid() || !depth_image.valid() || !target.valid()) {
+                return false;
+            }
+
+            graph.addPass("DebugDraw")
+                .writeImage(color_image, VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(depth_image, VulkanGraphImageUsage::DepthStencilAttachment)
+                .execute([this, target](VkCommandBuffer target_command_buffer) {
+                    return debug_draw_pass.record(
+                        target_command_buffer,
+                        target,
+                        debug_draw_buffer,
+                        frame_lighting_resource.getDescriptorSet());
+                });
+            return true;
+        }
+
         bool addObjectIdPass(VulkanPassGraph& graph, const VulkanDrawList& draw_list) {
             if (!picking_target.isReady()) {
                 return true;
@@ -1082,6 +1141,18 @@ namespace NexAur {
                 if (image_index < swapchain_image_layouts.size()) {
                     swapchain_image_layouts[image_index] = layout;
                 }
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addSwapchainDepthImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "SwapchainDepth";
+            desc.image = forward_pass.getDepthImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.initial_layout = forward_pass.getDepthImageLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                forward_pass.setDepthImageLayout(layout);
             };
             return graph.addImage(std::move(desc));
         }
@@ -1406,6 +1477,8 @@ namespace NexAur {
         RenderSceneFrameBuilder scene_frame_builder;
         VulkanDrawListBuilder draw_list_builder;
         VulkanGraphExecutor graph_executor;
+        VulkanDebugDrawBuffer debug_draw_buffer;
+        VulkanDebugDrawPass debug_draw_pass;
         VulkanShadowPass shadow_pass;
         VulkanSkyboxPass skybox_pass;
         VulkanForwardPass forward_pass;

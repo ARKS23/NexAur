@@ -73,6 +73,7 @@ namespace NexAur {
         draw_list.point_lights = scene_frame.point_lights;
         draw_list.environment_color = scene_frame.environment_color;
         draw_list.environment_intensity = scene_frame.environment_intensity;
+        draw_list.debug_draw = scene_frame.debug_draw;
 
         draw_list.opaque_items.reserve(scene_frame.opaque_objects.size());
         appendModelObjects(

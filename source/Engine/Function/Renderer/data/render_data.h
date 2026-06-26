@@ -6,6 +6,7 @@
 
 #include "Core/Base.h"
 #include "Function/Resource/asset_handle.h"
+#include "Function/Renderer/data/render_debug_draw.h"
 
 namespace NexAur {
     struct RendererCameraData {
@@ -60,6 +61,7 @@ namespace NexAur {
 
         std::vector<RenderObjectData> opaque_objects;   // 不透明物体
         std::vector<RenderObjectData> transparent_objects; // 透明物体
+        RenderDebugDrawData debug_draw;
 
         void clear() {
             // 清空完整帧状态，避免缺少相机或灯光组件时沿用上一帧数据。
@@ -69,6 +71,7 @@ namespace NexAur {
             point_lights_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
+            debug_draw.clear();
         }
     };
 

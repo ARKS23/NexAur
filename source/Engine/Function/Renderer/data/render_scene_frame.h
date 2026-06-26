@@ -6,6 +6,7 @@
 
 #include "Core/Base.h"
 #include "Function/Resource/asset_handle.h"
+#include "Function/Renderer/data/render_debug_draw.h"
 #include "Function/Renderer/data/render_view.h"
 
 namespace NexAur {
@@ -46,6 +47,7 @@ namespace NexAur {
         AssetHandle environment_asset;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };
         float environment_intensity = 1.0f;
+        RenderDebugDrawData debug_draw;
 
         bool hasRenderableObjects() const {
             return !opaque_objects.empty() || !transparent_objects.empty();

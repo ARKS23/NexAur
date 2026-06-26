@@ -12,7 +12,8 @@ namespace NexAur {
         Forward = 0,
         ObjectId,
         Skybox,
-        ShadowDepth
+        ShadowDepth,
+        DebugDraw
     };
 
     struct VulkanShaderProgram {
