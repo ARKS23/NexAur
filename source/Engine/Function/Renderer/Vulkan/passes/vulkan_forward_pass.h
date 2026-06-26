@@ -16,6 +16,7 @@ namespace NexAur {
         VkFormat color_format = VK_FORMAT_UNDEFINED;
         VkExtent2D extent{};
         std::vector<VkImage> color_images;
+        VkDescriptorSetLayout material_descriptor_set_layout = VK_NULL_HANDLE;
 
         bool valid() const {
             return physical_device != VK_NULL_HANDLE &&
@@ -23,7 +24,8 @@ namespace NexAur {
                    color_format != VK_FORMAT_UNDEFINED &&
                    extent.width > 0 &&
                    extent.height > 0 &&
-                   !color_images.empty();
+                   !color_images.empty() &&
+                   material_descriptor_set_layout != VK_NULL_HANDLE;
         }
     };
 
@@ -61,6 +63,8 @@ namespace NexAur {
         VkDeviceMemory m_depth_memory = VK_NULL_HANDLE;
         VkImageView m_depth_image_view = VK_NULL_HANDLE;
         VkImageLayout m_depth_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_empty_frame_descriptor_set_layout = VK_NULL_HANDLE;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;
     };

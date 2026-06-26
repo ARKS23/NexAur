@@ -2,6 +2,7 @@
 #include "vulkan_forward_pass.h"
 
 #include "Function/Resource/mesh.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_material_resource.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_draw_list.h"
 
@@ -203,6 +204,7 @@ namespace NexAur {
         m_device = context.device;
         m_color_format = context.color_format;
         m_extent = context.extent;
+        m_material_descriptor_set_layout = context.material_descriptor_set_layout;
 
         if (!createImageViews(context) || !createDepthResources(context) || !createPipeline()) {
             cleanupSwapchainResources();
@@ -226,6 +228,7 @@ namespace NexAur {
         m_color_format = VK_FORMAT_UNDEFINED;
         m_depth_format = VK_FORMAT_UNDEFINED;
         m_extent = {};
+        m_material_descriptor_set_layout = VK_NULL_HANDLE;
     }
 
     void VulkanForwardPass::shutdown() {
@@ -320,7 +323,7 @@ namespace NexAur {
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
 
             for (const VulkanMeshDrawItem& item : draw_list.opaque_items) {
-                if (!item.mesh || !item.mesh->isReady()) {
+                if (!item.mesh || !item.mesh->isReady() || !item.material || !item.material->isReady()) {
                     continue;
                 }
 
@@ -339,6 +342,17 @@ namespace NexAur {
                     0,
                     sizeof(VulkanForwardPushConstants),
                     &push_constants);
+
+                const VkDescriptorSet material_descriptor_set = item.material->getDescriptorSet();
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    m_pipeline_layout,
+                    1,
+                    1,
+                    &material_descriptor_set,
+                    0,
+                    nullptr);
 
                 vkCmdDrawIndexed(command_buffer, item.mesh->getIndexCount(), 1, 0, 0, 0);
             }
@@ -547,8 +561,24 @@ namespace NexAur {
         push_constant_range.offset = 0;
         push_constant_range.size = sizeof(VulkanForwardPushConstants);
 
+        VkDescriptorSetLayoutCreateInfo empty_layout_info{};
+        empty_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        if (!checkVk(
+                vkCreateDescriptorSetLayout(m_device, &empty_layout_info, nullptr, &m_empty_frame_descriptor_set_layout),
+                "vkCreateDescriptorSetLayout(forward empty frame)")) {
+            cleanup_shader_modules();
+            return false;
+        }
+
+        const std::array<VkDescriptorSetLayout, 2> descriptor_set_layouts{
+            m_empty_frame_descriptor_set_layout,
+            m_material_descriptor_set_layout
+        };
+
         VkPipelineLayoutCreateInfo layout_info{};
         layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_info.setLayoutCount = static_cast<uint32_t>(descriptor_set_layouts.size());
+        layout_info.pSetLayouts = descriptor_set_layouts.data();
         layout_info.pushConstantRangeCount = 1;
         layout_info.pPushConstantRanges = &push_constant_range;
 
@@ -614,6 +644,11 @@ namespace NexAur {
         if (m_pipeline_layout != VK_NULL_HANDLE) {
             vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
             m_pipeline_layout = VK_NULL_HANDLE;
+        }
+
+        if (m_empty_frame_descriptor_set_layout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(m_device, m_empty_frame_descriptor_set_layout, nullptr);
+            m_empty_frame_descriptor_set_layout = VK_NULL_HANDLE;
         }
     }
 } // namespace NexAur

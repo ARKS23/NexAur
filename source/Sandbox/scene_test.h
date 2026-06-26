@@ -28,7 +28,7 @@ namespace NexAur {
             const glm::vec3& position,
             const glm::vec3& rotation,
             const glm::vec3& scale);
-        void setMaterial(MaterialData& material_data, const std::string& material_type);
+        void setMaterial(MaterialImportData& material_data, const std::string& material_type);
 
     private:
         std::shared_ptr<SceneV2> m_scene;

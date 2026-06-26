@@ -11,6 +11,7 @@ namespace NexAur {
         Model,
         Texture2D,
         TextureCube,
+        Material,
         Shader,
         EnvironmentMap,
         ProceduralModel
@@ -21,6 +22,7 @@ namespace NexAur {
             case AssetType::Model: return "Model";
             case AssetType::Texture2D: return "Texture2D";
             case AssetType::TextureCube: return "TextureCube";
+            case AssetType::Material: return "Material";
             case AssetType::Shader: return "Shader";
             case AssetType::EnvironmentMap: return "EnvironmentMap";
             case AssetType::ProceduralModel: return "ProceduralModel";

@@ -21,7 +21,7 @@ namespace NexAur {
         glm::vec3 position,
         glm::vec3 rotation,
         glm::vec3 scale) {
-        MaterialData material;
+        MaterialImportData material;
         setMaterial(material, material_type);
         return addRuntimeModelEntity(
             name,
@@ -37,7 +37,7 @@ namespace NexAur {
         glm::vec3 position,
         glm::vec3 rotation,
         glm::vec3 scale) {
-        MaterialData material;
+        MaterialImportData material;
         setMaterial(material, material_type);
         return addRuntimeModelEntity(
             name,
@@ -95,12 +95,12 @@ namespace NexAur {
         return entity;
     }
 
-    void SceneTestClass::setMaterial(MaterialData& material_data, const std::string& material_type) {
+    void SceneTestClass::setMaterial(MaterialImportData& material_data, const std::string& material_type) {
         material_data.name = material_type;
-        material_data.albedo_path = NX_ASSET("assets/textures/PBR/" + material_type + "/albedo.png");
-        material_data.metallic_path = NX_ASSET("assets/textures/PBR/" + material_type + "/metallic.png");
-        material_data.roughness_path = NX_ASSET("assets/textures/PBR/" + material_type + "/roughness.png");
-        material_data.ao_path = NX_ASSET("assets/textures/PBR/" + material_type + "/ao.png");
-        material_data.normal_path = NX_ASSET("assets/textures/PBR/" + material_type + "/normal.png");
+        material_data.base_color_texture_path = NX_ASSET("assets/textures/PBR/" + material_type + "/albedo.png");
+        material_data.metallic_texture_path = NX_ASSET("assets/textures/PBR/" + material_type + "/metallic.png");
+        material_data.roughness_texture_path = NX_ASSET("assets/textures/PBR/" + material_type + "/roughness.png");
+        material_data.ao_texture_path = NX_ASSET("assets/textures/PBR/" + material_type + "/ao.png");
+        material_data.normal_texture_path = NX_ASSET("assets/textures/PBR/" + material_type + "/normal.png");
     }
 } // namespace NexAur

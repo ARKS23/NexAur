@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R15 Texture asset 和 VulkanTextureResource 已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset 和 VulkanTextureResource 链路已建立
+当前阶段：Post Vulkan PR-R16 Material asset 和 VulkanMaterialResource 已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -1822,22 +1822,22 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R16：Material asset 和 VulkanMaterialResource
-或继续推进灯光等小游戏 demo 必需渲染能力
+进入 PR-R17：ShaderLibrary 和 PipelineCache
+或为了更快进入小游戏 demo，先推进 PR-R20：Lighting baseline
 ```
 
-PR-R16 建议执行拆分：
+PR-R16 已完成拆分：
 
 ```text
 PR-R16-A Resource/MaterialAsset 与 MaterialAlphaMode
-PR-R16-B MaterialData 从 Mesh 侧收口为导入材质描述
+PR-R16-B MaterialImportData 从 Mesh 侧收口为导入材质描述
 PR-R16-C AssetManager 支持 runtime material 和 base color texture handle
 PR-R16-D VulkanMaterialResource 创建材质常量、fallback texture 和 descriptor set
 PR-R16-E Forward shader / pipeline layout 接入 base color texture 采样
 PR-R16-F 验收、文档和 Sandbox 材质样例清理
 ```
 
-PR-R16 第一版只完成 base color factor + base color texture 的最小材质链路，不引入完整 PBR、bindless、材质编辑器或 RenderGraph 迁移。Descriptor 相关实现需要保持局部清晰，后续 PR-R18 再统一收口为正式 descriptor 管理模块。
+PR-R16 第一版已完成 base color factor + base color texture 的最小材质链路，没有引入完整 PBR、bindless、材质编辑器或 RenderGraph 迁移。Descriptor 相关实现暂时集中在 `VulkanRenderResourceCache` / `VulkanMaterialResource`，后续 PR-R18 再统一收口为正式 descriptor 管理模块。
 
 D12 / D12.1 已确认状态：
 
@@ -1865,6 +1865,7 @@ D12 / D12.1 已确认状态：
 - PR-R13 已完成：`EditorCamera` 移到 `Editor/Camera`，旧 Renderer camera 文件移除。
 - PR-R14 已完成：Viewport 显式支持 SceneView / GameView，Scene runtime camera 通过 active `CameraComponent` 输出。
 - PR-R15 已完成：Resource 可加载 CPU texture，Vulkan backend 可创建 texture image / view / sampler，并提供 fallback white texture。
+- PR-R16 已完成：Resource 可表达 `MaterialAsset`，Vulkan backend 可创建 material constants / descriptor set，Forward shader 可采样 base color texture。
 
 ## 9. 进度记录
 
@@ -1883,6 +1884,11 @@ D12 / D12.1 已确认状态：
 - 完成 PR-R15：`AssetManager` 增加 `loadTextureCPU()` 和 CPU texture cache。
 - 完成 PR-R15：新增 `VulkanTextureResource`，支持 staging upload、Vulkan image / image view / sampler 和 shader-read layout。
 - 完成 PR-R15：`VulkanRenderResourceCache` 增加 texture cache 和 fallback white texture。
+- 完成 PR-R16：新增 `MaterialAlphaMode`、`MaterialImportData` 和 `MaterialAsset`，旧 `MaterialData` 不再停留在 `mesh.h`。
+- 完成 PR-R16：`AssetManager` 支持 runtime material cache，并可将导入材质的 base color texture path 转为 `AssetHandle`。
+- 完成 PR-R16：`VulkanMaterialResource` 创建材质常量 buffer 和 material descriptor set。
+- 完成 PR-R16：`VulkanRenderResourceCache` 负责 material descriptor layout / pool 和 fallback material。
+- 完成 PR-R16：`VulkanForwardPass` 使用 set 1 绑定材质，`vulkan_forward.hlsl` 采样 base color texture。
 
 ### 2026-06-24
 

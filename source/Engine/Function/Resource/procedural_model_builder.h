@@ -10,7 +10,7 @@ namespace NexAur {
 
     class NEXAUR_API ProceduralModelBuilder {
     public:
-        static std::shared_ptr<Model> createCubeModel(const MaterialData& material);
-        static std::shared_ptr<Model> createSphereModel(unsigned int x_segments, unsigned int y_segments, const MaterialData& material);
+        static std::shared_ptr<Model> createCubeModel(const MaterialImportData& material);
+        static std::shared_ptr<Model> createSphereModel(unsigned int x_segments, unsigned int y_segments, const MaterialImportData& material);
     };
 } // namespace NexAur

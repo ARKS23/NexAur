@@ -41,7 +41,7 @@ namespace NexAur {
         }
     } // namespace
 
-    std::shared_ptr<Model> ProceduralModelBuilder::createCubeModel(const MaterialData& material) {
+    std::shared_ptr<Model> ProceduralModelBuilder::createCubeModel(const MaterialImportData& material) {
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
         vertices.reserve(24);
@@ -97,7 +97,7 @@ namespace NexAur {
     std::shared_ptr<Model> ProceduralModelBuilder::createSphereModel(
         unsigned int x_segments,
         unsigned int y_segments,
-        const MaterialData& material) {
+        const MaterialImportData& material) {
         constexpr float kPi = 3.14159265359f;
         x_segments = std::max(3u, x_segments);
         y_segments = std::max(2u, y_segments);

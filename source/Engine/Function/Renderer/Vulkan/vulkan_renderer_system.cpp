@@ -138,14 +138,10 @@ namespace NexAur {
             if (!createInstance(service.getRequiredVulkanInstanceExtensions()) ||
                 !createSurface() ||
                 !createDevice() ||
+                !resource_cache.init(createResourceContext()) ||
                 !createSwapchain() ||
                 !createCommandResources() ||
                 !createSyncObjects()) {
-                shutdown();
-                return false;
-            }
-
-            if (!resource_cache.init(createResourceContext())) {
                 shutdown();
                 return false;
             }
@@ -190,8 +186,8 @@ namespace NexAur {
             object_id_pass.shutdown();
             picking_target.shutdown();
             viewport_target.shutdown();
-            resource_cache.shutdown();
             forward_pass.shutdown();
+            resource_cache.shutdown();
             cleanupSyncObjects();
             cleanupCommandResources();
             cleanupSwapchain();
@@ -595,6 +591,7 @@ namespace NexAur {
             pass_context.color_format = swapchain.image_format;
             pass_context.extent = swapchain.extent;
             pass_context.color_images = swapchain_images;
+            pass_context.material_descriptor_set_layout = resource_cache.getMaterialDescriptorSetLayout();
             const bool recreated_forward_pass = forward_pass.recreateSwapchainResources(pass_context);
             if (recreated_forward_pass && imgui_renderer.isInitialized()) {
                 imgui_renderer.onSwapchainRecreated(std::max(2u, swapchain.image_count));

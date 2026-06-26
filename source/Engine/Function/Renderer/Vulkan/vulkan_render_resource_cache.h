@@ -14,6 +14,7 @@
 
 namespace NexAur {
     class AssetManager;
+    class MaterialAsset;
 
     class NEXAUR_API VulkanRenderResourceCache {
     public:
@@ -33,23 +34,38 @@ namespace NexAur {
         VulkanTextureResource* getOrCreateTexture(AssetHandle texture_asset, AssetManager& asset_manager);
         VulkanTextureResource* getTexture(AssetHandle texture_asset) const;
         VulkanTextureResource* getFallbackWhiteTexture() const { return m_fallback_white_texture.get(); }
+        VulkanMaterialResource* getFallbackMaterial() const { return m_fallback_material.get(); }
+        VkDescriptorSetLayout getMaterialDescriptorSetLayout() const { return m_material_descriptor_set_layout; }
+
+        bool createMaterialResource(
+            VulkanMaterialResource& material_resource,
+            const MaterialAsset& material_asset,
+            AssetManager& asset_manager);
 
         bool isInitialized() const { return m_initialized; }
 
     private:
         bool createAllocator(const VulkanResourceContext& context);
         bool createUploadCommandPool(const VulkanResourceContext& context);
+        bool createMaterialDescriptorLayout();
+        bool createMaterialDescriptorPool();
         bool createFallbackTexture();
+        bool createFallbackMaterial();
+        void destroyMaterialDescriptorObjects();
         VulkanResourceUploadContext createUploadContext() const;
+        VulkanMaterialResourceCreateContext createMaterialContext() const;
 
     private:
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VkQueue m_graphics_queue = VK_NULL_HANDLE;
         VkCommandPool m_upload_command_pool = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorPool m_material_descriptor_pool = VK_NULL_HANDLE;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanModelResource>> m_model_cache;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanTextureResource>> m_texture_cache;
         std::unique_ptr<VulkanTextureResource> m_fallback_white_texture;
+        std::unique_ptr<VulkanMaterialResource> m_fallback_material;
         bool m_initialized = false;
     };
 } // namespace NexAur

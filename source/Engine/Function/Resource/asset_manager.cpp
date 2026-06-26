@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "asset_manager.h"
+#include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
 #include "Function/Resource/texture_loader.h"
 
@@ -11,6 +12,7 @@ namespace NexAur {
     }
 
     void AssetManager::shutdown() {
+        m_uuid_cpu_material_cache.clear();
         m_uuid_cpu_texture_cache.clear();
         m_uuid_cpu_model_cache.clear();
         m_uuid_metadata.clear();
@@ -157,6 +159,48 @@ namespace NexAur {
         return texture_asset.id;
     }
 
+
+    std::shared_ptr<MaterialAsset> AssetManager::createMaterialFromImportData(const MaterialImportData& import_data) {
+        AssetHandle base_color_texture;
+        if (!import_data.base_color_texture_path.empty()) {
+            base_color_texture = importTextureAsset(import_data.base_color_texture_path, TextureColorSpace::SRGB);
+        }
+
+        return std::make_shared<MaterialAsset>(import_data, base_color_texture);
+    }
+
+    AssetHandle AssetManager::registerRuntimeMaterial(const std::shared_ptr<MaterialAsset>& material, const std::string& debug_name) {
+        if (!material) {
+            NX_CORE_ERROR("Attempted to register invalid runtime material.");
+            return AssetHandle();
+        }
+
+        UUID new_uuid;
+        m_uuid_cpu_material_cache[new_uuid] = material;
+        recordAssetMetadata(new_uuid, AssetType::Material, "", true, debug_name.empty() ? material->getDebugName() : debug_name);
+        return AssetHandle(new_uuid);
+    }
+
+    std::shared_ptr<MaterialAsset> AssetManager::loadMaterialCPU(AssetHandle handle) {
+        if (!handle) {
+            NX_CORE_WARN("Attempted to load CPU material with invalid AssetHandle.");
+            return nullptr;
+        }
+
+        auto loaded_it = m_uuid_cpu_material_cache.find(handle.id);
+        if (loaded_it != m_uuid_cpu_material_cache.end()) {
+            return loaded_it->second;
+        }
+
+        const AssetMetadata* metadata = getMetadata(handle);
+        if (!metadata || metadata->type != AssetType::Material) {
+            NX_CORE_WARN("AssetHandle is not a CPU material: {}", static_cast<uint64_t>(handle.id));
+            return nullptr;
+        }
+
+        NX_CORE_WARN("Material asset is registered but has no CPU data loaded: {}", static_cast<uint64_t>(handle.id));
+        return nullptr;
+    }
 
     AssetHandle AssetManager::importShaderAsset(const std::string& name, const std::string& vertex_path, const std::string& fragment_path) {
         std::string combined_path = name + ": " + vertex_path + "|" + fragment_path; // 组合路径作为唯一标识

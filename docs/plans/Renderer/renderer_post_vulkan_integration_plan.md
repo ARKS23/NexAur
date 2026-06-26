@@ -333,6 +333,8 @@ PR-R16:
 
 ### PR-R16：Material asset 和 VulkanMaterialResource
 
+执行状态：已完成。
+
 目标：
 
 - Resource 层能表达最小材质。
@@ -340,13 +342,17 @@ PR-R16:
 - Forward shader 能使用材质 base color 和 base color texture，而不是继续输出调试法线色。
 - Scene / Editor / Resource 仍只通过 `AssetHandle` 和渲染数据描述材质，不接触 Vulkan descriptor。
 
-当前状态：
+完成记录：
 
-- `MaterialData` 仍在 `mesh.h` 中，主要服务模型导入阶段的贴图路径记录。
-- `VulkanMaterialResource` 目前只保存 albedo / normal / metallic / roughness / ao 的路径字符串。
-- `MeshRendererComponent` 和 `RenderObjectData` 当前只有 `model_asset`，还没有材质覆盖入口。
-- `VulkanForwardPass` 还没有材质 descriptor set layout / descriptor pool / descriptor set 绑定。
-- `vulkan_forward.hlsl` 目前输出调试色，没有采样材质贴图。
+- 新增 `MaterialAlphaMode` / `MaterialImportData`，将旧 `MaterialData` 从 `mesh.h` 收口为 Resource 层导入材质描述。
+- 新增 `MaterialAsset`，保存 base color factor、base color texture handle、metallic / roughness factor 和 alpha mode。
+- `AssetManager` 增加 `createMaterialFromImportData()`、`registerRuntimeMaterial()` 和 `loadMaterialCPU()`。
+- `VulkanMaterialResource` 升级为真实 GPU 材质资源，创建材质常量 buffer 和 descriptor set。
+- `VulkanRenderResourceCache` 持有 material descriptor layout / pool，并创建 fallback material。
+- `VulkanModelResource` 从 CPU model 的 mesh import material 创建 `MaterialAsset`，再创建 `VulkanMaterialResource`。
+- `VulkanForwardPass` 的 pipeline layout 预留 set 0 给 frame/view，set 1 绑定 material descriptor。
+- `vulkan_forward.hlsl` 已从调试法线色切换为 base color texture * base color factor。
+- 当前第一版仍只使用模型自带材质，`MeshRendererComponent` / `RenderObjectData` 材质覆盖入口保留给后续需求。
 
 第一版材质字段：
 
@@ -380,7 +386,7 @@ Renderer/Vulkan/resources/
    - `MaterialAsset` 不保存 Vulkan 类型，也不保存 GPU resource 指针。
 
 2. 收口导入材质描述。
-   - 将当前 `mesh.h` 中的 `MaterialData` 移到 Resource 材质相关头文件，或重命名为 `MaterialImportData`。
+   - 已将旧 `MaterialData` 从 `mesh.h` 收口为 Resource 层的 `MaterialImportData`。
    - `Mesh` 可以继续保存模型导入得到的材质描述，但不要让 `Mesh` 成为长期材质系统的所有者。
    - 模型导入阶段读取到的 base color texture 路径，应在后续资源解析阶段转为 `AssetHandle`。
 
@@ -401,7 +407,8 @@ Renderer/Vulkan/resources/
    - 第一版可以先使用一个 material descriptor set：
      ```text
      binding 0: material constants uniform buffer
-     binding 1: combined image sampler base color texture
+     binding 1: sampled image base color texture
+     binding 2: sampler
      ```
    - `VulkanForwardPass` 的 pipeline layout 增加 material descriptor set layout。
    - draw item 有材质时绑定材质 descriptor；没有材质时绑定 fallback material。

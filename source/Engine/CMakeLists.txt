@@ -86,6 +86,9 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
     Function/Resource/asset_metadata.h
+    Function/Resource/material_types.h
+    Function/Resource/material_asset.h
+    Function/Resource/material_asset.cpp
     Function/Resource/resource_module.h
     Function/Resource/resource_module.cpp
     Function/Resource/mesh.h

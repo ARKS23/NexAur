@@ -1,13 +1,21 @@
 #include "pch.h"
 #include "vulkan_model_resource.h"
 
+#include "Function/Resource/asset_manager.h"
+#include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
+#include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
 
 #include <algorithm>
 #include <utility>
 
 namespace NexAur {
-    bool VulkanModelResource::create(const VulkanResourceUploadContext& context, const Model& model, const std::string& debug_name) {
+    bool VulkanModelResource::create(
+        const VulkanResourceUploadContext& context,
+        const Model& model,
+        const std::string& debug_name,
+        VulkanRenderResourceCache& resource_cache,
+        AssetManager& asset_manager) {
         reset();
 
         if (!context.valid()) {
@@ -37,8 +45,19 @@ namespace NexAur {
                 return false;
             }
 
+            std::shared_ptr<MaterialAsset> material_asset = asset_manager.createMaterialFromImportData(cpu_mesh.getMaterialImportData());
+            if (!material_asset) {
+                NX_CORE_ERROR("Failed to create CPU material asset for model: {}", debug_name);
+                reset();
+                return false;
+            }
+
             VulkanMaterialResource material_resource;
-            material_resource.create(cpu_mesh.GetMaterialData());
+            if (!resource_cache.createMaterialResource(material_resource, *material_asset, asset_manager)) {
+                NX_CORE_ERROR("Failed to create Vulkan material resource for model: {}", debug_name);
+                reset();
+                return false;
+            }
 
             m_meshes.push_back(std::move(mesh_resource));
             m_materials.push_back(std::move(material_resource));

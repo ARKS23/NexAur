@@ -9,7 +9,9 @@
 
 namespace NexAur {
     class Model;
+    class MaterialAsset;
     class TextureAsset;
+    struct MaterialImportData;
 
     class NEXAUR_API AssetManager {
     public:
@@ -37,6 +39,10 @@ namespace NexAur {
         AssetHandle loadTextureAsset(const std::string& path) { return importTextureAsset(path); }
         UUID loadTextureCube(const std::string& path);
         AssetHandle loadTextureCubeAsset(const std::string& path) { return importTextureCubeAsset(path); }
+
+        std::shared_ptr<MaterialAsset> createMaterialFromImportData(const MaterialImportData& import_data);
+        AssetHandle registerRuntimeMaterial(const std::shared_ptr<MaterialAsset>& material, const std::string& debug_name = "RuntimeMaterial");
+        std::shared_ptr<MaterialAsset> loadMaterialCPU(AssetHandle handle);
 
         // 着色器
         AssetHandle importShaderAsset(const std::string& name, const std::string& vertex_path, const std::string& fragment_path);
@@ -86,6 +92,7 @@ namespace NexAur {
         // 模型管理
         std::unordered_map<UUID, std::shared_ptr<Model>> m_uuid_cpu_model_cache;
         std::unordered_map<UUID, std::shared_ptr<TextureAsset>> m_uuid_cpu_texture_cache;
+        std::unordered_map<UUID, std::shared_ptr<MaterialAsset>> m_uuid_cpu_material_cache;
 
     };
 } // namespace NexAur

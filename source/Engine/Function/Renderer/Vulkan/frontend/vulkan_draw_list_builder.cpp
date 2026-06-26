@@ -40,7 +40,7 @@ namespace NexAur {
 
                     VulkanMeshDrawItem draw_item;
                     draw_item.mesh = &mesh;
-                    draw_item.material = mesh_index < materials.size() ? &materials[mesh_index] : nullptr;
+                    draw_item.material = mesh_index < materials.size() ? &materials[mesh_index] : resource_cache.getFallbackMaterial();
                     draw_item.transform = object.transform;
                     draw_item.entity_id = object.entity_id;
                     draw_item.sort_key = buildSortKey(object.model_asset, mesh_index);

@@ -9,7 +9,9 @@
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
+    class AssetManager;
     class Model;
+    class VulkanRenderResourceCache;
 
     class NEXAUR_API VulkanModelResource {
     public:
@@ -19,7 +21,12 @@ namespace NexAur {
         VulkanModelResource(const VulkanModelResource&) = delete;
         VulkanModelResource& operator=(const VulkanModelResource&) = delete;
 
-        bool create(const VulkanResourceUploadContext& context, const Model& model, const std::string& debug_name);
+        bool create(
+            const VulkanResourceUploadContext& context,
+            const Model& model,
+            const std::string& debug_name,
+            VulkanRenderResourceCache& resource_cache,
+            AssetManager& asset_manager);
         void reset();
 
         bool isReady() const;

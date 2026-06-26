@@ -59,7 +59,7 @@ namespace NexAur {
     Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene) {
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
-        MaterialData material;
+        MaterialImportData material;
 
         // 处理顶点数据
         for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
@@ -106,11 +106,11 @@ namespace NexAur {
         if (mesh->mMaterialIndex >= 0) {
             aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
             material.name = mat->GetName().C_Str();
-            material.albedo_path = loadMaterialTexturePath(mat, aiTextureType_BASE_COLOR);
-            material.normal_path = loadMaterialTexturePath(mat, aiTextureType_NORMALS);
-            material.metallic_path = loadMaterialTexturePath(mat, aiTextureType_METALNESS);
-            material.roughness_path = loadMaterialTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);
-            material.ao_path = loadMaterialTexturePath(mat, aiTextureType_AMBIENT_OCCLUSION);
+            material.base_color_texture_path = loadMaterialTexturePath(mat, aiTextureType_BASE_COLOR);
+            material.normal_texture_path = loadMaterialTexturePath(mat, aiTextureType_NORMALS);
+            material.metallic_texture_path = loadMaterialTexturePath(mat, aiTextureType_METALNESS);
+            material.roughness_texture_path = loadMaterialTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);
+            material.ao_texture_path = loadMaterialTexturePath(mat, aiTextureType_AMBIENT_OCCLUSION);
         }
 
         return Mesh(vertices, indices, material);
