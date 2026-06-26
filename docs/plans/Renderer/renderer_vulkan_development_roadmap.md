@@ -1826,6 +1826,19 @@ ImVec2(1.0f, 1.0f)
 或继续推进灯光等小游戏 demo 必需渲染能力
 ```
 
+PR-R16 建议执行拆分：
+
+```text
+PR-R16-A Resource/MaterialAsset 与 MaterialAlphaMode
+PR-R16-B MaterialData 从 Mesh 侧收口为导入材质描述
+PR-R16-C AssetManager 支持 runtime material 和 base color texture handle
+PR-R16-D VulkanMaterialResource 创建材质常量、fallback texture 和 descriptor set
+PR-R16-E Forward shader / pipeline layout 接入 base color texture 采样
+PR-R16-F 验收、文档和 Sandbox 材质样例清理
+```
+
+PR-R16 第一版只完成 base color factor + base color texture 的最小材质链路，不引入完整 PBR、bindless、材质编辑器或 RenderGraph 迁移。Descriptor 相关实现需要保持局部清晰，后续 PR-R18 再统一收口为正式 descriptor 管理模块。
+
 D12 / D12.1 已确认状态：
 
 - `externalRenderer/` 仅作为临时本地参考目录。

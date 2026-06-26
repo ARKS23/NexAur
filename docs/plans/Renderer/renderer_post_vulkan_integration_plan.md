@@ -337,6 +337,16 @@ PR-R16:
 
 - Resource 层能表达最小材质。
 - Vulkan backend 能把 material asset 转为 descriptor 可用的 GPU resource。
+- Forward shader 能使用材质 base color 和 base color texture，而不是继续输出调试法线色。
+- Scene / Editor / Resource 仍只通过 `AssetHandle` 和渲染数据描述材质，不接触 Vulkan descriptor。
+
+当前状态：
+
+- `MaterialData` 仍在 `mesh.h` 中，主要服务模型导入阶段的贴图路径记录。
+- `VulkanMaterialResource` 目前只保存 albedo / normal / metallic / roughness / ao 的路径字符串。
+- `MeshRendererComponent` 和 `RenderObjectData` 当前只有 `model_asset`，还没有材质覆盖入口。
+- `VulkanForwardPass` 还没有材质 descriptor set layout / descriptor pool / descriptor set 绑定。
+- `vulkan_forward.hlsl` 目前输出调试色，没有采样材质贴图。
 
 第一版材质字段：
 
@@ -346,13 +356,88 @@ base_color_texture
 metallic_factor
 roughness_factor
 alpha_mode
+alpha_cutoff
 ```
+
+推荐结构：
+
+```text
+Resource/
+  material_asset.h
+  material_asset.cpp
+  material_types.h        # 可选：MaterialAlphaMode / MaterialImportData 等轻量类型
+
+Renderer/Vulkan/resources/
+  vulkan_material_resource.h
+  vulkan_material_resource.cpp
+```
+
+建议拆分：
+
+1. Resource 层新增 CPU material 表达。
+   - 新增 `MaterialAsset`，保存 debug name、base color factor、base color texture handle、metallic / roughness factor 和 alpha mode。
+   - 新增 `MaterialAlphaMode`，第一版支持 `Opaque` / `Mask` / `Blend` 语义，但渲染实现可以先只完整支持 `Opaque`。
+   - `MaterialAsset` 不保存 Vulkan 类型，也不保存 GPU resource 指针。
+
+2. 收口导入材质描述。
+   - 将当前 `mesh.h` 中的 `MaterialData` 移到 Resource 材质相关头文件，或重命名为 `MaterialImportData`。
+   - `Mesh` 可以继续保存模型导入得到的材质描述，但不要让 `Mesh` 成为长期材质系统的所有者。
+   - 模型导入阶段读取到的 base color texture 路径，应在后续资源解析阶段转为 `AssetHandle`。
+
+3. `AssetManager` 支持 material asset。
+   - `AssetType` 增加 `Material`。
+   - 增加 `registerRuntimeMaterial()` / `loadMaterialCPU()`。
+   - 对模型导入产生的材质，可以先注册为 runtime material，后续再扩展到 `.material` 序列化资产。
+   - base color texture 路径通过 `importTextureAsset(path, TextureColorSpace::SRGB)` 转为 texture asset handle。
+
+4. Vulkan 后端升级 `VulkanMaterialResource`。
+   - 从 `MaterialAsset` 创建 GPU 侧材质资源。
+   - 引用 `VulkanTextureResource`，空贴图或加载失败时使用 fallback white texture。
+   - 创建材质常量 buffer，保存 base color factor、metallic、roughness、alpha cutoff 等数据。
+   - 分配并更新材质 descriptor set。
+   - 资源释放必须跟随 `VulkanRenderResourceCache::clear()` / `shutdown()`。
+
+5. 材质 descriptor 最小链路。
+   - 第一版可以先使用一个 material descriptor set：
+     ```text
+     binding 0: material constants uniform buffer
+     binding 1: combined image sampler base color texture
+     ```
+   - `VulkanForwardPass` 的 pipeline layout 增加 material descriptor set layout。
+   - draw item 有材质时绑定材质 descriptor；没有材质时绑定 fallback material。
+   - Descriptor 管理暂时可以放在 `VulkanRenderResourceCache` 或 material resource 内，但接口要为 PR-R18 的 descriptor 管理收口预留迁移空间。
+
+6. Forward shader 接入材质。
+   - vertex shader 继续传递 texcoord。
+   - pixel shader 采样 base color texture。
+   - 第一版输出：
+     ```text
+     sampled_base_color * base_color_factor
+     ```
+   - 不在 PR-R16 内实现完整 PBR；directional / point light 留给 PR-R20。
+
+7. 可选：材质覆盖入口。
+   - 如果小游戏 demo 需要“同一个模型换不同材质”，可以给 `MeshRendererComponent` / `RenderObjectData` 增加可选 `material_asset`。
+   - 第一版也可以只使用模型自带材质，避免过早处理 submesh material override。
+
+暂时不做：
+
+- 不做完整 PBR。
+- 不做 normal / metallic / roughness / ao 全套贴图绑定。
+- 不做 bindless material / bindless texture。
+- 不做材质编辑器 UI。
+- 不做完整透明排序和 blend pipeline。
+- 不做 `.material` 文件序列化格式。
+- 不做 RenderGraph 迁移。
 
 验收：
 
 - 模型可使用不同 base color。
 - 模型可采样 base color texture。
 - Scene / Editor 不直接操作 descriptor set。
+- 空材质或贴图加载失败时使用 fallback material / fallback white texture，不崩溃。
+- `RendererService`、Scene、Editor、Resource 不暴露 `VkDescriptorSet` / `VkImageView` / `VkSampler`。
+- 构建和 Sandbox smoke 通过。
 
 ## 6. 第三优先级：Shader / Pipeline / Descriptor 管理
 
