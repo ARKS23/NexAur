@@ -10,6 +10,7 @@ namespace NexAur {
     class EditorCamera;
     class InputService;
     class RenderContext;
+    class RendererDebugService;
     class RendererService;
     class SceneService;
     class SceneV2;
@@ -27,6 +28,7 @@ namespace NexAur {
         std::shared_ptr<SceneV2> active_scene;
         std::shared_ptr<SceneService> scene_service;
         std::shared_ptr<RendererService> renderer_service;
+        std::shared_ptr<RendererDebugService> renderer_debug_service;
         std::shared_ptr<InputService> input_service;
         std::shared_ptr<RenderContext> render_context;
         std::shared_ptr<UIService> ui_service;

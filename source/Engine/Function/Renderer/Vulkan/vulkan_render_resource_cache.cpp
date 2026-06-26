@@ -203,6 +203,40 @@ namespace NexAur {
         return cached_it != m_texture_cache.end() ? cached_it->second.get() : nullptr;
     }
 
+    size_t VulkanRenderResourceCache::getMeshCount() const {
+        size_t mesh_count = 0;
+        for (const auto& [asset_handle, model_resource] : m_model_cache) {
+            (void)asset_handle;
+            if (model_resource) {
+                mesh_count += model_resource->getMeshes().size();
+            }
+        }
+        return mesh_count;
+    }
+
+    size_t VulkanRenderResourceCache::getMaterialCount() const {
+        size_t material_count = 0;
+        for (const auto& [asset_handle, model_resource] : m_model_cache) {
+            (void)asset_handle;
+            if (model_resource) {
+                material_count += model_resource->getMaterials().size();
+            }
+        }
+
+        if (hasFallbackMaterial()) {
+            ++material_count;
+        }
+        return material_count;
+    }
+
+    bool VulkanRenderResourceCache::hasFallbackWhiteTexture() const {
+        return m_fallback_white_texture && m_fallback_white_texture->isReady();
+    }
+
+    bool VulkanRenderResourceCache::hasFallbackMaterial() const {
+        return m_fallback_material && m_fallback_material->isReady();
+    }
+
     bool VulkanRenderResourceCache::createMaterialResource(
         VulkanMaterialResource& material_resource,
         const MaterialAsset& material_asset,

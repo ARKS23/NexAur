@@ -9,6 +9,7 @@
 #include "Editor/editor_services.h"
 #include "Function/Input/input_system.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Scene/scene_service.h"
@@ -37,6 +38,7 @@ namespace NexAur {
                 m_context = std::make_shared<EditorContext>();
                 m_context->scene_service = context.registry.getService<SceneService>();
                 m_context->renderer_service = context.registry.getService<RendererService>();
+                m_context->renderer_debug_service = context.registry.getService<RendererDebugService>();
                 m_context->input_service = context.registry.getService<InputService>();
                 m_context->render_context = context.registry.getService<RenderContext>();
                 m_context->ui_service = context.registry.getService<UIService>();

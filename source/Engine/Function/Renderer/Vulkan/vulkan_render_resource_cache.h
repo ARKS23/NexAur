@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <unordered_map>
 
@@ -40,6 +41,12 @@ namespace NexAur {
         VulkanTextureResource* getTexture(AssetHandle texture_asset) const;
         VulkanTextureResource* getFallbackWhiteTexture() const { return m_fallback_white_texture.get(); }
         VulkanMaterialResource* getFallbackMaterial() const { return m_fallback_material.get(); }
+        size_t getModelCount() const { return m_model_cache.size(); }
+        size_t getTextureCount() const { return m_texture_cache.size(); }
+        size_t getMeshCount() const;
+        size_t getMaterialCount() const;
+        bool hasFallbackWhiteTexture() const;
+        bool hasFallbackMaterial() const;
 
         bool createMaterialResource(
             VulkanMaterialResource& material_resource,

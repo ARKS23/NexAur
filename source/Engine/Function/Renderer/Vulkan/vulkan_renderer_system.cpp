@@ -4,6 +4,9 @@
 #include "Core/Events/window_event.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Renderer/data/render_data.h"
+#include "Function/Renderer/data/render_scene_frame.h"
+#include "Function/Renderer/data/render_view.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
@@ -40,8 +43,10 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
+#include <string>
 #include <utility>
 
 namespace NexAur {
@@ -117,6 +122,35 @@ namespace NexAur {
             default:
                 return "Unknown VkResult";
             }
+        }
+
+        std::string vkFormatToString(VkFormat format) {
+            switch (format) {
+            case VK_FORMAT_UNDEFINED:
+                return "Undefined";
+            case VK_FORMAT_B8G8R8A8_SRGB:
+                return "B8G8R8A8_SRGB";
+            case VK_FORMAT_B8G8R8A8_UNORM:
+                return "B8G8R8A8_UNORM";
+            case VK_FORMAT_R32_SINT:
+                return "R32_SINT";
+            case VK_FORMAT_D16_UNORM:
+                return "D16_UNORM";
+            case VK_FORMAT_D24_UNORM_S8_UINT:
+                return "D24_UNORM_S8_UINT";
+            case VK_FORMAT_D32_SFLOAT:
+                return "D32_SFLOAT";
+            case VK_FORMAT_D32_SFLOAT_S8_UINT:
+                return "D32_SFLOAT_S8_UINT";
+            default:
+                return "VkFormat(" + std::to_string(static_cast<int>(format)) + ")";
+            }
+        }
+
+        std::string apiVersionToString(uint32_t api_version) {
+            return std::to_string(VK_API_VERSION_MAJOR(api_version)) + "." +
+                   std::to_string(VK_API_VERSION_MINOR(api_version)) + "." +
+                   std::to_string(VK_API_VERSION_PATCH(api_version));
         }
 
         bool checkVk(VkResult result, const char* operation) {
@@ -283,13 +317,15 @@ namespace NexAur {
         }
 
         void render(TimeStep ts, const RenderDataPacket& render_data) {
-            (void)ts;
+            const auto render_start_time = std::chrono::steady_clock::now();
 
             if (!initialized || surface_width == 0 || surface_height == 0) {
+                updateDebugSnapshot(ts, render_data, nullptr, nullptr, nullptr, render_start_time);
                 return;
             }
 
             if (swapchain_dirty && !recreateSwapchain()) {
+                updateDebugSnapshot(ts, render_data, nullptr, nullptr, nullptr, render_start_time);
                 return;
             }
 
@@ -303,6 +339,13 @@ namespace NexAur {
                 AssetManager::getInstance());
 
             drawFrame(draw_list);
+            updateDebugSnapshot(
+                ts,
+                render_data,
+                &render_view,
+                &scene_frame,
+                &draw_list,
+                render_start_time);
         }
 
         void setViewportSize(uint32_t width, uint32_t height) {
@@ -416,6 +459,10 @@ namespace NexAur {
             imgui_renderer.shutdown();
         }
 
+        RendererDebugSnapshot getDebugSnapshot() const {
+            return debug_snapshot;
+        }
+
     private:
         VulkanResourceContext createResourceContext() const {
             VulkanResourceContext context;
@@ -426,6 +473,147 @@ namespace NexAur {
             context.graphics_queue_family = graphics_queue_family;
             context.api_version = device_api_version;
             return context;
+        }
+
+        void updateDebugSnapshot(
+            TimeStep ts,
+            const RenderDataPacket& render_data,
+            const RenderView* render_view,
+            const RenderSceneFrame* scene_frame,
+            const VulkanDrawList* draw_list,
+            std::chrono::steady_clock::time_point render_start_time) {
+            RendererDebugSnapshot snapshot;
+            snapshot.backend = buildBackendDebugStats();
+            snapshot.frame = buildFrameDebugStats(
+                ts,
+                render_data,
+                scene_frame,
+                draw_list,
+                render_start_time);
+            snapshot.view = buildViewDebugStats(render_view);
+            snapshot.viewport_target = buildViewportTargetDebugStats();
+            snapshot.picking_target = buildPickingTargetDebugStats();
+            snapshot.shadow_target = buildShadowTargetDebugStats();
+            snapshot.resources = buildResourceDebugStats();
+
+            debug_snapshot = std::move(snapshot);
+        }
+
+        RendererDebugBackendStats buildBackendDebugStats() const {
+            RendererDebugBackendStats stats;
+            stats.backend = RendererBackendType::Vulkan;
+            stats.initialized = initialized;
+            stats.device_api_version = apiVersionToString(device_api_version);
+            stats.swapchain_ready = swapchain.swapchain != VK_NULL_HANDLE && !swapchain_images.empty();
+            stats.swapchain_width = swapchain.extent.width;
+            stats.swapchain_height = swapchain.extent.height;
+            stats.swapchain_image_count = static_cast<uint32_t>(swapchain_images.size());
+            stats.swapchain_format = vkFormatToString(swapchain.image_format);
+            stats.viewport_output_kind = getViewportOutput().kind;
+            return stats;
+        }
+
+        RendererDebugFrameStats buildFrameDebugStats(
+            TimeStep ts,
+            const RenderDataPacket& render_data,
+            const RenderSceneFrame* scene_frame,
+            const VulkanDrawList* draw_list,
+            std::chrono::steady_clock::time_point render_start_time) const {
+            RendererDebugFrameStats stats;
+            stats.engine_delta_ms = ts.GetMilliseconds();
+            stats.renderer_cpu_ms =
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - render_start_time).count();
+
+            stats.opaque_object_count = scene_frame ?
+                scene_frame->opaque_objects.size() :
+                render_data.opaque_objects.size();
+            stats.transparent_object_count = scene_frame ?
+                scene_frame->transparent_objects.size() :
+                render_data.transparent_objects.size();
+            stats.opaque_draw_item_count = draw_list ? draw_list->opaque_items.size() : 0;
+            stats.transparent_draw_item_count = draw_list ? draw_list->transparent_items.size() : 0;
+            stats.point_light_count = draw_list ?
+                draw_list->point_lights.size() :
+                render_data.point_lights_data.size();
+            stats.debug_line_count = draw_list ?
+                draw_list->debug_draw.lines.size() :
+                render_data.debug_draw.lines.size();
+            return stats;
+        }
+
+        RendererDebugViewStats buildViewDebugStats(const RenderView* render_view) const {
+            RendererDebugViewStats stats;
+            if (!render_view) {
+                return stats;
+            }
+
+            stats.viewport_width = render_view->viewport_width;
+            stats.viewport_height = render_view->viewport_height;
+            stats.camera_position = render_view->camera_position;
+            stats.near_clip = render_view->near_clip;
+            stats.far_clip = render_view->far_clip;
+            return stats;
+        }
+
+        RendererDebugRenderTargetStats buildViewportTargetDebugStats() const {
+            RendererDebugRenderTargetStats stats;
+            stats.ready = viewport_target.isReady();
+            if (!stats.ready) {
+                return stats;
+            }
+
+            const VkExtent2D extent = viewport_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.color_format = vkFormatToString(viewport_target.getColorFormat());
+            stats.depth_format = vkFormatToString(viewport_target.getDepthFormat());
+            return stats;
+        }
+
+        RendererDebugPickingTargetStats buildPickingTargetDebugStats() const {
+            RendererDebugPickingTargetStats stats;
+            stats.ready = picking_target.isReady();
+            stats.frame_ready = picking_frame_ready;
+            if (!stats.ready) {
+                return stats;
+            }
+
+            const VkExtent2D extent = picking_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.object_id_format = vkFormatToString(picking_target.getObjectIdFormat());
+            stats.depth_format = vkFormatToString(picking_target.getDepthFormat());
+            return stats;
+        }
+
+        RendererDebugShadowTargetStats buildShadowTargetDebugStats() const {
+            RendererDebugShadowTargetStats stats;
+            stats.ready = shadow_target.isReady();
+            if (!stats.ready) {
+                return stats;
+            }
+
+            const VkExtent2D extent = shadow_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.depth_format = vkFormatToString(shadow_target.getDepthFormat());
+            return stats;
+        }
+
+        RendererDebugResourceStats buildResourceDebugStats() const {
+            RendererDebugResourceStats stats;
+            if (!resource_cache.isInitialized()) {
+                return stats;
+            }
+
+            stats.model_count = resource_cache.getModelCount();
+            stats.texture_count = resource_cache.getTextureCount();
+            stats.mesh_count = resource_cache.getMeshCount();
+            stats.material_count = resource_cache.getMaterialCount();
+            stats.fallback_white_texture_ready = resource_cache.hasFallbackWhiteTexture();
+            stats.fallback_material_ready = resource_cache.hasFallbackMaterial();
+            return stats;
         }
 
         std::pair<uint32_t, uint32_t> getRenderExtent() const {
@@ -1487,6 +1675,7 @@ namespace NexAur {
         VulkanPickingTarget picking_target;
         VulkanShadowMapTarget shadow_target;
         VulkanImGuiRenderer imgui_renderer;
+        RendererDebugSnapshot debug_snapshot;
     };
 
     VulkanRendererSystem::VulkanRendererSystem()
@@ -1536,6 +1725,10 @@ namespace NexAur {
 
     void VulkanRendererSystem::onUIContextShutdown() {
         m_backend->onUIContextShutdown();
+    }
+
+    RendererDebugSnapshot VulkanRendererSystem::getDebugSnapshot() const {
+        return m_backend ? m_backend->getDebugSnapshot() : RendererDebugSnapshot();
     }
 
     void VulkanRendererSystem::onEvent(Event& event) {

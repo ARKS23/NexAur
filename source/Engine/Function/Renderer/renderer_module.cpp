@@ -5,6 +5,7 @@
 #include "Core/Module/builtin_module_names.h"
 #include "Core/Module/engine_module.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Platform/window_graphics_api.h"
@@ -51,10 +52,14 @@ namespace NexAur {
                 m_vulkan_renderer_system = std::make_shared<VulkanRendererSystem>();
                 NX_CORE_ASSERT(m_vulkan_renderer_system->init(*window_service), "Failed to initialize VulkanRendererSystem.");
                 m_renderer_service = std::static_pointer_cast<RendererService>(m_vulkan_renderer_system);
+                m_renderer_debug_service = std::static_pointer_cast<RendererDebugService>(m_vulkan_renderer_system);
                 NX_CORE_INFO("Renderer module selected Vulkan backend.");
 
                 if (m_renderer_service) {
                     context.registry.registerService<RendererService>(m_renderer_service);
+                }
+                if (m_renderer_debug_service) {
+                    context.registry.registerService<RendererDebugService>(m_renderer_debug_service);
                 }
 
                 NX_CORE_INFO("Renderer module initialized.");
@@ -66,6 +71,8 @@ namespace NexAur {
                 }
 
                 context.registry.resetService<RendererService>();
+                context.registry.resetService<RendererDebugService>();
+                m_renderer_debug_service.reset();
                 m_renderer_service.reset();
                 m_vulkan_renderer_system.reset();
             }
@@ -78,6 +85,7 @@ namespace NexAur {
 
         private:
             std::shared_ptr<RendererService> m_renderer_service;
+            std::shared_ptr<RendererDebugService> m_renderer_debug_service;
             std::shared_ptr<VulkanRendererSystem> m_vulkan_renderer_system;
         };
     } // namespace

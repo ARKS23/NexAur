@@ -5,6 +5,7 @@
 
 #include "Core/Base.h"
 #include "Core/Events/event.h"
+#include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
 
 namespace NexAur {
@@ -13,7 +14,7 @@ namespace NexAur {
 
     // Vulkan 后端。公开接口只实现 RendererService，
     // Vulkan instance/device/swapchain 等细节隐藏在 Backend 中。
-    class NEXAUR_API VulkanRendererSystem final : public RendererService {
+    class NEXAUR_API VulkanRendererSystem final : public RendererService, public RendererDebugService {
     public:
         VulkanRendererSystem();
         ~VulkanRendererSystem() override;
@@ -33,6 +34,7 @@ namespace NexAur {
         void onUIContextInitialized() override;
         void beginUIFrame() override;
         void onUIContextShutdown() override;
+        RendererDebugSnapshot getDebugSnapshot() const override;
 
         void onEvent(Event& event);
 

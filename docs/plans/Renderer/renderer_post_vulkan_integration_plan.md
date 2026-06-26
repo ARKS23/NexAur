@@ -1588,13 +1588,171 @@ DirectionalShadowMap
 
 ### PR-R24：Renderer debug panel
 
+执行状态：已完成。
+
 目标：
 
 - 显示 backend、swapchain、viewport target、frame time。
 - 显示 resource cache 数量。
 - 显示当前 RenderView / viewport size。
 
-第一版只做只读信息，不做复杂 profiling。
+第一版只做只读信息，不做复杂 profiling。这个面板的定位是“观察当前 renderer
+状态”，不是 GPU profiler，也不是资源编辑器。
+
+完成记录：
+
+- 新增 `renderer_debug_service.h`，提供后端无关 `RendererDebugService` 和 `RendererDebugSnapshot`。
+- `VulkanRendererSystem` 实现 `RendererDebugService`，每帧汇总上一帧 renderer debug snapshot。
+- `VulkanRenderResourceCache` 增加 model / texture / mesh / material 数量与 fallback 资源 ready 状态查询。
+- `RendererModule` 注册 `RendererDebugService`，`EditorModule` 注入到 `EditorContext`。
+- 新增 `RendererDebugPanel`，显示 Renderer / Frame / View / Targets / Resources 五组只读信息。
+- `RendererDebugPanel` 不 include `Renderer/Vulkan/*`，Editor 层不直接访问 Vulkan backend。
+- 构建、HLSL shader 编译和 Sandbox smoke 已通过。
+
+设计原则：
+
+- Editor 不能直接 include `Renderer/Vulkan/*`。
+- Renderer debug 信息通过后端无关的 snapshot 暴露。
+- Vulkan backend 可以在内部收集 Vk 状态，但必须转换成普通数字、枚举或字符串后再给 Editor。
+- Debug panel 只读，不提供清理 cache、重建 swapchain、reload shader 等命令按钮。
+- 面板显示上一帧 renderer snapshot 即可，不为它调整 Engine / UI / Renderer 的帧顺序。
+
+建议新增后端无关接口：
+
+```text
+Renderer/
+  renderer_debug_service.h
+```
+
+建议第一版结构：
+
+```cpp
+struct RendererDebugFrameStats;
+struct RendererDebugTargetStats;
+struct RendererDebugResourceStats;
+struct RendererDebugViewStats;
+struct RendererDebugSnapshot;
+
+class RendererDebugService {
+public:
+    virtual ~RendererDebugService() = default;
+    virtual RendererDebugSnapshot getDebugSnapshot() const = 0;
+};
+```
+
+`RendererDebugSnapshot` 不应包含 Vulkan 原生类型，例如 `VkFormat`、`VkImage`、
+`VkDescriptorSet`、`VkPipeline`。如果需要显示 format，Vulkan backend 内部先转换成
+`std::string` 或后端无关枚举。
+
+第一版建议显示内容：
+
+```text
+Renderer
+  backend type
+  initialized
+  device API version
+  swapchain ready
+  swapchain extent
+  swapchain image count
+  swapchain format
+
+Frame
+  engine delta ms
+  renderer cpu ms
+  opaque object count
+  transparent object count
+  opaque draw item count
+  transparent draw item count
+  point light count
+  debug line count
+
+View
+  viewport width / height
+  camera position
+  near / far clip
+
+Targets
+  viewport target ready / size / color format / depth format
+  picking target ready / size / object id format / depth format
+  picking frame ready
+  shadow target ready / size / depth format
+
+Resources
+  model count
+  texture count
+  mesh count
+  material count
+  fallback white texture ready
+  fallback material ready
+```
+
+建议实现拆分：
+
+1. 新增 `RendererDebugService` 和 debug snapshot 数据结构。
+   - 放在 `Function/Renderer` 根目录。
+   - 只依赖 Core / RendererService 基础类型和 glm 等后端无关类型。
+   - 不 include Vulkan header。
+
+2. `VulkanRendererSystem` 实现 `RendererDebugService`。
+   - `VulkanRendererSystem` 可以多继承 `RendererService` 和 `RendererDebugService`。
+   - Backend 内部维护上一帧 `RendererDebugSnapshot`。
+   - `render()` 中在 `RenderView`、`RenderSceneFrame`、`VulkanDrawList` 和 pass graph 准备完成后更新 snapshot。
+
+3. 给 Vulkan 内部资源对象补只读统计接口。
+   - `VulkanRenderResourceCache` 提供 model / texture / mesh / material 数量。
+   - `VulkanViewportTarget`、`VulkanPickingTarget`、`VulkanShadowMapTarget` 已有 ready、extent、format 等查询，可以由 backend 汇总。
+   - `VulkanPipelineCache`、`VulkanShaderLibrary`、`VulkanDescriptorAllocator` 第一版不强制统计，避免把 R24 扩大成 backend profiler。
+
+4. `RendererModule` 注册 debug service。
+   - Vulkan renderer 初始化成功后，同时注册 `RendererService` 和 `RendererDebugService`。
+   - shutdown 时同步 reset。
+
+5. `EditorContext` 注入 debug service。
+   - 新增 `std::shared_ptr<RendererDebugService> renderer_debug_service`。
+   - `EditorModule` 从 `ModuleRegistry` 获取并写入 `EditorContext`。
+
+6. 新增 `RendererDebugPanel`。
+   - 建议路径：
+     ```text
+     source/Engine/Editor/Panels/renderer_debug_panel.h
+     source/Engine/Editor/Panels/renderer_debug_panel.cpp
+     ```
+   - UI 使用 `ImGui::CollapsingHeader` 分组显示 Renderer / Frame / View / Targets / Resources。
+   - Panel 只读取 `m_context->renderer_debug_service->getDebugSnapshot()`。
+   - 不直接访问 `RendererService` 的 Vulkan 实现，不 include `Renderer/Vulkan/*`。
+
+7. 接入 EditorLayer 和 CMake。
+   - `EditorLayer::init()` 中加入 `RendererDebugPanel`。
+   - `source/Engine/CMakeLists.txt` 加入新 panel 和 debug service 文件。
+
+8. 文档与验证。
+   - 完成后在本文档记录执行状态和完成记录。
+   - 构建、shader 编译和 Sandbox smoke 通过。
+
+暂时不做：
+
+- GPU timestamp query。
+- GPU profiler。
+- RenderDoc 集成。
+- pipeline / descriptor / shader 逐项展开。
+- shadow map debug viewer。
+- texture / material browser。
+- resource cache 清理按钮。
+- shader hot reload。
+- swapchain recreate / viewport target rebuild 手动按钮。
+- Editor 直接显示 Vulkan handle。
+
+验收：
+
+- Editor 中出现 `Renderer Debug` 面板。
+- 面板能显示 backend、swapchain、viewport target、frame time、RenderView 和 resource cache 数量。
+- `RendererDebugSnapshot` 不包含 Vulkan 原生类型。
+- `RendererDebugPanel` 不 include `Renderer/Vulkan/*`。
+- Scene / Resource / Runtime / Editor 公开接口不暴露 Vulkan debug 对象。
+- 面板只读，不改变渲染行为。
+- `cmake --preset msvc-vcpkg` 通过。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- Sandbox smoke 通过。
 
 ## 10. 推荐执行顺序
 
