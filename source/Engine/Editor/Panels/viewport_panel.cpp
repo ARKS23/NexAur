@@ -34,6 +34,7 @@ namespace NexAur {
     void ViewportPanel::onUIRender() {
         beginViewportWindow();
 
+        drawViewportModeToolbar();
         updateViewportWindowState();
         syncViewportResize();
         drawViewportOutput();
@@ -47,7 +48,7 @@ namespace NexAur {
         EventDispatcher dispatcher(event);
         dispatcher.dispatch<MouseButtonPressedEvent>(NX_BIND_EVENT_FN(ViewportPanel::onMouseButtonPressed));
 
-        if (m_context && m_context->viewport_camera && (m_viewport_hovered || m_viewport_focused)) {
+        if (m_context && m_context->viewport_camera && isSceneViewMode() && (m_viewport_hovered || m_viewport_focused)) {
             m_context->viewport_camera->onEvent(event);
         }
     }
@@ -55,6 +56,42 @@ namespace NexAur {
     void ViewportPanel::beginViewportWindow() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
         ImGui::Begin("Scene Viewport");
+    }
+
+    void ViewportPanel::drawViewportModeToolbar() {
+        if (!m_context) {
+            return;
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
+
+        const bool scene_view = m_context->viewport_view_mode == EditorViewportViewMode::SceneView;
+        const bool game_view = m_context->viewport_view_mode == EditorViewportViewMode::GameView;
+
+        if (scene_view) {
+            ImGui::BeginDisabled();
+        }
+        if (ImGui::Button("Scene")) {
+            m_context->viewport_view_mode = EditorViewportViewMode::SceneView;
+        }
+        if (scene_view) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::SameLine();
+
+        if (game_view) {
+            ImGui::BeginDisabled();
+        }
+        if (ImGui::Button("Game")) {
+            m_context->viewport_view_mode = EditorViewportViewMode::GameView;
+        }
+        if (game_view) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::PopStyleVar();
+        ImGui::Separator();
     }
 
     void ViewportPanel::updateViewportWindowState() {
@@ -65,16 +102,12 @@ namespace NexAur {
             m_context->viewport_hovered = m_viewport_hovered;
         }
 
-        const ImVec2 window_pos = ImGui::GetWindowPos();
-        const ImVec2 content_min = ImGui::GetWindowContentRegionMin();
-        const ImVec2 content_max = ImGui::GetWindowContentRegionMax();
+        const ImVec2 viewport_min = ImGui::GetCursorScreenPos();
+        const ImVec2 available_size = ImGui::GetContentRegionAvail();
 
-        m_viewport_bounds[0] = { window_pos.x + content_min.x, window_pos.y + content_min.y };
-        m_viewport_bounds[1] = { window_pos.x + content_max.x, window_pos.y + content_max.y };
-        m_viewport_size = {
-            m_viewport_bounds[1].x - m_viewport_bounds[0].x,
-            m_viewport_bounds[1].y - m_viewport_bounds[0].y
-        };
+        m_viewport_bounds[0] = { viewport_min.x, viewport_min.y };
+        m_viewport_bounds[1] = { viewport_min.x + available_size.x, viewport_min.y + available_size.y };
+        m_viewport_size = { available_size.x, available_size.y };
     }
 
     void ViewportPanel::syncViewportResize() {
@@ -86,9 +119,6 @@ namespace NexAur {
         }
 
         std::shared_ptr<RendererService> renderer_service = m_context->renderer_service;
-        if (!m_context->viewport_camera) {
-            return;
-        }
 
         const uint32_t target_w = static_cast<uint32_t>(m_viewport_size.x);
         const uint32_t target_h = static_cast<uint32_t>(m_viewport_size.y);
@@ -205,6 +235,9 @@ namespace NexAur {
     }
 
     void ViewportPanel::handleGizmoHotkeys() {
+        if (!isSceneViewMode()) {
+            return;
+        }
         if (!m_viewport_focused) {
             return;
         }
@@ -231,6 +264,9 @@ namespace NexAur {
 
     void ViewportPanel::drawGizmo() {
         if (!m_show_gizmo) {
+            return;
+        }
+        if (!isSceneViewMode()) {
             return;
         }
         if (!m_context || !m_context->active_scene) {
@@ -317,6 +353,14 @@ namespace NexAur {
         return isEmbeddedViewportOutput(output);
     }
 
+    bool ViewportPanel::isSceneViewMode() const {
+        return !m_context || m_context->viewport_view_mode == EditorViewportViewMode::SceneView;
+    }
+
+    bool ViewportPanel::canUseSceneViewTools() const {
+        return isSceneViewMode() && canUseEmbeddedViewportOutput();
+    }
+
     void ViewportPanel::syncEditorCameraSize(uint32_t width, uint32_t height) {
         if (!m_context || !m_context->viewport_camera || width == 0 || height == 0) {
             return;
@@ -381,6 +425,9 @@ namespace NexAur {
         if (!m_viewport_hovered) {
             return false;
         }
+        if (!canUseSceneViewTools()) {
+            return false;
+        }
         if (ImGuizmo::IsUsing() || ImGuizmo::IsOver()) {
             return false;
         }
@@ -398,7 +445,7 @@ namespace NexAur {
         }
 
         const ViewportOutput output = m_context->renderer_service->getViewportOutput();
-        if (!isEmbeddedViewportOutput(output)) {
+        if (!canUseSceneViewTools() || !isEmbeddedViewportOutput(output)) {
             return;
         }
 

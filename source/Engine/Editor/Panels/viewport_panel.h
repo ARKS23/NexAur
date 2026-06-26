@@ -27,6 +27,7 @@ namespace NexAur {
 
     private:
         void beginViewportWindow();
+        void drawViewportModeToolbar();
         void updateViewportWindowState();
         void syncViewportResize();
         void drawViewportOutput();
@@ -40,6 +41,8 @@ namespace NexAur {
         void endViewportWindow();
 
         bool canUseEmbeddedViewportOutput() const;
+        bool isSceneViewMode() const;
+        bool canUseSceneViewTools() const;
         void syncEditorCameraSize(uint32_t width, uint32_t height);
         void setGizmoStyle();
         void applyGizmoToSelectedEntity(const glm::mat4& transform);

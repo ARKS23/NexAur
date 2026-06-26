@@ -55,7 +55,7 @@ namespace NexAur {
 
             void postUpdate(const TickContext& tick_context) override {
                 // 放在 postUpdate 是为了让 Scene 先提取渲染数据，
-                // 然后 EditorCamera 再覆盖 viewport 预览相机。
+                // 然后 SceneView 模式再用 EditorCamera 覆盖 viewport 预览相机。
                 if (m_editor_layer && m_editor_layer->isEnabled()) {
                     m_editor_layer->update(tick_context.delta_time);
                 }

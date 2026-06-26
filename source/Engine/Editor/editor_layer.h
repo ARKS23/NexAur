@@ -49,6 +49,7 @@ namespace NexAur {
         void syncPanelContext();
         void updateViewportCamera(TimeStep delta_time);
         bool shouldUpdateViewportCamera() const;
+        bool isSceneViewMode() const;
         void syncViewportCameraToRenderPacket() const;
         
     private:

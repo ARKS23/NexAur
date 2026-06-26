@@ -5,6 +5,17 @@
 #include "Function/Renderer/data/render_data.h"
 
 namespace NexAur {
+    namespace {
+        void writeCameraData(RenderDataPacket& render_packet, const CameraComponent& camera) {
+            render_packet.camera_data.view_matrix = camera.viewMatrix;
+            render_packet.camera_data.projection_matrix = camera.projectionMatrix;
+            render_packet.camera_data.view_projection_matrix = camera.viewProjectionMatrix;
+            render_packet.camera_data.position = camera.position;
+            render_packet.camera_data.near_clip = camera.nearClip;
+            render_packet.camera_data.far_clip = camera.farClip;
+        }
+    } // namespace
+
     SceneV2::SceneV2() {
     }
 
@@ -40,17 +51,25 @@ namespace NexAur {
 
         render_packet->clear();
 
-        // 摄像机数据
-        auto view_camera = m_Registry.view<CameraComponent>();
-        for (auto entity : view_camera) {
-            const auto& cam_comp = view_camera.get<CameraComponent>(entity);
-            render_packet->camera_data.view_matrix = cam_comp.viewMatrix;
-            render_packet->camera_data.projection_matrix = cam_comp.projectionMatrix;
-            render_packet->camera_data.view_projection_matrix = cam_comp.viewProjectionMatrix;
-            render_packet->camera_data.position = cam_comp.position;
-            render_packet->camera_data.near_clip = cam_comp.nearClip;
-            render_packet->camera_data.far_clip = cam_comp.farClip;
-            break; // 第一版只导出一个主相机，后续通过 ActiveCamera 标记选择。
+        // GameView 使用场景 active camera；没有 active 标记时保留第一相机 fallback。
+        bool camera_written = false;
+        auto active_camera_view = m_Registry.view<CameraComponent, ActiveCameraComponent>();
+        for (auto entity : active_camera_view) {
+            const auto& active_camera = active_camera_view.get<ActiveCameraComponent>(entity);
+            if (!active_camera.enabled) {
+                continue;
+            }
+            writeCameraData(*render_packet, active_camera_view.get<CameraComponent>(entity));
+            camera_written = true;
+            break;
+        }
+
+        if (!camera_written) {
+            auto camera_view = m_Registry.view<CameraComponent>();
+            for (auto entity : camera_view) {
+                writeCameraData(*render_packet, camera_view.get<CameraComponent>(entity));
+                break;
+            }
         }
 
         // 方向光数据

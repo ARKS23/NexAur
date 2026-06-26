@@ -30,6 +30,7 @@ namespace NexAur {
                 kDefaultNearClip,
                 kDefaultFarClip);
             camera.viewProjectionMatrix = camera.projectionMatrix * camera.viewMatrix;
+            camera_entity.addComponent<ActiveCameraComponent>();
         }
 
         void addDefaultEnvironment(const std::shared_ptr<SceneV2>& scene) {

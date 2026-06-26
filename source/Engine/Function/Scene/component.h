@@ -47,6 +47,11 @@ namespace NexAur {
         float farClip = 1000.0f;
     };
 
+    // 运行时主相机标记。EditorCamera 不写入场景，GameView 从这个标记选择 CameraComponent。
+    struct ActiveCameraComponent {
+        bool enabled = true;
+    };
+
     // 点光源组件
     struct PointLightComponent {
         glm::vec3 color{ 1.0f, 1.0f, 1.0f };

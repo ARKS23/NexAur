@@ -193,6 +193,9 @@ namespace NexAur {
         if (!m_context || !m_context->viewport_camera) {
             return;
         }
+        if (!isSceneViewMode()) {
+            return;
+        }
 
         const bool text_input_captured =
             m_context->ui_service && m_context->ui_service->wantsTextInput();
@@ -222,12 +225,19 @@ namespace NexAur {
         return output.valid() && output.kind == ViewportOutputKind::ExternalSwapchain;
     }
 
+    bool EditorLayer::isSceneViewMode() const {
+        return m_context && m_context->viewport_view_mode == EditorViewportViewMode::SceneView;
+    }
+
     void EditorLayer::syncViewportCameraToRenderPacket() const {
         if (!m_context || !m_context->viewport_camera || !m_context->render_context) {
             return;
         }
+        if (!isSceneViewMode()) {
+            return;
+        }
 
-        // Editor 视口使用独立相机，写入 RenderDataPacket 覆盖场景 CameraComponent。
+        // SceneView 使用独立 EditorCamera；GameView 保留 Scene 提取出的 active CameraComponent。
         auto& camera_data = m_context->render_context->getWriteData().camera_data;
         const auto& viewport_camera = *m_context->viewport_camera;
 

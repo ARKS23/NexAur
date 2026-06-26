@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R13 Camera 所有权收口已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera
+当前阶段：Post Vulkan PR-R14 SceneView / GameView 语义拆分已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -89,6 +89,7 @@ externalRenderer：仅作为临时本地参考目录
 - D12.1-C：完成 Renderer data / frontend / Vulkan frontend 边界收口。
 - D12.1-D：完成 `WindowSystem` 源码目录从 Renderer 移动到 Platform。
 - PR-R13：完成 `EditorCamera` 所有权收口，Renderer 不再保存 editor camera 行为类。
+- PR-R14：完成 SceneView / GameView 语义拆分，GameView 使用场景 active `CameraComponent`。
 
 已确认：
 
@@ -1820,8 +1821,8 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入后续 PR-R14：SceneView / GameView 语义拆分
-或推进材质、纹理、灯光等小游戏 demo 必需渲染能力
+进入 PR-R15：Texture asset 和 VulkanTextureResource
+或继续推进材质、灯光等小游戏 demo 必需渲染能力
 ```
 
 D12 / D12.1 已确认状态：
@@ -1848,6 +1849,7 @@ D12 / D12.1 已确认状态：
 - D12.1 已完成 PR-R12.1-C：`Renderer/data`、`Renderer/frontend`、`Renderer/Vulkan/frontend` 职责边界收口。
 - D12.1 已完成 PR-R12.1-D：`WindowSystem` 源码目录从 Renderer 移动到 Platform。
 - PR-R13 已完成：`EditorCamera` 移到 `Editor/Camera`，旧 Renderer camera 文件移除。
+- PR-R14 已完成：Viewport 显式支持 SceneView / GameView，Scene runtime camera 通过 active `CameraComponent` 输出。
 
 ## 9. 进度记录
 
@@ -1858,6 +1860,10 @@ D12 / D12.1 已确认状态：
 - 完成 PR-R13：删除旧 `Function/Renderer/camera.h` 空基类和旧 `Function/Renderer/editor_camera.*`。
 - 完成 PR-R13：`EditorLayer`、`ViewportPanel` 和 `source/Engine/CMakeLists.txt` 已同步新路径。
 - 完成 PR-R13：Renderer 目录只保留渲染输入和后端实现，不再保存 editor camera 行为类。
+- 完成 PR-R14：新增 `EditorViewportViewMode`，ViewportPanel 支持 Scene / Game 视图切换。
+- 完成 PR-R14：新增 `ActiveCameraComponent`，默认 `MainCamera` 标记为 runtime active camera。
+- 完成 PR-R14：`SceneV2::extractSceneData()` 优先导出 active `CameraComponent`，GameView 不再被 `EditorCamera` 覆盖。
+- 完成 PR-R14：SceneView 保留 `EditorCamera`、gizmo、picking；GameView 保留 runtime camera 画面语义。
 
 ### 2026-06-24
 

@@ -110,16 +110,95 @@ Scene / Editor / Runtime
 
 ### PR-R14：SceneView / GameView 语义拆分
 
+执行状态：已完成。
+
+背景：
+
+当前每帧数据链路是：
+
+```text
+SceneV2::extractSceneData()
+  -> 从 CameraComponent 写入 RenderDataPacket
+EditorLayer::syncViewportCameraToRenderPacket()
+  -> 用 EditorCamera 覆盖 RenderDataPacket
+Renderer
+  -> 消费最终 RenderDataPacket
+```
+
+这个流程对编辑器 SceneView 是正确的，但对后续 GameView / Play Mode 不够清晰：运行时相机明明属于场景，却可能在编辑器路径下被 `EditorCamera` 覆盖。PR-R14 的目标不是改 Renderer，而是把“编辑器观察视角”和“游戏运行视角”显式分开。
+
 目标：
 
 - Editor SceneView 使用 `EditorCamera`。
 - Runtime GameView 使用场景 active `CameraComponent`。
 - Renderer 不关心 view 来源，只消费最终 `RenderDataPacket`。
 
+完成记录：
+
+- 新增 `EditorViewportViewMode`，当前支持 `SceneView` / `GameView`。
+- `ViewportPanel` 增加轻量 Scene / Game 切换。
+- `SceneView` 下继续使用 `EditorCamera`，并保留 gizmo / picking / editor camera event。
+- `GameView` 下不再用 `EditorCamera` 覆盖 `RenderDataPacket`，保留 `SceneV2` 提取出的 runtime camera。
+- 新增 `ActiveCameraComponent`，默认场景 `MainCamera` 会被标记为 active camera。
+- `SceneV2::extractSceneData()` 优先导出 active `CameraComponent`，找不到时 fallback 到第一个 `CameraComponent`。
+- RendererService 和 Vulkan backend 接口未改动。
+
+语义定义：
+
+```text
+SceneView
+  - 编辑器观察场景的视图。
+  - 使用 EditorCamera。
+  - 支持 WASD / 鼠标观察、gizmo、picking、scene hierarchy selection。
+  - 不代表游戏真实镜头。
+
+GameView
+  - 游戏运行视图。
+  - 使用场景中的 active CameraComponent。
+  - 不被 EditorCamera 覆盖。
+  - 后续 Play Mode 和小游戏 demo 都以它作为运行时画面来源。
+```
+
+推荐拆分：
+
+1. 增加 viewport view mode。
+   - 在 Editor 侧新增轻量枚举，例如 `EditorViewportViewMode { SceneView, GameView }`。
+   - 默认保持 `SceneView`，避免改变当前编辑器交互。
+   - 第一版可以只放在 `EditorContext` 或 `ViewportPanel` 状态里，不急着做复杂 UI。
+
+2. 给场景相机 active 语义。
+   - 推荐新增轻量 marker，例如 `ActiveCameraComponent`。
+   - 也可以短期在 `CameraComponent` 中加入 `bool primary`，但 marker 更符合 ECS 语义。
+   - `scene_factory.cpp` 创建默认相机时同步标记 active camera。
+
+3. 收口 `SceneV2::extractSceneData()` 的相机选择。
+   - 优先导出 active `CameraComponent`。
+   - 找不到 active camera 时，可以 fallback 到第一个 `CameraComponent` 或默认相机数据。
+   - 不再把“第一个 CameraComponent”当成长期主相机语义。
+
+4. 修改 EditorLayer 的相机覆盖策略。
+   - `SceneView`：继续用 `EditorCamera` 覆盖 `RenderDataPacket`。
+   - `GameView`：不覆盖，保留 `SceneV2` 提取出的 runtime camera。
+   - `EditorCamera` 仍可继续更新自己的状态，但不能影响 GameView。
+
+5. 保持 Renderer 边界不变。
+   - 不新增 `RendererService` 接口。
+   - 不让 Renderer 知道 SceneView / GameView。
+   - Renderer 只消费最终 `RenderDataPacket -> RenderView`。
+
+暂不做：
+
+- 不实现完整 Play Mode 生命周期。
+- 不实现 runtime camera controller。
+- 不做多 viewport / 多 camera editor UI。
+- 不改 Renderer 后端接口。
+
 验收：
 
 - Editor 下仍可自由观察场景。
 - Runtime 下可从场景 camera 渲染。
+- GameView 不会被 `EditorCamera` 覆盖。
+- SceneView / GameView 切换不需要改 RendererService。
 - 后续 Play Mode 不需要改 RendererService。
 
 ## 5. 第二优先级：材质与纹理最小链路

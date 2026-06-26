@@ -16,6 +16,11 @@ namespace NexAur {
     class SelectionService;
     class UIService;
 
+    enum class EditorViewportViewMode {
+        SceneView,
+        GameView
+    };
+
     // EditorLayer 和各个 Panel 共享的小上下文。
     // 这里放编辑器真正需要的窄服务，不把 ModuleRegistry 或全局上下文传进面板。
     struct EditorContext {
@@ -29,6 +34,7 @@ namespace NexAur {
         std::weak_ptr<SelectionService> selection_service;
         Entity selected_entity;
         std::string selection_source;
+        EditorViewportViewMode viewport_view_mode = EditorViewportViewMode::SceneView;
         bool viewport_focused = false;
         bool viewport_hovered = false;
     };
