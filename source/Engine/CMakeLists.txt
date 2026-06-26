@@ -93,6 +93,11 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/model.cpp
     Function/Resource/procedural_model_builder.h
     Function/Resource/procedural_model_builder.cpp
+    Function/Resource/texture_types.h
+    Function/Resource/texture_asset.h
+    Function/Resource/texture_asset.cpp
+    Function/Resource/texture_loader.h
+    Function/Resource/texture_loader.cpp
     Function/Scene/component.h
     Function/Scene/entity.h
     Function/Scene/entity.cpp
@@ -154,6 +159,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/resources/vulkan_mesh_resource.cpp
     Function/Renderer/Vulkan/resources/vulkan_model_resource.h
     Function/Renderer/Vulkan/resources/vulkan_model_resource.cpp
+    Function/Renderer/Vulkan/resources/vulkan_texture_resource.h
+    Function/Renderer/Vulkan/resources/vulkan_texture_resource.cpp
     Function/Renderer/Vulkan/targets/vulkan_viewport_target.h
     Function/Renderer/Vulkan/targets/vulkan_viewport_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_picking_target.h

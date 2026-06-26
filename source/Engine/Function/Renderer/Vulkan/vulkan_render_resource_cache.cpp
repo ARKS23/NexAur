@@ -7,6 +7,8 @@
 
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/model.h"
+#include "Function/Resource/texture_asset.h"
+#include "Function/Resource/texture_loader.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
 
 #include <string>
@@ -44,11 +46,17 @@ namespace NexAur {
         }
 
         m_initialized = true;
+        if (!createFallbackTexture()) {
+            shutdown();
+            return false;
+        }
+
         NX_CORE_INFO("VulkanRenderResourceCache initialized.");
         return true;
     }
 
     void VulkanRenderResourceCache::clear() {
+        m_texture_cache.clear();
         m_model_cache.clear();
     }
 
@@ -60,6 +68,7 @@ namespace NexAur {
         }
 
         clear();
+        m_fallback_white_texture.reset();
         if (m_upload_command_pool != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
             vkDestroyCommandPool(m_device, m_upload_command_pool, nullptr);
             m_upload_command_pool = VK_NULL_HANDLE;
@@ -129,6 +138,55 @@ namespace NexAur {
         return cached_it != m_model_cache.end() ? cached_it->second.get() : nullptr;
     }
 
+    VulkanTextureResource* VulkanRenderResourceCache::getOrCreateTexture(AssetHandle texture_asset, AssetManager& asset_manager) {
+        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+            NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
+            return nullptr;
+        }
+        if (!texture_asset) {
+            NX_CORE_WARN("Attempted to resolve Vulkan texture with invalid AssetHandle.");
+            return getFallbackWhiteTexture();
+        }
+
+        if (VulkanTextureResource* cached_texture = getTexture(texture_asset)) {
+            return cached_texture;
+        }
+
+        const AssetType asset_type = asset_manager.getAssetType(texture_asset);
+        if (asset_type != AssetType::Texture2D) {
+            NX_CORE_WARN(
+                "AssetHandle is not a Texture2D asset: {} ({})",
+                static_cast<uint64_t>(texture_asset.id),
+                assetTypeToString(asset_type));
+            return getFallbackWhiteTexture();
+        }
+
+        std::shared_ptr<TextureAsset> cpu_texture = asset_manager.loadTextureCPU(texture_asset);
+        if (!cpu_texture || !cpu_texture->isLoaded()) {
+            NX_CORE_ERROR("Failed to load CPU texture for Vulkan resource: {}", static_cast<uint64_t>(texture_asset.id));
+            return getFallbackWhiteTexture();
+        }
+
+        auto texture_resource = std::make_unique<VulkanTextureResource>();
+        if (!texture_resource->create(createUploadContext(), *cpu_texture)) {
+            NX_CORE_ERROR("Failed to create Vulkan texture resource: {}", asset_manager.getPath(texture_asset));
+            return getFallbackWhiteTexture();
+        }
+
+        VulkanTextureResource* texture_resource_ptr = texture_resource.get();
+        m_texture_cache.emplace(texture_asset, std::move(texture_resource));
+        return texture_resource_ptr;
+    }
+
+    VulkanTextureResource* VulkanRenderResourceCache::getTexture(AssetHandle texture_asset) const {
+        if (!texture_asset) {
+            return nullptr;
+        }
+
+        auto cached_it = m_texture_cache.find(texture_asset);
+        return cached_it != m_texture_cache.end() ? cached_it->second.get() : nullptr;
+    }
+
     bool VulkanRenderResourceCache::createAllocator(const VulkanResourceContext& context) {
         VmaAllocatorCreateInfo allocator_info{};
         allocator_info.vulkanApiVersion = context.api_version;
@@ -155,6 +213,29 @@ namespace NexAur {
         return checkVk(
             vkCreateCommandPool(context.device, &pool_info, nullptr, &m_upload_command_pool),
             "vkCreateCommandPool(resource upload)");
+    }
+
+    bool VulkanRenderResourceCache::createFallbackTexture() {
+        std::shared_ptr<TextureAsset> fallback_texture = TextureLoader::createSolidColorRGBA8(
+            255,
+            255,
+            255,
+            255,
+            TextureColorSpace::SRGB,
+            "FallbackWhiteTexture");
+        if (!fallback_texture || !fallback_texture->isLoaded()) {
+            NX_CORE_ERROR("Failed to create CPU fallback white texture.");
+            return false;
+        }
+
+        auto fallback_resource = std::make_unique<VulkanTextureResource>();
+        if (!fallback_resource->create(createUploadContext(), *fallback_texture)) {
+            NX_CORE_ERROR("Failed to create Vulkan fallback white texture.");
+            return false;
+        }
+
+        m_fallback_white_texture = std::move(fallback_resource);
+        return true;
     }
 
     VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() const {

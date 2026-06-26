@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "asset_manager.h"
 #include "Function/Resource/model.h"
+#include "Function/Resource/texture_loader.h"
 
 
 namespace NexAur {
@@ -10,6 +11,7 @@ namespace NexAur {
     }
 
     void AssetManager::shutdown() {
+        m_uuid_cpu_texture_cache.clear();
         m_uuid_cpu_model_cache.clear();
         m_uuid_metadata.clear();
         m_uuid_to_path.clear();
@@ -48,20 +50,28 @@ namespace NexAur {
         return importModelAsset(path).id;
     }
 
-    AssetHandle AssetManager::importTextureAsset(const std::string& path) {
+    AssetHandle AssetManager::importTextureAsset(const std::string& path, TextureColorSpace color_space) {
         if (path.empty()) {
             return AssetHandle();
         }
 
         auto loaded_it = m_path_to_uuid.find(path);
         if (loaded_it != m_path_to_uuid.end()) {
+            const AssetMetadata* metadata = getMetadata(loaded_it->second);
+            if (!metadata || metadata->type != AssetType::Texture2D) {
+                NX_CORE_WARN("Path is already registered as non-texture asset: {}", path);
+                return AssetHandle();
+            }
+            if (metadata->texture_color_space != color_space) {
+                NX_CORE_WARN("Texture asset already registered with a different color space: {}", path);
+            }
             return AssetHandle(loaded_it->second);
         }
 
         UUID new_uuid;
         m_path_to_uuid[path] = new_uuid;
         m_uuid_to_path[new_uuid] = path;
-        recordAssetMetadata(new_uuid, AssetType::Texture2D, path);
+        recordAssetMetadata(new_uuid, AssetType::Texture2D, path, false, "", color_space);
 
         return AssetHandle(new_uuid);
     }
@@ -84,6 +94,33 @@ namespace NexAur {
 
         // Legacy UUID API：只返回资产身份。GPU Texture2D 由 RenderResourceCache 创建。
         return texture_asset.id;
+    }
+
+    std::shared_ptr<TextureAsset> AssetManager::loadTextureCPU(AssetHandle handle) {
+        if (!handle) {
+            NX_CORE_WARN("Attempted to load CPU texture with invalid AssetHandle.");
+            return nullptr;
+        }
+
+        auto loaded_it = m_uuid_cpu_texture_cache.find(handle.id);
+        if (loaded_it != m_uuid_cpu_texture_cache.end()) {
+            return loaded_it->second;
+        }
+
+        const AssetMetadata* metadata = getMetadata(handle);
+        if (!metadata || metadata->type != AssetType::Texture2D || metadata->path.empty()) {
+            NX_CORE_WARN("AssetHandle is not a loadable CPU texture: {}", static_cast<uint64_t>(handle.id));
+            return nullptr;
+        }
+
+        std::shared_ptr<TextureAsset> texture = TextureLoader::load2D(metadata->path, metadata->texture_color_space);
+        if (!texture || !texture->isLoaded()) {
+            NX_CORE_ERROR("Failed to load CPU texture: {}", metadata->path);
+            return nullptr;
+        }
+
+        m_uuid_cpu_texture_cache[handle.id] = texture;
+        return texture;
     }
 
     AssetHandle AssetManager::importTextureCubeAsset(const std::string& path) {
@@ -240,12 +277,19 @@ namespace NexAur {
         return AssetHandle(new_uuid);
     }
 
-    void AssetManager::recordAssetMetadata(const UUID& handle, AssetType type, const std::string& path, bool runtime_generated, const std::string& debug_name) {
+    void AssetManager::recordAssetMetadata(
+        const UUID& handle,
+        AssetType type,
+        const std::string& path,
+        bool runtime_generated,
+        const std::string& debug_name,
+        TextureColorSpace texture_color_space) {
         AssetMetadata metadata;
         metadata.handle = AssetHandle(handle);
         metadata.type = type;
         metadata.path = path;
         metadata.debug_name = debug_name.empty() ? assetTypeToString(type) : debug_name;
+        metadata.texture_color_space = texture_color_space;
         metadata.runtime_generated = runtime_generated;
         m_uuid_metadata[handle] = metadata;
     }

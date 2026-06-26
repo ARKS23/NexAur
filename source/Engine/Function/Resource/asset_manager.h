@@ -9,6 +9,7 @@
 
 namespace NexAur {
     class Model;
+    class TextureAsset;
 
     class NEXAUR_API AssetManager {
     public:
@@ -29,7 +30,8 @@ namespace NexAur {
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
 
         // 贴图资产：AssetManager 只登记身份，GPU texture 由 Renderer 后端创建。
-        AssetHandle importTextureAsset(const std::string& path);
+        AssetHandle importTextureAsset(const std::string& path, TextureColorSpace color_space = TextureColorSpace::SRGB);
+        std::shared_ptr<TextureAsset> loadTextureCPU(AssetHandle handle);
         AssetHandle importTextureCubeAsset(const std::string& path);
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID
         AssetHandle loadTextureAsset(const std::string& path) { return importTextureAsset(path); }
@@ -67,7 +69,13 @@ namespace NexAur {
         AssetManager(const AssetManager&) = delete;
         AssetManager& operator=(const AssetManager&) = delete;
 
-        void recordAssetMetadata(const UUID& handle, AssetType type, const std::string& path, bool runtime_generated = false, const std::string& debug_name = "");
+        void recordAssetMetadata(
+            const UUID& handle,
+            AssetType type,
+            const std::string& path,
+            bool runtime_generated = false,
+            const std::string& debug_name = "",
+            TextureColorSpace texture_color_space = TextureColorSpace::SRGB);
 
     private:
         std::unordered_map<std::string, UUID> m_path_to_uuid; // 防止重复加载: 路径到UUID的映射, 用于资源管理和引用
@@ -77,6 +85,7 @@ namespace NexAur {
         // ================================== 缓存记录 ==================================
         // 模型管理
         std::unordered_map<UUID, std::shared_ptr<Model>> m_uuid_cpu_model_cache;
+        std::unordered_map<UUID, std::shared_ptr<TextureAsset>> m_uuid_cpu_texture_cache;
 
     };
 } // namespace NexAur

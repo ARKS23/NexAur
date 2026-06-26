@@ -205,23 +205,90 @@ GameView
 
 ### PR-R15：Texture asset 和 VulkanTextureResource
 
+执行状态：已完成。
+
 目标：
 
 - Resource 层能表达 texture asset。
 - Vulkan backend 能创建 `VulkanTextureResource`。
-- 支持 base color texture 最小采样。
+- 为 PR-R16 的 base color texture 采样准备稳定 CPU / GPU 资源链路。
+
+当前状态：
+
+- `AssetManager` 已有 `importTextureAsset()` / `loadTextureAsset()`，但当前只登记路径和 `AssetHandle`。
+- Resource 层还没有 `TextureAsset` / CPU image 数据对象。
+- Vulkan backend 还没有 `VulkanTextureResource`。
+- `VulkanMaterialResource` 目前只保存 albedo / normal / metallic / roughness / ao 的路径字符串。
+- Forward pass 还没有材质 descriptor / texture sampling 完整链路。
+
+完成记录：
+
+- 新增 `TextureColorSpace` / `TexturePixelFormat`，固定第一版 texture import 的基础格式语义。
+- 新增 `TextureAsset`，保存 CPU 侧 2D RGBA8 texture 数据、尺寸、格式、color space 和 source path。
+- 新增 `TextureLoader`，通过 stb_image 加载普通 2D texture，并可创建 1x1 solid color runtime texture。
+- `AssetManager` 增加 `loadTextureCPU()` 和 CPU texture cache；`importTextureAsset()` 继续只登记资产身份。
+- `AssetMetadata` 记录 texture color space。
+- 新增 `VulkanTextureResource`，负责 CPU image -> staging buffer -> Vulkan image / image view / sampler。
+- `VulkanRenderResourceCache` 增加 texture cache 和 `getOrCreateTexture()`。
+- `VulkanRenderResourceCache` 初始化时创建 fallback white texture。
+- CMake 已加入 Resource texture 文件和 Vulkan texture resource 文件。
+- Forward shader / material descriptor 采样链路仍保留给 PR-R16。
 
 建议结构：
 
 ```text
 Resource/
   texture_asset.h
-  texture_importer.h
+  texture_asset.cpp
+  texture_loader.h
+  texture_loader.cpp
 
 Renderer/Vulkan/resources/
   vulkan_texture_resource.h
   vulkan_texture_resource.cpp
 ```
+
+推荐拆分：
+
+1. Resource 层新增 CPU texture 表达。
+   - 新增 `TextureAsset`，保存 width / height / channels / format / color space / source path / pixel data。
+   - 第一版只支持 2D texture。
+   - 用明确字段区分 sRGB 和 linear，避免后续材质采样时靠路径猜。
+
+2. AssetManager 支持加载 CPU texture。
+   - 新增 `std::shared_ptr<TextureAsset> loadTextureCPU(AssetHandle handle)`。
+   - 新增 CPU texture cache，例如 `m_uuid_cpu_texture_cache`。
+   - `importTextureAsset()` 继续只负责登记资产身份，真正读取磁盘放到 `loadTextureCPU()`。
+   - 使用 stb_image 加载 png / jpg 等普通 2D 贴图。
+
+3. Vulkan 后端新增 `VulkanTextureResource`。
+   - 从 `TextureAsset` 创建 GPU texture。
+   - 创建 staging buffer 并上传 pixel data。
+   - 创建 `VkImage` / `VmaAllocation`。
+   - 创建 `VkImageView`。
+   - 创建默认 `VkSampler`。
+   - 执行 layout transition：
+     ```text
+     UNDEFINED -> TRANSFER_DST_OPTIMAL
+     copy buffer to image
+     TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+     ```
+
+4. `VulkanRenderResourceCache` 增加 texture cache。
+   - 新增：
+     ```cpp
+     VulkanTextureResource* getOrCreateTexture(AssetHandle texture_asset, AssetManager& asset_manager);
+     VulkanTextureResource* getTexture(AssetHandle texture_asset) const;
+     ```
+   - 内部缓存：
+     ```cpp
+     std::unordered_map<AssetHandle, std::unique_ptr<VulkanTextureResource>> m_texture_cache;
+     ```
+   - `clear()` / `shutdown()` 需要释放 texture cache。
+
+5. 准备默认 fallback texture。
+   - 建议创建 1x1 white texture。
+   - 贴图路径为空或加载失败时，后续材质系统可以使用 fallback，避免 pass 到处判空。
 
 第一版只做：
 
@@ -229,13 +296,40 @@ Renderer/Vulkan/resources/
 - SRGB / linear 基础区分。
 - sampler 默认配置。
 - CPU image -> staging buffer -> Vulkan image。
+- `AssetHandle -> TextureAsset -> VulkanTextureResource` 缓存链路。
+- fallback white texture。
 
 暂时不做：
 
+- 不接入完整材质 descriptor set。
+- 不修改 forward shader 去采样材质贴图，采样链路放到 PR-R16。
+- 不做 normal / metallic / roughness / ao 全套材质贴图绑定。
 - bindless。
+- mipmap 生成。
 - texture streaming。
 - virtual texture。
 - compressed texture 全格式支持。
+- cubemap / environment map。
+
+与 PR-R16 的边界：
+
+```text
+PR-R15:
+  texture 从磁盘加载到 CPU，再上传成 Vulkan GPU resource。
+
+PR-R16:
+  Material asset / VulkanMaterialResource 引用这些 texture，
+  建立 descriptor layout / descriptor set / shader sampling 链路。
+```
+
+验收：
+
+- `AssetManager::loadTextureCPU()` 可从已登记的 `Texture2D` asset 加载 CPU image。
+- `VulkanRenderResourceCache::getOrCreateTexture()` 可创建并缓存 `VulkanTextureResource`。
+- texture resource 能正确释放，不泄漏 Vulkan image / image view / sampler / allocation。
+- 空路径或加载失败时有 fallback white texture。
+- RendererService / Scene / Editor 不暴露 Vulkan texture 句柄。
+- 构建和 Sandbox smoke 通过。
 
 ### PR-R16：Material asset 和 VulkanMaterialResource
 
