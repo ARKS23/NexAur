@@ -52,6 +52,8 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/editor_layer.h
     Editor/editor_layer.cpp
     Editor/editor_services.h
+    Editor/Camera/editor_camera.h
+    Editor/Camera/editor_camera.cpp
     Editor/Panels/editor_panel.h
     Editor/Panels/properties_panel.h
     Editor/Panels/properties_panel.cpp
@@ -110,9 +112,6 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
 )
 
 set(NEXAUR_ENGINE_RENDERER_FILES
-    Function/Renderer/camera.h
-    Function/Renderer/editor_camera.h
-    Function/Renderer/editor_camera.cpp
     Function/Renderer/renderer_module.h
     Function/Renderer/renderer_module.cpp
     Function/Renderer/data/render_context.h

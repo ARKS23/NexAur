@@ -7,7 +7,7 @@
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
-#include "Function/Renderer/editor_camera.h"
+#include "Editor/Camera/editor_camera.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/UI/ui_system.h"
 

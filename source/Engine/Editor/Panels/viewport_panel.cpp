@@ -4,7 +4,7 @@
 #include "Editor/editor_services.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/renderer_service.h"
-#include "Function/Renderer/editor_camera.h"
+#include "Editor/Camera/editor_camera.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_v2.h"
 

@@ -293,7 +293,7 @@ source/Engine/Function/Renderer/renderer_service_types.h
 
 ### 5.3 Camera 所有权再确认
 
-当前：
+PR-R13 前：
 
 ```text
 source/Engine/Function/Renderer/camera.h
@@ -301,12 +301,19 @@ source/Engine/Function/Renderer/editor_camera.h
 source/Engine/Function/Renderer/editor_camera.cpp
 ```
 
-建议：
+PR-R13 后：
 
-- `camera.h` 如果是通用 scene camera，可移动到 `Scene/Camera` 或 `Function/Camera`。
-- `editor_camera.*` 如果只服务 Editor viewport，可移动到 `Editor/Camera` 或 `Editor/Viewport`。
+```text
+source/Engine/Editor/Camera/editor_camera.h
+source/Engine/Editor/Camera/editor_camera.cpp
+```
 
-短期可以先不移动 Camera，避免目录收口 PR 过大；但文档中需要标记为后续清理项。
+处理结果：
+
+- 旧 `Function/Renderer/camera.h` 空基类已删除，不再保留没有行为的跨模块抽象。
+- `EditorCamera` 已移动到 Editor 侧，作为编辑器 SceneView 的观察相机。
+- `CameraComponent` 继续属于 Scene / Runtime，后续 GameView / Play Mode 从 active `CameraComponent` 提取相机数据。
+- Renderer 目录只保留 `RenderDataPacket`、`RenderView` 这类渲染输入，不持有 camera controller 或输入行为。
 
 ### 5.4 Camera 归属建议补充
 

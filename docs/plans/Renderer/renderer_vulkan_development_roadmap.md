@@ -12,6 +12,7 @@
 - `ark_renderer_integration_plan.md`：总体架构和 externalRenderer 参考边界。
 - `renderer_interface_redesign_plan.md`：渲染模块对外接口设计。
 - `renderer_dependency_cmake_plan.md`：vcpkg 包管理和 CMake 构建方案。
+- `renderer_post_vulkan_integration_plan.md`：Vulkan 后端接入完成后的 Renderer 后续任务。
 
 本文档不重复展开所有设计细节，而是回答：
 
@@ -59,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：D12.1 Renderer 模块目录和命名收口进行中
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan
+当前阶段：Post Vulkan PR-R13 Camera 所有权收口已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -87,6 +88,7 @@ externalRenderer：仅作为临时本地参考目录
 - D12.1-B：完成迁移期源码目录收口为 `Renderer/Vulkan`。
 - D12.1-C：完成 Renderer data / frontend / Vulkan frontend 边界收口。
 - D12.1-D：完成 `WindowSystem` 源码目录从 Renderer 移动到 Platform。
+- PR-R13：完成 `EditorCamera` 所有权收口，Renderer 不再保存 editor camera 行为类。
 
 已确认：
 
@@ -1818,8 +1820,8 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-继续 D12.1：Renderer 模块目录和职责边界收口
-或进入后续：补全材质、纹理、灯光、场景模块，准备小游戏 demo
+进入后续 PR-R14：SceneView / GameView 语义拆分
+或推进材质、纹理、灯光等小游戏 demo 必需渲染能力
 ```
 
 D12 / D12.1 已确认状态：
@@ -1845,8 +1847,17 @@ D12 / D12.1 已确认状态：
 - D12.1 已完成 PR-R12.1-B：`RendererV2` 源码目录收口为 `Renderer/Vulkan`。
 - D12.1 已完成 PR-R12.1-C：`Renderer/data`、`Renderer/frontend`、`Renderer/Vulkan/frontend` 职责边界收口。
 - D12.1 已完成 PR-R12.1-D：`WindowSystem` 源码目录从 Renderer 移动到 Platform。
+- PR-R13 已完成：`EditorCamera` 移到 `Editor/Camera`，旧 Renderer camera 文件移除。
 
 ## 9. 进度记录
+
+### 2026-06-26
+
+- 新增 `renderer_post_vulkan_integration_plan.md` 作为 Vulkan 后端接入后的 Renderer 后续任务文档。
+- 完成 PR-R13：`EditorCamera` 从 Renderer 目录移动到 `source/Engine/Editor/Camera`。
+- 完成 PR-R13：删除旧 `Function/Renderer/camera.h` 空基类和旧 `Function/Renderer/editor_camera.*`。
+- 完成 PR-R13：`EditorLayer`、`ViewportPanel` 和 `source/Engine/CMakeLists.txt` 已同步新路径。
+- 完成 PR-R13：Renderer 目录只保留渲染输入和后端实现，不再保存 editor camera 行为类。
 
 ### 2026-06-24
 

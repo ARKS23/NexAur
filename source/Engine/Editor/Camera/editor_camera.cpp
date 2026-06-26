@@ -127,18 +127,6 @@ namespace NexAur {
         return 30.0f;
     }
 
-    void EditorCamera::onMousePan(const glm::vec2& delta) {
-        (void)delta;
-    }
-
-    glm::vec3 EditorCamera::calculatePosition() const {
-        return m_position;
-    }
-
-    std::pair<float, float> EditorCamera::panSpeed() const {
-        return { 0.0f, 0.0f };
-    }
-
     glm::quat EditorCamera::getOrientation() const {
         return glm::quat(glm::vec3(glm::radians(-m_pitch), glm::radians(-m_yaw), 0.0f));
     }

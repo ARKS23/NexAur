@@ -3,7 +3,6 @@
 
 #include "glm/glm.hpp"
 
-#include "camera.h"
 #include "Core/Time/TimeStep.h"
 #include "Core/Events/event.h"
 #include "Core/Events/mouse_event.h"
@@ -12,7 +11,8 @@
 namespace NexAur {
     class InputService;
 
-    class EditorCamera : public Camera {
+    // 编辑器 SceneView 的观察相机。Runtime camera 归 Scene/Runtime，Renderer 只消费提取后的相机数据。
+    class EditorCamera {
     public:
         EditorCamera() = default;
         EditorCamera(float fov, float aspectRatio, float nearClip, float farClip);
@@ -29,7 +29,11 @@ namespace NexAur {
         glm::vec3 getUpDirection() const;
         glm::vec3 getRightDirection() const;
         glm::vec3 getForwardDirection() const;
-        //const glm::vec3& getPosition() const { return m_position; }
+
+        const glm::mat4& getProjection() const { return m_projection; }
+        const glm::mat4& getView() const { return m_view; }
+        const glm::mat4& getViewProjection() const { return m_view_projection; }
+        const glm::vec3& getPosition() const { return m_position; }
 
         float getPitch() const { return m_pitch; }
         float getYaw() const { return m_yaw; }
@@ -44,11 +48,8 @@ namespace NexAur {
         bool onWindowResize(WindowResizeEvent& event);
         bool onMouseScroll(MouseScrolledEvent& event);
         void onMouseRotate(const glm::vec2& delta);
-        void onMousePan(const glm::vec2& delta);
         void onMouseZoom(float delta);
 
-        glm::vec3 calculatePosition() const;
-        std::pair<float, float> panSpeed() const;
         float zoomSpeed() const;
         float rotationSpeed() const;
 
@@ -58,7 +59,11 @@ namespace NexAur {
         float m_near_clip = 0.1f;
         float m_far_clip = 1000.0f;
 
-        //glm::vec3 m_position = { 0.0f, 0.0f, 0.0f };
+        glm::mat4 m_projection = glm::mat4(1.0f);
+        glm::mat4 m_view = glm::mat4(1.0f);
+        glm::mat4 m_view_projection = glm::mat4(1.0f);
+        glm::vec3 m_position = { 0.0f, 0.0f, 0.0f };
+
         glm::vec2 m_init_mouse_position = { 0.0f, 0.0f };
         std::weak_ptr<InputService> m_input_service;
 
