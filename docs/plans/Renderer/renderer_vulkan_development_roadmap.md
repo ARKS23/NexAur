@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R16 Material asset 和 VulkanMaterialResource 已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立
+当前阶段：Post Vulkan PR-R17 ShaderLibrary 和 PipelineCache 已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -91,6 +91,8 @@ externalRenderer：仅作为临时本地参考目录
 - PR-R13：完成 `EditorCamera` 所有权收口，Renderer 不再保存 editor camera 行为类。
 - PR-R14：完成 SceneView / GameView 语义拆分，GameView 使用场景 active `CameraComponent`。
 - PR-R15：完成 TextureAsset、CPU texture cache、VulkanTextureResource 和 texture resource cache。
+- PR-R16：完成 MaterialAsset、VulkanMaterialResource、base color texture 采样和 fallback material 链路。
+- PR-R17：完成 VulkanShaderLibrary、VulkanPipelineCache、ForwardPass / ObjectIdPass pipeline 创建收口和 HLSL 编译 helper。
 
 已确认：
 
@@ -1822,9 +1824,23 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R17：ShaderLibrary 和 PipelineCache
+进入 PR-R18：DescriptorAllocator / DescriptorLayoutCache
 或为了更快进入小游戏 demo，先推进 PR-R20：Lighting baseline
 ```
+
+PR-R17 已完成拆分：
+
+```text
+PR-R17-A VulkanShaderLibrary 骨架和 shader module cache
+PR-R17-B 迁移 ForwardPass / ObjectIdPass 的 shader module 创建
+PR-R17-C VulkanPipelineCache 和 VulkanGraphicsPipelineDesc
+PR-R17-D 迁移 ForwardPass pipeline 创建
+PR-R17-E 迁移 ObjectIdPass pipeline 创建
+PR-R17-F CMake HLSL 编译 helper
+PR-R17-G 验收、文档和 Sandbox smoke
+```
+
+PR-R17 第一版已完成 shader load / shader module / pipeline creation 收口。当前仍不引入 runtime shader 编译、shader reflection、hot reload、RenderGraph 或完整 pipeline variant 系统；这些能力保持为后续专项工作。
 
 PR-R16 已完成拆分：
 
@@ -1866,6 +1882,7 @@ D12 / D12.1 已确认状态：
 - PR-R14 已完成：Viewport 显式支持 SceneView / GameView，Scene runtime camera 通过 active `CameraComponent` 输出。
 - PR-R15 已完成：Resource 可加载 CPU texture，Vulkan backend 可创建 texture image / view / sampler，并提供 fallback white texture。
 - PR-R16 已完成：Resource 可表达 `MaterialAsset`，Vulkan backend 可创建 material constants / descriptor set，Forward shader 可采样 base color texture。
+- PR-R17 已完成：Vulkan backend 内部新增 `VulkanShaderLibrary` / `VulkanPipelineCache`，Forward / ObjectId pass 不再直接创建 shader module 和 graphics pipeline。
 
 ## 9. 进度记录
 
@@ -1889,6 +1906,14 @@ D12 / D12.1 已确认状态：
 - 完成 PR-R16：`VulkanMaterialResource` 创建材质常量 buffer 和 material descriptor set。
 - 完成 PR-R16：`VulkanRenderResourceCache` 负责 material descriptor layout / pool 和 fallback material。
 - 完成 PR-R16：`VulkanForwardPass` 使用 set 1 绑定材质，`vulkan_forward.hlsl` 采样 base color texture。
+- 完成 PR-R17：新增 `VulkanShaderLibrary`，统一运行时 SPIR-V 读取和 `VkShaderModule` 缓存。
+- 完成 PR-R17：新增 `VulkanPipelineCache` 和 `VulkanGraphicsPipelineDesc`，集中创建 / 复用 graphics pipeline 与 pipeline layout。
+- 完成 PR-R17：`VulkanRendererSystem::Backend` 持有 shader library / pipeline cache，并收口初始化与关闭顺序。
+- 完成 PR-R17：`VulkanForwardPass` / `VulkanObjectIdPass` 迁移到 pipeline cache，pass 内不再重复 shader path、shader module 和 pipeline 创建样板。
+- 完成 PR-R17：`source/Engine/CMakeLists.txt` 增加 `nexaur_add_vulkan_hlsl_compile()` helper，HLSL -> SPIR-V 编译登记更集中。
+- 验证 PR-R17：`cmake --preset msvc-vcpkg` 通过。
+- 验证 PR-R17：`cmake --build build/msvc-vcpkg --config Debug --target Sandbox --` 通过。
+- 验证 PR-R17：`bin/msvc-vcpkg/Debug/Sandbox.exe` 5 秒 smoke check 通过。
 
 ### 2026-06-24
 

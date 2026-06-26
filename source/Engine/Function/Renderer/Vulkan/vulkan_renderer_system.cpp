@@ -9,6 +9,8 @@
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
+#include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
+#include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_picking_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_viewport_target.h"
 #include "Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h"
@@ -138,6 +140,8 @@ namespace NexAur {
             if (!createInstance(service.getRequiredVulkanInstanceExtensions()) ||
                 !createSurface() ||
                 !createDevice() ||
+                !shader_library.init(device.device) ||
+                !pipeline_cache.init(device.device, shader_library) ||
                 !resource_cache.init(createResourceContext()) ||
                 !createSwapchain() ||
                 !createCommandResources() ||
@@ -160,6 +164,7 @@ namespace NexAur {
             object_id_context.device = device.device;
             object_id_context.object_id_format = picking_target.getObjectIdFormat();
             object_id_context.depth_format = picking_target.getDepthFormat();
+            object_id_context.pipeline_cache = &pipeline_cache;
             if (!object_id_pass.init(object_id_context)) {
                 shutdown();
                 return false;
@@ -187,6 +192,8 @@ namespace NexAur {
             picking_target.shutdown();
             viewport_target.shutdown();
             forward_pass.shutdown();
+            pipeline_cache.shutdown();
+            shader_library.shutdown();
             resource_cache.shutdown();
             cleanupSyncObjects();
             cleanupCommandResources();
@@ -592,6 +599,7 @@ namespace NexAur {
             pass_context.extent = swapchain.extent;
             pass_context.color_images = swapchain_images;
             pass_context.material_descriptor_set_layout = resource_cache.getMaterialDescriptorSetLayout();
+            pass_context.pipeline_cache = &pipeline_cache;
             const bool recreated_forward_pass = forward_pass.recreateSwapchainResources(pass_context);
             if (recreated_forward_pass && imgui_renderer.isInitialized()) {
                 imgui_renderer.onSwapchainRecreated(std::max(2u, swapchain.image_count));
@@ -1146,6 +1154,8 @@ namespace NexAur {
         VkSemaphore render_finished = VK_NULL_HANDLE;
         VkFence in_flight = VK_NULL_HANDLE;
 
+        VulkanShaderLibrary shader_library;
+        VulkanPipelineCache pipeline_cache;
         VulkanRenderResourceCache resource_cache;
         VulkanRenderDataTranslator translator;
         RenderSceneFrameBuilder scene_frame_builder;

@@ -213,7 +213,9 @@ GameView
 - Vulkan backend 能创建 `VulkanTextureResource`。
 - 为 PR-R16 的 base color texture 采样准备稳定 CPU / GPU 资源链路。
 
-当前状态：
+执行状态：已完成。
+
+改造前状态：
 
 - `AssetManager` 已有 `importTextureAsset()` / `loadTextureAsset()`，但当前只登记路径和 `AssetHandle`。
 - Resource 层还没有 `TextureAsset` / CPU image 数据对象。
@@ -454,6 +456,16 @@ Renderer/Vulkan/resources/
 
 - 不让 pass 直接散落 shader path 和 pipeline creation 细节。
 - 建立 Vulkan backend 内部 shader / pipeline 管理入口。
+- Forward / ObjectId pass 只负责 render command 记录，不再直接读 `.spv` 或创建 shader module。
+- 为 PR-R20 lighting、PR-R21 skybox、PR-R22 shadow 的 pipeline 扩展打基础。
+
+执行状态：已完成。
+
+改造前状态：
+
+- `VulkanForwardPass` / `VulkanObjectIdPass` 各自重复实现 shader 路径拼接、SPIR-V 读取和 `VkShaderModule` 创建。
+- pipeline create info 直接散落在 pass 中，后续新增 lighting / shadow / skybox 时会继续膨胀。
+- CMake HLSL 编译命令仍直接硬编码在 `source/Engine/CMakeLists.txt` 中。
 
 建议结构：
 
@@ -462,17 +474,88 @@ Renderer/Vulkan/shaders/
   vulkan_shader_library.h
   vulkan_shader_library.cpp
 
-Renderer/Vulkan/pipelines/
+Renderer/Vulkan/pipeline/
+  vulkan_pipeline_types.h
   vulkan_pipeline_cache.h
   vulkan_pipeline_cache.cpp
 ```
+
+建议拆分：
+
+1. `VulkanShaderLibrary`。
+   - 统一运行时 shader 根目录，例如 `bin/.../shaders/Renderer/Vulkan`。
+   - 用稳定 `ShaderProgramId` 或 shader 名称管理 shader。
+   - 读取已编译 SPIR-V。
+   - 创建并缓存 `VkShaderModule`。
+   - pass 不再保存 `readBinaryFile()` / `shaderPath()` / `createShaderModule()`。
+
+2. `VulkanPipelineCache`。
+   - 包装 Vulkan 原生 `VkPipelineCache`。
+   - 用 `VulkanGraphicsPipelineDesc` 描述 pipeline。
+   - 第一版至少纳入 shader program、color/depth format、descriptor set layouts、push constants、vertex layout、rasterization/depth/blend/dynamic state。
+   - `ForwardPass` 和 `ObjectIdPass` 通过 desc 获取 pipeline / pipeline layout。
+
+3. 迁移 `VulkanForwardPass`。
+   - 保留 render target / depth resource / draw command 记录。
+   - 移除 shader module 创建和大部分 pipeline create boilerplate。
+   - 保持 set 0 预留 frame/view，set 1 绑定 material。
+
+4. 迁移 `VulkanObjectIdPass`。
+   - 使用同一个 shader library / pipeline cache。
+   - 保持 picking pass 的 object id push constants 和 target format 语义。
+
+5. CMake HLSL 编译 helper。
+   - 可新增轻量 helper，减少后续 shader 编译命令复制。
+   - 仍然使用 HLSL -> DXC -> SPIR-V。
+
+生命周期：
+
+```text
+shader_library init
+pipeline_cache init
+resource_cache init
+passes init/recreate
+
+shutdown:
+passes shutdown
+pipeline_cache shutdown
+shader_library shutdown
+resource_cache shutdown
+```
+
+完成记录：
+
+- 新增 `Renderer/Vulkan/shaders/VulkanShaderLibrary`，统一管理运行时 `bin/.../shaders/Renderer/Vulkan` 下的 SPIR-V 读取和 `VkShaderModule` 缓存。
+- 新增 `Renderer/Vulkan/pipeline/VulkanPipelineCache`，封装原生 `VkPipelineCache`，并通过 `VulkanGraphicsPipelineDesc` 创建 / 复用 graphics pipeline 与 pipeline layout。
+- `VulkanRendererSystem::Backend` 现在持有 shader library 和 pipeline cache，生命周期收口在 Vulkan backend 内部。
+- `VulkanForwardPass` 通过 pipeline desc 获取 forward opaque pipeline，不再自己创建 shader module / pipeline layout / graphics pipeline。
+- `VulkanObjectIdPass` 已迁移到同一套 shader library / pipeline cache，不再重复 shader path、SPIR-V 读取和 pipeline 创建样板。
+- `source/Engine/CMakeLists.txt` 增加 `nexaur_add_vulkan_hlsl_compile()` helper，后续新增 HLSL shader 只需要登记 source / profile / entry / output。
 
 第一版只需要：
 
 - 读取已编译 SPIR-V。
 - 管理 shader module 生命周期。
 - 管理 forward / object id pipeline。
-- pipeline rebuild 时释放旧资源。
+- pipeline 由 cache 统一持有，按 desc 复用，并在 cache shutdown 时集中释放。
+
+暂时不做：
+
+- runtime HLSL 编译。
+- shader hot reload。
+- shader reflection 自动生成 descriptor layout。
+- pipeline cache 磁盘序列化。
+- bindless pipeline variant。
+- 多线程 pipeline compilation。
+- RenderGraph 迁移。
+
+验收：
+
+- `VulkanForwardPass` / `VulkanObjectIdPass` 中不再出现重复的 `readBinaryFile()` / `shaderPath()` / `createShaderModule()`。
+- Forward pass 仍能显示 base color texture。
+- ObjectId picking 仍可用。
+- 新增 shader 只需要在 shader library / CMake helper 中登记，不需要复制 pass 内读取逻辑。
+- 构建和 Sandbox smoke 通过。
 
 ### PR-R18：DescriptorAllocator / DescriptorLayoutCache
 

@@ -9,6 +9,7 @@
 
 namespace NexAur {
     struct VulkanDrawList;
+    class VulkanPipelineCache;
 
     struct VulkanForwardPassSwapchainContext {
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
@@ -17,6 +18,7 @@ namespace NexAur {
         VkExtent2D extent{};
         std::vector<VkImage> color_images;
         VkDescriptorSetLayout material_descriptor_set_layout = VK_NULL_HANDLE;
+        VulkanPipelineCache* pipeline_cache = nullptr;
 
         bool valid() const {
             return physical_device != VK_NULL_HANDLE &&
@@ -25,7 +27,8 @@ namespace NexAur {
                    extent.width > 0 &&
                    extent.height > 0 &&
                    !color_images.empty() &&
-                   material_descriptor_set_layout != VK_NULL_HANDLE;
+                   material_descriptor_set_layout != VK_NULL_HANDLE &&
+                   pipeline_cache != nullptr;
         }
     };
 
@@ -64,7 +67,7 @@ namespace NexAur {
         VkImageView m_depth_image_view = VK_NULL_HANDLE;
         VkImageLayout m_depth_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
-        VkDescriptorSetLayout m_empty_frame_descriptor_set_layout = VK_NULL_HANDLE;
+        VulkanPipelineCache* m_pipeline_cache = nullptr;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;
     };

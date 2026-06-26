@@ -154,6 +154,11 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.cpp
+    Function/Renderer/Vulkan/pipeline/vulkan_pipeline_types.h
+    Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h
+    Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.cpp
+    Function/Renderer/Vulkan/shaders/vulkan_shader_library.h
+    Function/Renderer/Vulkan/shaders/vulkan_shader_library.cpp
     Function/Renderer/Vulkan/vulkan_render_target.h
     Function/Renderer/Vulkan/vulkan_resource_context.h
     Function/Renderer/Vulkan/resources/vulkan_material_resource.h
@@ -266,20 +271,27 @@ target_link_libraries(NexAurEngine PRIVATE
 
 set(NEXAUR_VULKAN_SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan")
 set(NEXAUR_VULKAN_SHADER_OUTPUT_DIR "$<TARGET_FILE_DIR:NexAurEngine>/shaders/Renderer/Vulkan")
+
+function(nexaur_add_vulkan_hlsl_compile output_var source_file target_profile entry_point output_file)
+    list(APPEND ${output_var}
+        COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021
+                -T ${target_profile}
+                -E ${entry_point}
+                -Fo "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/${output_file}"
+                "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/${source_file}"
+    )
+    set(${output_var} "${${output_var}}" PARENT_SCOPE)
+endfunction()
+
+set(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_forward.hlsl vs_6_0 VSMain vulkan_forward.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_forward.hlsl ps_6_0 PSMain vulkan_forward.frag.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_object_id.hlsl vs_6_0 VSMain vulkan_object_id.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_object_id.hlsl ps_6_0 PSMain vulkan_object_id.frag.spv)
+
 add_custom_command(TARGET NexAurEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}"
-    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
-            -Fo "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/vulkan_forward.vert.spv"
-            "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
-    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
-            -Fo "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/vulkan_forward.frag.spv"
-            "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/vulkan_forward.hlsl"
-    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T vs_6_0 -E VSMain
-            -Fo "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/vulkan_object_id.vert.spv"
-            "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
-    COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021 -T ps_6_0 -E PSMain
-            -Fo "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/vulkan_object_id.frag.spv"
-            "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/vulkan_object_id.hlsl"
+    ${NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS}
     COMMENT "Compiling Vulkan renderer HLSL shaders"
     VERBATIM
 )

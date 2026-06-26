@@ -7,16 +7,19 @@
 
 namespace NexAur {
     struct VulkanDrawList;
+    class VulkanPipelineCache;
 
     struct VulkanObjectIdPassContext {
         VkDevice device = VK_NULL_HANDLE;
         VkFormat object_id_format = VK_FORMAT_UNDEFINED;
         VkFormat depth_format = VK_FORMAT_UNDEFINED;
+        VulkanPipelineCache* pipeline_cache = nullptr;
 
         bool valid() const {
             return device != VK_NULL_HANDLE &&
                    object_id_format != VK_FORMAT_UNDEFINED &&
-                   depth_format != VK_FORMAT_UNDEFINED;
+                   depth_format != VK_FORMAT_UNDEFINED &&
+                   pipeline_cache != nullptr;
         }
     };
 
@@ -41,6 +44,7 @@ namespace NexAur {
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_object_id_format = VK_FORMAT_UNDEFINED;
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
+        VulkanPipelineCache* m_pipeline_cache = nullptr;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;
     };
