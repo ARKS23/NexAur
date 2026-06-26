@@ -60,8 +60,8 @@
 
 ```text
 当前分支：vulkanRenderer
-当前阶段：Post Vulkan PR-R17 ShaderLibrary 和 PipelineCache 已完成
-代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache
+当前阶段：Post Vulkan PR-R18 DescriptorAllocator 和 DescriptorLayoutCache 已完成
+代码状态：默认构建已切换为 vcpkg + Vulkan 主路径；RendererModule 只创建 VulkanRendererSystem；RenderDataPacket / RendererService / ViewportOutput 已去除 OpenGL-only 语义；旧 OpenGL RHI / pass / resource / platform implementation 已从主线删除；迁移期源码目录已收口为 Renderer/Vulkan；EditorCamera 已归入 Editor/Camera；SceneView / GameView 已显式区分；TextureAsset / MaterialAsset 到 VulkanTextureResource / VulkanMaterialResource 的最小链路已建立；shader module 与 graphics pipeline 创建已收口到 Vulkan backend 内部的 ShaderLibrary / PipelineCache；descriptor layout / pool / set update 已收口到 Vulkan descriptor services
 OpenGL 后端：已退役，不再作为默认构建或 fallback 参与主线
 externalRenderer：仅作为临时本地参考目录
 ```
@@ -93,6 +93,7 @@ externalRenderer：仅作为临时本地参考目录
 - PR-R15：完成 TextureAsset、CPU texture cache、VulkanTextureResource 和 texture resource cache。
 - PR-R16：完成 MaterialAsset、VulkanMaterialResource、base color texture 采样和 fallback material 链路。
 - PR-R17：完成 VulkanShaderLibrary、VulkanPipelineCache、ForwardPass / ObjectIdPass pipeline 创建收口和 HLSL 编译 helper。
+- PR-R18：完成 VulkanDescriptorLayoutCache、VulkanDescriptorAllocator、VulkanDescriptorWriter 和 material descriptor 迁移。
 
 已确认：
 
@@ -1824,9 +1825,22 @@ ImVec2(1.0f, 1.0f)
 推荐下一步：
 
 ```text
-进入 PR-R18：DescriptorAllocator / DescriptorLayoutCache
+进入 PR-R19：Vulkan-only PassGraph 骨架
 或为了更快进入小游戏 demo，先推进 PR-R20：Lighting baseline
 ```
+
+PR-R18 已完成拆分：
+
+```text
+PR-R18-A Descriptor types / layout desc
+PR-R18-B VulkanDescriptorLayoutCache
+PR-R18-C VulkanDescriptorAllocator
+PR-R18-D VulkanDescriptorWriter
+PR-R18-E 迁移 material descriptor layout / pool / set update
+PR-R18-F 验收、文档和 Sandbox smoke
+```
+
+PR-R18 已把 descriptor pool / layout / set allocation 从 `VulkanRenderResourceCache`、`VulkanMaterialResource` 和 pass 里收口到 Vulkan backend 内部 descriptor services。第一版完成 material descriptor 迁移；`FrameGlobal` descriptor 先作为空 builtin layout 保留结构和命名，不强制把 camera / light 数据迁移出 push constants。ImGui viewport texture descriptor 继续由 Vulkan UI bridge 管理。
 
 PR-R17 已完成拆分：
 
@@ -1883,6 +1897,7 @@ D12 / D12.1 已确认状态：
 - PR-R15 已完成：Resource 可加载 CPU texture，Vulkan backend 可创建 texture image / view / sampler，并提供 fallback white texture。
 - PR-R16 已完成：Resource 可表达 `MaterialAsset`，Vulkan backend 可创建 material constants / descriptor set，Forward shader 可采样 base color texture。
 - PR-R17 已完成：Vulkan backend 内部新增 `VulkanShaderLibrary` / `VulkanPipelineCache`，Forward / ObjectId pass 不再直接创建 shader module 和 graphics pipeline。
+- PR-R18 已完成：Vulkan backend 内部新增 descriptor layout cache / allocator / writer，material descriptor layout / pool / set update 已从 resource cache 和 material resource 中收口。
 
 ## 9. 进度记录
 
@@ -1914,6 +1929,17 @@ D12 / D12.1 已确认状态：
 - 验证 PR-R17：`cmake --preset msvc-vcpkg` 通过。
 - 验证 PR-R17：`cmake --build build/msvc-vcpkg --config Debug --target Sandbox --` 通过。
 - 验证 PR-R17：`bin/msvc-vcpkg/Debug/Sandbox.exe` 5 秒 smoke check 通过。
+- 完成 PR-R18：新增 `Renderer/Vulkan/descriptors/`，包含 descriptor types、layout cache、allocator 和 writer。
+- 完成 PR-R18：`VulkanDescriptorLayoutCache` 负责 material descriptor layout 创建 / 复用。
+- 完成 PR-R18：`VulkanDescriptorAllocator` 负责 persistent descriptor pool 管理，并支持 pool exhausted 扩容。
+- 完成 PR-R18：`VulkanDescriptorWriter` 收口 descriptor set update。
+- 完成 PR-R18：`VulkanRenderResourceCache` 不再创建 material descriptor layout / pool。
+- 完成 PR-R18：`VulkanMaterialResource` 改用 descriptor allocator / writer 分配和更新 material descriptor set。
+- 完成 PR-R18：`VulkanPipelineCache` 不再创建 empty descriptor set layout，set 0 的空 `FrameGlobal` layout 改由 descriptor layout cache 提供。
+- 完成 PR-R18：`VulkanRendererSystem::Backend` 持有 descriptor layout cache / allocator，并同步初始化和关闭顺序。
+- 验证 PR-R18：`cmake --preset msvc-vcpkg` 通过。
+- 验证 PR-R18：`cmake --build build/msvc-vcpkg --config Debug --target Sandbox --` 通过。
+- 验证 PR-R18：`bin/msvc-vcpkg/Debug/Sandbox.exe` 5 秒 smoke check 通过。
 
 ### 2026-06-24
 

@@ -7,21 +7,23 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
     class MaterialAsset;
+    class VulkanDescriptorAllocator;
     class VulkanTextureResource;
 
     struct VulkanMaterialResourceCreateContext {
         VulkanResourceUploadContext upload_context;
+        VulkanDescriptorAllocator* descriptor_allocator = nullptr;
         VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
-        VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
 
         bool valid() const {
             return upload_context.valid() &&
-                   descriptor_set_layout != VK_NULL_HANDLE &&
-                   descriptor_pool != VK_NULL_HANDLE;
+                   descriptor_allocator != nullptr &&
+                   descriptor_set_layout != VK_NULL_HANDLE;
         }
     };
 
@@ -57,7 +59,8 @@ namespace NexAur {
         std::string m_debug_name;
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
-        VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
+        VulkanDescriptorAllocator* m_descriptor_allocator = nullptr;
+        VulkanDescriptorSetAllocation m_descriptor_allocation;
         VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
         VkBuffer m_material_buffer = VK_NULL_HANDLE;
         VmaAllocation m_material_allocation = VK_NULL_HANDLE;

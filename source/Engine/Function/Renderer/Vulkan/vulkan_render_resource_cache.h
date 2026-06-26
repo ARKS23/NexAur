@@ -15,6 +15,8 @@
 namespace NexAur {
     class AssetManager;
     class MaterialAsset;
+    class VulkanDescriptorAllocator;
+    class VulkanDescriptorLayoutCache;
 
     class NEXAUR_API VulkanRenderResourceCache {
     public:
@@ -24,7 +26,10 @@ namespace NexAur {
         VulkanRenderResourceCache(const VulkanRenderResourceCache&) = delete;
         VulkanRenderResourceCache& operator=(const VulkanRenderResourceCache&) = delete;
 
-        bool init(const VulkanResourceContext& context);
+        bool init(
+            const VulkanResourceContext& context,
+            VulkanDescriptorLayoutCache& descriptor_layout_cache,
+            VulkanDescriptorAllocator& descriptor_allocator);
         // Caller must make sure cached GPU resources are no longer referenced by in-flight commands.
         void clear();
         void shutdown();
@@ -35,7 +40,6 @@ namespace NexAur {
         VulkanTextureResource* getTexture(AssetHandle texture_asset) const;
         VulkanTextureResource* getFallbackWhiteTexture() const { return m_fallback_white_texture.get(); }
         VulkanMaterialResource* getFallbackMaterial() const { return m_fallback_material.get(); }
-        VkDescriptorSetLayout getMaterialDescriptorSetLayout() const { return m_material_descriptor_set_layout; }
 
         bool createMaterialResource(
             VulkanMaterialResource& material_resource,
@@ -47,11 +51,9 @@ namespace NexAur {
     private:
         bool createAllocator(const VulkanResourceContext& context);
         bool createUploadCommandPool(const VulkanResourceContext& context);
-        bool createMaterialDescriptorLayout();
-        bool createMaterialDescriptorPool();
+        bool resolveDescriptorLayouts();
         bool createFallbackTexture();
         bool createFallbackMaterial();
-        void destroyMaterialDescriptorObjects();
         VulkanResourceUploadContext createUploadContext() const;
         VulkanMaterialResourceCreateContext createMaterialContext() const;
 
@@ -60,8 +62,9 @@ namespace NexAur {
         VkDevice m_device = VK_NULL_HANDLE;
         VkQueue m_graphics_queue = VK_NULL_HANDLE;
         VkCommandPool m_upload_command_pool = VK_NULL_HANDLE;
+        VulkanDescriptorLayoutCache* m_descriptor_layout_cache = nullptr;
+        VulkanDescriptorAllocator* m_descriptor_allocator = nullptr;
         VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
-        VkDescriptorPool m_material_descriptor_pool = VK_NULL_HANDLE;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanModelResource>> m_model_cache;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanTextureResource>> m_texture_cache;
         std::unique_ptr<VulkanTextureResource> m_fallback_white_texture;

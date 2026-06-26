@@ -145,6 +145,13 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/data/render_view.h
     Function/Renderer/frontend/render_scene_frame_builder.h
     Function/Renderer/frontend/render_scene_frame_builder.cpp
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.cpp
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.cpp
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_writer.h
+    Function/Renderer/Vulkan/descriptors/vulkan_descriptor_writer.cpp
     Function/Renderer/Vulkan/frontend/vulkan_draw_list.h
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.h
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.cpp

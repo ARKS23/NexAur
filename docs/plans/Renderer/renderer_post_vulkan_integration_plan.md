@@ -561,14 +561,171 @@ resource_cache shutdown
 
 目标：
 
-- 把 descriptor pool / layout / set 分配从 pass 中收口。
-- 为材质、纹理、camera uniform、light uniform 做准备。
+- 把 descriptor pool / layout / set 分配从资源缓存、材质资源和 pass 中收口。
+- 建立 Vulkan backend 内部统一 descriptor 管理入口。
+- 为材质、纹理、camera uniform、light uniform、shadow map、skybox / environment 等后续资源绑定做准备。
+- 让 pass 只声明自己需要的 descriptor set layout，不直接管理 descriptor pool。
+
+执行状态：已完成。
+
+当前问题：
+
+- `VulkanRenderResourceCache` 当前直接创建 material descriptor layout / pool。
+- `VulkanMaterialResource` 当前直接依赖 material descriptor layout / pool，并手写 descriptor set update。
+- `VulkanForwardPass` 需要拿 material descriptor layout 去创建 pipeline layout。
+- 后续 lighting / skybox / shadow / debug draw 如果继续各自创建 descriptor pool 和 layout，会迅速产生重复代码和生命周期混乱。
+- descriptor lifetime 还没有区分长期资源和每帧临时资源，后续 frame global / light buffer 接入时容易把资源缓存和帧调度耦合在一起。
+
+建议结构：
+
+```text
+Renderer/Vulkan/descriptors/
+  vulkan_descriptor_types.h
+  vulkan_descriptor_layout_cache.h
+  vulkan_descriptor_layout_cache.cpp
+  vulkan_descriptor_allocator.h
+  vulkan_descriptor_allocator.cpp
+  vulkan_descriptor_writer.h
+  vulkan_descriptor_writer.cpp
+```
+
+核心类：
+
+1. `VulkanDescriptorLayoutCache`。
+   - 根据 descriptor set layout 描述创建 / 复用 `VkDescriptorSetLayout`。
+   - layout desc 中需要记录 binding、descriptor type、descriptor count、shader stages。
+   - binding 应排序后参与 hash / equality，避免同一 layout 因声明顺序不同重复创建。
+   - 第一版可提供 named builtin layout，例如 `Material`；后续再加入 `FrameGlobal`、`Lighting`、`Shadow`、`Environment`。
+
+2. `VulkanDescriptorAllocator`。
+   - 管理一个或多个 `VkDescriptorPool`。
+   - 支持 descriptor set 分配失败时自动扩容新 pool，避免硬编码一个 material pool 后被资源数量打爆。
+   - 第一版至少支持 persistent descriptor，也就是 material / texture / fallback material 这类长期资源。
+   - 后续扩展 per-frame transient descriptor，用于 camera uniform、light uniform、pass uniform 等每帧更新数据。
+
+3. `VulkanDescriptorWriter`。
+   - 封装 `VkWriteDescriptorSet`。
+   - 提供 `writeBuffer()`、`writeImage()`、`update()` 之类的轻量接口。
+   - `VulkanMaterialResource` 只描述 binding 写入意图，不再手写重复 `VkWriteDescriptorSet` 数组。
+
+推荐职责边界：
+
+```text
+VulkanRendererSystem::Backend
+  owns VulkanDescriptorLayoutCache
+  owns VulkanDescriptorAllocator
+  owns VulkanPipelineCache
+  owns VulkanRenderResourceCache
+
+VulkanRenderResourceCache
+  owns GPU resources
+  requests descriptor layout / descriptor set allocation from descriptor services
+
+VulkanMaterialResource
+  owns material constants buffer
+  owns descriptor set handle
+  does not own descriptor pool / descriptor layout
+
+VulkanForwardPass
+  receives descriptor set layouts for pipeline desc
+  does not create descriptor layout / descriptor pool
+```
+
+建议生命周期：
+
+```text
+init:
+shader_library init
+descriptor_layout_cache init
+descriptor_allocator init
+pipeline_cache init
+resource_cache init(descriptor services)
+passes init/recreate
+
+shutdown:
+passes shutdown
+resource_cache shutdown
+pipeline_cache shutdown
+descriptor_allocator shutdown
+descriptor_layout_cache shutdown
+shader_library shutdown
+```
+
+说明：
+- `resource_cache shutdown` 需要早于 `descriptor_allocator shutdown`，因为 material resource 持有 descriptor set handle。
+- `pipeline_cache shutdown` 需要早于 `descriptor_layout_cache shutdown`，因为 pipeline layout 创建时依赖 descriptor set layout。
+- ImGui / viewport texture descriptor 暂时继续由 `VulkanImGuiRenderer` 和 ImGui Vulkan backend 管理，不纳入 PR-R18。
+
+建议拆分：
+
+1. PR-R18-A：新增 descriptor types / layout desc。
+   - 定义 descriptor binding desc。
+   - 定义 descriptor set layout desc。
+   - 实现 hash / equality。
+
+2. PR-R18-B：实现 `VulkanDescriptorLayoutCache`。
+   - 支持 `getOrCreateLayout(desc)`。
+   - 支持 material builtin layout。
+   - shutdown 时统一销毁 layout。
+
+3. PR-R18-C：实现 `VulkanDescriptorAllocator`。
+   - 管理 persistent descriptor pools。
+   - 支持 pool exhausted 时创建新 pool。
+   - shutdown 时统一销毁 pools。
+
+4. PR-R18-D：实现 `VulkanDescriptorWriter`。
+   - 支持 buffer / image / sampler 写入。
+   - 用它替换 `VulkanMaterialResource` 内部手写 descriptor update。
+
+5. PR-R18-E：迁移 material descriptor。
+   - 从 `VulkanRenderResourceCache` 移除 material descriptor layout / pool 所有权。
+   - `VulkanRenderResourceCache` 改为从 descriptor services 获取 material layout 并分配 descriptor set。
+   - `VulkanForwardPass` 使用同一份 material layout 创建 pipeline desc。
+
+6. PR-R18-F：验证和文档。
+   - Forward pass 仍能采样 base color texture。
+   - fallback material / fallback white texture 仍稳定。
+   - Scene / Editor / Resource 不暴露 descriptor 类型。
+   - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- 新增 `Renderer/Vulkan/descriptors/`，包含 descriptor types、layout cache、allocator 和 writer。
+- `VulkanDescriptorLayoutCache` 负责创建 / 缓存 descriptor set layout，并提供 `FrameGlobal` / `Material` builtin layout。
+- `VulkanDescriptorAllocator` 负责 persistent descriptor pool 管理，支持 pool exhausted 时扩容新 pool。
+- `VulkanDescriptorWriter` 负责封装 buffer / image descriptor 写入。
+- `VulkanRenderResourceCache` 不再创建 material descriptor layout / pool，只从 descriptor services 获取 layout 和 allocator。
+- `VulkanMaterialResource` 改为通过 descriptor allocator 分配 descriptor set，并通过 descriptor writer 更新 material constants、base color image 和 sampler。
+- `VulkanRendererSystem::Backend` 持有 descriptor layout cache / allocator，并收口初始化与关闭顺序。
+- `VulkanPipelineCache` 不再创建 empty descriptor set layout；set 0 的空 `FrameGlobal` layout 改由 descriptor layout cache 提供。
+- `VulkanForwardPass` 使用 descriptor layout cache 提供的 `FrameGlobal` / `Material` layouts 创建 pipeline desc。
+- ImGui viewport texture descriptor 仍保持在 `VulkanImGuiRenderer` / ImGui Vulkan backend 内部。
+- 验证通过：`cmake --preset msvc-vcpkg`、`cmake --build build/msvc-vcpkg --config Debug --target Sandbox --`、`Sandbox.exe` 5 秒 smoke check。
 
 第一版只需要支持：
 
-- frame global descriptor。
 - material descriptor。
+- `FrameGlobal` descriptor 保留结构和命名，当前为空 layout，不强制在本 PR 内把 camera / light 数据迁移出 push constants。
 - ImGui / viewport texture descriptor 保持在 Vulkan UI bridge 内。
+
+暂时不做：
+
+- bindless texture。
+- descriptor indexing。
+- shader reflection 自动生成 descriptor layout。
+- material graph。
+- RenderGraph descriptor 自动绑定。
+- 完整 per-frame descriptor ring。
+- 多线程 descriptor allocation。
+
+验收：
+
+- material descriptor layout / pool 不再由 `VulkanRenderResourceCache` 直接创建和销毁。
+- `VulkanMaterialResource` 使用 descriptor allocator / writer 完成 descriptor set 分配和更新。
+- `VulkanForwardPass` 和 `VulkanPipelineCache` 使用 descriptor layout cache 提供的 layout。
+- 新增 descriptor 绑定时不需要在 pass / resource cache 中复制 pool / layout 创建样板。
+- Resource / Scene / Editor 不 include `Renderer/Vulkan/descriptors`。
+- 构建、shader 编译和 Sandbox smoke 通过。
 
 ## 7. 第四优先级：轻量 Vulkan PassGraph
 

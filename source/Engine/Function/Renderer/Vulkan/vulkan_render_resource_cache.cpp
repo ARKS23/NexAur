@@ -11,9 +11,11 @@
 #include "Function/Resource/model.h"
 #include "Function/Resource/texture_asset.h"
 #include "Function/Resource/texture_loader.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
 
-#include <array>
 #include <string>
 
 namespace NexAur {
@@ -32,7 +34,10 @@ namespace NexAur {
         shutdown();
     }
 
-    bool VulkanRenderResourceCache::init(const VulkanResourceContext& context) {
+    bool VulkanRenderResourceCache::init(
+        const VulkanResourceContext& context,
+        VulkanDescriptorLayoutCache& descriptor_layout_cache,
+        VulkanDescriptorAllocator& descriptor_allocator) {
         if (m_initialized) {
             return true;
         }
@@ -43,10 +48,11 @@ namespace NexAur {
 
         m_device = context.device;
         m_graphics_queue = context.graphics_queue;
+        m_descriptor_layout_cache = &descriptor_layout_cache;
+        m_descriptor_allocator = &descriptor_allocator;
         if (!createAllocator(context) ||
             !createUploadCommandPool(context) ||
-            !createMaterialDescriptorLayout() ||
-            !createMaterialDescriptorPool()) {
+            !resolveDescriptorLayouts()) {
             shutdown();
             return false;
         }
@@ -76,7 +82,6 @@ namespace NexAur {
         clear();
         m_fallback_material.reset();
         m_fallback_white_texture.reset();
-        destroyMaterialDescriptorObjects();
         if (m_upload_command_pool != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
             vkDestroyCommandPool(m_device, m_upload_command_pool, nullptr);
             m_upload_command_pool = VK_NULL_HANDLE;
@@ -88,6 +93,9 @@ namespace NexAur {
 
         m_device = VK_NULL_HANDLE;
         m_graphics_queue = VK_NULL_HANDLE;
+        m_descriptor_layout_cache = nullptr;
+        m_descriptor_allocator = nullptr;
+        m_material_descriptor_set_layout = VK_NULL_HANDLE;
         m_initialized = false;
         NX_CORE_INFO("VulkanRenderResourceCache shutdown.");
     }
@@ -242,52 +250,23 @@ namespace NexAur {
             "vkCreateCommandPool(resource upload)");
     }
 
-    bool VulkanRenderResourceCache::createMaterialDescriptorLayout() {
-        std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
-        bindings[0].binding = 0;
-        bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[0].descriptorCount = 1;
-        bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bool VulkanRenderResourceCache::resolveDescriptorLayouts() {
+        if (!m_descriptor_layout_cache || !m_descriptor_layout_cache->isInitialized()) {
+            NX_CORE_ERROR("VulkanRenderResourceCache requires an initialized descriptor layout cache.");
+            return false;
+        }
+        if (!m_descriptor_allocator || !m_descriptor_allocator->isInitialized()) {
+            NX_CORE_ERROR("VulkanRenderResourceCache requires an initialized descriptor allocator.");
+            return false;
+        }
 
-        bindings[1].binding = 1;
-        bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        bindings[1].descriptorCount = 1;
-        bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        m_material_descriptor_set_layout = m_descriptor_layout_cache->getBuiltinLayout(VulkanDescriptorSetLayoutId::Material);
+        if (m_material_descriptor_set_layout == VK_NULL_HANDLE) {
+            NX_CORE_ERROR("Failed to resolve material descriptor set layout.");
+            return false;
+        }
 
-        bindings[2].binding = 2;
-        bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-        bindings[2].descriptorCount = 1;
-        bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        VkDescriptorSetLayoutCreateInfo layout_info{};
-        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-        layout_info.pBindings = bindings.data();
-
-        return checkVk(
-            vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_material_descriptor_set_layout),
-            "vkCreateDescriptorSetLayout(material)");
-    }
-
-    bool VulkanRenderResourceCache::createMaterialDescriptorPool() {
-        std::array<VkDescriptorPoolSize, 3> pool_sizes{};
-        pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        pool_sizes[0].descriptorCount = 1024;
-        pool_sizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        pool_sizes[1].descriptorCount = 1024;
-        pool_sizes[2].type = VK_DESCRIPTOR_TYPE_SAMPLER;
-        pool_sizes[2].descriptorCount = 1024;
-
-        VkDescriptorPoolCreateInfo pool_info{};
-        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets = 1024;
-        pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
-        pool_info.pPoolSizes = pool_sizes.data();
-
-        return checkVk(
-            vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_material_descriptor_pool),
-            "vkCreateDescriptorPool(material)");
+        return true;
     }
 
     bool VulkanRenderResourceCache::createFallbackTexture() {
@@ -328,18 +307,6 @@ namespace NexAur {
         return true;
     }
 
-    void VulkanRenderResourceCache::destroyMaterialDescriptorObjects() {
-        if (m_material_descriptor_pool != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
-            vkDestroyDescriptorPool(m_device, m_material_descriptor_pool, nullptr);
-            m_material_descriptor_pool = VK_NULL_HANDLE;
-        }
-
-        if (m_material_descriptor_set_layout != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
-            vkDestroyDescriptorSetLayout(m_device, m_material_descriptor_set_layout, nullptr);
-            m_material_descriptor_set_layout = VK_NULL_HANDLE;
-        }
-    }
-
     VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() const {
         VulkanResourceUploadContext context;
         context.allocator = m_allocator;
@@ -352,8 +319,8 @@ namespace NexAur {
     VulkanMaterialResourceCreateContext VulkanRenderResourceCache::createMaterialContext() const {
         VulkanMaterialResourceCreateContext context;
         context.upload_context = createUploadContext();
+        context.descriptor_allocator = m_descriptor_allocator;
         context.descriptor_set_layout = m_material_descriptor_set_layout;
-        context.descriptor_pool = m_material_descriptor_pool;
         return context;
     }
 } // namespace NexAur

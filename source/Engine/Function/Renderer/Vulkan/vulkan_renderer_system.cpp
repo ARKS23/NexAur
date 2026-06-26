@@ -5,6 +5,9 @@
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
@@ -141,8 +144,10 @@ namespace NexAur {
                 !createSurface() ||
                 !createDevice() ||
                 !shader_library.init(device.device) ||
+                !descriptor_layout_cache.init(device.device) ||
+                !descriptor_allocator.init(device.device) ||
                 !pipeline_cache.init(device.device, shader_library) ||
-                !resource_cache.init(createResourceContext()) ||
+                !resource_cache.init(createResourceContext(), descriptor_layout_cache, descriptor_allocator) ||
                 !createSwapchain() ||
                 !createCommandResources() ||
                 !createSyncObjects()) {
@@ -192,12 +197,14 @@ namespace NexAur {
             picking_target.shutdown();
             viewport_target.shutdown();
             forward_pass.shutdown();
-            pipeline_cache.shutdown();
-            shader_library.shutdown();
+            cleanupSwapchain();
             resource_cache.shutdown();
+            pipeline_cache.shutdown();
+            descriptor_allocator.shutdown();
+            descriptor_layout_cache.shutdown();
+            shader_library.shutdown();
             cleanupSyncObjects();
             cleanupCommandResources();
-            cleanupSwapchain();
 
             if (device.device != VK_NULL_HANDLE) {
                 vkb::destroy_device(device);
@@ -598,7 +605,8 @@ namespace NexAur {
             pass_context.color_format = swapchain.image_format;
             pass_context.extent = swapchain.extent;
             pass_context.color_images = swapchain_images;
-            pass_context.material_descriptor_set_layout = resource_cache.getMaterialDescriptorSetLayout();
+            pass_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
+            pass_context.material_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Material);
             pass_context.pipeline_cache = &pipeline_cache;
             const bool recreated_forward_pass = forward_pass.recreateSwapchainResources(pass_context);
             if (recreated_forward_pass && imgui_renderer.isInitialized()) {
@@ -1155,6 +1163,8 @@ namespace NexAur {
         VkFence in_flight = VK_NULL_HANDLE;
 
         VulkanShaderLibrary shader_library;
+        VulkanDescriptorLayoutCache descriptor_layout_cache;
+        VulkanDescriptorAllocator descriptor_allocator;
         VulkanPipelineCache pipeline_cache;
         VulkanRenderResourceCache resource_cache;
         VulkanRenderDataTranslator translator;

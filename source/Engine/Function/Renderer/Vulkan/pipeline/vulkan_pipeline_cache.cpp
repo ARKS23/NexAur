@@ -63,7 +63,7 @@ namespace NexAur {
         m_device = device;
         m_shader_library = &shader_library;
 
-        if (!createNativePipelineCache() || !createEmptyDescriptorSetLayout()) {
+        if (!createNativePipelineCache()) {
             shutdown();
             return false;
         }
@@ -81,17 +81,12 @@ namespace NexAur {
                     vkDestroyPipelineLayout(m_device, state.layout, nullptr);
                 }
             }
-
-            if (m_empty_descriptor_set_layout != VK_NULL_HANDLE) {
-                vkDestroyDescriptorSetLayout(m_device, m_empty_descriptor_set_layout, nullptr);
-            }
             if (m_pipeline_cache != VK_NULL_HANDLE) {
                 vkDestroyPipelineCache(m_device, m_pipeline_cache, nullptr);
             }
         }
 
         m_graphics_pipelines.clear();
-        m_empty_descriptor_set_layout = VK_NULL_HANDLE;
         m_pipeline_cache = VK_NULL_HANDLE;
         m_shader_library = nullptr;
         m_device = VK_NULL_HANDLE;
@@ -123,14 +118,6 @@ namespace NexAur {
         return checkVk(
             vkCreatePipelineCache(m_device, &cache_info, nullptr, &m_pipeline_cache),
             "vkCreatePipelineCache");
-    }
-
-    bool VulkanPipelineCache::createEmptyDescriptorSetLayout() {
-        VkDescriptorSetLayoutCreateInfo layout_info{};
-        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        return checkVk(
-            vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_empty_descriptor_set_layout),
-            "vkCreateDescriptorSetLayout(empty)");
     }
 
     VulkanGraphicsPipelineState VulkanPipelineCache::createGraphicsPipeline(const VulkanGraphicsPipelineDesc& desc) {

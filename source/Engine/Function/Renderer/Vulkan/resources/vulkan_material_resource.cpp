@@ -2,9 +2,9 @@
 #include "vulkan_material_resource.h"
 
 #include "Function/Resource/material_asset.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_writer.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_texture_resource.h"
 
-#include <array>
 #include <cstring>
 #include <utility>
 
@@ -62,7 +62,7 @@ namespace NexAur {
 
         m_allocator = context.upload_context.allocator;
         m_device = context.upload_context.device;
-        m_descriptor_pool = context.descriptor_pool;
+        m_descriptor_allocator = context.descriptor_allocator;
         m_debug_name = material_asset.getDebugName();
 
         VulkanMaterialConstants constants;
@@ -109,15 +109,13 @@ namespace NexAur {
         std::memcpy(created_allocation_info.pMappedData, &constants, sizeof(constants));
         vmaFlushAllocation(m_allocator, m_material_allocation, 0, VK_WHOLE_SIZE);
 
-        VkDescriptorSetAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocate_info.descriptorPool = context.descriptor_pool;
-        allocate_info.descriptorSetCount = 1;
-        allocate_info.pSetLayouts = &context.descriptor_set_layout;
-        if (!checkVk(vkAllocateDescriptorSets(m_device, &allocate_info, &m_descriptor_set), "vkAllocateDescriptorSets(material)")) {
+        m_descriptor_allocation = m_descriptor_allocator->allocate(context.descriptor_set_layout);
+        if (!m_descriptor_allocation.valid()) {
+            NX_CORE_ERROR("Failed to allocate Vulkan material descriptor set.");
             reset();
             return false;
         }
+        m_descriptor_set = m_descriptor_allocation.set;
 
         VkDescriptorBufferInfo material_buffer_info{};
         material_buffer_info.buffer = m_material_buffer;
@@ -131,37 +129,17 @@ namespace NexAur {
         VkDescriptorImageInfo sampler_info{};
         sampler_info.sampler = base_color_texture.getSampler();
 
-        std::array<VkWriteDescriptorSet, 3> writes{};
-        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[0].dstSet = m_descriptor_set;
-        writes[0].dstBinding = 0;
-        writes[0].descriptorCount = 1;
-        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        writes[0].pBufferInfo = &material_buffer_info;
-
-        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet = m_descriptor_set;
-        writes[1].dstBinding = 1;
-        writes[1].descriptorCount = 1;
-        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        writes[1].pImageInfo = &image_info;
-
-        writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[2].dstSet = m_descriptor_set;
-        writes[2].dstBinding = 2;
-        writes[2].descriptorCount = 1;
-        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-        writes[2].pImageInfo = &sampler_info;
-
-        vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        VulkanDescriptorWriter()
+            .writeBuffer(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, material_buffer_info)
+            .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, image_info)
+            .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info)
+            .update(m_device, m_descriptor_set);
         return true;
     }
 
     void VulkanMaterialResource::reset() {
-        if (m_device != VK_NULL_HANDLE &&
-            m_descriptor_pool != VK_NULL_HANDLE &&
-            m_descriptor_set != VK_NULL_HANDLE) {
-            vkFreeDescriptorSets(m_device, m_descriptor_pool, 1, &m_descriptor_set);
+        if (m_descriptor_allocator != nullptr && m_descriptor_allocation.valid()) {
+            m_descriptor_allocator->free(m_descriptor_allocation);
         }
 
         if (m_allocator != VK_NULL_HANDLE && m_material_buffer != VK_NULL_HANDLE) {
@@ -171,7 +149,8 @@ namespace NexAur {
         m_debug_name.clear();
         m_allocator = VK_NULL_HANDLE;
         m_device = VK_NULL_HANDLE;
-        m_descriptor_pool = VK_NULL_HANDLE;
+        m_descriptor_allocator = nullptr;
+        m_descriptor_allocation = {};
         m_descriptor_set = VK_NULL_HANDLE;
         m_material_buffer = VK_NULL_HANDLE;
         m_material_allocation = VK_NULL_HANDLE;
@@ -181,14 +160,16 @@ namespace NexAur {
         m_debug_name = std::move(other.m_debug_name);
         m_allocator = other.m_allocator;
         m_device = other.m_device;
-        m_descriptor_pool = other.m_descriptor_pool;
+        m_descriptor_allocator = other.m_descriptor_allocator;
+        m_descriptor_allocation = other.m_descriptor_allocation;
         m_descriptor_set = other.m_descriptor_set;
         m_material_buffer = other.m_material_buffer;
         m_material_allocation = other.m_material_allocation;
 
         other.m_allocator = VK_NULL_HANDLE;
         other.m_device = VK_NULL_HANDLE;
-        other.m_descriptor_pool = VK_NULL_HANDLE;
+        other.m_descriptor_allocator = nullptr;
+        other.m_descriptor_allocation = {};
         other.m_descriptor_set = VK_NULL_HANDLE;
         other.m_material_buffer = VK_NULL_HANDLE;
         other.m_material_allocation = VK_NULL_HANDLE;

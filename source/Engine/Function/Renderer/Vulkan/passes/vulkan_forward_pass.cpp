@@ -119,6 +119,7 @@ namespace NexAur {
         m_device = context.device;
         m_color_format = context.color_format;
         m_extent = context.extent;
+        m_frame_descriptor_set_layout = context.frame_descriptor_set_layout;
         m_material_descriptor_set_layout = context.material_descriptor_set_layout;
         m_pipeline_cache = context.pipeline_cache;
 
@@ -144,6 +145,7 @@ namespace NexAur {
         m_color_format = VK_FORMAT_UNDEFINED;
         m_depth_format = VK_FORMAT_UNDEFINED;
         m_extent = {};
+        m_frame_descriptor_set_layout = VK_NULL_HANDLE;
         m_material_descriptor_set_layout = VK_NULL_HANDLE;
         m_pipeline_cache = nullptr;
     }
@@ -397,7 +399,7 @@ namespace NexAur {
         desc.color_format = m_color_format;
         desc.depth_format = m_depth_format;
         desc.descriptor_set_layouts = {
-            m_pipeline_cache->getEmptyDescriptorSetLayout(),
+            m_frame_descriptor_set_layout,
             m_material_descriptor_set_layout
         };
         desc.push_constant_ranges = { push_constant_range };
