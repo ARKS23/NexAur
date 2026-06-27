@@ -5,6 +5,7 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/entity.h"
+#include "Function/Scene/gameplay_component.h"
 #include "Function/Scene/scene_v2.h"
 
 #include <algorithm>
@@ -213,6 +214,33 @@ namespace NexAur {
             };
         }
 
+        json writePlayerComponent(const PlayerComponent& player) {
+            return json{ { "move_speed", player.move_speed } };
+        }
+
+        json writeEnemyComponent(const EnemyComponent& enemy) {
+            return json{ { "move_speed", enemy.move_speed } };
+        }
+
+        json writeVelocityComponent(const VelocityComponent& velocity) {
+            return json{ { "velocity", writeVec3(velocity.velocity) } };
+        }
+
+        json writeHealthComponent(const HealthComponent& health) {
+            return json{
+                { "current", health.current },
+                { "max", health.max },
+            };
+        }
+
+        json writeCollectibleComponent(const CollectibleComponent& collectible) {
+            return json{ { "score", collectible.score } };
+        }
+
+        json writeLifetimeComponent(const LifetimeComponent& lifetime) {
+            return json{ { "seconds", lifetime.seconds } };
+        }
+
         void readTransformComponent(const json& component, TransformComponent& transform) {
             transform.translation = readVec3(component.value("translation", json::array()), transform.translation);
             transform.rotation = readVec3(component.value("rotation", json::array()), transform.rotation);
@@ -245,6 +273,31 @@ namespace NexAur {
             light.constant = component.value("constant", light.constant);
             light.linear = component.value("linear", light.linear);
             light.quadratic = component.value("quadratic", light.quadratic);
+        }
+
+        void readPlayerComponent(const json& component, PlayerComponent& player) {
+            player.move_speed = component.value("move_speed", player.move_speed);
+        }
+
+        void readEnemyComponent(const json& component, EnemyComponent& enemy) {
+            enemy.move_speed = component.value("move_speed", enemy.move_speed);
+        }
+
+        void readVelocityComponent(const json& component, VelocityComponent& velocity) {
+            velocity.velocity = readVec3(component.value("velocity", json::array()), velocity.velocity);
+        }
+
+        void readHealthComponent(const json& component, HealthComponent& health) {
+            health.current = component.value("current", health.current);
+            health.max = component.value("max", health.max);
+        }
+
+        void readCollectibleComponent(const json& component, CollectibleComponent& collectible) {
+            collectible.score = component.value("score", collectible.score);
+        }
+
+        void readLifetimeComponent(const json& component, LifetimeComponent& lifetime) {
+            lifetime.seconds = component.value("seconds", lifetime.seconds);
         }
 
         json writeEntity(
@@ -289,6 +342,30 @@ namespace NexAur {
                     { "background_color", writeVec3(environment->background_color) },
                     { "intensity", environment->intensity },
                 };
+            }
+
+            if (const auto* player = registry.try_get<PlayerComponent>(entity)) {
+                components["Player"] = writePlayerComponent(*player);
+            }
+
+            if (const auto* enemy = registry.try_get<EnemyComponent>(entity)) {
+                components["Enemy"] = writeEnemyComponent(*enemy);
+            }
+
+            if (const auto* velocity = registry.try_get<VelocityComponent>(entity)) {
+                components["Velocity"] = writeVelocityComponent(*velocity);
+            }
+
+            if (const auto* health = registry.try_get<HealthComponent>(entity)) {
+                components["Health"] = writeHealthComponent(*health);
+            }
+
+            if (const auto* collectible = registry.try_get<CollectibleComponent>(entity)) {
+                components["Collectible"] = writeCollectibleComponent(*collectible);
+            }
+
+            if (const auto* lifetime = registry.try_get<LifetimeComponent>(entity)) {
+                components["Lifetime"] = writeLifetimeComponent(*lifetime);
             }
 
             return json{
@@ -466,6 +543,36 @@ namespace NexAur {
                     environment.background_color =
                         readVec3(environment_json.value("background_color", json::array()), environment.background_color);
                     environment.intensity = environment_json.value("intensity", environment.intensity);
+                }
+
+                if (components.contains("Player") && components["Player"].is_object()) {
+                    PlayerComponent& player = entity.addOrReplaceComponent<PlayerComponent>();
+                    readPlayerComponent(components["Player"], player);
+                }
+
+                if (components.contains("Enemy") && components["Enemy"].is_object()) {
+                    EnemyComponent& enemy = entity.addOrReplaceComponent<EnemyComponent>();
+                    readEnemyComponent(components["Enemy"], enemy);
+                }
+
+                if (components.contains("Velocity") && components["Velocity"].is_object()) {
+                    VelocityComponent& velocity = entity.addOrReplaceComponent<VelocityComponent>();
+                    readVelocityComponent(components["Velocity"], velocity);
+                }
+
+                if (components.contains("Health") && components["Health"].is_object()) {
+                    HealthComponent& health = entity.addOrReplaceComponent<HealthComponent>();
+                    readHealthComponent(components["Health"], health);
+                }
+
+                if (components.contains("Collectible") && components["Collectible"].is_object()) {
+                    CollectibleComponent& collectible = entity.addOrReplaceComponent<CollectibleComponent>();
+                    readCollectibleComponent(components["Collectible"], collectible);
+                }
+
+                if (components.contains("Lifetime") && components["Lifetime"].is_object()) {
+                    LifetimeComponent& lifetime = entity.addOrReplaceComponent<LifetimeComponent>();
+                    readLifetimeComponent(components["Lifetime"], lifetime);
                 }
 
                 entity_count++;

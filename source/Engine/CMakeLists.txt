@@ -72,6 +72,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/File/file_system_module.cpp
     Function/Game/game_module.h
     Function/Game/game_module.cpp
+    Function/Game/gameplay_systems.h
+    Function/Game/gameplay_systems.cpp
     Function/Global/global_context.h
     Function/Global/global_context.cpp
     Function/Input/input_action_module.h
@@ -112,6 +114,7 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Scene/component.h
     Function/Scene/entity.h
     Function/Scene/entity.cpp
+    Function/Scene/gameplay_component.h
     Function/Scene/scene_factory.h
     Function/Scene/scene_factory.cpp
     Function/Scene/scene_manager.h

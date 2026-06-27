@@ -32,8 +32,8 @@ Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第
 
 尚未完成的关键能力：
 
-- `GameModule` 骨架已建立；`GameplaySystem` 尚未建立，Sandbox 仍承担样例和实验入口。
-- Runtime input 还没有 action mapping，玩法代码如果现在写会直接依赖 key code。
+- `GameModule` 骨架已建立；基础 `GameplaySystem` 已建立，后续仍需 collider / HUD / prefab 等玩法配套。
+- `InputActionSystem v1` 已建立，玩法代码可以读取语义输入；Play/Edit 输入隔离、可配置 binding、gamepad 等仍未完成。
 - 没有 runtime camera controller、HUD、碰撞/触发器、Audio、Prefab / spawn 模板。
 
 因此下一阶段不应继续扩大 Renderer，而应先补 Runtime / Scene / Gameplay 基础。
@@ -1010,22 +1010,45 @@ frame 3:
 
 ## 10. PR-G6：Gameplay components + basic systems
 
-执行状态：待开始。
+执行状态：已完成。
 
 目标：
 
-- 让 demo 有最小玩法循环。
+- 让 Runtime 从静态场景展示进入最小 gameplay 更新链路。
+- 复用 PR-G5 的 `InputActionService`，让 gameplay 读取语义输入而不是直接读按键。
+- 让 `GameModule::tick()` 成为第一批 gameplay systems 的固定挂载点。
+- 保持 Scene / Renderer / Editor 边界干净：Scene 只保存数据，Game 负责行为，Renderer 只消费提取后的 `RenderDataPacket`。
+
+当前基础：
+
+- `GameModule` 已依赖 `Runtime` 和 `InputAction`，并缓存 `SceneService` / `InputActionService`。
+- `RuntimeModule::postUpdate()` 已在所有 module tick 之后提取 active scene，所以 gameplay systems 在 `GameModule::tick()` 修改 `TransformComponent` 后，渲染数据会在同一帧后半段被提取。
+- `SceneSerializer` 已追加 gameplay components 可选读写，旧 `.nxscene` 缺字段时仍按默认值加载。
+
+完成记录：
+
+- 新增 `Function/Scene/gameplay_component.h`，包含 `PlayerComponent`、`EnemyComponent`、`VelocityComponent`、`HealthComponent`、`CollectibleComponent` 和 `LifetimeComponent`。
+- 新增 `Function/Game/gameplay_systems.h/.cpp`，实现 `PlayerControlSystem`、`EnemySystem`、`MovementSystem`、`LifetimeSystem` 和 `HealthSystem`。
+- `GameModule::tick()` 按固定顺序调用第一批 gameplay systems。
+- `SceneSerializer` 支持 gameplay components round-trip。
+- Sandbox 新增 `--gameplay-systems-smoke`，覆盖 input-driven player movement、enemy velocity、movement integration、lifetime destroy、health destroy 和 serializer round-trip。
 
 建议组件：
 
 ```cpp
-struct PlayerComponent {};
-struct EnemyComponent {};
-struct VelocityComponent { glm::vec3 velocity; };
+struct PlayerComponent { float move_speed = 5.0f; };
+struct EnemyComponent { float move_speed = 2.0f; };
+struct VelocityComponent { glm::vec3 velocity{ 0.0f }; };
 struct HealthComponent { int current = 1; int max = 1; };
 struct CollectibleComponent { int score = 1; };
 struct LifetimeComponent { float seconds = 1.0f; };
 ```
+
+组件放置建议：
+
+- 优先新增 `Function/Scene/gameplay_component.h`，存放 data-only gameplay components。
+- `Function/Game` 只 include 这些组件并实现行为，不反向让 Scene 依赖 Game。
+- 暂时不引入通用 ComponentRegistry / 反射 / 脚本绑定，避免把 PR-G6 做大。
 
 建议系统：
 
@@ -1034,12 +1057,129 @@ PlayerControlSystem
 EnemySystem
 ProjectileSystem
 CollectibleSystem
+MovementSystem
 LifetimeSystem
 HealthSystem
 GameRuleSystem
 ```
 
-第一版先保持简单，不急着建立完整 scheduler。可以先由 `GameModule` 按固定顺序调用。
+第一版先保持简单，不急着建立完整 scheduler。可以先由 `GameModule` 按固定顺序调用：
+
+```text
+GameModule::tick()
+  active_scene = SceneService::getActiveScene()
+  PlayerControlSystem::update(scene, input_actions, delta_time)
+  EnemySystem::update(scene, delta_time)
+  MovementSystem::update(scene, delta_time)
+  LifetimeSystem::update(scene, delta_time)
+  HealthSystem::update(scene)
+```
+
+建议第一版优先落地这些系统：
+
+1. `PlayerControlSystem`
+   - 读取 `DefaultInputActions::Move`。
+   - 写入玩家实体的 `VelocityComponent`。
+   - 第一版按世界 XZ 平面移动，`Move.x -> X`，`Move.y -> -Z`。
+   - 不做相机相对移动；相机控制留到 PR-G8。
+2. `MovementSystem`
+   - 对所有 `TransformComponent + VelocityComponent` 执行积分。
+   - `translation += velocity * delta_time`。
+   - 第一版不处理碰撞、不处理地面吸附。
+3. `EnemySystem`
+   - 可以先做非常轻的追踪玩家逻辑：找到第一个 `PlayerComponent`，让 `EnemyComponent + VelocityComponent` 朝玩家移动。
+   - 如果不想影响默认编辑器场景，也可以先只在 smoke test 中验证。
+4. `LifetimeSystem`
+   - 对 `LifetimeComponent` 递减秒数。
+   - 到期后延迟收集实体，再统一 destroy，避免遍历 view 时直接销毁导致迭代风险。
+5. `HealthSystem`
+   - `current <= 0` 时销毁实体。
+   - 只处理生命周期，不处理伤害来源；伤害/触发留给 PR-G7。
+
+`ProjectileSystem` / `CollectibleSystem` / `GameRuleSystem` 第一版可以先不做真实交互：
+
+- Projectile 没有 prefab / spawn template 前，不建议在系统里硬编码模型资源。
+- Collectible 需要 trigger overlap，应该等 PR-G7 collider / trigger。
+- GameRule / score / victory / game over 更适合和 PR-G8 GameState / HUD 一起做。
+
+推荐调用链：
+
+```text
+PlatformModule::tick()
+  -> raw input snapshot
+
+InputActionModule::tick()
+  -> semantic input actions
+
+RuntimeModule::tick()
+  -> SceneManager::tick()
+  -> SceneV2::tick()
+
+GameModule::tick()
+  -> gameplay systems mutate Scene components
+
+RuntimeModule::postUpdate()
+  -> active_scene->extractSceneData()
+
+EditorModule::postUpdate()
+  -> SceneView can override preview camera
+```
+
+这里的关键是：具体玩法不要塞回 `SceneV2::tick()`。`SceneV2` 继续作为场景数据容器和提取入口，`GameModule` 承担 runtime application/gameplay 行为。
+
+序列化建议：
+
+- `SceneSerializer` 增加 gameplay component 的可选读写。
+- 旧 `.nxscene` 没有这些字段时按默认值加载，不需要升级 scene version。
+- 新字段建议保持简单：
+  - `"Player": { "move_speed": 5.0 }`
+  - `"Enemy": { "move_speed": 2.0 }`
+  - `"Velocity": { "velocity": [0, 0, 0] }`
+  - `"Health": { "current": 1, "max": 1 }`
+  - `"Collectible": { "score": 1 }`
+  - `"Lifetime": { "seconds": 1.0 }`
+
+测试建议：
+
+- 新增 `Sandbox.exe --gameplay-systems-smoke`。
+- smoke 中直接构建内存场景和 fake input，不依赖 Editor UI。
+- 验证：
+  - 按下 `Move` 后，player 的 `TransformComponent.translation` 按预期变化。
+  - `VelocityComponent` 能被 `MovementSystem` 积分。
+  - `LifetimeComponent` 到期实体被销毁。
+  - `HealthComponent.current <= 0` 实体被销毁。
+  - 如果本 PR 扩展 serializer，则 save/load 后 gameplay components 不丢失。
+
+不应该：
+
+- 不引入完整 scheduler / system graph。
+- 不让 `GameModule` 依赖 Editor / ImGui / Vulkan。
+- 不在 `SceneV2::tick()` 中写 Player / Enemy 行为。
+- 不在 PR-G6 做物理、碰撞、trigger、raycast。
+- 不在 PR-G6 做 RuntimeCameraController / HUD / GameState。
+- 不在 PR-G6 做 prefab / spawn template。
+- 不在默认材质展示场景里强行启用 WASD Player，避免和 EditorCamera 输入抢控制。
+
+验收：
+
+- 新增 gameplay component 数据定义。
+- 新增基础 gameplay systems，并由 `GameModule::tick()` 固定顺序调用。
+- `PlayerControlSystem` 使用 `InputActionService`，不 include GLFW / raw key code。
+- `MovementSystem` / `LifetimeSystem` / `HealthSystem` 行为可被 smoke 覆盖。
+- Scene / Renderer / Editor 不依赖 Game systems。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `Sandbox.exe --input-action-smoke` 通过。
+- `Sandbox.exe --gameplay-systems-smoke` 通过。
+- 常规 Sandbox smoke 通过。
+
+暂时不做：
+
+- Play Mode / Edit Mode 输入隔离。
+- 可视化 component 添加菜单。
+- 组件反射 / 脚本绑定。
+- gameplay component inspector。
+- 游戏 HUD / score UI。
+- 敌人生成、子弹生成、收集物触发。
 
 ## 11. 后续 PR 简述
 

@@ -1,8 +1,10 @@
 #include <iostream>
 #include <filesystem>
+#include <cmath>
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
 #include "Function/File/file_system.h"
+#include "Function/Game/gameplay_systems.h"
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_action_system.h"
 #include "Function/Platform/platform_services.h"
@@ -10,6 +12,7 @@
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
 #include "Function/Scene/scene_service.h"
+#include "Function/Scene/gameplay_component.h"
 #include "Function/Scene/scene_v2.h"
 #include "scene_test.h"
 
@@ -40,6 +43,36 @@ namespace {
 
         failure = message;
         return false;
+    }
+
+    bool nearlyEqual(float lhs, float rhs, float epsilon = 0.001f) {
+        return std::abs(lhs - rhs) <= epsilon;
+    }
+
+    bool expectGameplay(bool condition, const std::string& message, std::string& failure) {
+        if (condition) {
+            return true;
+        }
+
+        failure = message;
+        return false;
+    }
+
+    template<typename T>
+    const T* findComponentByName(const std::shared_ptr<NexAur::SceneV2>& scene, const std::string& name) {
+        if (!scene) {
+            return nullptr;
+        }
+
+        const entt::registry& registry = scene->getRegistry();
+        auto view = registry.view<NexAur::TagComponent>();
+        for (entt::entity entity : view) {
+            if (view.get<NexAur::TagComponent>(entity).name == name) {
+                return registry.try_get<T>(entity);
+            }
+        }
+
+        return nullptr;
     }
 } // namespace
 
@@ -221,12 +254,129 @@ int runInputActionSmoke() {
     return 0;
 }
 
+int runGameplaySystemsSmoke() {
+    auto fake_input = std::make_shared<FakeInputService>();
+    NexAur::InputActionSystem input_actions(fake_input);
+    input_actions.configureDefaultBindings();
+
+    NexAur::SceneV2 scene;
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    NexAur::Entity player = scene.createEntity("Player");
+    player.addComponent<NexAur::PlayerComponent>().move_speed = 5.0f;
+    player.addComponent<NexAur::VelocityComponent>();
+
+    fake_input->setKey(NexAur::KeyCode::W, true);
+    input_actions.update();
+
+    NexAur::PlayerControlSystem player_control_system;
+    NexAur::EnemySystem enemy_system;
+    NexAur::MovementSystem movement_system;
+    NexAur::LifetimeSystem lifetime_system;
+    NexAur::HealthSystem health_system;
+
+    player_control_system.update(scene, input_actions, NexAur::TimeStep{ 1.0 });
+    movement_system.update(scene, NexAur::TimeStep{ 1.0 });
+
+    const NexAur::TransformComponent& player_transform = player.getComponent<NexAur::TransformComponent>();
+    const NexAur::VelocityComponent& player_velocity = player.getComponent<NexAur::VelocityComponent>();
+    expect(nearlyEqual(player_velocity.velocity.z, -5.0f), "Player velocity should follow Move input on -Z.");
+    expect(nearlyEqual(player_transform.translation.z, -5.0f), "Player should move on -Z after movement update.");
+
+    NexAur::Entity enemy = scene.createEntity("Enemy");
+    enemy.addComponent<NexAur::EnemyComponent>().move_speed = 2.0f;
+    enemy.addComponent<NexAur::VelocityComponent>();
+    enemy.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 0.0f, 0.0f, 5.0f };
+
+    enemy_system.update(scene, NexAur::TimeStep{ 1.0 });
+    const NexAur::VelocityComponent& enemy_velocity = enemy.getComponent<NexAur::VelocityComponent>();
+    expect(enemy_velocity.velocity.z < 0.0f, "Enemy should move toward the player on -Z.");
+
+    NexAur::Entity timed_entity = scene.createEntity("Expired");
+    timed_entity.addComponent<NexAur::LifetimeComponent>().seconds = 0.25f;
+    const entt::entity timed_handle = static_cast<entt::entity>(timed_entity);
+    lifetime_system.update(scene, NexAur::TimeStep{ 0.5 });
+    expect(!scene.getRegistry().valid(timed_handle), "LifetimeSystem should destroy expired entities.");
+
+    NexAur::Entity dead_entity = scene.createEntity("Dead");
+    auto& dead_health = dead_entity.addComponent<NexAur::HealthComponent>();
+    dead_health.current = 0;
+    dead_health.max = 3;
+    const entt::entity dead_handle = static_cast<entt::entity>(dead_entity);
+    health_system.update(scene);
+    expect(!scene.getRegistry().valid(dead_handle), "HealthSystem should destroy dead entities.");
+
+    NexAur::Entity gameplay_state = scene.createEntity("GameplayState");
+    auto& health = gameplay_state.addComponent<NexAur::HealthComponent>();
+    health.current = 2;
+    health.max = 5;
+    gameplay_state.addComponent<NexAur::CollectibleComponent>().score = 10;
+    gameplay_state.addComponent<NexAur::LifetimeComponent>().seconds = 3.0f;
+
+    const std::filesystem::path smoke_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "gameplay_systems_smoke.nxscene";
+
+    NexAur::SceneSerializer serializer(NexAur::AssetManager::getInstance());
+    const NexAur::SceneSerializationResult save_result = serializer.save(scene, smoke_path);
+    if (!save_result) {
+        success = false;
+        failure = save_result.message;
+    } else {
+        const NexAur::SceneLoadResult load_result = serializer.load(smoke_path);
+        if (!load_result) {
+            success = false;
+            failure = load_result.message;
+        } else {
+            const NexAur::PlayerComponent* loaded_player =
+                findComponentByName<NexAur::PlayerComponent>(load_result.scene, "Player");
+            const NexAur::VelocityComponent* loaded_player_velocity =
+                findComponentByName<NexAur::VelocityComponent>(load_result.scene, "Player");
+            const NexAur::HealthComponent* loaded_health =
+                findComponentByName<NexAur::HealthComponent>(load_result.scene, "GameplayState");
+            const NexAur::CollectibleComponent* loaded_collectible =
+                findComponentByName<NexAur::CollectibleComponent>(load_result.scene, "GameplayState");
+            const NexAur::LifetimeComponent* loaded_lifetime =
+                findComponentByName<NexAur::LifetimeComponent>(load_result.scene, "GameplayState");
+
+            expect(loaded_player && nearlyEqual(loaded_player->move_speed, 5.0f), "Loaded PlayerComponent is invalid.");
+            expect(
+                loaded_player_velocity && nearlyEqual(loaded_player_velocity->velocity.z, -5.0f),
+                "Loaded VelocityComponent is invalid.");
+            expect(loaded_health && loaded_health->current == 2 && loaded_health->max == 5, "Loaded HealthComponent is invalid.");
+            expect(loaded_collectible && loaded_collectible->score == 10, "Loaded CollectibleComponent is invalid.");
+            expect(loaded_lifetime && nearlyEqual(loaded_lifetime->seconds, 3.0f), "Loaded LifetimeComponent is invalid.");
+        }
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(smoke_path, remove_error);
+
+    if (!success) {
+        std::cerr << "Gameplay systems smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Gameplay systems smoke passed." << std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--scene-serializer-smoke") {
         return runSceneSerializerSmoke();
     }
     if (argc > 1 && std::string(argv[1]) == "--input-action-smoke") {
         return runInputActionSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--gameplay-systems-smoke") {
+        return runGameplaySystemsSmoke();
     }
 
     NexAur::Engine *engine = new NexAur::Engine();
