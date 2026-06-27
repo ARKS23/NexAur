@@ -128,8 +128,8 @@ ModuleManager
 
 后续优先级：
 
-1. 将 Runtime scene tick 从 `Engine::logicalTick()` 继续下沉到 RuntimeModule 或 GameModule。
-2. 为 Game Demo 引入 GameModule / ApplicationModule。
+1. 在 RuntimeModule scene tick 基础上引入 GameModule / ApplicationModule。
+2. 基于 GameModule 推进 InputActionSystem 和第一批 gameplay components。
 3. 在 Vulkan 接入前继续收窄 Renderer 内部的静态工厂和命令接口。
 
 ### 3.3 明确 Editor 与 Runtime 边界

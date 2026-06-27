@@ -8,8 +8,6 @@
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
-#include "Function/Scene/scene_service.h"
-#include "Function/Scene/scene_v2.h"
 #include "Function/UI/ui_system.h"
 
 namespace NexAur {
@@ -64,12 +62,9 @@ namespace NexAur {
 
         ModuleManager* module_manager = g_runtime_global_context.getModuleManager();
         if (module_manager) {
-            // 帧早期模块更新：当前主要让 PlatformModule 刷新 InputState。
+            // 帧早期模块更新：Platform 刷新输入，Runtime tick scene 并提取 RenderData。
             module_manager->tickModules(TickContext{ delta_time });
         }
-
-        // Runtime 场景逻辑仍暂时由 Engine 顶层调度，后续可以继续下沉到 RuntimeModule。
-        logicalTick(delta_time);
 
         if (module_manager) {
             // Scene 提取 RenderData 后，Editor 可以覆盖 viewport 相机等编辑器态数据。
@@ -99,21 +94,6 @@ namespace NexAur {
         window_service->setTitle(std::string("NexAur: " + std::to_string(m_fps) + "FPS").c_str());
 
         return m_is_running;
-    }
-
-    void Engine::logicalTick(TimeStep delta_time) {
-        std::shared_ptr<SceneV2> active_scene = getRequiredModuleService<SceneService>()->getActiveScene();
-        if (!active_scene) {
-            return;
-        }
-
-        active_scene->tick(delta_time);
-
-        // Scene 只提取轻量 RenderDataPacket；GPU 资源解析交给 RendererModule。
-        std::shared_ptr<RenderContext> render_context = getRequiredModuleService<RenderContext>();
-        RenderDataPacket* write_packet = &render_context->getWriteData();
-        write_packet->debug_visualization_options = render_context->getDebugVisualizationOptions();
-        active_scene->extractSceneData(write_packet);
     }
 
     void Engine::rendererTick(TimeStep delta_time) {

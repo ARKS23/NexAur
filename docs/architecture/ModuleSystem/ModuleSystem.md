@@ -434,10 +434,8 @@ calculateFPS
 
 ModuleManager::tickModules
   -> PlatformModule refresh InputState
-
-Engine::logicalTick
-  -> Scene tick
-  -> Scene extract RenderDataPacket
+  -> RuntimeModule tick active scene
+  -> RuntimeModule extract RenderDataPacket
 
 ModuleManager::postUpdateModules
   -> EditorModule update
@@ -800,7 +798,6 @@ Phase1 已经完成模块系统主线，但仍有一些明确遗留：
 
 - `AssetManager` 仍是单例，后续可以抽出 `AssetService`。
 - `RendererFactory` 仍是迁移期静态门面，后续可让 Renderer 内部对象显式持有 `RenderDevice`。
-- Runtime 的 scene tick 仍在 `Engine::logicalTick()` 顶层调度，后续可以继续收口到 RuntimeModule。
 - Physics、Audio、GameModule 尚未实现。
 - EditorCameraController 还没有单独拆类，目前逻辑在 `EditorLayer::updateViewportCamera()`。
 

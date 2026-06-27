@@ -23,12 +23,11 @@
 当前一帧的主顺序：
 
 1. `calculateFPS()`。
-2. `ModuleManager::tickModules()`：当前主要由 `PlatformModule` 刷新 `InputState`。
-3. `Engine::logicalTick()`：active scene 更新并提取 `RenderDataPacket`。
-4. `ModuleManager::postUpdateModules()`：EditorCamera 等编辑器逻辑覆盖 viewport 相机数据。
-5. `UIService::beginFrame()`。
-6. `ModuleManager::renderUIModules()`：Editor panel 提交 ImGui。
+2. `ModuleManager::tickModules()`：`PlatformModule` 刷新 `InputState`，`RuntimeModule` tick active scene 并提取 `RenderDataPacket`。
+3. `ModuleManager::postUpdateModules()`：EditorCamera 等编辑器逻辑覆盖 viewport 相机数据。
+4. `UIService::beginFrame()`。
+5. `ModuleManager::renderUIModules()`：Editor panel 提交 ImGui。
+6. `UIService::finalizeFrame()`。
 7. `RenderContext::swapBuffers()`：逻辑写入数据切换为 Renderer 读取数据。
 8. `RendererService::render()`。
-9. `UIService::endFrameAndRender()`。
-10. `WindowService::present()` / `pollEvents()`。
+9. `WindowService::present()` / `pollEvents()`。

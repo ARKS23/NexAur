@@ -25,10 +25,13 @@ Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第
 - Renderer Vulkan 后端已经支持 model、material、texture、lighting、skybox、shadow、debug draw、viewport、picking 和 renderer debug panel。
 - Editor 已经有 DockSpace、Viewport、Scene Hierarchy、Properties、Selection、Gizmo 和 Renderer Debug 面板。
 
+已完成或基础可用：
+
+- SceneSerializer v1 和 Editor Save / Load scene 已完成，Editor 可以保存/加载 `.nxscene`。
+- Runtime scene tick 已下沉到 `RuntimeModule::tick()`。
+
 尚未完成的关键能力：
 
-- 场景无法保存和加载，默认场景仍由 C++ factory 构造。
-- Runtime scene tick 仍在 `Engine::logicalTick()` 顶层调度。
 - `GameModule` / `GameplaySystem` 尚未建立，Sandbox 仍承担样例和实验入口。
 - Runtime input 还没有 action mapping，玩法代码如果现在写会直接依赖 key code。
 - 没有 runtime camera controller、HUD、碰撞/触发器、Audio、Prefab / spawn 模板。
@@ -338,37 +341,177 @@ Editor File Menu
 
 ## 7. PR-G3：Runtime scene tick 下沉
 
-执行状态：待开始。
+执行状态：已完成。
 
 目标：
 
 - 让 RuntimeModule 拥有 scene tick 的调度责任。
 - `Engine` 保持顶层 frame loop，不继续承担具体 runtime 逻辑。
+- 为后续 GameModule / GameplaySystem 提供干净的 runtime 更新入口。
+- 保持现有 SceneView / GameView 渲染顺序不变。
 
-当前状态：
+完成记录：
+
+- `RuntimeModule` 已缓存 `RenderContext` 窄依赖，不再依赖 Renderer backend module。
+- `RuntimeModule::tick()` 已负责调用 `SceneManager::tick(delta_time)`。
+- Runtime tick 后立即提取 active scene 到 `RenderContext::getWriteData()`。
+- `debug_visualization_options` 仍从 `RenderContext` 同步到 write packet。
+- `Engine::logicalTick()` 已删除，`Engine` 不再直接访问 `SceneService` / `SceneV2`。
+- `Engine` 继续保留 frame loop、UI、buffer swap、renderer tick 和 window present/poll 调度。
+
+迁移前状态：
 
 ```text
-Engine::logicalTick()
-  active_scene->tick(delta_time)
-  active_scene->extractSceneData(write_packet)
+Engine::tickOneFrame()
+  ModuleManager::tickModules()
+    PlatformModule::tick()
+
+  Engine::logicalTick()
+    SceneService::getActiveScene()
+    active_scene->tick(delta_time)
+    RenderContext::getWriteData()
+    write_packet.debug_visualization_options = ...
+    active_scene->extractSceneData(write_packet)
+
+  ModuleManager::postUpdateModules()
+    EditorModule::postUpdate()
+      SceneView 模式下覆盖 viewport camera
+
+  UI begin / render / finalize
+  RenderContext::swapBuffers()
+  RendererService::render(read_packet)
 ```
 
-建议迁移方向：
+问题：
+
+- `Engine` 当前直接 include / 查询 `SceneService` 和 `SceneV2`，承担了 runtime scene 的具体调度。
+- 后续如果把 gameplay system、runtime camera、关卡切换继续挂在 `Engine::logicalTick()`，顶层 frame loop 会逐渐变成业务层。
+- `RuntimeModule` 目前只创建和注册 `SceneManager`，没有真正拥有 scene tick。
+
+目标调用链：
 
 ```text
-RuntimeModule::tick()
-  SceneManager::tick()
-  active_scene->tick()
+Engine::tickOneFrame()
+  calculateFPS()
 
-Engine / RenderContext boundary
-  still controls when render packet is swapped
+  ModuleManager::tickModules()
+    PlatformModule::tick()
+      update input/window platform state
+
+    RuntimeModule::tick()
+      SceneManager::tick(delta_time)
+        active_scene->tick(delta_time)
+
+      RuntimeModule::extractActiveScene()
+        RenderContext::getWriteData()
+        write_packet.debug_visualization_options = ...
+        active_scene->extractSceneData(write_packet)
+
+  ModuleManager::postUpdateModules()
+    EditorModule::postUpdate()
+      SceneView 模式下用 EditorCamera 覆盖 write_packet.camera_data
+
+  UI begin / render / finalize
+
+  RenderContext::swapBuffers()
+
+  Engine::rendererTick()
+    RendererService::render(delta_time, read_packet)
+
+  WindowService::present()
+  WindowService::pollEvents()
 ```
 
-注意：
+建议范围：
+
+1. `RuntimeModule` 缓存 runtime scene 所需窄依赖。
+   - 保留 `std::shared_ptr<SceneManager> m_scene_manager`。
+   - 新增 `std::shared_ptr<RenderContext> m_render_context`。
+   - `initialize()` 中从 `ModuleRegistry` 获取 `RenderContext`，不要访问全局上下文。
+
+2. `RuntimeModule` 实现 `tick()`。
+   - 调用 `m_scene_manager->tick(delta_time)`。
+   - 读取 active scene。
+   - 写入 `RenderContext::getWriteData()`。
+   - 同步 `debug_visualization_options`。
+   - 调用 `active_scene->extractSceneData(write_packet)`。
+
+3. `Engine::logicalTick()` 下线。
+   - 第一版可以直接删除函数和调用点。
+   - 如果为了过渡保留函数，也应变为空壳，不再直接访问 `SceneService` / `SceneV2`。
+   - `Engine` 仍保留 `rendererTick()`，因为 Renderer consume read packet 是顶层 frame boundary 的一部分。
+
+4. 保持 frame ordering。
+   - Scene extraction 必须仍然发生在 `EditorModule::postUpdate()` 之前。
+   - `RenderContext::swapBuffers()` 必须仍然发生在 UI finalize 之后、renderer tick 之前。
+   - `EditorModule::postUpdate()` 仍负责 SceneView camera override，不移动到 RuntimeModule。
+
+5. 清理 include 和依赖边界。
+   - `engine.cpp` 不再需要 include `Function/Scene/scene_service.h` 和 `Function/Scene/scene_v2.h`。
+   - `RuntimeModule` 可以依赖 `SceneManager`、`SceneService` 和 `RenderContext`。
+   - Runtime / Scene 仍不依赖 Editor 或 Renderer backend。
+
+建议 RuntimeModule 内部形态：
+
+```cpp
+class RuntimeModule final : public EngineModule {
+public:
+    void initialize(ModuleContext& context) override;
+    void tick(const TickContext& tick_context) override;
+    void shutdown(ModuleContext& context) override;
+
+private:
+    void extractActiveScene();
+
+private:
+    std::shared_ptr<SceneManager> m_scene_manager;
+    std::shared_ptr<RenderContext> m_render_context;
+};
+```
+
+`tick()` 语义建议：
+
+```text
+RuntimeModule::tick(delta_time)
+  if scene_manager:
+    scene_manager->tick(delta_time)
+
+  if scene_manager && render_context && active_scene:
+    write_packet = render_context->getWriteData()
+    write_packet.debug_visualization_options = render_context->getDebugVisualizationOptions()
+    active_scene->extractSceneData(&write_packet)
+```
+
+注意事项：
 
 - EditorCamera 覆盖 SceneView camera 当前发生在 `EditorModule::postUpdate()`。
 - 迁移时必须保持 `Scene extraction -> Editor postUpdate camera override -> UI -> swap render buffers -> rendererTick` 这个行为不破。
+- `SceneManager::setActiveScene()` 在 PR-G2 后已经立即切换 active scene，PR-G3 不需要重新设计 scene transition。
 - 不建议在同一个 PR 里同时引入 GameModule。
+- 不建议在这一 PR 引入 play mode、runtime camera controller 或 gameplay scheduler。
+
+验收：
+
+- `Engine` 不再直接调用 `SceneV2::tick()`。
+- `Engine` 不再直接调用 `SceneV2::extractSceneData()`。
+- `RuntimeModule::tick()` 负责 active scene tick 和 render data extraction。
+- `Scene extraction -> Editor postUpdate camera override -> UI -> swap buffers -> rendererTick` 顺序保持不变。
+- SceneView / GameView 行为不回退。
+- Save / Load 后 active scene 能在下一帧正常 tick 和 extract。
+- `engine.cpp` 不再 include `Function/Scene/scene_service.h` / `scene_v2.h`。
+- `RuntimeModule` 不 include 或访问 Editor panel、Renderer backend。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `Sandbox.exe --scene-serializer-smoke` 通过。
+- 常规 Sandbox smoke 通过。
+
+暂时不做：
+
+- GameModule / ApplicationModule。
+- GameplaySystem scheduler。
+- Play mode 状态机。
+- Runtime camera controller。
+- 异步 scene transition。
+- scene event bus。
 
 ## 8. PR-G4：GameModule / ApplicationModule 骨架
 

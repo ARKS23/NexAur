@@ -31,7 +31,6 @@ namespace NexAur {
         int getFPS() const { return m_fps; }
 
     protected:
-        void logicalTick(TimeStep delta_time);
         void rendererTick(TimeStep delta_time);
         void calculateFPS(TimeStep delta_time);
         TimeStep calculateDeltaTime();
