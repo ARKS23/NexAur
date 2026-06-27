@@ -70,6 +70,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/File/file_system.cpp
     Function/File/file_system_module.h
     Function/File/file_system_module.cpp
+    Function/Game/game_module.h
+    Function/Game/game_module.cpp
     Function/Global/global_context.h
     Function/Global/global_context.cpp
     Function/Input/input_state.h

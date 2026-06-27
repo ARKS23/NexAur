@@ -435,9 +435,10 @@ calculateFPS
 ModuleManager::tickModules
   -> PlatformModule refresh InputState
   -> RuntimeModule tick active scene
-  -> RuntimeModule extract RenderDataPacket
+  -> GameModule gameplay hook
 
 ModuleManager::postUpdateModules
+  -> RuntimeModule extract RenderDataPacket
   -> EditorModule update
   -> EditorCamera override camera data
 
@@ -498,10 +499,10 @@ Platform
 Core
 ```
 
-当前没有 GameModule，所以实际大致是：
+当前带 GameModule 后，实际大致是：
 
 ```text
-UI -> Editor -> Renderer -> Runtime -> Platform -> Core
+UI -> Game -> Editor -> Renderer -> Runtime -> Platform -> Core
 ```
 
 为什么 UI 先于 Editor？
@@ -798,7 +799,7 @@ Phase1 已经完成模块系统主线，但仍有一些明确遗留：
 
 - `AssetManager` 仍是单例，后续可以抽出 `AssetService`。
 - `RendererFactory` 仍是迁移期静态门面，后续可让 Renderer 内部对象显式持有 `RenderDevice`。
-- Physics、Audio、GameModule 尚未实现。
+- Physics、Audio 尚未实现。
 - EditorCameraController 还没有单独拆类，目前逻辑在 `EditorLayer::updateViewportCamera()`。
 
 这些遗留是下一阶段演进点，不影响当前 Phase1 的主架构阅读。

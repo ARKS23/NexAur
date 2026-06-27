@@ -75,7 +75,7 @@ namespace NexAur {
         ui_service->beginFrame();
 
         if (module_manager) {
-            // EditorModule/GameModule 等模块在这里提交 UI。
+            // 各模块在这里提交 UI。
             module_manager->renderUIModules(TickContext{ delta_time });
         }
 

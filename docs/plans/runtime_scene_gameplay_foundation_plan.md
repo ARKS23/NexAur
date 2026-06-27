@@ -32,7 +32,7 @@ Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第
 
 尚未完成的关键能力：
 
-- `GameModule` / `GameplaySystem` 尚未建立，Sandbox 仍承担样例和实验入口。
+- `GameModule` 骨架已建立；`GameplaySystem` 尚未建立，Sandbox 仍承担样例和实验入口。
 - Runtime input 还没有 action mapping，玩法代码如果现在写会直接依赖 key code。
 - 没有 runtime camera controller、HUD、碰撞/触发器、Audio、Prefab / spawn 模板。
 
@@ -515,23 +515,141 @@ RuntimeModule::tick(delta_time)
 
 ## 8. PR-G4：GameModule / ApplicationModule 骨架
 
-执行状态：待开始。
+执行状态：已完成。
 
 目标：
 
 - 新增独立于 Editor 的 runtime/game entry。
 - 后续 gameplay system、HUD、game state 都挂在这里。
+- 为 PR-G5 InputActionSystem 和 PR-G6 gameplay systems 提供稳定挂载点。
+- 不让 `Engine`、`Sandbox` 或 `RuntimeModule` 继续承担玩法层职责。
+
+完成记录：
+
+- 新增 `source/Engine/Function/Game/game_module.h/.cpp`。
+- `BuiltinModuleNames` 已加入 `Game`。
+- `RunTimeGlobalContext` 已在 `RuntimeModule` 后、`UI` / `Editor` 前注册 `GameModule`。
+- `GameModule` 第一版缓存 `SceneService`，提供初始化、tick、renderUI 和 shutdown 生命周期入口。
+- `GameModule::tick()` 第一版保持 no-op，作为 PR-G6 gameplay systems 的固定挂载点。
+- `RuntimeModule` 已将 scene extraction 从 `tick()` 移到 `postUpdate()`，确保未来 gameplay 修改 scene 后能在同一帧进入 `RenderDataPacket`。
+
+定位：
+
+- 第一版实现 `GameModule`，暂时不单独实现 `ApplicationModule`。
+- `ApplicationModule` 更适合后续引擎/游戏分发边界更清晰时再抽象。
+- 当前阶段 `GameModule` 作为 NexAur demo/gameplay 的 runtime application entry。
+
+建议新增文件：
+
+```text
+source/Engine/Function/Game/
+  game_module.h
+  game_module.cpp
+```
+
+建议新增模块名：
+
+```cpp
+namespace NexAur::BuiltinModuleNames {
+    inline constexpr const char* Game = "Game";
+}
+```
+
+注册位置建议：
+
+```text
+RunTimeGlobalContext::startSystems()
+  register RuntimeModule
+  register GameModule
+  register UIModule
+  register EditorModule
+```
+
+`GameModule` 放在 `RuntimeModule` 后、`UI` / `Editor` 前：
+
+- 可以读取 Runtime 暴露的 `SceneService`。
+- 后续可以在 UI 阶段之前提交 runtime HUD。
+- 不需要 `Engine` 直接知道 GameModule。
+
+关键调用顺序：
+
+PR-G3 后 `RuntimeModule::tick()` 已经同时做了 scene tick 和 scene extraction。
+PR-G4 引入 GameModule 后，需要给 gameplay 一个在 extraction 前修改 scene 的机会，因此建议顺手把 scene extraction 从 `RuntimeModule::tick()` 移到 `RuntimeModule::postUpdate()`：
+
+```text
+Engine::tickOneFrame()
+
+  ModuleManager::tickModules()
+    PlatformModule::tick()
+      refresh input
+
+    RuntimeModule::tick()
+      SceneManager::tick(delta_time)
+
+    GameModule::tick()
+      update game state / future gameplay systems
+
+  ModuleManager::postUpdateModules()
+    RuntimeModule::postUpdate()
+      active_scene->extractSceneData(write_packet)
+
+    EditorModule::postUpdate()
+      SceneView 模式覆盖 viewport camera
+
+  UI begin / render / finalize
+  RenderContext::swapBuffers()
+  RendererService::render(read_packet)
+```
+
+这样后续 gameplay 修改 Transform、Camera、Light、MeshRenderer 等 scene data 后，可以在同一帧进入 `RenderDataPacket`。
 
 建议职责：
 
 ```text
 GameModule
-  owns gameplay system list
-  reads InputActionSystem
+  owns future gameplay system list
+  caches SceneService
   updates game state
-  can request scene load / transition
-  can draw runtime HUD
+  can request scene load / transition later
+  can draw runtime HUD later
 ```
+
+第一版内部形态：
+
+```cpp
+class GameModule final : public EngineModule {
+public:
+    ModuleInfo getInfo() const override;
+    void initialize(ModuleContext& context) override;
+    void tick(const TickContext& tick_context) override;
+    void renderUI(const TickContext& tick_context) override;
+    void shutdown(ModuleContext& context) override;
+
+private:
+    bool m_is_enabled = true;
+    std::shared_ptr<SceneService> m_scene_service;
+};
+```
+
+第一版 `tick()` 可以保持 no-op，只保留清晰的 future hook：
+
+```text
+GameModule::tick()
+  if disabled:
+    return
+  if no active scene:
+    return
+  // PR-G6 starts fixed-order gameplay systems here.
+```
+
+建议依赖：
+
+```text
+GameModule depends on Runtime
+```
+
+第一版不建议依赖 `Renderer`、`Editor`、`UI` 或具体 input backend。
+PR-G5 接入 InputActionSystem 后，再让 GameModule 读取 input action 服务。
 
 不应该：
 
@@ -539,6 +657,29 @@ GameModule
 - 直接访问 Editor panel。
 - 直接操作 Renderer backend。
 - 把大量 demo 逻辑继续写进 Sandbox。
+
+暂时不做：
+
+- InputActionSystem。
+- Player / Enemy / Health 等 gameplay components。
+- GameplaySystem scheduler。
+- Play mode。
+- Runtime camera controller。
+- HUD 实际 UI。
+- Scene transition event bus。
+- Sandbox demo 大迁移。
+
+验收：
+
+- `GameModule` 能随 engine 初始化、tick、shutdown。
+- `GameModule` 已注册进 `ModuleManager`。
+- `Engine` 不 include 或直接访问 GameModule。
+- GameModule 不 include Editor / Vulkan backend。
+- Runtime scene extraction 发生在 GameModule tick 之后、Editor camera override 之前。
+- Sandbox 仍能正常启动。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `Sandbox.exe --scene-serializer-smoke` 通过。
+- 常规 Sandbox smoke 通过。
 
 ## 9. PR-G5：InputActionSystem v1
 

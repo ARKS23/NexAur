@@ -666,9 +666,9 @@ enum class GameState {
 
 近期优先：
 
-1. SceneSerializer 第一版。
-2. GameModule / ApplicationModule 骨架。
-3. Runtime scene tick 下沉到 RuntimeModule 或 GameModule。
+1. InputActionSystem v1。
+2. Gameplay components + basic systems。
+3. RuntimeCameraController + HUD / GameState。
 4. 抽出更窄的 AssetService。
 5. RenderCommandContext / RenderTarget 前置设计。
 6. EditorCameraController 单独建类。

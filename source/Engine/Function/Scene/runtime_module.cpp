@@ -37,7 +37,10 @@ namespace NexAur {
                 if (m_scene_manager) {
                     m_scene_manager->tick(tick_context.delta_time);
                 }
+            }
 
+            void postUpdate(const TickContext& tick_context) override {
+                (void)tick_context;
                 extractActiveScene();
             }
 
