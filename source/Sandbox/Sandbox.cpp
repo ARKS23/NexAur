@@ -4,6 +4,8 @@
 #include "Core/Module/engine_module.h"
 #include "Function/File/file_system.h"
 #include "Function/Global/global_context.h"
+#include "Function/Input/input_action_system.h"
+#include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
@@ -12,6 +14,34 @@
 #include "scene_test.h"
 
 #include <imgui.h>
+
+namespace {
+    class FakeInputService final : public NexAur::InputService {
+    public:
+        void update() override {}
+        const NexAur::InputState& getState() const override { return m_state; }
+
+        void setKey(NexAur::KeyCode key_code, bool pressed) {
+            m_state.setKeyPressed(key_code, pressed);
+        }
+
+        void setMouse(NexAur::MouseCode mouse_code, bool pressed) {
+            m_state.setMouseButtonPressed(mouse_code, pressed);
+        }
+
+    private:
+        NexAur::InputState m_state;
+    };
+
+    bool expectInputAction(bool condition, const std::string& message, std::string& failure) {
+        if (condition) {
+            return true;
+        }
+
+        failure = message;
+        return false;
+    }
+} // namespace
 
 void setupScene() {
     NexAur::SceneTestClass scene_test;
@@ -129,9 +159,74 @@ int runSceneSerializerSmoke() {
     return success ? 0 : 1;
 }
 
+int runInputActionSmoke() {
+    auto fake_input = std::make_shared<FakeInputService>();
+    NexAur::InputActionSystem input_actions(fake_input);
+    input_actions.configureDefaultBindings();
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectInputAction(condition, message, failure);
+    };
+
+    input_actions.update();
+    expect(input_actions.getAxis2D(NexAur::DefaultInputActions::Move).y == 0.0f, "Move.y should be 0 on frame 0.");
+    expect(!input_actions.wasPressed(NexAur::DefaultInputActions::Jump), "Jump should not be pressed on frame 0.");
+
+    fake_input->setKey(NexAur::KeyCode::W, true);
+    fake_input->setKey(NexAur::KeyCode::Space, true);
+    input_actions.update();
+    expect(input_actions.getAxis2D(NexAur::DefaultInputActions::Move).y == 1.0f, "Move.y should be 1 on frame 1.");
+    expect(input_actions.isHeld(NexAur::DefaultInputActions::Jump), "Jump should be held on frame 1.");
+    expect(input_actions.wasPressed(NexAur::DefaultInputActions::Jump), "Jump should be pressed on frame 1.");
+    expect(!input_actions.wasReleased(NexAur::DefaultInputActions::Jump), "Jump should not be released on frame 1.");
+
+    input_actions.update();
+    expect(input_actions.getAxis2D(NexAur::DefaultInputActions::Move).y == 1.0f, "Move.y should remain 1 on frame 2.");
+    expect(input_actions.isHeld(NexAur::DefaultInputActions::Jump), "Jump should remain held on frame 2.");
+    expect(!input_actions.wasPressed(NexAur::DefaultInputActions::Jump), "Jump should not be pressed again on frame 2.");
+    expect(!input_actions.wasReleased(NexAur::DefaultInputActions::Jump), "Jump should not be released on frame 2.");
+
+    fake_input->setKey(NexAur::KeyCode::W, false);
+    fake_input->setKey(NexAur::KeyCode::Space, false);
+    input_actions.update();
+    expect(input_actions.getAxis2D(NexAur::DefaultInputActions::Move).y == 0.0f, "Move.y should return to 0 on frame 3.");
+    expect(!input_actions.isHeld(NexAur::DefaultInputActions::Jump), "Jump should not be held on frame 3.");
+    expect(!input_actions.wasPressed(NexAur::DefaultInputActions::Jump), "Jump should not be pressed on frame 3.");
+    expect(input_actions.wasReleased(NexAur::DefaultInputActions::Jump), "Jump should be released on frame 3.");
+
+    fake_input->setKey(NexAur::KeyCode::A, true);
+    fake_input->setKey(NexAur::KeyCode::D, true);
+    input_actions.update();
+    expect(input_actions.getAxis2D(NexAur::DefaultInputActions::Move).x == 0.0f, "Move.x should cancel opposite keys.");
+
+    fake_input->setKey(NexAur::KeyCode::A, false);
+    fake_input->setKey(NexAur::KeyCode::D, false);
+    fake_input->setMouse(NexAur::MouseCode::ButtonLeft, true);
+    input_actions.update();
+    expect(input_actions.isHeld(NexAur::DefaultInputActions::Fire), "Fire should be held when left mouse is down.");
+    expect(input_actions.wasPressed(NexAur::DefaultInputActions::Fire), "Fire should be pressed when left mouse goes down.");
+
+    if (!success) {
+        std::cerr << "InputAction smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "InputAction smoke passed." << std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--scene-serializer-smoke") {
         return runSceneSerializerSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--input-action-smoke") {
+        return runInputActionSmoke();
     }
 
     NexAur::Engine *engine = new NexAur::Engine();

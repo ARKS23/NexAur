@@ -74,6 +74,10 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Game/game_module.cpp
     Function/Global/global_context.h
     Function/Global/global_context.cpp
+    Function/Input/input_action_module.h
+    Function/Input/input_action_module.cpp
+    Function/Input/input_action_system.h
+    Function/Input/input_action_system.cpp
     Function/Input/input_state.h
     Function/Input/input_system.h
     Function/Input/input_system_glfw.h

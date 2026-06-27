@@ -22,7 +22,11 @@ Input System 是 NexAur 引擎中负责 **输入采集**、**状态管理**与**
         ↓
 [ InputService / Event System ]
         ↓
-[ Gameplay / UI / Editor ]
+[ InputActionModule -> InputActionService ]
+        ↓
+[ Gameplay / GameModule ]
+
+[ Editor / UI can still read InputService directly for tools ]
 ```
 
 ### 2.2 输入模型
@@ -48,7 +52,7 @@ Input System 是 NexAur 引擎中负责 **输入采集**、**状态管理**与**
 ```aiignore
 平台输入（如 GLFW_KEY_W）
         ↓
-引擎语义输入（如 Key::MoveForward）
+InputAction（如 Move / Jump / Fire）
 ```
 
 ## 3. API与用法
@@ -59,6 +63,18 @@ Input System 是 NexAur 引擎中负责 **输入采集**、**状态管理**与**
 - 查询轴值
 
 这些接口**不依赖事件系统**，可直接调用。
+
+### 3.2 语义输入接口
+
+Gameplay 优先通过 `InputActionService` 查询语义输入：
+
+- `isHeld(action)`：当前帧是否保持按下。
+- `wasPressed(action)`：当前帧是否刚按下。
+- `wasReleased(action)`：当前帧是否刚释放。
+- `getAxis1D(axis)`：查询一维轴。
+- `getAxis2D(axis)`：查询二维轴。
+
+`pressed` / `released` 由 `InputActionSystem` 保存上一帧状态计算，不依赖具体平台事件。
 
 ## 4. 使用示例
 
@@ -78,6 +94,21 @@ if (input_state.isKeyPressed(KeyCode::W)) {
 }
 ```
 
+Gameplay 示例：
+
+```C++
+std::shared_ptr<InputActionService> input_actions =
+    context.registry.getService<InputActionService>();
+
+glm::vec2 move = input_actions->getAxis2D(DefaultInputActions::Move);
+
+if (input_actions->wasPressed(DefaultInputActions::Jump)) {
+    // jump
+}
+```
+
 ## 5. 未来计划
-- 在 `InputState` 之上增加 InputAction / ActionMap。
+- 增加可编辑 action binding UI。
+- 增加 action map 保存 / 加载。
+- 增加 gamepad、mouse delta / raw mouse。
 - 目前只支持 Windows/GLFW，后续可扩展跨平台实现。

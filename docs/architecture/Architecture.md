@@ -23,7 +23,7 @@
 当前一帧的主顺序：
 
 1. `calculateFPS()`。
-2. `ModuleManager::tickModules()`：`PlatformModule` 刷新 `InputState`，`RuntimeModule` tick active scene，`GameModule` 运行 gameplay hook。
+2. `ModuleManager::tickModules()`：`PlatformModule` 刷新 `InputState`，`InputActionModule` 更新语义输入，`RuntimeModule` tick active scene，`GameModule` 运行 gameplay hook。
 3. `ModuleManager::postUpdateModules()`：`RuntimeModule` 提取 `RenderDataPacket`，EditorCamera 等编辑器逻辑覆盖 viewport 相机数据。
 4. `UIService::beginFrame()`。
 5. `ModuleManager::renderUIModules()`：Editor panel 提交 ImGui。

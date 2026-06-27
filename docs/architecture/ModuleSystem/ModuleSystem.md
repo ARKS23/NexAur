@@ -434,6 +434,7 @@ calculateFPS
 
 ModuleManager::tickModules
   -> PlatformModule refresh InputState
+  -> InputActionModule update semantic input
   -> RuntimeModule tick active scene
   -> GameModule gameplay hook
 
@@ -499,10 +500,10 @@ Platform
 Core
 ```
 
-当前带 GameModule 后，实际大致是：
+当前带 GameModule / InputActionModule 后，实际大致是：
 
 ```text
-UI -> Game -> Editor -> Renderer -> Runtime -> Platform -> Core
+UI -> Game -> Editor -> Renderer -> Runtime -> InputAction -> Platform -> Core
 ```
 
 为什么 UI 先于 Editor？
