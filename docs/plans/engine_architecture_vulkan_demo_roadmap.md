@@ -646,6 +646,10 @@ enum class GameState {
 
 - 从引擎样例转向可玩 demo。
 
+专项执行计划：
+
+- `docs/plans/runtime_scene_gameplay_foundation_plan.md`
+
 建议任务：
 
 1. 新建 GameDemo target 或 Sandbox game mode。

@@ -27,6 +27,7 @@ namespace NexAur {
 
         // 获取底层注册表, 可供渲染器使用
         entt::registry& getRegistry() { return m_Registry; }
+        const entt::registry& getRegistry() const { return m_Registry; }
 
         // 数据打包
         void extractSceneData(RenderDataPacket* render_packet);

@@ -23,6 +23,7 @@
     },
     "imguizmo",
     "ktx",
+    "nlohmann-json",
     "spdlog",
     "spirv-headers",
     "spirv-reflect",

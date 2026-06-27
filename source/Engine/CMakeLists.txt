@@ -110,6 +110,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Scene/scene_factory.cpp
     Function/Scene/scene_manager.h
     Function/Scene/scene_manager.cpp
+    Function/Scene/scene_serializer.h
+    Function/Scene/scene_serializer.cpp
     Function/Scene/scene_service.h
     Function/Scene/runtime_module.h
     Function/Scene/runtime_module.cpp
@@ -266,6 +268,7 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(imguizmo CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 find_package(Vulkan REQUIRED)
@@ -280,6 +283,7 @@ nexaur_select_dependency_target(NEXAUR_GLFW_TARGET glfw glfw3::glfw glfw3)
 nexaur_select_dependency_target(NEXAUR_GLM_TARGET glm::glm glm)
 nexaur_select_dependency_target(NEXAUR_IMGUI_TARGET imgui::imgui imgui)
 nexaur_select_dependency_target(NEXAUR_IMGUIZMO_TARGET imguizmo::imguizmo imguizmo)
+nexaur_select_dependency_target(NEXAUR_NLOHMANN_JSON_TARGET nlohmann_json::nlohmann_json)
 nexaur_select_dependency_target(NEXAUR_SPDLOG_TARGET spdlog::spdlog spdlog)
 
 target_include_directories(NexAurEngine PUBLIC
@@ -293,6 +297,7 @@ target_link_libraries(NexAurEngine PUBLIC
     ${NEXAUR_GLM_TARGET}
     ${NEXAUR_IMGUI_TARGET}
     ${NEXAUR_IMGUIZMO_TARGET}
+    ${NEXAUR_NLOHMANN_JSON_TARGET}
     ${NEXAUR_SPDLOG_TARGET}
 )
 
