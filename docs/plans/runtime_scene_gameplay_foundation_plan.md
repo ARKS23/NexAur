@@ -32,9 +32,9 @@ Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第
 
 尚未完成的关键能力：
 
-- `GameModule` 骨架已建立；基础 `GameplaySystem` 已建立，后续仍需 collider / HUD / prefab 等玩法配套。
+- `GameModule` 骨架已建立；基础 `GameplaySystem` 和轻量 Physics trigger 已建立，后续仍需 HUD / prefab 等玩法配套。
 - `InputActionSystem v1` 已建立，玩法代码可以读取语义输入；Play/Edit 输入隔离、可配置 binding、gamepad 等仍未完成。
-- 没有 runtime camera controller、HUD、碰撞/触发器、Audio、Prefab / spawn 模板。
+- 没有 runtime camera controller、HUD、Audio、Prefab / spawn 模板。
 
 因此下一阶段不应继续扩大 Renderer，而应先补 Runtime / Scene / Gameplay 基础。
 
@@ -1185,13 +1185,188 @@ EditorModule::postUpdate()
 
 ### PR-G7：Simple Collider / Trigger
 
-- `SphereColliderComponent`
-- `AABBColliderComponent`
-- Trigger overlap。
-- 简单 collision layer。
-- 简单 raycast / ground check。
+执行状态：已完成。
 
-第一版不接完整物理引擎，避免把 demo 阻塞在 Physics backend 上。
+目标：
+
+- 为 G6 的 gameplay components 补上最小实体关系能力：谁和谁发生 overlap。
+- 支撑 `CollectibleComponent`、后续 Projectile / damage / simple enemy contact。
+- 建立 `Function/Physics` 目录，但第一版仍保持轻量碰撞查询和 trigger overlap，不接完整物理引擎。
+
+完成记录：
+
+- 新增 `Function/Scene/collision_component.h`，包含 Sphere / AABB collider、Trigger 和 CollisionFilter 数据组件。
+- 新增 `Function/Physics/physics_types.h`、`collision_query.*` 和 `trigger_overlap_system.*`。
+- `TriggerOverlapSystem` 支持 sphere/sphere、aabb/aabb、sphere/aabb 和 layer/mask 过滤。
+- `GameModule::tick()` 在 `MovementSystem` 之后运行 `TriggerOverlapSystem`。
+- `CollectibleSystem` 消费 overlap 结果，支持 player overlap collectible 后销毁 collectible。
+- `SceneSerializer` 支持 collider / trigger / filter round-trip。
+- Sandbox 新增 `--physics-trigger-smoke`，覆盖 overlap、filter、collectible pickup 和 serializer round-trip。
+
+目录边界建议：
+
+```text
+source/Engine/Function/Scene/
+  collision_component.h        // 可序列化、后端无关的 collider 数据组件
+
+source/Engine/Function/Physics/
+  physics_types.h              // Physics layer / overlap result / world collider 描述
+  collision_query.h
+  collision_query.cpp          // sphere/aabb overlap 等纯查询函数
+  trigger_overlap_system.h
+  trigger_overlap_system.cpp   // 从 Scene 收集 collider，输出当前帧 overlap
+```
+
+这个拆法比把所有东西都塞进 `Function/Game` 更清爽：
+
+- Scene 保存数据：Collider / Trigger / Filter 是可保存的场景组件。
+- Physics 负责算法：shape world-space 转换、overlap 检测、layer/mask 过滤。
+- Game 消费结果：Collectible / damage / game rule 只关心哪些实体发生了 trigger。
+
+第一版不建议立刻注册独立 `PhysicsModule` tick。
+
+原因是当前 `MovementSystem` 仍由 `GameModule::tick()` 调用，Trigger overlap 必须在 movement 之后执行。如果把 Physics 做成独立 module tick，但没有更细的 tick phase，容易出现：
+
+```text
+Physics tick before Game movement -> overlap 使用上一帧位置
+Physics tick after Game movement  -> Game 本帧不好消费结果
+```
+
+因此 PR-G7 第一版建议：代码放在 `Function/Physics`，但由 `GameModule` 在 `MovementSystem` 之后显式调用。后续如果引入 scheduler / fixed update phase，再把它升级成真正的 `PhysicsModule`。
+
+建议组件：
+
+```cpp
+struct SphereColliderComponent {
+    glm::vec3 offset{ 0.0f };
+    float radius = 0.5f;
+    bool enabled = true;
+};
+
+struct AABBColliderComponent {
+    glm::vec3 offset{ 0.0f };
+    glm::vec3 half_extents{ 0.5f };
+    bool enabled = true;
+};
+
+struct TriggerComponent {
+    bool enabled = true;
+};
+
+struct CollisionFilterComponent {
+    uint32_t layer = 1u;
+    uint32_t mask = 0xffffffffu;
+};
+```
+
+第一版约束：
+
+- 一个实体优先只挂一种 collider shape。
+- `TriggerComponent` 表示这个实体参与 trigger overlap。
+- `CollisionFilterComponent` 可选；没有时使用默认 layer/mask。
+- 只做 overlap，不做阻挡、不做位移修正、不做刚体响应。
+
+世界空间规则：
+
+- Sphere center = `Transform.translation + offset`。
+- Sphere radius = `radius * max(abs(scale.x), abs(scale.y), abs(scale.z))`。
+- AABB center = `Transform.translation + offset`。
+- AABB half extents = `half_extents * abs(scale)`。
+- 第一版忽略 rotation，因为 AABB 是 axis-aligned。
+
+建议 Physics API：
+
+```cpp
+struct TriggerOverlap {
+    entt::entity first{ entt::null };
+    entt::entity second{ entt::null };
+};
+
+struct TriggerOverlapFrame {
+    std::vector<TriggerOverlap> overlaps;
+};
+
+class TriggerOverlapSystem {
+public:
+    void update(SceneV2& scene);
+    const TriggerOverlapFrame& getFrame() const;
+};
+```
+
+`CollisionQuery` 第一版支持：
+
+```text
+sphere vs sphere
+aabb vs aabb
+sphere vs aabb
+layer / mask filter
+```
+
+GameModule 调用顺序建议：
+
+```text
+GameModule::tick()
+  PlayerControlSystem
+  EnemySystem
+  MovementSystem
+
+  TriggerOverlapSystem
+  CollectibleSystem
+
+  LifetimeSystem
+  HealthSystem
+```
+
+`CollectibleSystem` 第一版可以只做最小效果：
+
+- 找到 `PlayerComponent` 与 `CollectibleComponent` 的 trigger overlap。
+- 销毁 collectible entity。
+- 不做 score UI，score / HUD 留到 PR-G8。
+
+序列化建议：
+
+- `SceneSerializer` 增加 collider / trigger / filter 的可选读写。
+- 旧场景缺字段时按默认组件值加载，不升级 scene version。
+- 建议字段：
+  - `"SphereCollider": { "offset": [0,0,0], "radius": 0.5, "enabled": true }`
+  - `"AABBCollider": { "offset": [0,0,0], "half_extents": [0.5,0.5,0.5], "enabled": true }`
+  - `"Trigger": { "enabled": true }`
+  - `"CollisionFilter": { "layer": 1, "mask": 4294967295 }`
+
+测试建议：
+
+- 新增 `Sandbox.exe --physics-trigger-smoke`。
+- smoke 不依赖窗口和 Editor UI，直接构建内存 scene。
+- 验证：
+  - sphere/sphere overlap 命中。
+  - aabb/aabb overlap 命中。
+  - sphere/aabb overlap 命中。
+  - 非 overlap 不产生结果。
+  - layer/mask 过滤正确。
+  - player overlap collectible 后 collectible 被销毁。
+  - serializer round-trip 后 collider / trigger / filter 不丢。
+
+暂时不做：
+
+- 不接 Bullet / Jolt / PhysX。
+- 不做 rigidbody。
+- 不做 collision response / blocking movement / slide。
+- 不做 sweep / continuous collision。
+- 不做完整 raycast / ground check；如确实需要，可后续单独开 `Physics query v1`。
+- 不做 trigger enter / stay / exit 历史事件；第一版只输出当前帧 overlap。
+- 不做 editor collider inspector。
+- 不做 renderer 效果；collider debug visualization 可作为后续调试小 PR。
+
+验收：
+
+- `Function/Physics` 目录建立，包含轻量 collision query 和 trigger overlap system。
+- Collider / Trigger / Filter 组件可保存和加载。
+- `GameModule` 在 movement 后运行 trigger overlap。
+- 至少一个 gameplay 消费方使用 overlap 结果，例如 collectible pickup。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `Sandbox.exe --gameplay-systems-smoke` 通过。
+- `Sandbox.exe --physics-trigger-smoke` 通过。
+- 常规 Sandbox smoke 通过。
 
 ### PR-G8：RuntimeCameraController + HUD / GameState
 

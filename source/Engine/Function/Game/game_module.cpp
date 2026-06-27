@@ -6,6 +6,7 @@
 #include "Core/Module/engine_module.h"
 #include "Function/Game/gameplay_systems.h"
 #include "Function/Input/input_action_system.h"
+#include "Function/Physics/trigger_overlap_system.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/Scene/scene_v2.h"
 
@@ -36,6 +37,8 @@ namespace NexAur {
                 m_player_control_system.update(scene, *m_input_actions, tick_context.delta_time);
                 m_enemy_system.update(scene, tick_context.delta_time);
                 m_movement_system.update(scene, tick_context.delta_time);
+                m_trigger_overlap_system.update(scene);
+                m_collectible_system.update(scene, m_trigger_overlap_system.getFrame());
                 m_lifetime_system.update(scene, tick_context.delta_time);
                 m_health_system.update(scene);
             }
@@ -63,6 +66,8 @@ namespace NexAur {
             PlayerControlSystem m_player_control_system;
             EnemySystem m_enemy_system;
             MovementSystem m_movement_system;
+            TriggerOverlapSystem m_trigger_overlap_system;
+            CollectibleSystem m_collectible_system;
             LifetimeSystem m_lifetime_system;
             HealthSystem m_health_system;
         };

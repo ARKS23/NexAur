@@ -7,8 +7,10 @@
 #include "Function/Game/gameplay_systems.h"
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_action_system.h"
+#include "Function/Physics/trigger_overlap_system.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
 #include "Function/Scene/scene_service.h"
@@ -368,6 +370,175 @@ int runGameplaySystemsSmoke() {
     return 0;
 }
 
+int runPhysicsTriggerSmoke() {
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto countOverlaps = [](NexAur::SceneV2& scene) {
+        NexAur::TriggerOverlapSystem trigger_system;
+        trigger_system.update(scene);
+        return trigger_system.getFrame().overlaps.size();
+    };
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity lhs = scene.createEntity("SphereA");
+        lhs.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+        lhs.addComponent<NexAur::TriggerComponent>();
+
+        NexAur::Entity rhs = scene.createEntity("SphereB");
+        rhs.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+        rhs.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 1.5f, 0.0f, 0.0f };
+
+        expect(countOverlaps(scene) == 1, "Sphere/Sphere should overlap.");
+        rhs.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 3.0f, 0.0f, 0.0f };
+        expect(countOverlaps(scene) == 0, "Separated Sphere/Sphere should not overlap.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity lhs = scene.createEntity("AABBA");
+        lhs.addComponent<NexAur::AABBColliderComponent>().half_extents = glm::vec3{ 1.0f };
+        lhs.addComponent<NexAur::TriggerComponent>();
+
+        NexAur::Entity rhs = scene.createEntity("AABBB");
+        rhs.addComponent<NexAur::AABBColliderComponent>().half_extents = glm::vec3{ 1.0f };
+        rhs.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 1.5f, 0.0f, 0.0f };
+
+        expect(countOverlaps(scene) == 1, "AABB/AABB should overlap.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity sphere = scene.createEntity("Sphere");
+        sphere.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+        sphere.addComponent<NexAur::TriggerComponent>();
+
+        NexAur::Entity box = scene.createEntity("Box");
+        box.addComponent<NexAur::AABBColliderComponent>().half_extents = glm::vec3{ 0.5f };
+        box.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 1.25f, 0.0f, 0.0f };
+
+        expect(countOverlaps(scene) == 1, "Sphere/AABB should overlap.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity lhs = scene.createEntity("FilteredA");
+        lhs.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+        lhs.addComponent<NexAur::TriggerComponent>();
+        auto& lhs_filter = lhs.addComponent<NexAur::CollisionFilterComponent>();
+        lhs_filter.layer = 1u;
+        lhs_filter.mask = 1u;
+
+        NexAur::Entity rhs = scene.createEntity("FilteredB");
+        rhs.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+        auto& rhs_filter = rhs.addComponent<NexAur::CollisionFilterComponent>();
+        rhs_filter.layer = 2u;
+        rhs_filter.mask = 2u;
+
+        expect(countOverlaps(scene) == 0, "Layer/mask should filter overlap.");
+        lhs_filter.mask = 2u;
+        rhs_filter.mask = 1u;
+        expect(countOverlaps(scene) == 1, "Layer/mask should allow overlap when masks match.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity player = scene.createEntity("Player");
+        player.addComponent<NexAur::PlayerComponent>();
+        player.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+
+        NexAur::Entity collectible = scene.createEntity("Collectible");
+        collectible.addComponent<NexAur::CollectibleComponent>().score = 10;
+        collectible.addComponent<NexAur::SphereColliderComponent>().radius = 0.5f;
+        collectible.addComponent<NexAur::TriggerComponent>();
+        collectible.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 0.75f, 0.0f, 0.0f };
+
+        const entt::entity collectible_handle = static_cast<entt::entity>(collectible);
+        NexAur::TriggerOverlapSystem trigger_system;
+        NexAur::CollectibleSystem collectible_system;
+        trigger_system.update(scene);
+        collectible_system.update(scene, trigger_system.getFrame());
+
+        expect(!scene.getRegistry().valid(collectible_handle), "Collectible should be destroyed on player trigger overlap.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity sphere = scene.createEntity("SerializedSphere");
+        auto& sphere_collider = sphere.addComponent<NexAur::SphereColliderComponent>();
+        sphere_collider.offset = glm::vec3{ 1.0f, 2.0f, 3.0f };
+        sphere_collider.radius = 1.25f;
+        sphere.addComponent<NexAur::TriggerComponent>().enabled = true;
+        auto& filter = sphere.addComponent<NexAur::CollisionFilterComponent>();
+        filter.layer = 4u;
+        filter.mask = 8u;
+
+        NexAur::Entity box = scene.createEntity("SerializedBox");
+        auto& aabb = box.addComponent<NexAur::AABBColliderComponent>();
+        aabb.offset = glm::vec3{ -1.0f, 0.0f, 0.5f };
+        aabb.half_extents = glm::vec3{ 0.25f, 0.5f, 0.75f };
+
+        const std::filesystem::path smoke_path =
+            std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "physics_trigger_smoke.nxscene";
+
+        NexAur::SceneSerializer serializer(NexAur::AssetManager::getInstance());
+        const NexAur::SceneSerializationResult save_result = serializer.save(scene, smoke_path);
+        if (!save_result) {
+            success = false;
+            failure = save_result.message;
+        } else {
+            const NexAur::SceneLoadResult load_result = serializer.load(smoke_path);
+            if (!load_result) {
+                success = false;
+                failure = load_result.message;
+            } else {
+                const NexAur::SphereColliderComponent* loaded_sphere =
+                    findComponentByName<NexAur::SphereColliderComponent>(load_result.scene, "SerializedSphere");
+                const NexAur::TriggerComponent* loaded_trigger =
+                    findComponentByName<NexAur::TriggerComponent>(load_result.scene, "SerializedSphere");
+                const NexAur::CollisionFilterComponent* loaded_filter =
+                    findComponentByName<NexAur::CollisionFilterComponent>(load_result.scene, "SerializedSphere");
+                const NexAur::AABBColliderComponent* loaded_aabb =
+                    findComponentByName<NexAur::AABBColliderComponent>(load_result.scene, "SerializedBox");
+
+                expect(
+                    loaded_sphere
+                        && nearlyEqual(loaded_sphere->offset.x, 1.0f)
+                        && nearlyEqual(loaded_sphere->offset.y, 2.0f)
+                        && nearlyEqual(loaded_sphere->offset.z, 3.0f)
+                        && nearlyEqual(loaded_sphere->radius, 1.25f),
+                    "Loaded SphereColliderComponent is invalid.");
+                expect(loaded_trigger && loaded_trigger->enabled, "Loaded TriggerComponent is invalid.");
+                expect(loaded_filter && loaded_filter->layer == 4u && loaded_filter->mask == 8u, "Loaded CollisionFilterComponent is invalid.");
+                expect(
+                    loaded_aabb
+                        && nearlyEqual(loaded_aabb->offset.x, -1.0f)
+                        && nearlyEqual(loaded_aabb->half_extents.z, 0.75f),
+                    "Loaded AABBColliderComponent is invalid.");
+            }
+        }
+
+        std::error_code remove_error;
+        std::filesystem::remove(smoke_path, remove_error);
+    }
+
+    if (!success) {
+        std::cerr << "Physics trigger smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Physics trigger smoke passed." << std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--scene-serializer-smoke") {
         return runSceneSerializerSmoke();
@@ -377,6 +548,9 @@ int main(int argc, char** argv) {
     }
     if (argc > 1 && std::string(argv[1]) == "--gameplay-systems-smoke") {
         return runGameplaySystemsSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--physics-trigger-smoke") {
+        return runPhysicsTriggerSmoke();
     }
 
     NexAur::Engine *engine = new NexAur::Engine();

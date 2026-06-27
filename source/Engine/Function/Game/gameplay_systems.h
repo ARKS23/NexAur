@@ -6,6 +6,7 @@
 namespace NexAur {
     class InputActionService;
     class SceneV2;
+    struct TriggerOverlapFrame;
 
     class NEXAUR_API PlayerControlSystem final {
     public:
@@ -30,5 +31,10 @@ namespace NexAur {
     class NEXAUR_API HealthSystem final {
     public:
         void update(SceneV2& scene);
+    };
+
+    class NEXAUR_API CollectibleSystem final {
+    public:
+        void update(SceneV2& scene, const TriggerOverlapFrame& trigger_frame);
     };
 } // namespace NexAur

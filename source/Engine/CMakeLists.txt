@@ -86,6 +86,11 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Input/input_system_glfw.cpp
     Function/Input/KeyCode/key_codes.h
     Function/Input/KeyCode/mouse_codes.h
+    Function/Physics/collision_query.h
+    Function/Physics/collision_query.cpp
+    Function/Physics/physics_types.h
+    Function/Physics/trigger_overlap_system.h
+    Function/Physics/trigger_overlap_system.cpp
     Function/Platform/platform_module.h
     Function/Platform/platform_module.cpp
     Function/Platform/platform_services.h
@@ -112,6 +117,7 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/texture_loader.h
     Function/Resource/texture_loader.cpp
     Function/Scene/component.h
+    Function/Scene/collision_component.h
     Function/Scene/entity.h
     Function/Scene/entity.cpp
     Function/Scene/gameplay_component.h

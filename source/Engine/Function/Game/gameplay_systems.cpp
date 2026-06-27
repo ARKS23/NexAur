@@ -2,6 +2,7 @@
 #include "gameplay_systems.h"
 
 #include "Function/Input/input_action_system.h"
+#include "Function/Physics/physics_types.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/entity.h"
 #include "Function/Scene/gameplay_component.h"
@@ -28,6 +29,14 @@ namespace NexAur {
             }
 
             return false;
+        }
+
+        bool isPlayer(const entt::registry& registry, entt::entity entity) {
+            return registry.valid(entity) && registry.any_of<PlayerComponent>(entity);
+        }
+
+        bool isCollectible(const entt::registry& registry, entt::entity entity) {
+            return registry.valid(entity) && registry.any_of<CollectibleComponent>(entity);
         }
     } // namespace
 
@@ -111,5 +120,20 @@ namespace NexAur {
         }
 
         destroyEntities(scene, dead_entities);
+    }
+
+    void CollectibleSystem::update(SceneV2& scene, const TriggerOverlapFrame& trigger_frame) {
+        entt::registry& registry = scene.getRegistry();
+        std::vector<entt::entity> collected_entities;
+
+        for (const TriggerOverlap& overlap : trigger_frame.overlaps) {
+            if (isPlayer(registry, overlap.first) && isCollectible(registry, overlap.second)) {
+                collected_entities.push_back(overlap.second);
+            } else if (isPlayer(registry, overlap.second) && isCollectible(registry, overlap.first)) {
+                collected_entities.push_back(overlap.first);
+            }
+        }
+
+        destroyEntities(scene, collected_entities);
     }
 } // namespace NexAur

@@ -3,6 +3,7 @@
 
 #include "Core/Log/log_system.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/entity.h"
 #include "Function/Scene/gameplay_component.h"
@@ -241,6 +242,33 @@ namespace NexAur {
             return json{ { "seconds", lifetime.seconds } };
         }
 
+        json writeSphereColliderComponent(const SphereColliderComponent& collider) {
+            return json{
+                { "offset", writeVec3(collider.offset) },
+                { "radius", collider.radius },
+                { "enabled", collider.enabled },
+            };
+        }
+
+        json writeAABBColliderComponent(const AABBColliderComponent& collider) {
+            return json{
+                { "offset", writeVec3(collider.offset) },
+                { "half_extents", writeVec3(collider.half_extents) },
+                { "enabled", collider.enabled },
+            };
+        }
+
+        json writeTriggerComponent(const TriggerComponent& trigger) {
+            return json{ { "enabled", trigger.enabled } };
+        }
+
+        json writeCollisionFilterComponent(const CollisionFilterComponent& filter) {
+            return json{
+                { "layer", filter.layer },
+                { "mask", filter.mask },
+            };
+        }
+
         void readTransformComponent(const json& component, TransformComponent& transform) {
             transform.translation = readVec3(component.value("translation", json::array()), transform.translation);
             transform.rotation = readVec3(component.value("rotation", json::array()), transform.rotation);
@@ -298,6 +326,27 @@ namespace NexAur {
 
         void readLifetimeComponent(const json& component, LifetimeComponent& lifetime) {
             lifetime.seconds = component.value("seconds", lifetime.seconds);
+        }
+
+        void readSphereColliderComponent(const json& component, SphereColliderComponent& collider) {
+            collider.offset = readVec3(component.value("offset", json::array()), collider.offset);
+            collider.radius = component.value("radius", collider.radius);
+            collider.enabled = component.value("enabled", collider.enabled);
+        }
+
+        void readAABBColliderComponent(const json& component, AABBColliderComponent& collider) {
+            collider.offset = readVec3(component.value("offset", json::array()), collider.offset);
+            collider.half_extents = readVec3(component.value("half_extents", json::array()), collider.half_extents);
+            collider.enabled = component.value("enabled", collider.enabled);
+        }
+
+        void readTriggerComponent(const json& component, TriggerComponent& trigger) {
+            trigger.enabled = component.value("enabled", trigger.enabled);
+        }
+
+        void readCollisionFilterComponent(const json& component, CollisionFilterComponent& filter) {
+            filter.layer = component.value("layer", filter.layer);
+            filter.mask = component.value("mask", filter.mask);
         }
 
         json writeEntity(
@@ -366,6 +415,22 @@ namespace NexAur {
 
             if (const auto* lifetime = registry.try_get<LifetimeComponent>(entity)) {
                 components["Lifetime"] = writeLifetimeComponent(*lifetime);
+            }
+
+            if (const auto* sphere_collider = registry.try_get<SphereColliderComponent>(entity)) {
+                components["SphereCollider"] = writeSphereColliderComponent(*sphere_collider);
+            }
+
+            if (const auto* aabb_collider = registry.try_get<AABBColliderComponent>(entity)) {
+                components["AABBCollider"] = writeAABBColliderComponent(*aabb_collider);
+            }
+
+            if (const auto* trigger = registry.try_get<TriggerComponent>(entity)) {
+                components["Trigger"] = writeTriggerComponent(*trigger);
+            }
+
+            if (const auto* collision_filter = registry.try_get<CollisionFilterComponent>(entity)) {
+                components["CollisionFilter"] = writeCollisionFilterComponent(*collision_filter);
             }
 
             return json{
@@ -573,6 +638,29 @@ namespace NexAur {
                 if (components.contains("Lifetime") && components["Lifetime"].is_object()) {
                     LifetimeComponent& lifetime = entity.addOrReplaceComponent<LifetimeComponent>();
                     readLifetimeComponent(components["Lifetime"], lifetime);
+                }
+
+                if (components.contains("SphereCollider") && components["SphereCollider"].is_object()) {
+                    SphereColliderComponent& sphere_collider =
+                        entity.addOrReplaceComponent<SphereColliderComponent>();
+                    readSphereColliderComponent(components["SphereCollider"], sphere_collider);
+                }
+
+                if (components.contains("AABBCollider") && components["AABBCollider"].is_object()) {
+                    AABBColliderComponent& aabb_collider =
+                        entity.addOrReplaceComponent<AABBColliderComponent>();
+                    readAABBColliderComponent(components["AABBCollider"], aabb_collider);
+                }
+
+                if (components.contains("Trigger") && components["Trigger"].is_object()) {
+                    TriggerComponent& trigger = entity.addOrReplaceComponent<TriggerComponent>();
+                    readTriggerComponent(components["Trigger"], trigger);
+                }
+
+                if (components.contains("CollisionFilter") && components["CollisionFilter"].is_object()) {
+                    CollisionFilterComponent& collision_filter =
+                        entity.addOrReplaceComponent<CollisionFilterComponent>();
+                    readCollisionFilterComponent(components["CollisionFilter"], collision_filter);
                 }
 
                 entity_count++;
