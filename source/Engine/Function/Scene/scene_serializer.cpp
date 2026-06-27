@@ -93,6 +93,27 @@ namespace NexAur {
             return matrix;
         }
 
+        const char* writeRuntimeCameraMode(RuntimeCameraMode mode) {
+            switch (mode) {
+            case RuntimeCameraMode::ThirdPersonFollow:
+                return "ThirdPersonFollow";
+            case RuntimeCameraMode::FirstPerson:
+                return "FirstPerson";
+            default:
+                return "ThirdPersonFollow";
+            }
+        }
+
+        RuntimeCameraMode readRuntimeCameraMode(const std::string& value, RuntimeCameraMode fallback) {
+            if (value == "ThirdPersonFollow") {
+                return RuntimeCameraMode::ThirdPersonFollow;
+            }
+            if (value == "FirstPerson") {
+                return RuntimeCameraMode::FirstPerson;
+            }
+            return fallback;
+        }
+
         json writeAssetReference(AssetHandle handle, const AssetManager& asset_manager) {
             json asset;
             asset["uuid"] = std::to_string(static_cast<uint64_t>(handle.id));
@@ -242,6 +263,18 @@ namespace NexAur {
             return json{ { "seconds", lifetime.seconds } };
         }
 
+        json writeRuntimeCameraControllerComponent(const RuntimeCameraControllerComponent& controller) {
+            return json{
+                { "mode", writeRuntimeCameraMode(controller.mode) },
+                { "follow_offset", writeVec3(controller.follow_offset) },
+                { "target_offset", writeVec3(controller.target_offset) },
+                { "follow_speed", controller.follow_speed },
+                { "fov_degrees", controller.fov_degrees },
+                { "aspect_ratio", controller.aspect_ratio },
+                { "enabled", controller.enabled },
+            };
+        }
+
         json writeSphereColliderComponent(const SphereColliderComponent& collider) {
             return json{
                 { "offset", writeVec3(collider.offset) },
@@ -283,6 +316,23 @@ namespace NexAur {
             camera.projectionMatrix = readMat4(component.value("projection_matrix", json::array()), camera.projectionMatrix);
             camera.viewProjectionMatrix =
                 readMat4(component.value("view_projection_matrix", json::array()), camera.viewProjectionMatrix);
+        }
+
+        void readRuntimeCameraControllerComponent(
+            const json& component,
+            RuntimeCameraControllerComponent& controller) {
+            controller.mode =
+                readRuntimeCameraMode(
+                    component.value("mode", std::string(writeRuntimeCameraMode(controller.mode))),
+                    controller.mode);
+            controller.follow_offset =
+                readVec3(component.value("follow_offset", json::array()), controller.follow_offset);
+            controller.target_offset =
+                readVec3(component.value("target_offset", json::array()), controller.target_offset);
+            controller.follow_speed = component.value("follow_speed", controller.follow_speed);
+            controller.fov_degrees = component.value("fov_degrees", controller.fov_degrees);
+            controller.aspect_ratio = component.value("aspect_ratio", controller.aspect_ratio);
+            controller.enabled = component.value("enabled", controller.enabled);
         }
 
         void readDirectionalLightComponent(const json& component, DirectionalLightComponent& light) {
@@ -415,6 +465,10 @@ namespace NexAur {
 
             if (const auto* lifetime = registry.try_get<LifetimeComponent>(entity)) {
                 components["Lifetime"] = writeLifetimeComponent(*lifetime);
+            }
+
+            if (const auto* runtime_camera = registry.try_get<RuntimeCameraControllerComponent>(entity)) {
+                components["RuntimeCameraController"] = writeRuntimeCameraControllerComponent(*runtime_camera);
             }
 
             if (const auto* sphere_collider = registry.try_get<SphereColliderComponent>(entity)) {
@@ -638,6 +692,12 @@ namespace NexAur {
                 if (components.contains("Lifetime") && components["Lifetime"].is_object()) {
                     LifetimeComponent& lifetime = entity.addOrReplaceComponent<LifetimeComponent>();
                     readLifetimeComponent(components["Lifetime"], lifetime);
+                }
+
+                if (components.contains("RuntimeCameraController") && components["RuntimeCameraController"].is_object()) {
+                    RuntimeCameraControllerComponent& runtime_camera =
+                        entity.addOrReplaceComponent<RuntimeCameraControllerComponent>();
+                    readRuntimeCameraControllerComponent(components["RuntimeCameraController"], runtime_camera);
                 }
 
                 if (components.contains("SphereCollider") && components["SphereCollider"].is_object()) {

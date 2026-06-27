@@ -1370,10 +1370,254 @@ GameModule::tick()
 
 ### PR-G8：RuntimeCameraController + HUD / GameState
 
-- 第一人称或第三人称 runtime camera。
-- `GameState`：MainMenu / Playing / Paused / GameOver / Victory。
-- HUD：score / health / pause / win / lose。
-- 第一版 HUD 可以先用 ImGui，后续再拆 runtime UI。
+执行状态：已完成。
+
+目标：
+
+- 让 GameView 真正使用 runtime camera，而不是只能依赖默认静态 CameraComponent。
+- 引入最小 `GameState`，让 pause / game over / victory 有明确状态边界。
+- 把 G7 的 collectible trigger 结果转成 score，并在 HUD 中展示 score / health / pause / win / lose。
+- 继续保持 Scene / Game / UI 边界清晰：Scene 保存数据，Game 运行玩法状态，HUD 只是状态的可视化。
+
+实施前基础：
+
+- `SceneV2::extractSceneData()` 已优先读取 `ActiveCameraComponent`，GameView 会使用场景里的 runtime camera。
+- `ViewportPanel` 已有 Scene / Game 模式；SceneView 用 EditorCamera 覆盖相机，GameView 保留 active CameraComponent。
+- `GameModule::tick()` 已按固定顺序运行 gameplay、movement、trigger、collectible、lifetime、health。
+- `GameModule::renderUI()` 已预留 runtime HUD 提交点。
+- `InputActionSystem` 已有 `DefaultInputActions::Pause`，默认绑定 Escape。
+- G7 已有 `CollectibleSystem` 和 trigger overlap，但还没有 score / victory 状态承接。
+
+完成记录：
+
+- 新增 `RuntimeCameraControllerComponent` 和 `RuntimeCameraControllerSystem`，第一版支持 third-person follow，并写回 active `CameraComponent`。
+- 新增 `GameStateModel`，支持 `Playing` / `Paused` / `GameOver` / `Victory` 和 score / health / collectible snapshot。
+- `CollectibleSystem` 改为返回 `CollectibleFrameResult`，由 GameState 承接分数，而不是直接写 UI。
+- 新增 `RuntimeHud`，第一版使用 ImGui overlay 绘制 score / health / pause / win / lose。
+- `GameModule` 接入 pause gating、game state rule update、runtime camera update 和 HUD render。
+- `SceneSerializer` 支持 `RuntimeCameraControllerComponent` 可选读写。
+- Sandbox 新增 `--runtime-camera-smoke` 和 `--runtime-game-flow-smoke`。
+
+建议第一版范围：
+
+1. Runtime camera controller。
+   - 优先做第三人称跟随相机，默认跟随第一个 `PlayerComponent`。
+   - 不复用 `EditorCamera`；编辑器观察相机和运行时相机继续分离。
+   - 新增 data-only 的 `RuntimeCameraControllerComponent`，挂在 active camera entity 上。
+   - 新增 `RuntimeCameraControllerSystem`，在 `GameModule::tick()` 里更新 `CameraComponent` 的 view / projection / viewProjection。
+   - camera transform 可以同步写回 `TransformComponent`，方便 Scene Hierarchy / Properties 后续观察。
+2. GameState。
+   - 新增轻量 `GameStateModel` 或 `GameStateService`，由 `GameModule` 拥有。
+   - 第一版状态建议：
+     ```cpp
+     enum class GameState {
+         MainMenu,
+         Playing,
+         Paused,
+         GameOver,
+         Victory
+     };
+     ```
+   - 第一版可以默认从 `Playing` 开始，暂不做真正 main menu flow；保留 `MainMenu` 枚举供后续扩展。
+   - `Pause` action 在 `Playing <-> Paused` 之间切换；GameOver / Victory 后可以忽略 gameplay tick。
+3. Score / health / rule。
+   - 建议让 `CollectibleSystem` 返回本帧收集结果，而不是直接把分数写进 HUD。
+   - 例如返回 `CollectibleFrameResult { collected_count, collected_score }`，再由 `GameStateSystem` 累加 score。
+   - `GameStateSystem` 从 scene 查询玩家 `HealthComponent`，同步 HUD 所需 health。
+   - 胜利条件第一版可以是：本关 collectibles 总数大于 0，且当前 remaining collectibles 为 0。
+   - 失败条件第一版可以是：找不到有效玩家，或玩家 `HealthComponent.current <= 0`。
+4. HUD。
+   - 第一版使用 ImGui 绘制，后续再替换成独立 runtime UI。
+   - HUD 只读取 `GameStateModel` 的快照，不直接遍历 scene、不直接修改 gameplay。
+   - ImGui 依赖集中在很小的 adapter 文件里，例如 `runtime_hud.cpp`，不要扩散到 camera / game state / gameplay systems。
+   - HUD 不保存进 `.nxscene`。
+
+建议新增或调整文件：
+
+```text
+source/Engine/Function/Scene/
+  gameplay_component.h                  // 增加 RuntimeCameraControllerComponent，保持 data-only
+
+source/Engine/Function/Game/
+  runtime_camera_controller_system.h
+  runtime_camera_controller_system.cpp
+  game_state.h
+  game_state.cpp
+  runtime_hud.h
+  runtime_hud.cpp
+```
+
+如果 `gameplay_component.h` 后续继续膨胀，可以再把 camera controller 数据拆到独立 `runtime_camera_component.h`。PR-G8 第一版为了少打散组件位置，可以先保持在现有 gameplay component 文件里。
+
+建议组件：
+
+```cpp
+enum class RuntimeCameraMode {
+    ThirdPersonFollow,
+    FirstPerson
+};
+
+struct RuntimeCameraControllerComponent {
+    RuntimeCameraMode mode = RuntimeCameraMode::ThirdPersonFollow;
+    glm::vec3 follow_offset{ 0.0f, 3.0f, 6.0f };
+    glm::vec3 target_offset{ 0.0f, 1.0f, 0.0f };
+    float follow_speed = 10.0f;
+    float fov_degrees = 45.0f;
+    float aspect_ratio = 16.0f / 9.0f;
+    bool enabled = true;
+};
+```
+
+第一版可以只实现 `ThirdPersonFollow`，`FirstPerson` 先保留枚举或暂不暴露。跟随相机使用 `PlayerComponent + TransformComponent` 作为目标，计算：
+
+```text
+target = player.translation + target_offset
+desired_camera_position = target + follow_offset
+camera.position = lerp(camera.position, desired_camera_position, follow_speed * delta_time)
+view = lookAt(camera.position, target, world_up)
+projection = perspective(fov, aspect_ratio, nearClip, farClip)
+viewProjection = projection * view
+```
+
+注意：
+
+- `aspect_ratio` 第一版可以用组件默认值；后续再由 viewport / renderer size 同步。
+- 不建议在 PR-G8 直接让 `GameModule` 依赖 RendererService，只为拿 viewport size。
+- 如果要解决 GameView aspect，可以后续开小 PR 做 camera viewport size service。
+
+建议 GameState 数据：
+
+```cpp
+struct GameStateSnapshot {
+    GameState state = GameState::Playing;
+    int score = 0;
+    int collectible_count = 0;
+    int remaining_collectibles = 0;
+    int player_health = 0;
+    int player_max_health = 0;
+};
+
+class GameStateModel {
+public:
+    void resetForScene(SceneV2& scene);
+    void togglePause();
+    void addCollected(int count, int score);
+    void updateRules(SceneV2& scene);
+    const GameStateSnapshot& getSnapshot() const;
+};
+```
+
+这里不急着做完整 event bus。`GameModule` 直接按固定顺序把 `CollectibleSystem` 的结果交给 `GameStateModel` 即可。
+
+建议调用顺序：
+
+```text
+GameModule::tick()
+  if Pause pressed:
+    GameStateModel::togglePause()
+
+  if state == Playing:
+    PlayerControlSystem
+    EnemySystem
+    MovementSystem
+
+    TriggerOverlapSystem
+    CollectibleSystem -> CollectibleFrameResult
+    GameStateModel::addCollected(result.collected_count, result.collected_score)
+
+    GameStateModel::updateRules(scene)
+    RuntimeCameraControllerSystem
+
+    LifetimeSystem
+    HealthSystem
+
+  else:
+    RuntimeCameraControllerSystem  // 可选：暂停时仍保持 camera matrix 有效
+
+RuntimeModule::postUpdate()
+  active_scene->extractSceneData()
+
+GameModule::renderUI()
+  RuntimeHud::draw(GameStateModel::getSnapshot())
+```
+
+这个顺序的关键点：
+
+- camera controller 必须在 `RuntimeModule::postUpdate()` 提取场景前更新 CameraComponent。
+- pause 后 gameplay movement / trigger / lifetime 不继续推进。
+- HUD 在 UI 阶段读取状态，不影响本帧 gameplay。
+- `HealthSystem` 如果会销毁玩家，`GameStateModel::updateRules()` 应该先读取玩家血量。
+
+HUD 第一版建议内容：
+
+```text
+Playing:
+  Score: current / total
+  Health: current / max
+
+Paused:
+  PAUSED
+  Score / Health
+
+Victory:
+  VICTORY
+  Final Score
+
+GameOver:
+  GAME OVER
+  Final Score
+```
+
+HUD 不需要做复杂布局。第一版可以是主 viewport 上方的小 overlay，后续如果要严格贴到 GameView bounds，再让 Editor 暴露 viewport bounds 或引入 runtime UI target。
+
+序列化建议：
+
+- `RuntimeCameraControllerComponent` 可以作为可选 scene component 保存 / 加载。
+- `GameStateModel` 不保存到 `.nxscene`，score / pause / win / lose 都是运行时状态。
+- `HealthComponent` / `CollectibleComponent` 已由 G6 保存，PR-G8 不需要升级 scene version。
+- 如果新增 camera controller 字段，旧 scene 缺字段时使用默认值。
+
+测试建议：
+
+- 新增 `Sandbox.exe --runtime-camera-smoke`。
+  - 构建内存 scene：Player + ActiveCamera + RuntimeCameraController。
+  - tick camera system 后检查 CameraComponent position / view / projection / viewProjection 非默认且稳定。
+  - 调用 `SceneV2::extractSceneData()` 后检查 RenderDataPacket camera 与 active camera 一致。
+- 新增 `Sandbox.exe --game-state-smoke` 或合并为 `--runtime-game-flow-smoke`。
+  - 验证 Pause action 切换 `Playing <-> Paused`。
+  - 验证 collectible pickup 后 score 增加。
+  - 验证 remaining collectibles 为 0 后进入 Victory。
+  - 验证玩家 health <= 0 后进入 GameOver。
+  - 验证 paused / victory / game over 时 movement 不继续推进。
+- 常规验证继续保留：
+  - `cmake --build --preset msvc-vcpkg-debug` 通过。
+  - `Sandbox.exe --input-action-smoke` 通过。
+  - `Sandbox.exe --gameplay-systems-smoke` 通过。
+  - `Sandbox.exe --physics-trigger-smoke` 通过。
+  - 常规 Sandbox smoke 通过。
+
+暂时不做：
+
+- 不做完整 Play Mode / Edit Mode 生命周期。
+- 不做 raw mouse capture / mouse-look。
+- 不做完整 runtime UI 框架、样式系统、按钮导航。
+- 不做 gamepad。
+- 不做 camera collision / occlusion。
+- 不做 checkpoint / level loading / restart flow。
+- 不把 score / game state 保存进 `.nxscene`。
+- 不让 GameState / RuntimeCamera 依赖 Editor / Vulkan backend。
+
+验收：
+
+- GameView 使用 runtime active camera，camera 能随 player 或目标更新。
+- SceneView 仍使用 EditorCamera，不被 RuntimeCameraController 反向污染。
+- Pause 能停止 gameplay 推进，并能恢复。
+- Collectible pickup 能反映到 score。
+- 玩家死亡进入 GameOver，收集完成进入 Victory。
+- HUD 能展示 score / health / pause / win / lose。
+- GameModule 不 include Editor / Vulkan backend。
+- ImGui 依赖只出现在 HUD adapter，不扩散到 gameplay systems。
+- RuntimeCameraController / GameState 行为有 smoke 覆盖。
 
 ### PR-G9：PrefabFactory / Spawn templates
 
@@ -1408,15 +1652,11 @@ GameModule::tick()
 
 ## 13. 下一步建议
 
-下一步建议先执行 PR-G1：SceneSerializer v1。
+下一步建议先执行 PR-G9：PrefabFactory / Spawn templates。
 
-开始 PR-G1 前需要确认两个小决策：
+开始 PR-G9 前建议确认两个小决策：
 
-1. 是否接受在 `vcpkg.json` 中加入 `nlohmann-json`。
-2. 第一版 `.nxscene` 文件是否保存到固定测试路径，例如：
+1. 第一版 prefab 是否先用纯代码 factory，不急着做可序列化 prefab asset。
+2. Sandbox demo 是否需要同步改成通过 factory 生成 player / enemy / collectible / projectile 样例。
 
-```text
-assets/scenes/default.nxscene
-```
-
-确认后可以直接实现 serializer、写入 CMake、跑默认场景 round-trip 和 Sandbox smoke。
+确认后可以直接实现 prefab factory，并补上 factory / spawn smoke。

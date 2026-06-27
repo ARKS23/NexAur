@@ -4,11 +4,14 @@
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
 #include "Function/File/file_system.h"
+#include "Function/Game/game_state.h"
 #include "Function/Game/gameplay_systems.h"
+#include "Function/Game/runtime_camera_controller_system.h"
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_action_system.h"
 #include "Function/Physics/trigger_overlap_system.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
@@ -49,6 +52,12 @@ namespace {
 
     bool nearlyEqual(float lhs, float rhs, float epsilon = 0.001f) {
         return std::abs(lhs - rhs) <= epsilon;
+    }
+
+    bool nearlyEqualVec3(const glm::vec3& lhs, const glm::vec3& rhs, float epsilon = 0.001f) {
+        return nearlyEqual(lhs.x, rhs.x, epsilon)
+            && nearlyEqual(lhs.y, rhs.y, epsilon)
+            && nearlyEqual(lhs.z, rhs.z, epsilon);
     }
 
     bool expectGameplay(bool condition, const std::string& message, std::string& failure) {
@@ -539,6 +548,205 @@ int runPhysicsTriggerSmoke() {
     return 0;
 }
 
+int runRuntimeCameraSmoke() {
+    NexAur::SceneV2 scene;
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    NexAur::Entity player = scene.createEntity("Player");
+    player.addComponent<NexAur::PlayerComponent>();
+    player.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 2.0f, 0.0f, -3.0f };
+
+    NexAur::Entity camera_entity = scene.createEntity("RuntimeCamera");
+    auto& camera = camera_entity.addComponent<NexAur::CameraComponent>();
+    camera.position = glm::vec3{ 0.0f };
+    camera.nearClip = 0.1f;
+    camera.farClip = 100.0f;
+    camera_entity.addComponent<NexAur::ActiveCameraComponent>();
+    auto& controller = camera_entity.addComponent<NexAur::RuntimeCameraControllerComponent>();
+    controller.follow_offset = glm::vec3{ 0.0f, 4.0f, 8.0f };
+    controller.target_offset = glm::vec3{ 0.0f, 1.0f, 0.0f };
+    controller.follow_speed = 0.0f;
+    controller.fov_degrees = 60.0f;
+    controller.aspect_ratio = 4.0f / 3.0f;
+
+    NexAur::RuntimeCameraControllerSystem camera_system;
+    camera_system.update(scene, NexAur::TimeStep{ 1.0 });
+
+    const glm::vec3 expected_position{ 2.0f, 5.0f, 5.0f };
+    expect(nearlyEqualVec3(camera.position, expected_position), "Runtime camera should snap to follow position.");
+    expect(
+        nearlyEqualVec3(camera_entity.getComponent<NexAur::TransformComponent>().translation, expected_position),
+        "Runtime camera transform should mirror camera position.");
+
+    NexAur::RenderDataPacket render_packet;
+    scene.extractSceneData(&render_packet);
+    expect(
+        nearlyEqualVec3(render_packet.camera_data.position, expected_position),
+        "Render packet should use active runtime camera position.");
+    expect(
+        nearlyEqual(render_packet.camera_data.near_clip, 0.1f) && nearlyEqual(render_packet.camera_data.far_clip, 100.0f),
+        "Render packet should preserve runtime camera clip planes.");
+
+    const std::filesystem::path smoke_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "runtime_camera_smoke.nxscene";
+
+    NexAur::SceneSerializer serializer(NexAur::AssetManager::getInstance());
+    const NexAur::SceneSerializationResult save_result = serializer.save(scene, smoke_path);
+    if (!save_result) {
+        success = false;
+        failure = save_result.message;
+    } else {
+        const NexAur::SceneLoadResult load_result = serializer.load(smoke_path);
+        if (!load_result) {
+            success = false;
+            failure = load_result.message;
+        } else {
+            const NexAur::RuntimeCameraControllerComponent* loaded_controller =
+                findComponentByName<NexAur::RuntimeCameraControllerComponent>(load_result.scene, "RuntimeCamera");
+            expect(
+                loaded_controller
+                    && loaded_controller->mode == NexAur::RuntimeCameraMode::ThirdPersonFollow
+                    && nearlyEqualVec3(loaded_controller->follow_offset, glm::vec3{ 0.0f, 4.0f, 8.0f })
+                    && nearlyEqual(loaded_controller->fov_degrees, 60.0f)
+                    && nearlyEqual(loaded_controller->aspect_ratio, 4.0f / 3.0f),
+                "RuntimeCameraControllerComponent should round-trip through SceneSerializer.");
+        }
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(smoke_path, remove_error);
+
+    if (!success) {
+        std::cerr << "Runtime camera smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Runtime camera smoke passed." << std::endl;
+    return 0;
+}
+
+int runRuntimeGameFlowSmoke() {
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    {
+        auto fake_input = std::make_shared<FakeInputService>();
+        NexAur::InputActionSystem input_actions(fake_input);
+        input_actions.configureDefaultBindings();
+
+        NexAur::SceneV2 scene;
+        NexAur::Entity player = scene.createEntity("Player");
+        player.addComponent<NexAur::PlayerComponent>();
+        player.addComponent<NexAur::VelocityComponent>().velocity = glm::vec3{ 0.0f, 0.0f, -10.0f };
+        auto& health = player.addComponent<NexAur::HealthComponent>();
+        health.current = 3;
+        health.max = 3;
+
+        NexAur::GameStateModel game_state;
+        game_state.resetForScene(scene);
+
+        input_actions.update();
+        fake_input->setKey(NexAur::KeyCode::Escape, true);
+        input_actions.update();
+        if (input_actions.wasPressed(NexAur::DefaultInputActions::Pause)) {
+            game_state.togglePause();
+        }
+
+        expect(game_state.getSnapshot().state == NexAur::GameState::Paused, "Pause action should switch to Paused.");
+
+        NexAur::MovementSystem movement_system;
+        const glm::vec3 initial_position = player.getComponent<NexAur::TransformComponent>().translation;
+        if (game_state.isGameplayActive()) {
+            movement_system.update(scene, NexAur::TimeStep{ 1.0 });
+        }
+        expect(
+            nearlyEqualVec3(player.getComponent<NexAur::TransformComponent>().translation, initial_position),
+            "Paused game state should stop movement integration.");
+
+        fake_input->setKey(NexAur::KeyCode::Escape, false);
+        input_actions.update();
+        fake_input->setKey(NexAur::KeyCode::Escape, true);
+        input_actions.update();
+        if (input_actions.wasPressed(NexAur::DefaultInputActions::Pause)) {
+            game_state.togglePause();
+        }
+
+        expect(game_state.getSnapshot().state == NexAur::GameState::Playing, "Pause action should resume Playing.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity player = scene.createEntity("Player");
+        player.addComponent<NexAur::PlayerComponent>();
+        player.addComponent<NexAur::SphereColliderComponent>().radius = 1.0f;
+        auto& health = player.addComponent<NexAur::HealthComponent>();
+        health.current = 2;
+        health.max = 5;
+
+        NexAur::Entity collectible = scene.createEntity("Collectible");
+        collectible.addComponent<NexAur::CollectibleComponent>().score = 10;
+        collectible.addComponent<NexAur::SphereColliderComponent>().radius = 0.5f;
+        collectible.addComponent<NexAur::TriggerComponent>();
+        collectible.getComponent<NexAur::TransformComponent>().translation = glm::vec3{ 0.75f, 0.0f, 0.0f };
+
+        NexAur::GameStateModel game_state;
+        game_state.resetForScene(scene);
+        expect(game_state.getSnapshot().collectible_count == 1, "GameState should count scene collectibles.");
+        expect(game_state.getSnapshot().remaining_collectibles == 1, "GameState should track remaining collectibles.");
+
+        NexAur::TriggerOverlapSystem trigger_system;
+        NexAur::CollectibleSystem collectible_system;
+        trigger_system.update(scene);
+        const NexAur::CollectibleFrameResult result =
+            collectible_system.update(scene, trigger_system.getFrame());
+        game_state.addCollected(result.collected_count, result.collected_score);
+        game_state.updateRules(scene);
+
+        expect(result.collected_count == 1 && result.collected_score == 10, "CollectibleSystem should report collected score.");
+        expect(game_state.getSnapshot().score == 10, "GameState should accumulate collectible score.");
+        expect(game_state.getSnapshot().remaining_collectibles == 0, "GameState should update remaining collectibles.");
+        expect(game_state.getSnapshot().state == NexAur::GameState::Victory, "Collecting all collectibles should enter Victory.");
+    }
+
+    {
+        NexAur::SceneV2 scene;
+        NexAur::Entity player = scene.createEntity("Player");
+        player.addComponent<NexAur::PlayerComponent>();
+        auto& health = player.addComponent<NexAur::HealthComponent>();
+        health.current = 0;
+        health.max = 3;
+
+        NexAur::GameStateModel game_state;
+        game_state.resetForScene(scene);
+        game_state.updateRules(scene);
+
+        expect(game_state.getSnapshot().state == NexAur::GameState::GameOver, "Dead player should enter GameOver.");
+    }
+
+    if (!success) {
+        std::cerr << "Runtime game flow smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Runtime game flow smoke passed." << std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--scene-serializer-smoke") {
         return runSceneSerializerSmoke();
@@ -551,6 +759,12 @@ int main(int argc, char** argv) {
     }
     if (argc > 1 && std::string(argv[1]) == "--physics-trigger-smoke") {
         return runPhysicsTriggerSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--runtime-camera-smoke") {
+        return runRuntimeCameraSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--runtime-game-flow-smoke") {
+        return runRuntimeGameFlowSmoke();
     }
 
     NexAur::Engine *engine = new NexAur::Engine();

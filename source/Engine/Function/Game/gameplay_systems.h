@@ -8,6 +8,11 @@ namespace NexAur {
     class SceneV2;
     struct TriggerOverlapFrame;
 
+    struct CollectibleFrameResult {
+        int collected_count = 0;
+        int collected_score = 0;
+    };
+
     class NEXAUR_API PlayerControlSystem final {
     public:
         void update(SceneV2& scene, const InputActionService& input_actions, TimeStep delta_time);
@@ -35,6 +40,6 @@ namespace NexAur {
 
     class NEXAUR_API CollectibleSystem final {
     public:
-        void update(SceneV2& scene, const TriggerOverlapFrame& trigger_frame);
+        CollectibleFrameResult update(SceneV2& scene, const TriggerOverlapFrame& trigger_frame);
     };
 } // namespace NexAur

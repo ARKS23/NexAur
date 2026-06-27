@@ -72,8 +72,14 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/File/file_system_module.cpp
     Function/Game/game_module.h
     Function/Game/game_module.cpp
+    Function/Game/game_state.h
+    Function/Game/game_state.cpp
     Function/Game/gameplay_systems.h
     Function/Game/gameplay_systems.cpp
+    Function/Game/runtime_camera_controller_system.h
+    Function/Game/runtime_camera_controller_system.cpp
+    Function/Game/runtime_hud.h
+    Function/Game/runtime_hud.cpp
     Function/Global/global_context.h
     Function/Global/global_context.cpp
     Function/Input/input_action_module.h

@@ -122,18 +122,35 @@ namespace NexAur {
         destroyEntities(scene, dead_entities);
     }
 
-    void CollectibleSystem::update(SceneV2& scene, const TriggerOverlapFrame& trigger_frame) {
+    CollectibleFrameResult CollectibleSystem::update(SceneV2& scene, const TriggerOverlapFrame& trigger_frame) {
         entt::registry& registry = scene.getRegistry();
         std::vector<entt::entity> collected_entities;
+        std::unordered_set<entt::entity> collected_set;
+        CollectibleFrameResult result;
+
+        auto collect = [&](entt::entity entity) {
+            if (!registry.valid(entity) || !isCollectible(registry, entity)) {
+                return;
+            }
+            if (!collected_set.insert(entity).second) {
+                return;
+            }
+
+            const CollectibleComponent& collectible = registry.get<CollectibleComponent>(entity);
+            result.collected_count++;
+            result.collected_score += collectible.score;
+            collected_entities.push_back(entity);
+        };
 
         for (const TriggerOverlap& overlap : trigger_frame.overlaps) {
             if (isPlayer(registry, overlap.first) && isCollectible(registry, overlap.second)) {
-                collected_entities.push_back(overlap.second);
+                collect(overlap.second);
             } else if (isPlayer(registry, overlap.second) && isCollectible(registry, overlap.first)) {
-                collected_entities.push_back(overlap.first);
+                collect(overlap.first);
             }
         }
 
         destroyEntities(scene, collected_entities);
+        return result;
     }
 } // namespace NexAur
