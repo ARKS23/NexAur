@@ -17,7 +17,7 @@ namespace NexAur {
         void init();
         void shutdown();
 
-        // 引擎每帧调用: 处理当前场景更新和延迟场景切换
+        // 引擎每帧调用: 处理当前场景更新
         void tick(float delta_time);
 
         // 获取当前运行的场景
@@ -35,7 +35,7 @@ namespace NexAur {
 
     private:
         std::shared_ptr<SceneV2> m_active_scene;
-        std::shared_ptr<SceneV2> m_next_scene;  // 缓存下个要切换的场景，分帧切换
+        std::shared_ptr<SceneV2> m_next_scene;  // processSceneChange 使用的待切换场景
         bool m_is_transitioning = false;
     };
 } // namespace NexAur

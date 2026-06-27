@@ -6,6 +6,7 @@
 #include "Editor/editor_context.h"
 #include "Editor/editor_services.h"
 
+#include <filesystem>
 #include <memory>
 #include <vector>
 
@@ -46,6 +47,11 @@ namespace NexAur {
         void shutdown();
         void beginDockSpace();
         void endDockSpace();
+        void drawMainMenuBar();
+        void drawFileMenu();
+        void saveActiveScene();
+        void loadScene();
+        std::filesystem::path getDefaultScenePath() const;
         void syncPanelContext();
         void updateViewportCamera(TimeStep delta_time);
         bool shouldUpdateViewportCamera() const;

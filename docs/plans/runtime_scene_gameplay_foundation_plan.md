@@ -227,20 +227,105 @@ return scene
 
 ## 6. PR-G2：Editor Save / Load scene
 
-执行状态：待开始。
+执行状态：已完成。
 
 目标：
 
 - 让 Editor 可以调用 PR-G1 的 serializer。
 - 提供最小 Save / Load 入口。
 - 加载后通过 `SceneService::setActiveScene()` 切换当前场景。
+- 保持 Editor / Scene / Resource 边界清晰，不让 Editor 访问全局单例或 Renderer backend。
+
+完成记录：
+
+- `EditorContext` 已注入 `AssetManager`，`EditorModule` 通过 `ModuleRegistry` 显式获取资源服务。
+- `EditorLayer` 已在 DockSpace menu bar 中增加 `File -> Save Scene` 和 `File -> Load Scene`。
+- 第一版 scene IO 使用固定路径 `assets/scenes/editor_scene.nxscene`，由 `SceneSerializer` 负责读写 `.nxscene`。
+- Load 成功后通过 `SceneService::setActiveScene()` 切换 active scene，并清空 selection，避免面板继续持有旧 scene entity。
+- `SceneManager::setActiveScene()` 已改为立即处理切换，保证 Editor load 后当前帧即可看到新 active scene。
+- Editor 仍只依赖 Scene / Resource 的窄服务接口，不访问 Renderer backend。
 
 建议范围：
 
-- 在 Editor DockSpace menu bar 增加 `File` 菜单。
-- `Save Scene`：保存 active scene 到固定路径或最近路径。
-- `Load Scene`：第一版可以先加载固定路径，后续再接文件浏览器。
-- 加载后清空 selection，避免持有旧 scene entity。
+1. `EditorContext` 注入 `AssetManager`。
+   - 新增 `std::shared_ptr<AssetManager> asset_manager`。
+   - `EditorModule` 从 `ModuleRegistry` 获取 `AssetManager` 并写入 `EditorContext`。
+   - `EditorLayer` 创建 `SceneSerializer` 时使用显式依赖，不调用 `AssetManager::getInstance()`。
+
+2. Editor DockSpace 增加 File 菜单。
+   - `EditorLayer::beginDockSpace()` 当前已经使用 `ImGuiWindowFlags_MenuBar`。
+   - 建议新增：
+     ```text
+     File
+       Save Scene
+       Load Scene
+     ```
+   - 如果 active scene、scene service 或 asset manager 不可用，菜单项应禁用或安全失败。
+
+3. 第一版使用固定 scene 路径。
+   - 建议路径：
+     ```text
+     assets/scenes/editor_scene.nxscene
+     ```
+   - 暂时不做文件浏览器。
+   - `SceneSerializer::save()` 已负责创建父目录。
+
+4. `EditorLayer` 增加最小 scene IO helper。
+   - 建议私有方法：
+     ```cpp
+     void drawMainMenuBar();
+     void drawFileMenu();
+     void saveActiveScene();
+     void loadScene();
+     std::filesystem::path getDefaultScenePath() const;
+     ```
+   - Save 成功 / 失败先写 core log。
+   - Load 成功后调用 `SceneService::setActiveScene()`，再清空 selection。
+
+5. 加载后清空 selection。
+   - 调用 `clearSelection()`。
+   - 避免 Properties / Viewport / Hierarchy 持有旧 scene 的 `Entity`。
+
+6. 修正 SceneManager 切换语义。
+   - 当前 `SceneManager::setActiveScene()` 只是设置 `m_next_scene`。
+   - 但 `RuntimeModule` 目前没有每帧调用 `SceneManager::tick()`，所以 pending scene change 不会自动处理。
+   - PR-G2 需要保证 Load 后 active scene 真正切换。
+   - 第一版建议让 `SceneManager::setActiveScene()` 在设置 `m_next_scene` 后立即调用 `processSceneChange()`。
+   - PR-G3 再进一步整理 Runtime scene tick 下沉，不在 PR-G2 扩大重构范围。
+
+建议数据流：
+
+```text
+Editor File Menu
+  -> EditorLayer::saveActiveScene()
+    -> SceneSerializer::save(active_scene, fixed_path)
+
+Editor File Menu
+  -> EditorLayer::loadScene()
+    -> SceneSerializer::load(fixed_path)
+    -> SceneService::setActiveScene(loaded_scene)
+    -> clearSelection()
+```
+
+注意：
+
+- 当前 Sandbox demo 中大量网格来自 `ProceduralModelBuilder`，属于 runtime-generated asset。
+- PR-G1 第一版不支持 runtime-generated mesh 完整 round-trip。
+- 因此 PR-G2 的 Save / Load 基础流程可用，但保存当前 Sandbox demo 后重新加载，部分 runtime-generated MeshRenderer 可能没有可恢复的 model asset。
+- 这不是 PR-G2 要解决的问题，后续由 Prefab / Procedural asset serialization 处理。
+
+验收：
+
+- Editor 顶部菜单出现 `File -> Save Scene` 和 `File -> Load Scene`。
+- `Save Scene` 会写出 `assets/scenes/editor_scene.nxscene`。
+- `Load Scene` 能读取该文件并切换 active scene。
+- Load 后 selection 被清空，Properties 不继续引用旧 entity。
+- 缺少 active scene / scene service / asset manager 时不会崩溃。
+- `EditorLayer` / `EditorContext` 不 include 或访问 `Renderer/Vulkan/*`。
+- `SceneSerializer` 仍不创建 GPU 资源。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `Sandbox.exe --scene-serializer-smoke` 通过。
+- 常规 Sandbox smoke 通过。
 
 暂时不做：
 
@@ -249,6 +334,7 @@ return scene
 - undo / redo。
 - 最近文件列表。
 - 自动保存。
+- runtime-generated model / material 的完整序列化。
 
 ## 7. PR-G3：Runtime scene tick 下沉
 

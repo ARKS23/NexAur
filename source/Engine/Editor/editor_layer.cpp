@@ -6,9 +6,11 @@
 #include "Editor/Panels/scene_hierarchy_panel.h"
 #include "Editor/Panels/viewport_panel.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Editor/Camera/editor_camera.h"
+#include "Function/Scene/scene_serializer.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/UI/ui_system.h"
 
@@ -169,6 +171,8 @@ namespace NexAur {
             ImGui::PopStyleVar(2);
         }
 
+        drawMainMenuBar();
+
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
             ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
@@ -178,6 +182,79 @@ namespace NexAur {
 
     void EditorLayer::endDockSpace() {
         ImGui::End();
+    }
+
+    void EditorLayer::drawMainMenuBar() {
+        if (!ImGui::BeginMenuBar()) {
+            return;
+        }
+
+        drawFileMenu();
+
+        ImGui::EndMenuBar();
+    }
+
+    void EditorLayer::drawFileMenu() {
+        if (!ImGui::BeginMenu("File")) {
+            return;
+        }
+
+        const bool can_save =
+            m_context && m_context->active_scene && m_context->asset_manager;
+        const bool can_load =
+            m_context && m_context->scene_service && m_context->asset_manager;
+
+        if (ImGui::MenuItem("Save Scene", nullptr, false, can_save)) {
+            saveActiveScene();
+        }
+
+        if (ImGui::MenuItem("Load Scene", nullptr, false, can_load)) {
+            loadScene();
+        }
+
+        ImGui::EndMenu();
+    }
+
+    void EditorLayer::saveActiveScene() {
+        if (!m_context || !m_context->active_scene || !m_context->asset_manager) {
+            NX_CORE_WARN("Save Scene skipped: editor scene context is incomplete.");
+            return;
+        }
+
+        SceneSerializer serializer(*m_context->asset_manager);
+        const std::filesystem::path scene_path = getDefaultScenePath();
+        const SceneSerializationResult result = serializer.save(*m_context->active_scene, scene_path);
+        if (result.success) {
+            NX_CORE_INFO("{}. Entity count: {}.", result.message, result.entity_count);
+        } else {
+            NX_CORE_ERROR("{}", result.message);
+        }
+    }
+
+    void EditorLayer::loadScene() {
+        if (!m_context || !m_context->scene_service || !m_context->asset_manager) {
+            NX_CORE_WARN("Load Scene skipped: editor scene context is incomplete.");
+            return;
+        }
+
+        SceneSerializer serializer(*m_context->asset_manager);
+        const std::filesystem::path scene_path = getDefaultScenePath();
+        const SceneLoadResult result = serializer.load(scene_path);
+        if (!result.success || !result.scene) {
+            NX_CORE_ERROR("{}", result.message);
+            return;
+        }
+
+        m_context->scene_service->setActiveScene(result.scene);
+        m_context->active_scene = m_context->scene_service->getActiveScene();
+        clearSelection();
+        syncPanelContext();
+
+        NX_CORE_INFO("{}. Entity count: {}.", result.message, result.entity_count);
+    }
+
+    std::filesystem::path EditorLayer::getDefaultScenePath() const {
+        return std::filesystem::path("assets") / "scenes" / "editor_scene.nxscene";
     }
 
     void EditorLayer::syncPanelContext() {

@@ -6,7 +6,6 @@
 namespace NexAur {
     void SceneManager::init() {
         setActiveScene(SceneFactory::createDefaultScene());
-        processSceneChange();
     }
 
     void SceneManager::shutdown() {
@@ -20,7 +19,7 @@ namespace NexAur {
             m_active_scene->tick(delta_time);
         }
 
-        // 处理场景切换请求
+        // 保留 pending 检查，方便后续重新引入异步/事件驱动切换。
         if (m_is_transitioning) {
             processSceneChange();
         }
@@ -37,7 +36,8 @@ namespace NexAur {
 
     void SceneManager::setActiveScene(std::shared_ptr<SceneV2> new_scene) {
         m_next_scene = new_scene;
-        m_is_transitioning = true; // 标记需要切换场景请求，实际切换在tick中处理
+        m_is_transitioning = true;
+        processSceneChange();
     }
 
     void SceneManager::processSceneChange() {

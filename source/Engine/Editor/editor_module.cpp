@@ -9,6 +9,7 @@
 #include "Editor/editor_services.h"
 #include "Function/Input/input_system.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
@@ -26,6 +27,7 @@ namespace NexAur {
                     {
                         BuiltinModuleNames::UI,
                         BuiltinModuleNames::Runtime,
+                        BuiltinModuleNames::Resource,
                         BuiltinModuleNames::Renderer,
                         BuiltinModuleNames::Platform
                     }
@@ -37,6 +39,7 @@ namespace NexAur {
                 // 这样 Panel/EditorLayer 不需要直接访问 RunTimeGlobalContext。
                 m_context = std::make_shared<EditorContext>();
                 m_context->scene_service = context.registry.getService<SceneService>();
+                m_context->asset_manager = context.registry.getService<AssetManager>();
                 m_context->renderer_service = context.registry.getService<RendererService>();
                 m_context->renderer_debug_service = context.registry.getService<RendererDebugService>();
                 m_context->input_service = context.registry.getService<InputService>();

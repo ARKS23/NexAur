@@ -7,6 +7,7 @@
 #include "Function/Scene/entity.h"
 
 namespace NexAur {
+    class AssetManager;
     class EditorCamera;
     class InputService;
     class RenderContext;
@@ -27,6 +28,7 @@ namespace NexAur {
     struct EditorContext {
         std::shared_ptr<SceneV2> active_scene;
         std::shared_ptr<SceneService> scene_service;
+        std::shared_ptr<AssetManager> asset_manager;
         std::shared_ptr<RendererService> renderer_service;
         std::shared_ptr<RendererDebugService> renderer_debug_service;
         std::shared_ptr<InputService> input_service;
