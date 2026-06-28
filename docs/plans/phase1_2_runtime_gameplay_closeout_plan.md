@@ -185,7 +185,10 @@ Audio 对外只应该暴露 NexAur 自己的接口。
 
 - `AudioService`。
 - `AudioModule`。
-- `AudioSystem`。
+
+只应作为模块内部实现细节：
+
+- `AudioSystem` concrete service。
 
 只允许出现在 backend 实现层：
 
@@ -354,13 +357,30 @@ ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
 
 ## 7. PR-G13：命名和职责边界清理
 
-执行状态：计划中。
+执行状态：已完成。
+
+完成记录：
+
+- `AudioModule` 不再把 concrete `AudioSystem` 注册为跨模块 service，外部模块只依赖 `AudioService`。
+- `RuntimeHud` 补充 ImGui-backed v1 HUD 边界说明。
+- `TriggerOverlapSystem` 补充 simple trigger / collision-query 边界说明，明确它不是完整 PhysicsModule。
+- `SceneV2::extractSceneData()` 补充 Renderer frontend contract 说明，明确不应引入 Vulkan / backend 对象。
+- `RuntimeCameraControllerComponent` 暂时保留在 `gameplay_component.h`，并记录后续拆分条件。
+- 跑通边界审计命令，确认没有新增 global context、ImGui、backend 或 concrete system 泄漏。
 
 目标：
 
-- 清理会影响架构理解的命名。
-- 审计 G1-G10 后的模块边界。
+- 固化 Runtime / Gameplay 主线的模块边界。
+- 清理会影响架构理解的命名和 public API 暴露。
 - 避免无收益的大规模机械 rename。
+- 给后续 playable demo、Renderer polish、PhysicsModule、AudioSourceComponent 等工作留下清爽入口。
+
+核心判断：
+
+```text
+PR-G13 不是大扫除，也不是全局重命名。
+它的重点是把边界钉牢，让后续功能不会互相污染。
+```
 
 建议检查：
 
@@ -371,22 +391,56 @@ rg "ImGui" source/Engine/Function/Scene source/Engine/Function/Physics source/En
 rg "miniaudio" source/Engine
 ```
 
+当前轻量审计结果：
+
+- `Game / Scene / Physics / Audio` 深层模块没有明显滥用 `g_runtime_global_context`。
+- `global_context` 主要出现在 Sandbox / smoke / scene_test 这类应用或测试入口，当前可以接受。
+- `miniaudio` 只出现在 `audio_system_miniaudio.cpp`，后端隐藏状态良好。
+- `ImGui` 只出现在 `runtime_hud.cpp`，没有污染 gameplay component / system。
+- Game / Scene 没有直接依赖 Vulkan backend 或 `RendererSystem`。
+- `SceneV2::extractSceneData()` 依赖的是 Renderer frontend data contract，不是 Vulkan backend。当前可接受，但要明确这是 Scene -> RenderDataPacket 的临时/过渡边界，不应继续向 Scene 泄漏 backend 实现。
+
 期望方向：
 
 - Game / Physics / Audio 不从 global context 获取 runtime 状态。
 - Scene 不知道 Editor、ImGui 或 renderer backend type。
 - miniaudio 只留在 Audio backend 实现层。
 - Runtime HUD 的 ImGui 依赖限制在 HUD 绘制代码中。
+- 外部模块依赖 service interface，不直接依赖 concrete system。
+- Component 只表达数据，不写玩法流程。
+- System 不主动查全局状态，由 Module 负责拿 service 并传入依赖。
+
+建议执行范围：
+
+1. Public API 收口。
+   - 外部模块只依赖 `AudioService`，不要依赖 concrete `AudioSystem`。
+   - 如果没有调用方需要 `AudioSystem` service，移除 `AudioModule` 对 concrete `AudioSystem` 的 registry 暴露。
+   - 保持 `SceneService` / `InputActionService` 作为跨模块入口，避免外部依赖 concrete manager / system。
+2. 边界注释补强。
+   - 在 `RuntimeHud` 附近说明它是 ImGui-backed v1 HUD，不是最终 runtime UI framework。
+   - 在 `Function/Physics` 或 trigger system 附近说明当前只覆盖 trigger / collision query，不是完整物理引擎。
+   - 在 Scene extraction 相关位置说明当前依赖 Renderer frontend data contract，而不是 backend。
+3. 命名轻量清理。
+   - 只处理容易误导架构理解的名字。
+   - 不做全局机械 rename。
+4. Component 头文件观察性拆分。
+   - 如果 `gameplay_component.h` 继续膨胀，优先考虑拆出 `runtime_camera_component.h`。
+   - 小型 gameplay data component 可以先继续放在一起。
+5. 审计命令记录。
+   - 将本节命令作为 PR-G13 的验收检查。
+   - 后续可以接入 CI 或 smoke harness。
 
 命名候选：
 
 1. `SceneV2`。
-   - 如果旧 Scene 路径已经不存在，可以考虑改回 `Scene`。
-   - 这是较大的 rename，如果要做，建议单独开一个聚焦 PR。
-   - 如果现在不改名，就在文档里明确 `SceneV2` 是当前正式 scene type。
+   - 当前不建议在 PR-G13 中全局改成 `Scene`。
+   - 这是较大的机械 rename，容易制造噪音。
+   - PR-G13 可以先明确 `SceneV2` 是当前正式 scene type。
+   - 如果后续要改名，应单独开一个聚焦 rename PR。
 2. `gameplay_component.h`。
-   - 如果继续膨胀，可以把 runtime camera 数据拆到 `runtime_camera_component.h`。
-   - 小型 gameplay component 可以暂时放一起，等真的形成摩擦再拆。
+   - 当前还能接受，但它是后续膨胀风险点。
+   - 如果 PR-G13 要做小拆分，优先拆 `RuntimeCameraControllerComponent` 到 `runtime_camera_component.h`。
+   - 不建议一次性把所有 component 拆成很多小文件。
 3. `Function/Physics`。
    - 文件夹名可以保持。
    - 但文档里要说明 v1 只覆盖 trigger / collision-query。
@@ -398,12 +452,24 @@ rg "miniaudio" source/Engine
    - v1 可以保持该名字。
    - 但要说明它是 ImGui-backed temporary runtime HUD，不是最终 runtime UI framework。
 
+明确不做：
+
+- 不做 `SceneV2 -> Scene` 全局 rename。
+- 不引入 `PhysicsModule`。
+- 不抽象完整 runtime UI framework。
+- 不移动 `SceneV2::extractSceneData()` 的架构位置。
+- 不新增 gameplay 功能。
+
 验收：
 
 - 不引入新的功能行为。
 - Include 和依赖关系更清楚。
 - 每个 rename 或文件拆分都有明确理由。
 - 相关边界在代码附近或本文档中写清楚。
+- 外部模块不依赖 concrete backend / concrete system，除非有明确理由。
+- `miniaudio` 仍只出现在 Audio backend 实现层。
+- ImGui 依赖仍限制在 Runtime HUD 实现里。
+- Game / Scene 不依赖 Renderer backend 或 Editor。
 - 现有 smoke suite 通过。
 
 ## 8. 推荐执行顺序
@@ -468,4 +534,4 @@ Phase1.2 后续每个 PR 落地时，都应该更新本节。
 | --- | --- | --- |
 | PR-G11 文档收口 | 已完成 | 更新已完成的 foundation plan，补充 baseline、架构快照、smoke 清单，并让它指向 Phase1.2。 |
 | PR-G12 Smoke harness 整理 | 已完成 | 抽出 smoke harness，增加 `--smoke-all`，注册 9 个 CTest smoke cases。 |
-| PR-G13 命名和职责边界清理 | 计划中 | 审计依赖关系，并做小范围命名 / header 清理。 |
+| PR-G13 命名和职责边界清理 | 已完成 | 收窄 Audio public service，补充 Runtime HUD / Physics / Scene extraction 边界说明，并完成依赖审计。 |

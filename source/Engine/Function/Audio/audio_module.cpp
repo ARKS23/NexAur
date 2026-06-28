@@ -25,7 +25,6 @@ namespace NexAur {
 
                 context.registry.registerService<AudioService>(
                     std::static_pointer_cast<AudioService>(m_audio_system));
-                context.registry.registerService<AudioSystem>(m_audio_system);
 
                 if (initialized) {
                     NX_CORE_INFO("Audio module initialized.");
@@ -43,7 +42,6 @@ namespace NexAur {
 
             void shutdown(ModuleContext& context) override {
                 context.registry.resetService<AudioService>();
-                context.registry.resetService<AudioSystem>();
                 if (m_audio_system) {
                     m_audio_system->shutdown();
                     m_audio_system.reset();

@@ -29,7 +29,7 @@ namespace NexAur {
         entt::registry& getRegistry() { return m_Registry; }
         const entt::registry& getRegistry() const { return m_Registry; }
 
-        // 数据打包
+        // 数据打包到 Renderer frontend contract。这里不应引入 Vulkan / backend 对象。
         void extractSceneData(RenderDataPacket* render_packet);
 
     private:

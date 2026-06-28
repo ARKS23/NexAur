@@ -37,6 +37,8 @@ namespace NexAur {
         float seconds = 1.0f;
     };
 
+    // Runtime camera data stays with gameplay components for v1. Split this
+    // into runtime_camera_component.h once the gameplay component set grows.
     struct RuntimeCameraControllerComponent {
         RuntimeCameraMode mode = RuntimeCameraMode::ThirdPersonFollow;
         glm::vec3 follow_offset{ 0.0f, 3.0f, 6.0f };
