@@ -260,7 +260,15 @@ rg "PR-G10|下一步|计划中" docs/plans/runtime_scene_gameplay_foundation_pla
 
 ## 6. PR-G12：Smoke Harness 整理
 
-执行状态：计划中。
+执行状态：已完成。
+
+完成记录：
+
+- 新增 `source/Sandbox/smoke_tests.h/.cpp`，集中承载 smoke 实现和 smoke command registry。
+- `source/Sandbox/Sandbox.cpp` 收敛为轻量入口，只负责 smoke 命令分发和常规 demo 启动。
+- 新增 `Sandbox.exe --smoke-all`，可以顺序执行全部 smoke。
+- 顶层 CMake 接入 `CTest`。
+- `source/Sandbox/CMakeLists.txt` 注册 9 个 CTest smoke case。
 
 目标：
 
@@ -459,5 +467,5 @@ Phase1.2 后续每个 PR 落地时，都应该更新本节。
 | PR | 状态 | 摘要 |
 | --- | --- | --- |
 | PR-G11 文档收口 | 已完成 | 更新已完成的 foundation plan，补充 baseline、架构快照、smoke 清单，并让它指向 Phase1.2。 |
-| PR-G12 Smoke harness 整理 | 计划中 | 抽出 smoke helper，增加 `--smoke-all`，注册 CTest smoke cases。 |
+| PR-G12 Smoke harness 整理 | 已完成 | 抽出 smoke harness，增加 `--smoke-all`，注册 9 个 CTest smoke cases。 |
 | PR-G13 命名和职责边界清理 | 计划中 | 审计依赖关系，并做小范围命名 / header 清理。 |

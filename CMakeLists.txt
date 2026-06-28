@@ -6,6 +6,8 @@ project(NexAur VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(CTest)
+
 option(NEXAUR_USE_VCPKG_DEPS "Use vcpkg packages for third-party dependencies." ON)
 if(NOT NEXAUR_USE_VCPKG_DEPS)
     message(FATAL_ERROR "NexAur now uses the vcpkg dependency path. The vendored external fallback was retired with the legacy renderer.")
