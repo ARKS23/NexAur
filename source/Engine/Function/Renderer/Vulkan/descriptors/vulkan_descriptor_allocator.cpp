@@ -21,7 +21,7 @@ namespace NexAur {
             std::array<VkDescriptorPoolSize, 5> pool_sizes{};
             pool_sizes[0] = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, max_sets * 2 };
             pool_sizes[1] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, max_sets };
-            pool_sizes[2] = { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_sets * 4 };
+            pool_sizes[2] = { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_sets * 8 };
             pool_sizes[3] = { VK_DESCRIPTOR_TYPE_SAMPLER, max_sets * 4 };
             pool_sizes[4] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, max_sets * 4 };
             return pool_sizes;

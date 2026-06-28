@@ -28,8 +28,8 @@ namespace NexAur {
             return binding;
         }
 
-        std::array<VkVertexInputAttributeDescription, 3> meshVertexAttributeDescriptions() {
-            std::array<VkVertexInputAttributeDescription, 3> attributes{};
+        std::array<VkVertexInputAttributeDescription, 5> meshVertexAttributeDescriptions() {
+            std::array<VkVertexInputAttributeDescription, 5> attributes{};
 
             attributes[0].location = 0;
             attributes[0].binding = 0;
@@ -45,6 +45,16 @@ namespace NexAur {
             attributes[2].binding = 0;
             attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
             attributes[2].offset = offsetof(Vertex, texCoords);
+
+            attributes[3].location = 3;
+            attributes[3].binding = 0;
+            attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attributes[3].offset = offsetof(Vertex, tangent);
+
+            attributes[4].location = 4;
+            attributes[4].binding = 0;
+            attributes[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attributes[4].offset = offsetof(Vertex, bitangent);
 
             return attributes;
         }
@@ -176,12 +186,12 @@ namespace NexAur {
         }
 
         VkVertexInputBindingDescription binding{};
-        std::array<VkVertexInputAttributeDescription, 3> attributes{};
+        std::array<VkVertexInputAttributeDescription, 5> attributes{};
         std::array<VkVertexInputAttributeDescription, 2> debug_attributes{};
 
         VkPipelineVertexInputStateCreateInfo vertex_input{};
         vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        if (desc.vertex_layout == VulkanPipelineVertexLayout::MeshPositionNormalTexcoord) {
+        if (desc.vertex_layout == VulkanPipelineVertexLayout::MeshPositionNormalTexcoordTangent) {
             binding = meshVertexBindingDescription();
             attributes = meshVertexAttributeDescriptions();
             vertex_input.vertexBindingDescriptionCount = 1;

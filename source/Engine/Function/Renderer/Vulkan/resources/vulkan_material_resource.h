@@ -15,6 +15,26 @@ namespace NexAur {
     class VulkanDescriptorAllocator;
     class VulkanTextureResource;
 
+    struct VulkanMaterialTextureSet {
+        const VulkanTextureResource* base_color = nullptr;
+        const VulkanTextureResource* normal = nullptr;
+        const VulkanTextureResource* metallic = nullptr;
+        const VulkanTextureResource* roughness = nullptr;
+        const VulkanTextureResource* metallic_roughness = nullptr;
+        const VulkanTextureResource* ao = nullptr;
+        const VulkanTextureResource* emissive = nullptr;
+
+        bool valid() const {
+            return base_color != nullptr &&
+                   normal != nullptr &&
+                   metallic != nullptr &&
+                   roughness != nullptr &&
+                   metallic_roughness != nullptr &&
+                   ao != nullptr &&
+                   emissive != nullptr;
+        }
+    };
+
     struct VulkanMaterialResourceCreateContext {
         VulkanResourceUploadContext upload_context;
         VulkanDescriptorAllocator* descriptor_allocator = nullptr;
@@ -41,7 +61,7 @@ namespace NexAur {
         bool create(
             const VulkanMaterialResourceCreateContext& context,
             const MaterialAsset& material_asset,
-            const VulkanTextureResource& base_color_texture);
+            const VulkanMaterialTextureSet& textures);
         void reset();
 
         bool isReady() const {

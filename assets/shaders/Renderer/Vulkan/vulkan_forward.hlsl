@@ -2,6 +2,8 @@ struct VSInput {
     float3 position : POSITION;
     float3 normal : NORMAL;
     float2 texcoord : TEXCOORD0;
+    float3 tangent : TANGENT;
+    float3 bitangent : BINORMAL;
 };
 
 struct VSOutput {
@@ -10,6 +12,8 @@ struct VSOutput {
     float3 world_position : TEXCOORD1;
     float3 world_normal : TEXCOORD2;
     float4 shadow_position : TEXCOORD3;
+    float3 world_tangent : TEXCOORD4;
+    float3 world_bitangent : TEXCOORD5;
 };
 
 struct PushConstants {
@@ -50,7 +54,10 @@ SamplerState g_shadow_sampler;
 
 struct MaterialConstants {
     float4 base_color_factor;
+    float4 emissive_factor_normal_scale; // xyz: emissive factor, w: normal scale
     float4 factors; // x: metallic, y: roughness, z: alpha cutoff, w: alpha mode
+    float4 texture_flags; // x: base color, y: normal, z: metallic, w: roughness
+    float4 texture_flags2; // x: packed MR, y: AO, z: emissive, w: AO strength
 };
 
 [[vk::binding(0, 1)]]
@@ -60,14 +67,35 @@ ConstantBuffer<MaterialConstants> g_material;
 Texture2D<float4> g_base_color_texture;
 
 [[vk::binding(2, 1)]]
-SamplerState g_base_color_sampler;
+Texture2D<float4> g_normal_texture;
+
+[[vk::binding(3, 1)]]
+Texture2D<float4> g_metallic_texture;
+
+[[vk::binding(4, 1)]]
+Texture2D<float4> g_roughness_texture;
+
+[[vk::binding(5, 1)]]
+Texture2D<float4> g_metallic_roughness_texture;
+
+[[vk::binding(6, 1)]]
+Texture2D<float4> g_ao_texture;
+
+[[vk::binding(7, 1)]]
+Texture2D<float4> g_emissive_texture;
+
+[[vk::binding(8, 1)]]
+SamplerState g_material_sampler;
 
 VSOutput VSMain(VSInput input) {
     VSOutput output;
     float4 world_position = mul(g_push_constants.model, float4(input.position, 1.0f));
+    float3x3 normal_matrix = (float3x3)g_push_constants.normal_matrix;
     output.position = mul(g_frame.view_projection, world_position);
     output.world_position = world_position.xyz;
-    output.world_normal = normalize(mul((float3x3)g_push_constants.normal_matrix, input.normal));
+    output.world_normal = normalize(mul(normal_matrix, input.normal));
+    output.world_tangent = mul(normal_matrix, input.tangent);
+    output.world_bitangent = mul(normal_matrix, input.bitangent);
     output.texcoord = input.texcoord;
     output.shadow_position = mul(g_frame.shadow_light_view_projection, world_position);
     return output;
@@ -100,6 +128,93 @@ float GeometrySmith(float3 normal, float3 view_dir, float3 light_dir, float roug
 
 float3 FresnelSchlick(float cos_theta, float3 f0) {
     return f0 + (1.0f - f0) * pow(saturate(1.0f - cos_theta), 5.0f);
+}
+
+bool HasTexture(float flag) {
+    return flag > 0.5f;
+}
+
+float3 FallbackTangent(float3 normal) {
+    float3 up = abs(normal.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(0.0f, 1.0f, 0.0f);
+    return normalize(cross(up, normal));
+}
+
+float3 ResolveNormal(VSOutput input) {
+    float3 normal = normalize(input.world_normal);
+    if (!HasTexture(g_material.texture_flags.y)) {
+        return normal;
+    }
+
+    float3 tangent = input.world_tangent;
+    if (dot(tangent, tangent) <= 0.000001f) {
+        tangent = FallbackTangent(normal);
+    } else {
+        tangent = normalize(tangent - normal * dot(normal, tangent));
+    }
+
+    float3 bitangent = input.world_bitangent;
+    if (dot(bitangent, bitangent) <= 0.000001f) {
+        bitangent = normalize(cross(normal, tangent));
+    } else {
+        bitangent = normalize(bitangent - normal * dot(normal, bitangent));
+    }
+
+    float3 tangent_normal = g_normal_texture.Sample(g_material_sampler, input.texcoord).xyz * 2.0f - 1.0f;
+    tangent_normal.xy *= max(g_material.emissive_factor_normal_scale.w, 0.0f);
+    return normalize(
+        tangent * tangent_normal.x +
+        bitangent * tangent_normal.y +
+        normal * tangent_normal.z);
+}
+
+float4 ResolveBaseColor(float2 texcoord) {
+    float4 base_color = g_material.base_color_factor;
+    if (HasTexture(g_material.texture_flags.x)) {
+        base_color *= g_base_color_texture.Sample(g_material_sampler, texcoord);
+    }
+    return base_color;
+}
+
+float ResolveMetallic(float2 texcoord) {
+    float metallic = g_material.factors.x;
+    if (HasTexture(g_material.texture_flags2.x)) {
+        metallic *= g_metallic_roughness_texture.Sample(g_material_sampler, texcoord).b;
+    } else if (HasTexture(g_material.texture_flags.z)) {
+        metallic *= g_metallic_texture.Sample(g_material_sampler, texcoord).r;
+    }
+    return saturate(metallic);
+}
+
+float ResolveRoughness(float2 texcoord) {
+    float roughness = g_material.factors.y;
+    if (HasTexture(g_material.texture_flags2.x)) {
+        roughness *= g_metallic_roughness_texture.Sample(g_material_sampler, texcoord).g;
+    } else if (HasTexture(g_material.texture_flags.w)) {
+        roughness *= g_roughness_texture.Sample(g_material_sampler, texcoord).r;
+    }
+    return clamp(roughness, 0.04f, 1.0f);
+}
+
+float ResolveAmbientOcclusion(float2 texcoord) {
+    if (!HasTexture(g_material.texture_flags2.y)) {
+        return 1.0f;
+    }
+
+    const float ao = g_ao_texture.Sample(g_material_sampler, texcoord).r;
+    return lerp(1.0f, ao, saturate(g_material.texture_flags2.w));
+}
+
+float3 ResolveEmissive(float2 texcoord) {
+    float3 emissive_factor = g_material.emissive_factor_normal_scale.xyz;
+    if (!HasTexture(g_material.texture_flags2.z)) {
+        return emissive_factor;
+    }
+
+    if (dot(abs(emissive_factor), float3(1.0f, 1.0f, 1.0f)) <= 0.0001f) {
+        emissive_factor = float3(1.0f, 1.0f, 1.0f);
+    }
+
+    return g_emissive_texture.Sample(g_material_sampler, texcoord).rgb * emissive_factor;
 }
 
 float3 EvaluateDirectLight(
@@ -164,17 +279,22 @@ float EvaluateShadowVisibility(float4 shadow_position) {
 }
 
 float4 PSMain(VSOutput input) : SV_Target0 {
-    float4 base_color = g_base_color_texture.Sample(g_base_color_sampler, input.texcoord) * g_material.base_color_factor;
+    float4 base_color = ResolveBaseColor(input.texcoord);
     if (g_material.factors.w > 0.5f && g_material.factors.w < 1.5f) {
         clip(base_color.a - g_material.factors.z);
     }
 
-    float metallic = saturate(g_material.factors.x);
-    float roughness = clamp(g_material.factors.y, 0.04f, 1.0f);
-    float3 normal = normalize(input.world_normal);
+    float metallic = ResolveMetallic(input.texcoord);
+    float roughness = ResolveRoughness(input.texcoord);
+    float ambient_occlusion = ResolveAmbientOcclusion(input.texcoord);
+    float3 emissive = ResolveEmissive(input.texcoord);
+    float3 normal = ResolveNormal(input);
     float3 view_dir = normalize(g_frame.camera_position_environment_intensity.xyz - input.world_position);
 
-    float3 lit_color = g_frame.ambient_color_intensity.rgb * g_frame.ambient_color_intensity.w * base_color.rgb;
+    float3 lit_color = g_frame.ambient_color_intensity.rgb *
+        g_frame.ambient_color_intensity.w *
+        base_color.rgb *
+        ambient_occlusion;
 
     float3 directional_light_dir = normalize(-g_frame.directional_direction_intensity.xyz);
     float3 directional_radiance = g_frame.directional_color_point_count.rgb * g_frame.directional_direction_intensity.w;
@@ -212,5 +332,5 @@ float4 PSMain(VSOutput input) : SV_Target0 {
             radiance);
     }
 
-    return float4(lit_color, base_color.a);
+    return float4(lit_color + emissive, base_color.a);
 }

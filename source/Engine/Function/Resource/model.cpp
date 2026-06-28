@@ -7,6 +7,7 @@
 #include "Core/Log/log_system.h"
 #include "model.h"
 
+#include <filesystem>
 #include <utility>
 
 namespace NexAur {
@@ -33,8 +34,8 @@ namespace NexAur {
             return;
         }
 
-        // 保存文件目录，后续加载纹理时使用
-        m_directory = path.substr(0, path.find_last_of('/'));
+        const std::filesystem::path model_path(path);
+        m_directory = model_path.has_parent_path() ? model_path.parent_path().string() : "";
 
         // 递归处理根节点
         processNode(scene->mRootNode, scene);
@@ -106,11 +107,54 @@ namespace NexAur {
         if (mesh->mMaterialIndex >= 0) {
             aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
             material.name = mat->GetName().C_Str();
+
+            aiColor4D base_color_factor;
+            if (AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_BASE_COLOR, &base_color_factor) ||
+                AI_SUCCESS == aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &base_color_factor)) {
+                material.base_color_factor = {
+                    base_color_factor.r,
+                    base_color_factor.g,
+                    base_color_factor.b,
+                    base_color_factor.a
+                };
+            }
+
+            float metallic_factor = material.metallic_factor;
+            if (AI_SUCCESS == mat->Get(AI_MATKEY_METALLIC_FACTOR, metallic_factor)) {
+                material.metallic_factor = metallic_factor;
+            }
+
+            float roughness_factor = material.roughness_factor;
+            if (AI_SUCCESS == mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness_factor)) {
+                material.roughness_factor = roughness_factor;
+            }
+
+            aiColor3D emissive_factor;
+            if (AI_SUCCESS == mat->Get(AI_MATKEY_COLOR_EMISSIVE, emissive_factor)) {
+                material.emissive_factor = {
+                    emissive_factor.r,
+                    emissive_factor.g,
+                    emissive_factor.b
+                };
+            }
+
             material.base_color_texture_path = loadMaterialTexturePath(mat, aiTextureType_BASE_COLOR);
             material.normal_texture_path = loadMaterialTexturePath(mat, aiTextureType_NORMALS);
             material.metallic_texture_path = loadMaterialTexturePath(mat, aiTextureType_METALNESS);
             material.roughness_texture_path = loadMaterialTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);
             material.ao_texture_path = loadMaterialTexturePath(mat, aiTextureType_AMBIENT_OCCLUSION);
+            if (material.ao_texture_path.empty()) {
+                material.ao_texture_path = loadMaterialTexturePath(mat, aiTextureType_LIGHTMAP);
+            }
+            material.emissive_texture_path = loadMaterialTexturePath(mat, aiTextureType_EMISSIVE);
+
+            if (!material.metallic_texture_path.empty() &&
+                material.metallic_texture_path == material.roughness_texture_path) {
+                material.metallic_roughness_texture_path = material.metallic_texture_path;
+                material.metallic_texture_path.clear();
+                material.roughness_texture_path.clear();
+                material.metallic_roughness_mode = MaterialMetallicRoughnessTextureMode::PackedGltf;
+            }
         }
 
         return Mesh(vertices, indices, material);
@@ -122,7 +166,15 @@ namespace NexAur {
         if (material->GetTextureCount(aiType) > 0) {
             aiString str;
             material->GetTexture(aiType, 0, &str);
-            return m_directory + "/" + std::string(str.C_Str()); // 假定贴图和模型再同一文件夹体系下
+            const std::filesystem::path texture_path(str.C_Str());
+            if (texture_path.empty() || texture_path.string().starts_with("*")) {
+                return "";
+            }
+            if (texture_path.is_absolute() || m_directory.empty()) {
+                return texture_path.string();
+            }
+
+            return (std::filesystem::path(m_directory) / texture_path).string();
         }
 
         return "";

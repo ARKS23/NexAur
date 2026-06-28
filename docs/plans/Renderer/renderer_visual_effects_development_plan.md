@@ -416,7 +416,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 7. PR-R29：PBR Material 完整化
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -442,6 +442,17 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
    - `MaterialAsset` 扩展 texture slots。
    - 明确 sRGB / linear：base color 和 emissive 通常 sRGB，normal / roughness / metallic / AO 为 linear。
 
+完成记录：
+
+- `MaterialImportData` / `MaterialAsset` 扩展为完整 metallic-roughness v1：base color、normal、metallic、roughness、packed glTF metallic-roughness、AO、emissive texture / factor、normal scale、AO strength。
+- `AssetManager::createMaterialFromImportData()` 按材质语义注册贴图颜色空间：base color / emissive 为 sRGB，其余 PBR 数据为 linear。
+- Assimp 模型导入补充 base color factor、metallic / roughness factor、emissive factor、AO / emissive texture、packed metallic-roughness 识别和更稳的相对路径解析。
+- Vulkan material descriptor layout 扩展为固定 material set：material constants + 7 个 sampled image slot + 1 个 sampler；缺失贴图统一绑定 fallback texture，由 shader flags 决定是否采样。
+- `VulkanMaterialResource` 常量 buffer 增加 texture flags、emissive factor、normal scale、AO strength，并一次性写入完整 descriptor set。
+- `vulkan_forward.hlsl` 增加 normal mapping、separate / packed metallic-roughness 采样、AO 对 ambient fallback 的影响、emissive 输出到 HDR scene color。
+- Mesh vertex input 增加 tangent / bitangent attribute；程序化 cube / sphere 生成稳定 tangent space，缺失 tangent 时 shader 有 fallback basis。
+- 新增 `MaterialAssetSmoke`，覆盖 PBR texture slots、packed metallic-roughness 和 sRGB / linear 注册约定。
+
 暂时不做：
 
 - Clearcoat。
@@ -458,6 +469,20 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - emissive 能进入 HDR / Bloom。
 - 材质贴图缺失时 fallback 稳定。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Forward HLSL 编译通过。
+- CTest 11/11 通过，其中包含 `NexAur.MaterialAssetSmoke`。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 8. PR-R30：IBL 基础链路
 

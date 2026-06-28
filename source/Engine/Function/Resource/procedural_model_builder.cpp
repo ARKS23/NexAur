@@ -9,14 +9,53 @@
 
 namespace NexAur {
     namespace {
-        Vertex makeVertex(const glm::vec3& position, const glm::vec3& normal, const glm::vec2& uv) {
+        glm::vec3 safeNormalize(const glm::vec3& value, const glm::vec3& fallback) {
+            const float length_squared = glm::dot(value, value);
+            if (length_squared <= 0.000001f) {
+                return fallback;
+            }
+
+            return value / std::sqrt(length_squared);
+        }
+
+        Vertex makeVertex(
+            const glm::vec3& position,
+            const glm::vec3& normal,
+            const glm::vec2& uv,
+            const glm::vec3& tangent = glm::vec3{ 0.0f },
+            const glm::vec3& bitangent = glm::vec3{ 0.0f }) {
             Vertex vertex;
             vertex.position = position;
             vertex.normal = normal;
             vertex.texCoords = uv;
-            vertex.tangent = glm::vec3{ 0.0f };
-            vertex.bitangent = glm::vec3{ 0.0f };
+            vertex.tangent = tangent;
+            vertex.bitangent = bitangent;
             return vertex;
+        }
+
+        void assignQuadTangentSpace(std::vector<Vertex>& vertices, unsigned int base_index) {
+            const glm::vec3 edge1 = vertices[base_index + 1].position - vertices[base_index].position;
+            const glm::vec3 edge2 = vertices[base_index + 2].position - vertices[base_index].position;
+            const glm::vec2 delta_uv1 = vertices[base_index + 1].texCoords - vertices[base_index].texCoords;
+            const glm::vec2 delta_uv2 = vertices[base_index + 2].texCoords - vertices[base_index].texCoords;
+
+            const float denominator = delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y;
+            if (std::abs(denominator) <= 0.000001f) {
+                return;
+            }
+
+            const float inverse_denominator = 1.0f / denominator;
+            const glm::vec3 tangent = safeNormalize(
+                (edge1 * delta_uv2.y - edge2 * delta_uv1.y) * inverse_denominator,
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+            const glm::vec3 bitangent = safeNormalize(
+                (edge2 * delta_uv1.x - edge1 * delta_uv2.x) * inverse_denominator,
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+            for (unsigned int index = 0; index < 4; ++index) {
+                vertices[base_index + index].tangent = tangent;
+                vertices[base_index + index].bitangent = bitangent;
+            }
         }
 
         void appendQuad(
@@ -29,6 +68,7 @@ namespace NexAur {
             vertices.push_back(makeVertex(positions[1], normal, { 1.0f, 0.0f }));
             vertices.push_back(makeVertex(positions[2], normal, { 1.0f, 1.0f }));
             vertices.push_back(makeVertex(positions[3], normal, { 0.0f, 1.0f }));
+            assignQuadTangentSpace(vertices, base_index);
 
             indices.insert(indices.end(), {
                 base_index,
@@ -114,7 +154,13 @@ namespace NexAur {
                 const float x_pos = std::cos(u * 2.0f * kPi) * std::sin(v * kPi);
                 const float y_pos = std::cos(v * kPi);
                 const float z_pos = std::sin(u * 2.0f * kPi) * std::sin(v * kPi);
-                vertices.push_back(makeVertex({ x_pos, y_pos, z_pos }, { x_pos, y_pos, z_pos }, { u, v }));
+                const glm::vec3 normal = safeNormalize({ x_pos, y_pos, z_pos }, glm::vec3{ 0.0f, 1.0f, 0.0f });
+                const float phi = u * 2.0f * kPi;
+                const glm::vec3 tangent = safeNormalize(
+                    { -std::sin(phi), 0.0f, std::cos(phi) },
+                    glm::vec3{ 1.0f, 0.0f, 0.0f });
+                const glm::vec3 bitangent = safeNormalize(glm::cross(normal, tangent), glm::vec3{ 0.0f, 1.0f, 0.0f });
+                vertices.push_back(makeVertex({ x_pos, y_pos, z_pos }, normal, { u, v }, tangent, bitangent));
             }
         }
 

@@ -161,12 +161,34 @@ namespace NexAur {
 
 
     std::shared_ptr<MaterialAsset> AssetManager::createMaterialFromImportData(const MaterialImportData& import_data) {
-        AssetHandle base_color_texture;
-        if (!import_data.base_color_texture_path.empty()) {
-            base_color_texture = importTextureAsset(import_data.base_color_texture_path, TextureColorSpace::SRGB);
-        }
+        auto import_texture = [this](const std::string& path, TextureColorSpace color_space) {
+            return path.empty() ? AssetHandle() : importTextureAsset(path, color_space);
+        };
 
-        return std::make_shared<MaterialAsset>(import_data, base_color_texture);
+        const AssetHandle base_color_texture =
+            import_texture(import_data.base_color_texture_path, TextureColorSpace::SRGB);
+        const AssetHandle normal_texture =
+            import_texture(import_data.normal_texture_path, TextureColorSpace::Linear);
+        const AssetHandle metallic_texture =
+            import_texture(import_data.metallic_texture_path, TextureColorSpace::Linear);
+        const AssetHandle roughness_texture =
+            import_texture(import_data.roughness_texture_path, TextureColorSpace::Linear);
+        const AssetHandle metallic_roughness_texture =
+            import_texture(import_data.metallic_roughness_texture_path, TextureColorSpace::Linear);
+        const AssetHandle ao_texture =
+            import_texture(import_data.ao_texture_path, TextureColorSpace::Linear);
+        const AssetHandle emissive_texture =
+            import_texture(import_data.emissive_texture_path, TextureColorSpace::SRGB);
+
+        return std::make_shared<MaterialAsset>(
+            import_data,
+            base_color_texture,
+            normal_texture,
+            metallic_texture,
+            roughness_texture,
+            metallic_roughness_texture,
+            ao_texture,
+            emissive_texture);
     }
 
     AssetHandle AssetManager::registerRuntimeMaterial(const std::shared_ptr<MaterialAsset>& material, const std::string& debug_name) {

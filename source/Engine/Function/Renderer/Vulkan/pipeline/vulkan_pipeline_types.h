@@ -12,7 +12,8 @@
 namespace NexAur {
     enum class VulkanPipelineVertexLayout {
         None = 0,
-        MeshPositionNormalTexcoord,
+        MeshPositionNormalTexcoordTangent,
+        MeshPositionNormalTexcoord = MeshPositionNormalTexcoordTangent,
         DebugPositionColor
     };
 

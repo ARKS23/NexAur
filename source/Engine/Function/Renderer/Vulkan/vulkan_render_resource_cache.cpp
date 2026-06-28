@@ -241,19 +241,31 @@ namespace NexAur {
         VulkanMaterialResource& material_resource,
         const MaterialAsset& material_asset,
         AssetManager& asset_manager) {
-        VulkanTextureResource* base_color_texture = nullptr;
-        if (material_asset.hasBaseColorTexture()) {
-            base_color_texture = getOrCreateTexture(material_asset.getBaseColorTexture(), asset_manager);
-        }
-        if (!base_color_texture || !base_color_texture->isReady()) {
-            base_color_texture = getFallbackWhiteTexture();
-        }
-        if (!base_color_texture || !base_color_texture->isReady()) {
-            NX_CORE_ERROR("Vulkan material resource requires a valid base color fallback texture.");
+        VulkanTextureResource* fallback_texture = getFallbackWhiteTexture();
+        if (!fallback_texture || !fallback_texture->isReady()) {
+            NX_CORE_ERROR("Vulkan material resource requires a valid fallback texture.");
             return false;
         }
 
-        return material_resource.create(createMaterialContext(), material_asset, *base_color_texture);
+        auto resolve_texture = [&](AssetHandle texture_asset) {
+            if (!texture_asset) {
+                return fallback_texture;
+            }
+
+            VulkanTextureResource* texture = getOrCreateTexture(texture_asset, asset_manager);
+            return texture && texture->isReady() ? texture : fallback_texture;
+        };
+
+        VulkanMaterialTextureSet textures;
+        textures.base_color = resolve_texture(material_asset.getBaseColorTexture());
+        textures.normal = resolve_texture(material_asset.getNormalTexture());
+        textures.metallic = resolve_texture(material_asset.getMetallicTexture());
+        textures.roughness = resolve_texture(material_asset.getRoughnessTexture());
+        textures.metallic_roughness = resolve_texture(material_asset.getMetallicRoughnessTexture());
+        textures.ao = resolve_texture(material_asset.getAOTexture());
+        textures.emissive = resolve_texture(material_asset.getEmissiveTexture());
+
+        return material_resource.create(createMaterialContext(), material_asset, textures);
     }
 
     bool VulkanRenderResourceCache::createAllocator(const VulkanResourceContext& context) {

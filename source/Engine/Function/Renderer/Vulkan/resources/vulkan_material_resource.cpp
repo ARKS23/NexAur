@@ -12,7 +12,10 @@ namespace NexAur {
     namespace {
         struct VulkanMaterialConstants {
             glm::vec4 base_color_factor{ 1.0f };
+            glm::vec4 emissive_factor_normal_scale{ 0.0f, 0.0f, 0.0f, 1.0f };
             glm::vec4 factors{ 0.0f, 1.0f, 0.5f, 0.0f };
+            glm::vec4 texture_flags{ 0.0f };
+            glm::vec4 texture_flags2{ 0.0f, 0.0f, 0.0f, 1.0f };
         };
 
         bool checkVk(VkResult result, const char* operation) {
@@ -26,6 +29,17 @@ namespace NexAur {
 
         float alphaModeToFloat(MaterialAlphaMode alpha_mode) {
             return static_cast<float>(static_cast<int>(alpha_mode));
+        }
+
+        float boolToFloat(bool value) {
+            return value ? 1.0f : 0.0f;
+        }
+
+        VkDescriptorImageInfo textureImageInfo(const VulkanTextureResource& texture) {
+            VkDescriptorImageInfo image_info{};
+            image_info.imageView = texture.getImageView();
+            image_info.imageLayout = texture.getImageLayout();
+            return image_info;
         }
     } // namespace
 
@@ -48,15 +62,22 @@ namespace NexAur {
     bool VulkanMaterialResource::create(
         const VulkanMaterialResourceCreateContext& context,
         const MaterialAsset& material_asset,
-        const VulkanTextureResource& base_color_texture) {
+        const VulkanMaterialTextureSet& textures) {
         reset();
 
         if (!context.valid()) {
             NX_CORE_ERROR("VulkanMaterialResource requires a valid create context.");
             return false;
         }
-        if (!base_color_texture.isReady()) {
-            NX_CORE_ERROR("VulkanMaterialResource requires a ready base color texture.");
+        if (!textures.valid() ||
+            !textures.base_color->isReady() ||
+            !textures.normal->isReady() ||
+            !textures.metallic->isReady() ||
+            !textures.roughness->isReady() ||
+            !textures.metallic_roughness->isReady() ||
+            !textures.ao->isReady() ||
+            !textures.emissive->isReady()) {
+            NX_CORE_ERROR("VulkanMaterialResource requires ready material texture bindings.");
             return false;
         }
 
@@ -67,11 +88,27 @@ namespace NexAur {
 
         VulkanMaterialConstants constants;
         constants.base_color_factor = material_asset.getBaseColorFactor();
+        constants.emissive_factor_normal_scale = glm::vec4{
+            material_asset.getEmissiveFactor(),
+            material_asset.getNormalScale()
+        };
         constants.factors = glm::vec4{
             material_asset.getMetallicFactor(),
             material_asset.getRoughnessFactor(),
             material_asset.getAlphaCutoff(),
             alphaModeToFloat(material_asset.getAlphaMode())
+        };
+        constants.texture_flags = glm::vec4{
+            boolToFloat(material_asset.hasBaseColorTexture()),
+            boolToFloat(material_asset.hasNormalTexture()),
+            boolToFloat(material_asset.hasMetallicTexture()),
+            boolToFloat(material_asset.hasRoughnessTexture())
+        };
+        constants.texture_flags2 = glm::vec4{
+            boolToFloat(material_asset.usesPackedMetallicRoughness()),
+            boolToFloat(material_asset.hasAOTexture()),
+            boolToFloat(material_asset.hasEmissiveTexture()),
+            material_asset.getOcclusionStrength()
         };
 
         VkBufferCreateInfo buffer_info{};
@@ -122,17 +159,19 @@ namespace NexAur {
         material_buffer_info.offset = 0;
         material_buffer_info.range = sizeof(VulkanMaterialConstants);
 
-        VkDescriptorImageInfo image_info{};
-        image_info.imageView = base_color_texture.getImageView();
-        image_info.imageLayout = base_color_texture.getImageLayout();
-
         VkDescriptorImageInfo sampler_info{};
-        sampler_info.sampler = base_color_texture.getSampler();
+        sampler_info.sampler = textures.base_color->getSampler();
 
         VulkanDescriptorWriter()
             .writeBuffer(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, material_buffer_info)
-            .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, image_info)
-            .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info)
+            .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.base_color))
+            .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.normal))
+            .writeImage(3, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.metallic))
+            .writeImage(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.roughness))
+            .writeImage(5, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.metallic_roughness))
+            .writeImage(6, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.ao))
+            .writeImage(7, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, textureImageInfo(*textures.emissive))
+            .writeImage(8, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info)
             .update(m_device, m_descriptor_set);
         return true;
     }

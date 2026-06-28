@@ -19,6 +19,7 @@
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Resource/material_asset.h"
 #include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
@@ -445,6 +446,88 @@ int runRenderSettingsSmoke() {
     }
 
     std::cout << "RenderSettings smoke passed." << std::endl;
+    return 0;
+}
+
+int runMaterialAssetSmoke() {
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto expectColorSpace = [&](NexAur::AssetHandle handle, NexAur::TextureColorSpace color_space, const std::string& label) {
+        const NexAur::AssetMetadata* metadata = asset_manager.getMetadata(handle);
+        expect(metadata != nullptr, label + " metadata should exist.");
+        if (metadata) {
+            expect(metadata->type == NexAur::AssetType::Texture2D, label + " should register as Texture2D.");
+            expect(metadata->texture_color_space == color_space, label + " should register with expected color space.");
+        }
+    };
+
+    NexAur::MaterialImportData separate_material;
+    separate_material.name = "MaterialAssetSmoke.Separate";
+    separate_material.base_color_texture_path = NX_ASSET("assets/textures/PBR/gold/albedo.png");
+    separate_material.normal_texture_path = NX_ASSET("assets/textures/PBR/gold/normal.png");
+    separate_material.metallic_texture_path = NX_ASSET("assets/textures/PBR/gold/metallic.png");
+    separate_material.roughness_texture_path = NX_ASSET("assets/textures/PBR/gold/roughness.png");
+    separate_material.ao_texture_path = NX_ASSET("assets/textures/PBR/gold/ao.png");
+    separate_material.emissive_texture_path = NX_ASSET("assets/textures/PBR/gold/albedo.png");
+    separate_material.metallic_factor = 0.8f;
+    separate_material.roughness_factor = 0.35f;
+    separate_material.emissive_factor = glm::vec3{ 1.5f, 1.0f, 0.5f };
+    separate_material.normal_scale = 0.75f;
+    separate_material.occlusion_strength = 0.6f;
+
+    std::shared_ptr<NexAur::MaterialAsset> separate = asset_manager.createMaterialFromImportData(separate_material);
+    expect(separate != nullptr, "MaterialAsset smoke failed: separate material was not created.");
+    if (separate) {
+        expect(separate->hasBaseColorTexture(), "Separate material should have base color texture.");
+        expect(separate->hasNormalTexture(), "Separate material should have normal texture.");
+        expect(separate->hasMetallicTexture(), "Separate material should have metallic texture.");
+        expect(separate->hasRoughnessTexture(), "Separate material should have roughness texture.");
+        expect(separate->hasAOTexture(), "Separate material should have AO texture.");
+        expect(separate->hasEmissiveTexture(), "Separate material should have emissive texture.");
+        expect(!separate->usesPackedMetallicRoughness(), "Separate material should not use packed metallic-roughness.");
+        expect(nearlyEqual(separate->getMetallicFactor(), 0.8f), "Separate material metallic factor should round-trip.");
+        expect(nearlyEqual(separate->getRoughnessFactor(), 0.35f), "Separate material roughness factor should round-trip.");
+        expect(nearlyEqualVec3(separate->getEmissiveFactor(), glm::vec3{ 1.5f, 1.0f, 0.5f }), "Separate material emissive factor should round-trip.");
+        expect(nearlyEqual(separate->getNormalScale(), 0.75f), "Separate material normal scale should round-trip.");
+        expect(nearlyEqual(separate->getOcclusionStrength(), 0.6f), "Separate material AO strength should round-trip.");
+
+        expectColorSpace(separate->getBaseColorTexture(), NexAur::TextureColorSpace::SRGB, "Base color texture");
+        expectColorSpace(separate->getNormalTexture(), NexAur::TextureColorSpace::Linear, "Normal texture");
+        expectColorSpace(separate->getMetallicTexture(), NexAur::TextureColorSpace::Linear, "Metallic texture");
+        expectColorSpace(separate->getRoughnessTexture(), NexAur::TextureColorSpace::Linear, "Roughness texture");
+        expectColorSpace(separate->getAOTexture(), NexAur::TextureColorSpace::Linear, "AO texture");
+        expectColorSpace(separate->getEmissiveTexture(), NexAur::TextureColorSpace::SRGB, "Emissive texture");
+    }
+
+    NexAur::MaterialImportData packed_material;
+    packed_material.name = "MaterialAssetSmoke.Packed";
+    packed_material.metallic_roughness_texture_path = NX_ASSET("assets/textures/PBR/rusted_iron/roughness.png");
+    packed_material.metallic_roughness_mode = NexAur::MaterialMetallicRoughnessTextureMode::PackedGltf;
+
+    std::shared_ptr<NexAur::MaterialAsset> packed = asset_manager.createMaterialFromImportData(packed_material);
+    expect(packed != nullptr, "MaterialAsset smoke failed: packed material was not created.");
+    if (packed) {
+        expect(packed->hasMetallicRoughnessTexture(), "Packed material should have metallic-roughness texture.");
+        expect(packed->usesPackedMetallicRoughness(), "Packed material should use packed metallic-roughness.");
+        expectColorSpace(packed->getMetallicRoughnessTexture(), NexAur::TextureColorSpace::Linear, "Packed metallic-roughness texture");
+    }
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "MaterialAsset smoke passed." << std::endl;
     return 0;
 }
 
@@ -1096,6 +1179,7 @@ namespace {
         { "--audio-smoke", "Audio", runAudioSmoke },
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
+        { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },
