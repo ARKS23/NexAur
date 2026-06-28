@@ -7,6 +7,8 @@
 Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第一版小游戏 demo。
 本文件记录 Renderer 之后的下一阶段专项计划：把 NexAur 从“可以展示默认场景”推进到“可以保存场景、加载场景、运行玩法逻辑”的状态。
 
+当前 PR-G1 到 PR-G10 已完成，本文档同时作为 Runtime / Scene / Gameplay foundation 的完成记录。
+
 本计划是 `docs/plans/engine_architecture_vulkan_demo_roadmap.md` 的后续执行拆分，重点覆盖：
 
 - Scene serialization。
@@ -16,27 +18,40 @@ Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第
 
 ## 2. 当前状态判断
 
-已经完成或基本可用：
+PR-G1 到 PR-G10 已完成。当前 Runtime / Scene / Gameplay foundation 已经从“计划执行阶段”进入“baseline 可用阶段”。
+
+已完成能力：
 
 - `SceneV2` 使用 EnTT 保存实体和组件。
 - `SceneManager` / `SceneService` 已经由 `RuntimeModule` 注册。
 - `RenderDataPacket` 已经是 Scene 到 Renderer 的后端无关帧数据契约。
 - `AssetHandle` / `AssetMetadata` 已经存在，`AssetManager` 可以查询 path、type、debug name 等序列化所需信息。
+- SceneSerializer v1 和 Editor Save / Load scene 已完成，Editor 可以保存 / 加载 `.nxscene`。
+- Runtime scene tick 已下沉到 `RuntimeModule::tick()`，scene extraction 已放到 runtime post-update 路径。
+- `GameModule` 已建立，并作为 gameplay systems、GameState、Runtime HUD 的挂载点。
+- `InputActionSystem v1` 已建立，玩法代码可以读取语义输入。
+- Gameplay components 和基础 systems 已建立，覆盖 movement、health、lifetime、collectible 等 demo 所需逻辑。
+- `Function/Physics` 已建立 simple collider / trigger 支持。
+- RuntimeCameraController、GameState 和 ImGui-backed Runtime HUD 已建立。
+- `PrefabFactory` 已建立，用于 player、enemy、collectible、projectile 等 spawn template。
+- `AudioModule` / `AudioService` / miniaudio backend 已建立，支持 BGM、one-shot、volume、pause / resume。
 - Renderer Vulkan 后端已经支持 model、material、texture、lighting、skybox、shadow、debug draw、viewport、picking 和 renderer debug panel。
 - Editor 已经有 DockSpace、Viewport、Scene Hierarchy、Properties、Selection、Gizmo 和 Renderer Debug 面板。
 
-已完成或基础可用：
+仍然不是本阶段目标的能力：
 
-- SceneSerializer v1 和 Editor Save / Load scene 已完成，Editor 可以保存/加载 `.nxscene`。
-- Runtime scene tick 已下沉到 `RuntimeModule::tick()`。
+- 完整 prefab / blueprint / script system。
+- 完整物理引擎。
+- 完整 runtime UI framework。
+- 完整 asset browser 和 asset pipeline。
+- Play/Edit 输入隔离、可配置 binding、gamepad 等输入扩展。
+- Renderer 画面效果 polish，例如 post process、完整 PBR / IBL production pipeline 和 GPU profiler。
 
-尚未完成的关键能力：
+后续 Runtime / Gameplay 主线的收口工作已转入 Phase1.2：
 
-- `GameModule` 骨架已建立；基础 `GameplaySystem` 和轻量 Physics trigger 已建立，后续仍需 HUD / prefab 等玩法配套。
-- `InputActionSystem v1` 已建立，玩法代码可以读取语义输入；Play/Edit 输入隔离、可配置 binding、gamepad 等仍未完成。
-- 没有 runtime camera controller、HUD、Audio、Prefab / spawn 模板。
-
-因此下一阶段不应继续扩大 Renderer，而应先补 Runtime / Scene / Gameplay 基础。
+```text
+docs/plans/phase1_2_runtime_gameplay_closeout_plan.md
+```
 
 ## 3. 设计原则
 
@@ -48,7 +63,7 @@ Renderer Vulkan 主线已经完成到 PR-R25，当前渲染能力足够支撑第
 - Sandbox 可以继续作为样例入口，但不要长期承载核心 gameplay 逻辑。
 - 每个 PR 都要保持 Sandbox 可运行。
 
-## 4. 推荐执行顺序
+## 4. 已完成执行顺序
 
 ```text
 PR-G1 SceneSerializer v1
@@ -63,7 +78,69 @@ PR-G9 PrefabFactory / Spawn templates
 PR-G10 Audio v1
 ```
 
-第一阶段最重要的是 PR-G1 到 PR-G4。完成后，NexAur 就可以开始承载一个真正的小游戏 demo，而不是只靠 Sandbox 手写场景。
+这一阶段完成后，NexAur 已经可以开始承载一个真正的小游戏 demo，而不是只靠 Sandbox 手写场景。
+
+### 4.1 当前架构快照
+
+```text
+RuntimeModule
+  -> active scene tick
+  -> scene extraction to RenderContext
+
+GameModule
+  -> gameplay systems
+  -> trigger overlap
+  -> runtime camera
+  -> GameState
+  -> Runtime HUD
+
+InputActionModule
+  -> semantic input for gameplay
+
+Function/Physics
+  -> collision query
+  -> trigger overlap
+
+AudioModule
+  -> AudioService
+  -> miniaudio backend hidden in implementation
+
+Scene
+  -> entity / component data
+  -> serializer
+
+Sandbox
+  -> demo setup
+  -> smoke entry points
+```
+
+### 4.2 Smoke 验证清单
+
+当前已有 smoke 入口：
+
+```text
+Sandbox.exe --scene-serializer-smoke
+Sandbox.exe --input-action-smoke
+Sandbox.exe --gameplay-systems-smoke
+Sandbox.exe --physics-trigger-smoke
+Sandbox.exe --runtime-camera-smoke
+Sandbox.exe --runtime-game-flow-smoke
+Sandbox.exe --prefab-factory-smoke
+Sandbox.exe --audio-smoke
+```
+
+覆盖内容：
+
+- `--scene-serializer-smoke`：默认 scene save / load round-trip。
+- `--input-action-smoke`：held / pressed / released、axis2D 和默认 mapping。
+- `--gameplay-systems-smoke`：movement、enemy velocity、lifetime、health 和 serializer round-trip。
+- `--physics-trigger-smoke`：overlap、filter、collectible pickup 和 serializer round-trip。
+- `--runtime-camera-smoke`：runtime camera follow 和 component round-trip。
+- `--runtime-game-flow-smoke`：pause / resume、collectible score、victory 和 game over。
+- `--prefab-factory-smoke`：player、enemy、collectible、projectile 模板和基础 gameplay flow。
+- `--audio-smoke`：AudioService 注册、BGM / one-shot 调用、volume clamp、pause / resume 和 shutdown。
+
+Smoke harness 统一整理、`--smoke-all` 和 CTest 接入放到 Phase1.2 PR-G12。
 
 ## 5. PR-G1：SceneSerializer v1
 
@@ -2011,11 +2088,12 @@ private:
 
 ## 13. 下一步建议
 
-下一步建议先执行 PR-G10：Audio v1。
+PR-G1 到 PR-G10 的 Runtime / Scene / Gameplay foundation 主线已经完成。
 
-开始 PR-G10 前建议确认两个小决策：
+后续这条线的收口、smoke 整理、命名整理和职责边界清理统一跟进到：
 
-1. 第一版音频后端是否优先选用 miniaudio。
-2. Audio v1 是否先覆盖 background music / one-shot / volume / pause-resume，不急着做 3D audio。
+```text
+docs/plans/phase1_2_runtime_gameplay_closeout_plan.md
+```
 
-确认后可以先实现 AudioModule / AudioService 和 Sandbox audio smoke。
+Phase1.2 完成后，再进入 playable demo integration 或 renderer polish 会更稳。
