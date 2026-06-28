@@ -13,7 +13,8 @@ namespace NexAur {
         ObjectId,
         Skybox,
         ShadowDepth,
-        DebugDraw
+        DebugDraw,
+        PostProcess
     };
 
     struct VulkanShaderProgram {

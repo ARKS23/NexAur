@@ -139,6 +139,7 @@ namespace NexAur {
         m_physical_device = context.physical_device;
         m_device = context.device;
         m_color_format = context.color_format;
+        m_swapchain_color_format = context.swapchain_color_format;
         m_extent = context.extent;
         m_frame_descriptor_set_layout = context.frame_descriptor_set_layout;
         m_material_descriptor_set_layout = context.material_descriptor_set_layout;
@@ -164,6 +165,7 @@ namespace NexAur {
         m_color_image_views.clear();
 
         m_color_format = VK_FORMAT_UNDEFINED;
+        m_swapchain_color_format = VK_FORMAT_UNDEFINED;
         m_depth_format = VK_FORMAT_UNDEFINED;
         m_extent = {};
         m_frame_descriptor_set_layout = VK_NULL_HANDLE;
@@ -342,7 +344,7 @@ namespace NexAur {
     VulkanRenderTarget VulkanForwardPass::getSwapchainRenderTarget(uint32_t image_index) const {
         VulkanRenderTarget target;
         target.color_view = getSwapchainColorImageView(image_index);
-        target.color_format = m_color_format;
+        target.color_format = m_swapchain_color_format;
         target.depth_view = m_depth_image_view;
         target.depth_format = m_depth_format;
         target.extent = m_extent;
@@ -424,7 +426,7 @@ namespace NexAur {
             view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             view_info.image = image;
             view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            view_info.format = context.color_format;
+            view_info.format = context.swapchain_color_format;
             view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             view_info.subresourceRange.baseMipLevel = 0;
             view_info.subresourceRange.levelCount = 1;

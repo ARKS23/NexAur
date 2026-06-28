@@ -1,0 +1,683 @@
+# NexAur 渲染画面效果开发计划
+
+日期：2026-06-28
+分支：`vulkanRenderer`
+
+## 1. 文档定位
+
+本文档记录 NexAur Vulkan renderer 在接入完成、Runtime / Gameplay foundation 收口之后的画面效果开发路线。
+
+关联文档：
+
+- `renderer_vulkan_development_roadmap.md`：Vulkan renderer 接入和迁移历史主线。
+- `renderer_post_vulkan_integration_plan.md`：Vulkan 后端接入完成后的基础 renderer 能力补齐。
+- `phase1_2_runtime_gameplay_closeout_plan.md`：Runtime / Gameplay foundation 收口计划。
+
+当前 renderer 已经具备：
+
+- Vulkan 主线后端。
+- Forward pass。
+- Material / texture 最小链路。
+- Direct-light PBR baseline。
+- Procedural skybox baseline。
+- Directional shadow map baseline。
+- ObjectId picking。
+- Debug draw。
+- Renderer debug panel。
+- Editor debug visualization controls。
+
+下一阶段目标不是继续补“能跑”的基础能力，而是把画面从 baseline 推进到更接近现代游戏引擎的效果层级。
+
+目标效果包括：
+
+- PCF / PCSS / CSM 阴影质量提升。
+- Physically Based Bloom。
+- PBR + IBL。
+- ACES tone mapping。
+- HDR color pipeline。
+- 后续可选的 AO、Color Grading、Fog、TAA / FXAA、debug views 和 GPU profiler。
+
+说明：
+
+用户提到的 `PBR + BIL` 本文档按 `PBR + IBL` 理解。
+
+本文档是后续画面效果阶段的主计划文档。每个 PR 完成后，应同步更新对应章节的执行状态、完成记录和验证结果。
+
+## 2. 总体原则
+
+### 2.1 先补 HDR / PostProcess 骨架
+
+Bloom、ACES、PBR 高光和 IBL 都依赖 HDR color pipeline。
+
+如果不先把 scene color 从 LDR 推到 HDR，后续 Bloom 和 Tone Mapping 会反复返工。
+
+推荐主线：
+
+```text
+Shadow
+  -> Skybox
+  -> Forward HDR
+  -> DebugDraw
+  -> PostProcess
+  -> ImGui / Present
+```
+
+### 2.2 后处理先简单、骨架先正确
+
+第一版 PostProcess 不追求效果复杂，而是要建立：
+
+- fullscreen triangle pipeline。
+- HDR scene color input。
+- LDR output。
+- ping-pong / intermediate target 管理。
+- PassGraph image usage 和 layout transition。
+- RenderSettings / effects UI 控制入口。
+
+### 2.3 PBR / IBL 不和 Bloom 抢同一个 PR
+
+PBR / IBL 会牵涉：
+
+- 材质贴图种类。
+- HDR environment import。
+- cubemap conversion。
+- irradiance map。
+- prefiltered environment map。
+- BRDF LUT。
+
+Bloom 会牵涉：
+
+- downsample / upsample mip chain。
+- HDR threshold / energy。
+- tone mapping 前合成。
+
+两者都重要，但不要放进同一个 PR。
+
+### 2.4 阴影先稳定，再高级
+
+当前已有 directional shadow baseline。下一阶段建议：
+
+```text
+PCF / bias / stability
+  -> CSM
+  -> PCSS
+```
+
+原因：
+
+- PCF / bias / stability 是所有阴影质量的基础。
+- CSM 对大场景和第三人称 demo 的收益通常比单张 shadow map PCSS 更明显。
+- PCSS 在 CSM / bias / debug view 稳定后更容易调。
+
+### 2.5 每个效果都要有 debug view
+
+画面效果如果没有 debug view，后续调参会很痛苦。
+
+建议逐步支持：
+
+- Shadow map viewer。
+- Cascade color overlay。
+- Bloom mip viewer。
+- HDR scene color viewer。
+- Exposure / tone mapping debug。
+- IBL irradiance / prefilter debug。
+
+第一版不需要都做，但每个大效果至少预留 debug hook。
+
+### 2.6 RenderSettings 和 Debug Snapshot 分离
+
+PR-R24 的 `RendererDebugService` 定位是观察 renderer 状态，后续不建议把 Bloom、ACES、Shadow、IBL 的可调参数直接塞进 debug snapshot。
+
+建议拆成两类数据：
+
+```text
+RenderSettings / RenderContext options
+  - 用户或 Editor 可以修改的渲染效果参数
+  - 例如 exposure、tone mapping mode、bloom intensity、shadow mode
+
+RendererDebugSnapshot
+  - renderer 上一帧只读状态
+  - 例如 target format、draw count、GPU resource count、debug view availability
+```
+
+Editor UI 可以临时把效果调参放在 `Renderer Debug` 面板下的 `Effects` 分组，也可以后续拆成独立 `Renderer Effects` 面板。但底层数据契约应保持清楚：调参写入 backend-neutral settings，状态显示读取 backend-neutral snapshot。
+
+## 3. 推荐执行顺序
+
+建议从 PR-R26 开始：
+
+```text
+PR-R26 HDR Scene Color + PostProcess Framework
+PR-R27 ACES Tone Mapping + Exposure
+PR-R28 Physically Based Bloom
+PR-R29 PBR Material 完整化
+PR-R30 IBL 基础链路
+PR-R31 Shadow Quality Pass 1：PCF / Bias / Stability
+PR-R32 Cascaded Shadow Maps
+PR-R33 PCSS / Contact Hardening Shadow
+PR-R34 Renderer Effects Debug Views
+PR-R35 Color Grading / FXAA / Polish Pass
+```
+
+如果只想先快速提升观感，最短路径是：
+
+```text
+R26 HDR + PostProcess
+R27 ACES
+R28 Bloom
+R31 Shadow Quality
+```
+
+如果目标是材质质感，优先：
+
+```text
+R26 HDR + PostProcess
+R27 ACES
+R29 PBR Material
+R30 IBL
+```
+
+## 4. PR-R26：HDR Scene Color + PostProcess Framework
+
+执行状态：已完成。
+
+目标：
+
+- 建立 HDR scene color。
+- 建立 Vulkan post process pass 骨架。
+- 为 ACES、Bloom、Color Grading、FXAA 等效果准备稳定入口。
+
+完成记录：
+
+- 新增 `VulkanSceneColorTarget`，使用 HDR scene color intermediate target，优先格式为 `VK_FORMAT_R16G16B16A16_SFLOAT`，并提供 sampled image / sampler 给 post process。
+- 新增 `VulkanPostProcessPass`，使用 fullscreen triangle 从 HDR scene color 输出到 LDR viewport / swapchain target。
+- 新增 `vulkan_post_process.hlsl`，第一版只做 HDR color sample + clamp 输出，不实现 ACES / Bloom。
+- `VulkanForwardPass` 拆分 forward render color format 和 swapchain image view format，避免 HDR pipeline 与 swapchain format 混用。
+- PassGraph 已改为 `DirectionalShadowMap -> Skybox(HDR) -> ForwardScene(HDR) -> DebugDraw(HDR) -> ObjectIdPicking -> PostProcess -> ImGuiComposite/Present`。
+- Viewport 路径输出到 existing `VulkanViewportTarget`，fallback swapchain 路径直接输出到 swapchain image。
+- `RendererDebugSnapshot` 和 `RendererDebugPanel` 增加 HDR scene target 与 PostProcess 只读状态。
+- ObjectId picking 继续使用独立 picking target，不受 HDR / PostProcess 影响。
+
+建议工作：
+
+1. HDR scene target。
+   - Viewport / swapchain scene color 改为 HDR intermediate target。
+   - 推荐第一版使用 `VK_FORMAT_R16G16B16A16_SFLOAT`。
+   - 如果后续追求带宽优化，再评估 `R11G11B10_FLOAT`。
+2. PostProcess target。
+   - 新增 post process output target。
+   - viewport 路径输出给 ImGui viewport texture。
+   - swapchain fallback 路径输出到 swapchain color。
+3. Fullscreen triangle pipeline。
+   - 新增通用 fullscreen pass 基础能力。
+   - shader 使用 HLSL。
+   - 不引入 fullscreen quad vertex buffer。
+4. PassGraph 接入。
+   - Forward pass 输出 HDR scene color。
+   - PostProcess pass 读取 HDR scene color。
+   - PostProcess pass 输出 LDR color。
+5. Renderer debug panel。
+   - debug snapshot 显示 HDR scene target ready / format / size。
+   - RenderSettings 预留 post process enabled / tone mapping enabled 等效果开关。
+
+建议新增文件：
+
+```text
+Renderer/Vulkan/targets/
+  vulkan_scene_color_target.h
+  vulkan_scene_color_target.cpp
+
+Renderer/Vulkan/passes/
+  vulkan_post_process_pass.h
+  vulkan_post_process_pass.cpp
+
+assets/shaders/Renderer/Vulkan/
+  vulkan_post_process.hlsl
+```
+
+暂时不做：
+
+- Bloom。
+- ACES。
+- Color grading。
+- TAA / FXAA。
+- 自动曝光。
+
+验收：
+
+- 画面经过 PostProcess pass 输出。
+- 未开启 tone mapping 时视觉与当前接近。
+- viewport / swapchain fallback 路径都能正常显示。
+- ObjectId picking 不受影响。
+- Debug draw 仍在正确位置显示。
+- 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --preset msvc-vcpkg
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
+```
+
+## 5. PR-R27：ACES Tone Mapping + Exposure
+
+执行状态：计划中。
+
+目标：
+
+- 在 HDR pipeline 上接入 ACES tone mapping。
+- 提供 exposure 控制。
+- 建立颜色空间和 gamma 输出约定。
+
+建议工作：
+
+1. Tone mapping shader。
+   - 在 `vulkan_post_process.hlsl` 中实现 ACES fitted tone mapping。
+   - 明确 linear HDR input -> tone mapped linear / sRGB output。
+2. Exposure。
+   - 第一版使用手动 exposure。
+   - Editor effects UI 通过 RenderSettings 修改 exposure。
+   - 后续自动曝光单独做。
+3. Gamma。
+   - 明确 swapchain / viewport 输出是否为 sRGB format。
+   - 避免重复 gamma correction。
+4. Render settings。
+   - 第一版可以放在 `RenderContext` 或 backend-neutral `RenderSettings` 中。
+   - 不把 exposure 等可写参数放进 `RendererDebugSnapshot`。
+   - 后续再抽成正式 `RenderSettings` asset。
+
+暂时不做：
+
+- 自动曝光。
+- 色调曲线编辑器。
+- Color grading LUT。
+- Film grain / vignette。
+
+验收：
+
+- 高亮不再直接白切。
+- exposure 可调。
+- ACES 开关可控。
+- UI / ImGui 不受 tone mapping 影响。
+- 构建和 smoke / CTest 通过。
+
+## 6. PR-R28：Physically Based Bloom
+
+执行状态：计划中。
+
+目标：
+
+- 基于 HDR scene color 做 Bloom。
+- Bloom 在 tone mapping 前合成。
+- 效果倾向物理能量感，而不是简单 LDR 发光描边。
+
+建议工作：
+
+1. Bloom mip chain。
+   - 从 HDR scene color downsample。
+   - 多级 mip 逐层降采样。
+   - 再 upsample 合成。
+2. Threshold 策略。
+   - 不建议第一版做硬 threshold。
+   - 可以提供 soft threshold / knee。
+   - 也可以采用近似 thresholdless 的 energy-preserving bloom。
+3. 合成。
+   - Bloom 与 HDR scene color 在 tone mapping 前合成。
+   - 参数包括 intensity、radius、scatter。
+4. Debug。
+   - Editor effects UI 增加 bloom enabled / intensity / radius。
+   - Renderer debug snapshot 只显示 bloom target ready / mip count / format 等只读状态。
+   - 后续 PR-R34 增加 bloom mip viewer。
+
+建议新增文件：
+
+```text
+Renderer/Vulkan/passes/
+  vulkan_bloom_pass.h
+  vulkan_bloom_pass.cpp
+
+assets/shaders/Renderer/Vulkan/
+  vulkan_bloom_downsample.hlsl
+  vulkan_bloom_upsample.hlsl
+```
+
+暂时不做：
+
+- Lens dirt。
+- Star streak。
+- Anamorphic bloom。
+- Auto exposure coupling。
+
+验收：
+
+- 高亮材质或天空能产生柔和 bloom。
+- Bloom 关闭后画面回到 ACES-only。
+- 不明显闪烁。
+- viewport resize 后 bloom targets 正确重建。
+- 构建和 smoke / CTest 通过。
+
+## 7. PR-R29：PBR Material 完整化
+
+执行状态：计划中。
+
+目标：
+
+- 将当前 direct-light PBR baseline 扩展成更完整的 metallic-roughness workflow。
+- 为 IBL 做准备。
+
+建议工作：
+
+1. 材质贴图。
+   - normal map。
+   - metallic-roughness texture。
+   - AO texture。
+   - emissive texture / emissive factor。
+2. Tangent space。
+   - Mesh import 保存 tangent。
+   - 没有 tangent 时可 CPU 生成或 fallback。
+3. Shader。
+   - GGX / Smith / Schlick Fresnel。
+   - normal mapping。
+   - AO 影响 indirect lighting，direct baseline 可先保守处理。
+   - emissive 进入 HDR scene color。
+4. Resource / MaterialAsset。
+   - `MaterialAsset` 扩展 texture slots。
+   - 明确 sRGB / linear：base color 和 emissive 通常 sRGB，normal / roughness / metallic / AO 为 linear。
+
+暂时不做：
+
+- Clearcoat。
+- Sheen。
+- Subsurface。
+- Transmission。
+- Anisotropy。
+- 全套 glTF material extension。
+
+验收：
+
+- DamagedHelmet 等标准 glTF PBR 样例观感接近预期。
+- base color / normal / metallic-roughness 可同时工作。
+- emissive 能进入 HDR / Bloom。
+- 材质贴图缺失时 fallback 稳定。
+- 构建和 smoke / CTest 通过。
+
+## 8. PR-R30：IBL 基础链路
+
+执行状态：计划中。
+
+目标：
+
+- 接入 image based lighting。
+- 让 PBR 材质拥有环境漫反射和环境高光。
+- 从 procedural skybox 过渡到真实 HDR environment。
+
+建议工作：
+
+1. HDR environment import。
+   - 支持 HDR equirectangular texture。
+   - 转为 cubemap。
+2. IBL bake。
+   - irradiance cubemap。
+   - prefiltered environment cubemap。
+   - BRDF LUT。
+3. Shader。
+   - diffuse irradiance。
+   - specular prefilter + BRDF LUT。
+   - roughness mip selection。
+4. Skybox。
+   - skybox pass 支持 environment cubemap。
+   - procedural skybox 作为 fallback。
+5. Resource ownership。
+   - Resource 管 HDR asset identity / CPU import。
+   - Vulkan backend 管 cubemap、prefilter 和 GPU bake result。
+
+暂时不做：
+
+- 多 reflection probe。
+- Probe blending。
+- Runtime dynamic reflection capture。
+- Local parallax corrected cubemap。
+
+验收：
+
+- 金属材质能反射 environment。
+- 粗糙度影响 specular lobe。
+- 没有 environment asset 时 fallback 稳定。
+- Skybox 使用真实 environment。
+- 构建和 smoke / CTest 通过。
+
+## 9. PR-R31：Shadow Quality Pass 1：PCF / Bias / Stability
+
+执行状态：计划中。
+
+目标：
+
+- 把当前 directional shadow baseline 做稳。
+- 提供可调 PCF 和 bias。
+- 为 CSM / PCSS 打基础。
+
+当前状态：
+
+- Directional shadow map baseline 已存在。
+- Forward shader 已有基础 shadow sampling / 3x3 PCF 方向。
+
+建议工作：
+
+1. PCF 参数化。
+   - 支持 1x1 / 3x3 / 5x5。
+   - 支持 kernel radius。
+   - 后续再考虑 poisson disk。
+2. Bias。
+   - constant bias。
+   - normal bias。
+   - slope-scale bias。
+3. Stability。
+   - light view-projection texel snapping。
+   - shadow distance 控制。
+   - shadow map size 控制。
+4. Debug。
+   - RenderSettings 暴露 shadow enabled / strength / bias / distance / kernel size。
+   - Renderer debug snapshot 显示 shadow target ready / size / format。
+   - 后续 shadow map viewer 放到 PR-R34。
+
+暂时不做：
+
+- CSM。
+- PCSS。
+- VSM / EVSM。
+- point light shadow。
+- transparent shadow。
+
+验收：
+
+- 默认场景阴影稳定。
+- camera 移动时不明显游泳。
+- bias 可调，能平衡 acne / peter-panning。
+- PCF kernel 改变能影响边缘软硬。
+- 构建和 smoke / CTest 通过。
+
+## 10. PR-R32：Cascaded Shadow Maps
+
+执行状态：计划中。
+
+目标：
+
+- 支持大范围 directional light shadow。
+- 提升第三人称 / 户外 demo 阴影质量。
+
+建议工作：
+
+1. Cascades。
+   - 第一版 3 或 4 cascades。
+   - 支持 split lambda。
+   - 支持 max shadow distance。
+2. Stable CSM。
+   - 每个 cascade 做 texel snapping。
+   - 减少 shimmer。
+3. Shader。
+   - 根据 view-space depth 选择 cascade。
+   - 每个 cascade 单独 light VP。
+   - 支持 cascade blending 可后续再做。
+4. Resource。
+   - shadow map array 或多个 shadow targets。
+   - 第一版建议 array texture，更利于 shader 选择。
+5. Debug。
+   - cascade color overlay。
+   - cascade split 显示。
+
+暂时不做：
+
+- PCSS per cascade。
+- cascade blending 高级优化。
+- shadow atlas。
+
+验收：
+
+- 近处阴影清晰，远处阴影覆盖范围更大。
+- cascade 切换不明显跳变。
+- Debug overlay 能显示 cascade 分区。
+- 构建和 smoke / CTest 通过。
+
+## 11. PR-R33：PCSS / Contact Hardening Shadow
+
+执行状态：计划中。
+
+目标：
+
+- 支持接触硬、远处软的阴影观感。
+- 为 directional light 提供 light angular size / source radius 参数。
+
+建议工作：
+
+1. Blocker search。
+   - 在 shadow map 中搜索 blocker depth。
+   - 控制 search radius。
+2. Penumbra estimation。
+   - 根据 receiver / blocker depth 估算 penumbra。
+   - 与 light size 参数关联。
+3. Variable PCF。
+   - 根据 penumbra 调整 filter radius。
+   - 注意采样数量和性能。
+4. Debug / fallback。
+   - 支持 PCF / PCSS 切换。
+   - 性能较差时能退回 PCF。
+
+建议顺序：
+
+- 可以先在单张 shadow map 上做 PCSS prototype。
+- 但正式整合建议在 CSM 稳定后做。
+
+暂时不做：
+
+- Area light 全套物理阴影。
+- Ray traced shadow。
+- Moment shadow map。
+
+验收：
+
+- 接触处阴影较硬。
+- 离接触点越远越软。
+- PCSS 关闭后回到 PCF。
+- 性能有基础统计。
+- 构建和 smoke / CTest 通过。
+
+## 12. PR-R34：Renderer Effects Debug Views
+
+执行状态：计划中。
+
+目标：
+
+- 给后续效果调试提供统一入口。
+- 避免调 Bloom / Shadow / IBL 时只能靠猜。
+
+建议支持：
+
+- HDR scene color viewer。
+- PostProcess output viewer。
+- Shadow map viewer。
+- Cascade debug colors。
+- Bloom mip viewer。
+- IBL irradiance / prefilter viewer。
+- Exposure / tone mapping stats。
+
+建议接入：
+
+- 可以放入 `Renderer Debug` 面板，也可以后续拆成独立 `Renderer Effects` 面板。
+- debug view 显示只读为主，调参走 RenderSettings。
+- 不暴露 Vulkan handle。
+- Debug view 数据通过后端无关 snapshot 或 renderer debug service 暴露。
+
+验收：
+
+- Debug view 不影响正常 render path。
+- Editor 不 include `Renderer/Vulkan/*`。
+- 构建和 smoke / CTest 通过。
+
+## 13. PR-R35：Color Grading / FXAA / Polish Pass
+
+执行状态：计划中。
+
+目标：
+
+- 在 HDR / ACES / Bloom / PBR / IBL 稳定后做轻量画面 polish。
+
+建议内容：
+
+- Color grading LUT。
+- FXAA。
+- Vignette。
+- Film grain。
+- Chromatic aberration 可选，默认关闭。
+
+暂时不做：
+
+- TAA。
+- DLSS / FSR。
+- Motion blur。
+- Depth of field。
+
+说明：
+
+- FXAA 成本低，适合先接。
+- TAA 对后续 SSR、PCSS 噪点和 temporal stability 很有价值，但需要 camera jitter、history buffer、motion vector，建议单独规划。
+
+## 14. 其他可选画面效果建议
+
+后续可以考虑：
+
+1. SSAO / GTAO。
+   - 对空间接触感提升明显。
+   - 需要稳定 depth / normal 输入。
+2. Height Fog / Volumetric Fog。
+   - 对 demo 氛围提升大。
+   - 可以先做 height fog，再做 volumetric。
+3. Contact Shadow。
+   - 可补充 CSM 近处接触细节。
+4. Reflection Probe。
+   - IBL 后自然延伸。
+   - 第一版做 static probe。
+5. GPU timestamp profiler。
+   - Bloom、IBL、CSM、PCSS 后非常需要。
+   - 可以接入 `Renderer Debug` 面板。
+6. Transparent sorting / Weighted Blended OIT。
+   - 当前透明如果只是基础链路，后续需要专项。
+7. TAA。
+   - 长期很重要。
+   - 但需要 history、jitter、motion vectors，不建议过早做。
+
+## 15. 完成标准
+
+这一轮 Visual Effects 阶段达到以下状态即可认为完成：
+
+- Renderer 拥有稳定 HDR scene color。
+- ACES + exposure 可用。
+- Bloom 基于 HDR，在 tone mapping 前合成。
+- PBR 材质支持基础贴图全链路。
+- IBL 可用，金属 / 粗糙材质能正确响应环境。
+- Directional shadow 支持稳定 PCF。
+- CSM 可覆盖较大场景。
+- PCSS 可作为高质量 shadow mode。
+- 关键效果有 debug view。
+- Editor / Runtime / Scene 不直接依赖 Vulkan backend。
+- 构建、shader compile、Sandbox smoke 和 CTest 稳定通过。

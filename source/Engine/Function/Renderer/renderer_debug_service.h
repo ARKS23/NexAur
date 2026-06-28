@@ -65,6 +65,12 @@ namespace NexAur {
         std::string depth_format = "None";
     };
 
+    struct RendererDebugPostProcessStats {
+        bool enabled = false;
+        bool ready = false;
+        std::string output_format = "None";
+    };
+
     struct RendererDebugResourceStats {
         size_t model_count = 0;
         size_t texture_count = 0;
@@ -79,8 +85,10 @@ namespace NexAur {
         RendererDebugFrameStats frame;
         RendererDebugViewStats view;
         RendererDebugRenderTargetStats viewport_target;
+        RendererDebugRenderTargetStats hdr_scene_target;
         RendererDebugPickingTargetStats picking_target;
         RendererDebugShadowTargetStats shadow_target;
+        RendererDebugPostProcessStats post_process;
         RendererDebugResourceStats resources;
     };
 

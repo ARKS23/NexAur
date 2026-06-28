@@ -177,6 +177,22 @@ namespace NexAur {
         drawKeyValue("  Depth Format", snapshot.viewport_target.depth_format.c_str());
 
         ImGui::Spacing();
+        ImGui::TextUnformatted("HDR Scene Target");
+        drawKeyValue("  Ready", boolToText(snapshot.hdr_scene_target.ready));
+        drawExtent(
+            "  Size",
+            snapshot.hdr_scene_target.width,
+            snapshot.hdr_scene_target.height);
+        drawKeyValue("  Color Format", snapshot.hdr_scene_target.color_format.c_str());
+        drawKeyValue("  Depth Format", snapshot.hdr_scene_target.depth_format.c_str());
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("PostProcess");
+        drawKeyValue("  Enabled", boolToText(snapshot.post_process.enabled));
+        drawKeyValue("  Ready", boolToText(snapshot.post_process.ready));
+        drawKeyValue("  Output Format", snapshot.post_process.output_format.c_str());
+
+        ImGui::Spacing();
         ImGui::TextUnformatted("Picking Target");
         drawKeyValue("  Ready", boolToText(snapshot.picking_target.ready));
         drawExtent("  Size", snapshot.picking_target.width, snapshot.picking_target.height);

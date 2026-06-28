@@ -18,6 +18,7 @@
 #include "Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
+#include "Function/Renderer/Vulkan/passes/vulkan_post_process_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_shadow_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
@@ -25,6 +26,7 @@
 #include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_picking_target.h"
+#include "Function/Renderer/Vulkan/targets/vulkan_scene_color_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_viewport_target.h"
 #include "Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h"
@@ -43,6 +45,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
@@ -182,6 +185,26 @@ namespace NexAur {
             NX_CORE_ERROR("Vulkan 1.3 feature is required but not supported: {}", feature_name);
             return false;
         }
+
+        VkFormat findHdrSceneColorFormat(VkPhysicalDevice physical_device) {
+            constexpr VkFormatFeatureFlags required_features =
+                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+            const std::array<VkFormat, 2> candidates{
+                VK_FORMAT_R16G16B16A16_SFLOAT,
+                VK_FORMAT_B10G11R11_UFLOAT_PACK32
+            };
+
+            for (VkFormat format : candidates) {
+                VkFormatProperties properties{};
+                vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
+                if ((properties.optimalTilingFeatures & required_features) == required_features) {
+                    return format;
+                }
+            }
+
+            return VK_FORMAT_UNDEFINED;
+        }
     } // namespace
 
     struct VulkanRendererSystem::Backend {
@@ -223,6 +246,12 @@ namespace NexAur {
             }
 
             if (!viewport_target.init(createResourceContext(), swapchain.image_format, surface_width, surface_height)) {
+                shutdown();
+                return false;
+            }
+
+            if (!scene_color_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
+                !updatePostProcessInput()) {
                 shutdown();
                 return false;
             }
@@ -275,12 +304,14 @@ namespace NexAur {
             }
 
             imgui_renderer.shutdown();
+            post_process_pass.shutdown();
             debug_draw_pass.shutdown();
             skybox_pass.shutdown();
             shadow_pass.shutdown();
             object_id_pass.shutdown();
             shadow_target.shutdown();
             picking_target.shutdown();
+            scene_color_target.shutdown();
             viewport_target.shutdown();
             forward_pass.shutdown();
             cleanupSwapchain();
@@ -313,6 +344,7 @@ namespace NexAur {
             graphics_queue = VK_NULL_HANDLE;
             present_queue = VK_NULL_HANDLE;
             device_api_version = kRequiredVulkanApiVersion;
+            scene_color_format = VK_FORMAT_UNDEFINED;
             initialized = false;
         }
 
@@ -363,9 +395,10 @@ namespace NexAur {
             vkDeviceWaitIdle(device.device);
             imgui_renderer.releaseViewportTexture();
             const bool viewport_resized = viewport_target.resize(width, height);
+            const bool scene_color_resized = scene_color_target.resize(width, height);
             const bool picking_resized = picking_target.resize(width, height);
-            if (!viewport_resized || !picking_resized) {
-                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport or picking target.");
+            if (!viewport_resized || !scene_color_resized || !picking_resized || !updatePostProcessInput()) {
+                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, or picking target.");
                 return;
             }
             picking_frame_ready = false;
@@ -492,8 +525,10 @@ namespace NexAur {
                 render_start_time);
             snapshot.view = buildViewDebugStats(render_view);
             snapshot.viewport_target = buildViewportTargetDebugStats();
+            snapshot.hdr_scene_target = buildHdrSceneTargetDebugStats();
             snapshot.picking_target = buildPickingTargetDebugStats();
             snapshot.shadow_target = buildShadowTargetDebugStats();
+            snapshot.post_process = buildPostProcessDebugStats();
             snapshot.resources = buildResourceDebugStats();
 
             debug_snapshot = std::move(snapshot);
@@ -571,6 +606,21 @@ namespace NexAur {
             return stats;
         }
 
+        RendererDebugRenderTargetStats buildHdrSceneTargetDebugStats() const {
+            RendererDebugRenderTargetStats stats;
+            stats.ready = scene_color_target.isReady();
+            if (!stats.ready) {
+                return stats;
+            }
+
+            const VkExtent2D extent = scene_color_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.color_format = vkFormatToString(scene_color_target.getColorFormat());
+            stats.depth_format = "Shared";
+            return stats;
+        }
+
         RendererDebugPickingTargetStats buildPickingTargetDebugStats() const {
             RendererDebugPickingTargetStats stats;
             stats.ready = picking_target.isReady();
@@ -598,6 +648,16 @@ namespace NexAur {
             stats.width = extent.width;
             stats.height = extent.height;
             stats.depth_format = vkFormatToString(shadow_target.getDepthFormat());
+            return stats;
+        }
+
+        RendererDebugPostProcessStats buildPostProcessDebugStats() const {
+            RendererDebugPostProcessStats stats;
+            stats.enabled = true;
+            stats.ready = post_process_pass.isReady();
+            if (post_process_pass.getOutputColorFormat() != VK_FORMAT_UNDEFINED) {
+                stats.output_format = vkFormatToString(post_process_pass.getOutputColorFormat());
+            }
             return stats;
         }
 
@@ -710,6 +770,26 @@ namespace NexAur {
             return imgui_renderer.registerViewportTexture(
                 viewport_target.getColorImageView(),
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        bool updatePostProcessInput() {
+            if (!post_process_pass.isReady() || !scene_color_target.isReady()) {
+                return false;
+            }
+
+            VulkanPostProcessInput input;
+            input.color_view = scene_color_target.getColorImageView();
+            input.sampler = scene_color_target.getSampler();
+            input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            return post_process_pass.updateInput(input);
+        }
+
+        bool updatePostProcessInputIfReady() {
+            if (!post_process_pass.isReady() || !scene_color_target.isReady()) {
+                return true;
+            }
+
+            return updatePostProcessInput();
         }
 
         bool createInstance(const std::vector<const char*>& required_extensions) {
@@ -851,6 +931,14 @@ namespace NexAur {
                 return false;
             }
 
+            if (scene_color_format == VK_FORMAT_UNDEFINED) {
+                scene_color_format = findHdrSceneColorFormat(physical_device.physical_device);
+                if (scene_color_format == VK_FORMAT_UNDEFINED) {
+                    NX_CORE_ERROR("VulkanRendererSystem failed to find a supported HDR scene color format.");
+                    return false;
+                }
+            }
+
             VkSurfaceFormatKHR preferred_format{};
             preferred_format.format = VK_FORMAT_B8G8R8A8_SRGB;
             preferred_format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
@@ -887,7 +975,8 @@ namespace NexAur {
             VulkanForwardPassSwapchainContext pass_context;
             pass_context.physical_device = physical_device.physical_device;
             pass_context.device = device.device;
-            pass_context.color_format = swapchain.image_format;
+            pass_context.color_format = scene_color_format;
+            pass_context.swapchain_color_format = swapchain.image_format;
             pass_context.extent = swapchain.extent;
             pass_context.color_images = swapchain_images;
             pass_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
@@ -896,7 +985,7 @@ namespace NexAur {
 
             VulkanSkyboxPassContext skybox_context;
             skybox_context.device = device.device;
-            skybox_context.color_format = swapchain.image_format;
+            skybox_context.color_format = scene_color_format;
             skybox_context.pipeline_cache = &pipeline_cache;
 
             const bool recreated_skybox_pass = skybox_pass.recreateResources(skybox_context);
@@ -907,11 +996,22 @@ namespace NexAur {
 
             VulkanDebugDrawPassContext debug_draw_context;
             debug_draw_context.device = device.device;
-            debug_draw_context.color_format = swapchain.image_format;
+            debug_draw_context.color_format = scene_color_format;
             debug_draw_context.depth_format = forward_pass.getDepthFormat();
             debug_draw_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
             debug_draw_context.pipeline_cache = &pipeline_cache;
             if (!debug_draw_pass.recreateResources(debug_draw_context)) {
+                return false;
+            }
+
+            VulkanPostProcessPassContext post_process_context;
+            post_process_context.device = device.device;
+            post_process_context.output_color_format = swapchain.image_format;
+            post_process_context.input_descriptor_set_layout =
+                descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::PostProcessInput);
+            post_process_context.descriptor_allocator = &descriptor_allocator;
+            post_process_context.pipeline_cache = &pipeline_cache;
+            if (!post_process_pass.recreateResources(post_process_context) || !updatePostProcessInputIfReady()) {
                 return false;
             }
 
@@ -933,6 +1033,7 @@ namespace NexAur {
         }
 
         void cleanupSwapchain() {
+            post_process_pass.cleanupResources();
             debug_draw_pass.cleanupResources();
             skybox_pass.cleanupResources();
             forward_pass.cleanupSwapchainResources();
@@ -1128,10 +1229,15 @@ namespace NexAur {
             const VulkanDrawList& draw_list,
             const VulkanShadowFrame& shadow_frame) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
+            const VulkanGraphImageHandle scene_color = addSceneColorImage(graph);
             const VulkanGraphImageHandle viewport_color = addViewportColorImage(graph);
             const VulkanGraphImageHandle viewport_depth = addViewportDepthImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
-            if (!shadow_depth.valid() || !viewport_color.valid() || !viewport_depth.valid() || !swapchain_color.valid()) {
+            if (!shadow_depth.valid() ||
+                !scene_color.valid() ||
+                !viewport_color.valid() ||
+                !viewport_depth.valid() ||
+                !swapchain_color.valid()) {
                 return false;
             }
 
@@ -1139,29 +1245,33 @@ namespace NexAur {
                 return false;
             }
 
-            if (!addSkyboxPass(graph, viewport_color, makeViewportSkyboxTarget(), draw_list)) {
+            if (!addSkyboxPass(graph, scene_color, makeSceneSkyboxTarget(), draw_list)) {
                 return false;
             }
 
             graph.addPass("ForwardScene")
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
-                .writeImage(viewport_color, VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(viewport_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
                     VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
                     return forward_pass.record(
                         target_command_buffer,
-                        viewport_target.getRenderTarget(),
+                        makeViewportSceneRenderTarget(),
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
                         options);
                 });
 
-            if (!addDebugDrawPass(graph, viewport_color, viewport_depth, viewport_target.getRenderTarget())) {
+            if (!addDebugDrawPass(graph, scene_color, viewport_depth, makeViewportSceneRenderTarget())) {
                 return false;
             }
 
             if (!addObjectIdPass(graph, draw_list)) {
+                return false;
+            }
+
+            if (!addPostProcessPass(graph, scene_color, viewport_color, makeViewportPostProcessTarget())) {
                 return false;
             }
 
@@ -1184,9 +1294,13 @@ namespace NexAur {
             const VulkanDrawList& draw_list,
             const VulkanShadowFrame& shadow_frame) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
+            const VulkanGraphImageHandle scene_color = addSceneColorImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
             const VulkanGraphImageHandle swapchain_depth = addSwapchainDepthImage(graph);
-            if (!shadow_depth.valid() || !swapchain_color.valid() || !swapchain_depth.valid()) {
+            if (!shadow_depth.valid() ||
+                !scene_color.valid() ||
+                !swapchain_color.valid() ||
+                !swapchain_depth.valid()) {
                 return false;
             }
 
@@ -1194,29 +1308,33 @@ namespace NexAur {
                 return false;
             }
 
-            if (!addSkyboxPass(graph, swapchain_color, makeSwapchainSkyboxTarget(image_index), draw_list)) {
+            if (!addSkyboxPass(graph, scene_color, makeSceneSkyboxTarget(), draw_list)) {
                 return false;
             }
 
             graph.addPass("ForwardScene")
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
-                .writeImage(swapchain_color, VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(swapchain_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
                     VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
                     return forward_pass.record(
                         target_command_buffer,
-                        forward_pass.getSwapchainRenderTarget(image_index),
+                        makeSwapchainSceneRenderTarget(image_index),
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
                         options);
                 });
 
-            if (!addDebugDrawPass(graph, swapchain_color, swapchain_depth, forward_pass.getSwapchainRenderTarget(image_index))) {
+            if (!addDebugDrawPass(graph, scene_color, swapchain_depth, makeSwapchainSceneRenderTarget(image_index))) {
                 return false;
             }
 
             if (!addObjectIdPass(graph, draw_list)) {
+                return false;
+            }
+
+            if (!addPostProcessPass(graph, scene_color, swapchain_color, makeSwapchainPostProcessTarget(image_index))) {
                 return false;
             }
 
@@ -1315,6 +1433,24 @@ namespace NexAur {
             return true;
         }
 
+        bool addPostProcessPass(
+            VulkanPassGraph& graph,
+            VulkanGraphImageHandle input_color,
+            VulkanGraphImageHandle output_color,
+            VulkanPostProcessRenderTarget target) {
+            if (!input_color.valid() || !output_color.valid() || !target.valid() || !post_process_pass.isReady()) {
+                return false;
+            }
+
+            graph.addPass("PostProcess")
+                .readImage(input_color, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, target](VkCommandBuffer target_command_buffer) {
+                    return post_process_pass.record(target_command_buffer, target);
+                });
+            return true;
+        }
+
         VulkanGraphImageHandle addSwapchainColorImage(VulkanPassGraph& graph, uint32_t image_index) {
             if (image_index >= swapchain_images.size() || image_index >= swapchain_image_layouts.size()) {
                 return {};
@@ -1329,6 +1465,18 @@ namespace NexAur {
                 if (image_index < swapchain_image_layouts.size()) {
                     swapchain_image_layouts[image_index] = layout;
                 }
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addSceneColorImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "HDRSceneColor";
+            desc.image = scene_color_target.getColorImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = scene_color_target.getColorLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                scene_color_target.setColorLayout(layout);
             };
             return graph.addImage(std::move(desc));
         }
@@ -1405,16 +1553,48 @@ namespace NexAur {
             return graph.addImage(std::move(desc));
         }
 
-        VulkanSkyboxRenderTarget makeViewportSkyboxTarget() const {
+        VulkanSkyboxRenderTarget makeSceneSkyboxTarget() const {
             VulkanSkyboxRenderTarget target;
+            target.color_view = scene_color_target.getColorImageView();
+            target.color_format = scene_color_target.getColorFormat();
+            target.extent = scene_color_target.getExtent();
+            return target;
+        }
+
+        VulkanRenderTarget makeViewportSceneRenderTarget() const {
+            const VulkanRenderTarget depth_source = viewport_target.getRenderTarget();
+
+            VulkanRenderTarget target;
+            target.color_view = scene_color_target.getColorImageView();
+            target.color_format = scene_color_target.getColorFormat();
+            target.depth_view = depth_source.depth_view;
+            target.depth_format = depth_source.depth_format;
+            target.extent = scene_color_target.getExtent();
+            return target;
+        }
+
+        VulkanRenderTarget makeSwapchainSceneRenderTarget(uint32_t image_index) const {
+            const VulkanRenderTarget depth_source = forward_pass.getSwapchainRenderTarget(image_index);
+
+            VulkanRenderTarget target;
+            target.color_view = scene_color_target.getColorImageView();
+            target.color_format = scene_color_target.getColorFormat();
+            target.depth_view = depth_source.depth_view;
+            target.depth_format = depth_source.depth_format;
+            target.extent = scene_color_target.getExtent();
+            return target;
+        }
+
+        VulkanPostProcessRenderTarget makeViewportPostProcessTarget() const {
+            VulkanPostProcessRenderTarget target;
             target.color_view = viewport_target.getColorImageView();
             target.color_format = viewport_target.getColorFormat();
             target.extent = viewport_target.getExtent();
             return target;
         }
 
-        VulkanSkyboxRenderTarget makeSwapchainSkyboxTarget(uint32_t image_index) const {
-            VulkanSkyboxRenderTarget target;
+        VulkanPostProcessRenderTarget makeSwapchainPostProcessTarget(uint32_t image_index) const {
+            VulkanPostProcessRenderTarget target;
             target.color_view = forward_pass.getSwapchainColorImageView(image_index);
             target.color_format = swapchain.image_format;
             target.extent = swapchain.extent;
@@ -1648,6 +1828,7 @@ namespace NexAur {
         VkQueue present_queue = VK_NULL_HANDLE;
         uint32_t graphics_queue_family = 0;
         uint32_t device_api_version = kRequiredVulkanApiVersion;
+        VkFormat scene_color_format = VK_FORMAT_UNDEFINED;
 
         VkCommandPool command_pool = VK_NULL_HANDLE;
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
@@ -1670,8 +1851,10 @@ namespace NexAur {
         VulkanShadowPass shadow_pass;
         VulkanSkyboxPass skybox_pass;
         VulkanForwardPass forward_pass;
+        VulkanPostProcessPass post_process_pass;
         VulkanObjectIdPass object_id_pass;
         VulkanViewportTarget viewport_target;
+        VulkanSceneColorTarget scene_color_target;
         VulkanPickingTarget picking_target;
         VulkanShadowMapTarget shadow_target;
         VulkanImGuiRenderer imgui_renderer;

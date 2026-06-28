@@ -15,6 +15,7 @@ namespace NexAur {
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
         VkFormat color_format = VK_FORMAT_UNDEFINED;
+        VkFormat swapchain_color_format = VK_FORMAT_UNDEFINED;
         VkExtent2D extent{};
         std::vector<VkImage> color_images;
         VkDescriptorSetLayout frame_descriptor_set_layout = VK_NULL_HANDLE;
@@ -25,6 +26,7 @@ namespace NexAur {
             return physical_device != VK_NULL_HANDLE &&
                    device != VK_NULL_HANDLE &&
                    color_format != VK_FORMAT_UNDEFINED &&
+                   swapchain_color_format != VK_FORMAT_UNDEFINED &&
                    extent.width > 0 &&
                    extent.height > 0 &&
                    !color_images.empty() &&
@@ -93,6 +95,7 @@ namespace NexAur {
         VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
+        VkFormat m_swapchain_color_format = VK_FORMAT_UNDEFINED;
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
         std::vector<VkImageView> m_color_image_views;

@@ -11,7 +11,8 @@
 namespace NexAur {
     enum class VulkanDescriptorSetLayoutId : uint8_t {
         FrameGlobal = 0,
-        Material
+        Material,
+        PostProcessInput
     };
 
     struct VulkanDescriptorBindingDesc {
