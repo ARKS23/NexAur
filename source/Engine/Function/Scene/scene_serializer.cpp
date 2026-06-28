@@ -259,6 +259,10 @@ namespace NexAur {
             return json{ { "score", collectible.score } };
         }
 
+        json writeProjectileComponent(const ProjectileComponent& projectile) {
+            return json{ { "damage", projectile.damage } };
+        }
+
         json writeLifetimeComponent(const LifetimeComponent& lifetime) {
             return json{ { "seconds", lifetime.seconds } };
         }
@@ -374,6 +378,10 @@ namespace NexAur {
             collectible.score = component.value("score", collectible.score);
         }
 
+        void readProjectileComponent(const json& component, ProjectileComponent& projectile) {
+            projectile.damage = component.value("damage", projectile.damage);
+        }
+
         void readLifetimeComponent(const json& component, LifetimeComponent& lifetime) {
             lifetime.seconds = component.value("seconds", lifetime.seconds);
         }
@@ -461,6 +469,10 @@ namespace NexAur {
 
             if (const auto* collectible = registry.try_get<CollectibleComponent>(entity)) {
                 components["Collectible"] = writeCollectibleComponent(*collectible);
+            }
+
+            if (const auto* projectile = registry.try_get<ProjectileComponent>(entity)) {
+                components["Projectile"] = writeProjectileComponent(*projectile);
             }
 
             if (const auto* lifetime = registry.try_get<LifetimeComponent>(entity)) {
@@ -687,6 +699,11 @@ namespace NexAur {
                 if (components.contains("Collectible") && components["Collectible"].is_object()) {
                     CollectibleComponent& collectible = entity.addOrReplaceComponent<CollectibleComponent>();
                     readCollectibleComponent(components["Collectible"], collectible);
+                }
+
+                if (components.contains("Projectile") && components["Projectile"].is_object()) {
+                    ProjectileComponent& projectile = entity.addOrReplaceComponent<ProjectileComponent>();
+                    readProjectileComponent(components["Projectile"], projectile);
                 }
 
                 if (components.contains("Lifetime") && components["Lifetime"].is_object()) {

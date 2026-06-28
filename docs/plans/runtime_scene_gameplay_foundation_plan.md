@@ -1621,12 +1621,205 @@ HUD 不需要做复杂布局。第一版可以是主 viewport 上方的小 overl
 
 ### PR-G9：PrefabFactory / Spawn templates
 
-- `createPlayer()`
-- `createEnemy()`
-- `createCollectible()`
-- `createProjectile()`
+执行状态：已完成。
 
-第一版先做代码模板，后续再序列化 prefab。
+目标：
+
+- 把“如何生成一个标准 gameplay entity”收敛到固定模板，避免 Sandbox、smoke test、后续 GameModule 里重复手写组件组合。
+- 为后续 demo flow、enemy spawn、projectile spawn、collectible placement 打基础。
+- 第一版只做代码模板，不做完整 prefab asset / inheritance / editor prefab UI。
+- 保持边界清晰：Factory 组合 Scene data 和 gameplay components，不依赖 Editor / Renderer / Vulkan backend。
+
+当前基础：
+
+- G6 已有 `PlayerComponent`、`EnemyComponent`、`VelocityComponent`、`HealthComponent`、`CollectibleComponent` 和 `LifetimeComponent`。
+- G7 已有 `SphereColliderComponent`、`AABBColliderComponent`、`TriggerComponent`、`CollisionFilterComponent` 和 trigger overlap。
+- G8 已有 `RuntimeCameraControllerComponent`、`GameStateModel`、HUD 和 collectible score flow。
+- 当前 Sandbox / smoke test 仍大量手写 entity + component 组合。
+
+完成记录：
+
+- 新增 `Function/Game/prefab_factory.h/.cpp`，提供 player / enemy / collectible / projectile 四类代码模板。
+- 新增轻量 `ProjectileComponent`，并接入 SceneSerializer 可选读写。
+- `PrefabFactory` 使用 desc 驱动，支持 transform、health、score、velocity、lifetime、damage、collider radius 和可选 `AssetHandle` visual。
+- Factory 不 import asset，不依赖 Editor / Vulkan backend。
+- Sandbox 新增 `--prefab-factory-smoke`，覆盖四类模板、collectible pickup flow 和 projectile serializer round-trip。
+
+建议第一版范围：
+
+1. 新增 `PrefabFactory`。
+   - 推荐放在 `Function/Game`，因为它是 gameplay/content assembly 层能力，不是 `SceneV2` 的基础职责。
+   - 第一版可以做成无状态 static factory，显式接收 `SceneV2&` 和 spawn desc。
+   - 不建议在 factory 内部 import asset；如果需要可视化，desc 里传入已有 `AssetHandle`。
+2. 新增 spawn desc。
+   - 每种模板保留独立 desc，避免一个巨大的通用参数结构。
+   - desc 只保存生成实体所需的数据，后续如果做可序列化 prefab，可以复用这些字段。
+3. 可选新增 `ProjectileComponent`。
+   - `createProjectile()` 如果只是 `Velocity + Lifetime + Trigger`，后续 damage / ownership 很难识别。
+   - 建议新增轻量 data-only 组件：
+     ```cpp
+     struct ProjectileComponent {
+         int damage = 1;
+     };
+     ```
+   - 如果新增该组件，需要同步补 `SceneSerializer` 可选读写和 smoke round-trip。
+4. Sandbox demo 是否接入 factory。
+   - PR-G9 必须补 smoke。
+   - 默认 Sandbox 材质展示场景是否改成 factory 生成 gameplay 样例，可以作为实现时的小决策。
+   - 如果担心影响当前渲染展示场景，第一版可以只在 smoke 里使用 factory，后续再单独做 playable demo scene。
+
+建议新增文件：
+
+```text
+source/Engine/Function/Game/
+  prefab_factory.h
+  prefab_factory.cpp
+```
+
+建议 API：
+
+```cpp
+struct SpawnTransform {
+    glm::vec3 position{ 0.0f };
+    glm::vec3 rotation{ 0.0f };
+    glm::vec3 scale{ 1.0f };
+};
+
+struct PlayerSpawnDesc {
+    std::string name = "Player";
+    SpawnTransform transform;
+    float move_speed = 5.0f;
+    int health = 3;
+    float collider_radius = 0.5f;
+    AssetHandle model_asset;
+};
+
+struct EnemySpawnDesc {
+    std::string name = "Enemy";
+    SpawnTransform transform;
+    float move_speed = 2.0f;
+    int health = 1;
+    float collider_radius = 0.5f;
+    AssetHandle model_asset;
+};
+
+struct CollectibleSpawnDesc {
+    std::string name = "Collectible";
+    SpawnTransform transform;
+    int score = 1;
+    float collider_radius = 0.35f;
+    AssetHandle model_asset;
+};
+
+struct ProjectileSpawnDesc {
+    std::string name = "Projectile";
+    SpawnTransform transform;
+    glm::vec3 velocity{ 0.0f, 0.0f, -12.0f };
+    float lifetime_seconds = 3.0f;
+    int damage = 1;
+    float collider_radius = 0.2f;
+    AssetHandle model_asset;
+};
+
+class PrefabFactory final {
+public:
+    static Entity createPlayer(SceneV2& scene, const PlayerSpawnDesc& desc = {});
+    static Entity createEnemy(SceneV2& scene, const EnemySpawnDesc& desc = {});
+    static Entity createCollectible(SceneV2& scene, const CollectibleSpawnDesc& desc = {});
+    static Entity createProjectile(SceneV2& scene, const ProjectileSpawnDesc& desc = {});
+};
+```
+
+`AssetHandle model_asset` 只作为可选 visual。如果无效，Factory 仍然创建可运行的 gameplay entity，不强制绑定模型资源。
+
+建议组件组合：
+
+```text
+createPlayer
+  Tag
+  Transform
+  Player
+  Velocity
+  Health
+  SphereCollider
+  CollisionFilter
+  optional MeshRenderer
+
+createEnemy
+  Tag
+  Transform
+  Enemy
+  Velocity
+  Health
+  SphereCollider
+  CollisionFilter
+  optional MeshRenderer
+
+createCollectible
+  Tag
+  Transform
+  Collectible
+  SphereCollider
+  Trigger
+  CollisionFilter
+  optional MeshRenderer
+
+createProjectile
+  Tag
+  Transform
+  Projectile
+  Velocity
+  Lifetime
+  SphereCollider
+  Trigger
+  CollisionFilter
+  optional MeshRenderer
+```
+
+暂时不建议 `createPlayer()` 自动创建 runtime camera。相机模板可以后续单独做 `createRuntimeCamera()` 或 playable demo scene；PR-G9 的重点先放在可复用 entity spawn。
+
+序列化建议：
+
+- 如果只组合已有组件，不需要改 scene version。
+- 如果新增 `ProjectileComponent`，按 G6/G7/G8 的模式加入可选读写。
+- Factory 本身不保存到 `.nxscene`；保存后的 scene 仍然只是普通 entity + components。
+- 第一版不做 prefab source id、prefab instance link、override list。
+
+测试建议：
+
+- 新增 `Sandbox.exe --prefab-factory-smoke`。
+- smoke 中直接构建内存 scene，不依赖 Editor UI。
+- 验证：
+  - `createPlayer()` 创建有效 entity，包含 Player / Velocity / Health / SphereCollider / CollisionFilter。
+  - `createEnemy()` 创建有效 entity，包含 Enemy / Velocity / Health / Collider。
+  - `createCollectible()` 创建有效 entity，包含 Collectible / Trigger / Collider，并能被 `TriggerOverlapSystem + CollectibleSystem` 收集。
+  - `createProjectile()` 创建有效 entity，包含 Projectile / Velocity / Lifetime / Trigger / Collider。
+  - desc 中 name / transform / health / score / lifetime / velocity / damage 能正确写入组件。
+  - 如果传入有效 `model_asset`，entity 会带 `MeshRendererComponent`；无效时不强制添加 mesh。
+  - 如果新增 `ProjectileComponent`，serializer save/load 后字段不丢。
+
+暂时不做：
+
+- 不做 `.nxprefab` 文件格式。
+- 不做 prefab inheritance / variants。
+- 不做 prefab instance override 追踪。
+- 不做 Editor prefab 面板。
+- 不做 Asset Browser / drag asset to scene。
+- 不做 projectile damage system。
+- 不做 enemy wave / spawn manager。
+- 不在 Factory 内部硬编码 sample asset 路径。
+- 不让 Factory 依赖 Editor / Vulkan backend。
+
+验收：
+
+- 新增 `PrefabFactory`，四个核心 spawn API 可用并返回有效 `Entity`。
+- Factory 生成的 entity 能直接被 G6-G8 已有 gameplay、physics、game state 系统消费。
+- 可选 visual 通过 `AssetHandle` 注入，不在 factory 内部 import asset。
+- 新增组件如果存在，已接入 serializer round-trip。
+- `Sandbox.exe --prefab-factory-smoke` 通过。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- 既有 smoke 继续通过：input action、gameplay systems、physics trigger、runtime camera、runtime game flow、scene serializer。
+- 文档记录 PR-G9 完成情况。
 
 ### PR-G10：Audio v1
 
@@ -1652,11 +1845,11 @@ HUD 不需要做复杂布局。第一版可以是主 viewport 上方的小 overl
 
 ## 13. 下一步建议
 
-下一步建议先执行 PR-G9：PrefabFactory / Spawn templates。
+下一步建议先执行 PR-G10：Audio v1。
 
-开始 PR-G9 前建议确认两个小决策：
+开始 PR-G10 前建议确认两个小决策：
 
-1. 第一版 prefab 是否先用纯代码 factory，不急着做可序列化 prefab asset。
-2. Sandbox demo 是否需要同步改成通过 factory 生成 player / enemy / collectible / projectile 样例。
+1. 第一版音频后端是否优先选用 miniaudio。
+2. Audio v1 是否先覆盖 background music / one-shot / volume / pause-resume，不急着做 3D audio。
 
-确认后可以直接实现 prefab factory，并补上 factory / spawn smoke。
+确认后可以先实现 AudioModule / AudioService 和 Sandbox audio smoke。

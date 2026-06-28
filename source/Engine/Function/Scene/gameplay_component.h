@@ -29,6 +29,10 @@ namespace NexAur {
         int score = 1;
     };
 
+    struct ProjectileComponent {
+        int damage = 1;
+    };
+
     struct LifetimeComponent {
         float seconds = 1.0f;
     };

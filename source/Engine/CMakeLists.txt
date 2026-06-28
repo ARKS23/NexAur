@@ -76,6 +76,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Game/game_state.cpp
     Function/Game/gameplay_systems.h
     Function/Game/gameplay_systems.cpp
+    Function/Game/prefab_factory.h
+    Function/Game/prefab_factory.cpp
     Function/Game/runtime_camera_controller_system.h
     Function/Game/runtime_camera_controller_system.cpp
     Function/Game/runtime_hud.h

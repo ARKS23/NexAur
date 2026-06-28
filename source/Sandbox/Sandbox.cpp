@@ -6,6 +6,7 @@
 #include "Function/File/file_system.h"
 #include "Function/Game/game_state.h"
 #include "Function/Game/gameplay_systems.h"
+#include "Function/Game/prefab_factory.h"
 #include "Function/Game/runtime_camera_controller_system.h"
 #include "Function/Global/global_context.h"
 #include "Function/Input/input_action_system.h"
@@ -747,6 +748,160 @@ int runRuntimeGameFlowSmoke() {
     return 0;
 }
 
+int runPrefabFactorySmoke() {
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    {
+        NexAur::SceneV2 scene;
+
+        NexAur::PlayerSpawnDesc player_desc;
+        player_desc.name = "FactoryPlayer";
+        player_desc.transform.position = glm::vec3{ 1.0f, 0.0f, 2.0f };
+        player_desc.move_speed = 7.0f;
+        player_desc.health = 5;
+        player_desc.collider_radius = 0.75f;
+        NexAur::Entity player = NexAur::PrefabFactory::createPlayer(scene, player_desc);
+
+        expect(player && player.hasComponent<NexAur::PlayerComponent>(), "Factory player should have PlayerComponent.");
+        expect(player.hasComponent<NexAur::VelocityComponent>(), "Factory player should have VelocityComponent.");
+        expect(player.hasComponent<NexAur::HealthComponent>(), "Factory player should have HealthComponent.");
+        expect(player.hasComponent<NexAur::SphereColliderComponent>(), "Factory player should have SphereColliderComponent.");
+        expect(player.hasComponent<NexAur::CollisionFilterComponent>(), "Factory player should have CollisionFilterComponent.");
+        expect(!player.hasComponent<NexAur::MeshRendererComponent>(), "Factory player should not force a mesh without model asset.");
+        expect(nearlyEqual(player.getComponent<NexAur::PlayerComponent>().move_speed, 7.0f), "Factory player move speed is invalid.");
+        expect(player.getComponent<NexAur::HealthComponent>().current == 5, "Factory player health is invalid.");
+        expect(nearlyEqual(player.getComponent<NexAur::SphereColliderComponent>().radius, 0.75f), "Factory player collider radius is invalid.");
+        expect(
+            nearlyEqualVec3(player.getComponent<NexAur::TransformComponent>().translation, glm::vec3{ 1.0f, 0.0f, 2.0f }),
+            "Factory player transform is invalid.");
+
+        NexAur::EnemySpawnDesc enemy_desc;
+        enemy_desc.name = "FactoryEnemy";
+        enemy_desc.transform.position = glm::vec3{ 10.0f, 0.0f, 0.0f };
+        enemy_desc.move_speed = 3.5f;
+        enemy_desc.health = 2;
+        NexAur::Entity enemy = NexAur::PrefabFactory::createEnemy(scene, enemy_desc);
+        expect(enemy && enemy.hasComponent<NexAur::EnemyComponent>(), "Factory enemy should have EnemyComponent.");
+        expect(enemy.hasComponent<NexAur::VelocityComponent>(), "Factory enemy should have VelocityComponent.");
+        expect(enemy.getComponent<NexAur::HealthComponent>().max == 2, "Factory enemy health is invalid.");
+        expect(nearlyEqual(enemy.getComponent<NexAur::EnemyComponent>().move_speed, 3.5f), "Factory enemy move speed is invalid.");
+
+        NexAur::CollectibleSpawnDesc collectible_desc;
+        collectible_desc.name = "FactoryCollectible";
+        collectible_desc.transform.position = glm::vec3{ 4.0f, 0.0f, 0.0f };
+        collectible_desc.score = 12;
+        collectible_desc.collider_radius = 0.4f;
+        NexAur::Entity collectible = NexAur::PrefabFactory::createCollectible(scene, collectible_desc);
+        expect(collectible && collectible.hasComponent<NexAur::CollectibleComponent>(), "Factory collectible should have CollectibleComponent.");
+        expect(collectible.hasComponent<NexAur::TriggerComponent>(), "Factory collectible should have TriggerComponent.");
+        expect(collectible.getComponent<NexAur::CollectibleComponent>().score == 12, "Factory collectible score is invalid.");
+
+        NexAur::ProjectileSpawnDesc projectile_desc;
+        projectile_desc.name = "FactoryProjectile";
+        projectile_desc.transform.position = glm::vec3{ 0.0f, 0.0f, -4.0f };
+        projectile_desc.velocity = glm::vec3{ 1.0f, 2.0f, -9.0f };
+        projectile_desc.lifetime_seconds = 2.5f;
+        projectile_desc.damage = 4;
+        projectile_desc.collider_radius = 0.25f;
+        NexAur::Entity projectile = NexAur::PrefabFactory::createProjectile(scene, projectile_desc);
+        expect(projectile && projectile.hasComponent<NexAur::ProjectileComponent>(), "Factory projectile should have ProjectileComponent.");
+        expect(projectile.hasComponent<NexAur::VelocityComponent>(), "Factory projectile should have VelocityComponent.");
+        expect(projectile.hasComponent<NexAur::LifetimeComponent>(), "Factory projectile should have LifetimeComponent.");
+        expect(projectile.hasComponent<NexAur::TriggerComponent>(), "Factory projectile should have TriggerComponent.");
+        expect(projectile.getComponent<NexAur::ProjectileComponent>().damage == 4, "Factory projectile damage is invalid.");
+        expect(
+            nearlyEqualVec3(projectile.getComponent<NexAur::VelocityComponent>().velocity, glm::vec3{ 1.0f, 2.0f, -9.0f }),
+            "Factory projectile velocity is invalid.");
+        expect(nearlyEqual(projectile.getComponent<NexAur::LifetimeComponent>().seconds, 2.5f), "Factory projectile lifetime is invalid.");
+
+        const std::filesystem::path smoke_path =
+            std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "prefab_factory_smoke.nxscene";
+
+        NexAur::SceneSerializer serializer(NexAur::AssetManager::getInstance());
+        const NexAur::SceneSerializationResult save_result = serializer.save(scene, smoke_path);
+        if (!save_result) {
+            success = false;
+            failure = save_result.message;
+        } else {
+            const NexAur::SceneLoadResult load_result = serializer.load(smoke_path);
+            if (!load_result) {
+                success = false;
+                failure = load_result.message;
+            } else {
+                const NexAur::PlayerComponent* loaded_player =
+                    findComponentByName<NexAur::PlayerComponent>(load_result.scene, "FactoryPlayer");
+                const NexAur::CollectibleComponent* loaded_collectible =
+                    findComponentByName<NexAur::CollectibleComponent>(load_result.scene, "FactoryCollectible");
+                const NexAur::ProjectileComponent* loaded_projectile =
+                    findComponentByName<NexAur::ProjectileComponent>(load_result.scene, "FactoryProjectile");
+                const NexAur::VelocityComponent* loaded_projectile_velocity =
+                    findComponentByName<NexAur::VelocityComponent>(load_result.scene, "FactoryProjectile");
+                const NexAur::LifetimeComponent* loaded_projectile_lifetime =
+                    findComponentByName<NexAur::LifetimeComponent>(load_result.scene, "FactoryProjectile");
+
+                expect(loaded_player && nearlyEqual(loaded_player->move_speed, 7.0f), "Loaded factory player is invalid.");
+                expect(loaded_collectible && loaded_collectible->score == 12, "Loaded factory collectible is invalid.");
+                expect(loaded_projectile && loaded_projectile->damage == 4, "Loaded factory projectile is invalid.");
+                expect(
+                    loaded_projectile_velocity
+                        && nearlyEqualVec3(loaded_projectile_velocity->velocity, glm::vec3{ 1.0f, 2.0f, -9.0f }),
+                    "Loaded factory projectile velocity is invalid.");
+                expect(
+                    loaded_projectile_lifetime && nearlyEqual(loaded_projectile_lifetime->seconds, 2.5f),
+                    "Loaded factory projectile lifetime is invalid.");
+            }
+        }
+
+        std::error_code remove_error;
+        std::filesystem::remove(smoke_path, remove_error);
+    }
+
+    {
+        NexAur::SceneV2 scene;
+
+        NexAur::PlayerSpawnDesc player_desc;
+        player_desc.collider_radius = 1.0f;
+        NexAur::PrefabFactory::createPlayer(scene, player_desc);
+
+        NexAur::CollectibleSpawnDesc collectible_desc;
+        collectible_desc.score = 10;
+        collectible_desc.collider_radius = 0.5f;
+        collectible_desc.transform.position = glm::vec3{ 0.75f, 0.0f, 0.0f };
+        NexAur::PrefabFactory::createCollectible(scene, collectible_desc);
+
+        NexAur::GameStateModel game_state;
+        game_state.resetForScene(scene);
+
+        NexAur::TriggerOverlapSystem trigger_system;
+        NexAur::CollectibleSystem collectible_system;
+        trigger_system.update(scene);
+        const NexAur::CollectibleFrameResult result =
+            collectible_system.update(scene, trigger_system.getFrame());
+        game_state.addCollected(result.collected_count, result.collected_score);
+        game_state.updateRules(scene);
+
+        expect(result.collected_count == 1, "Factory collectible should be collected by factory player overlap.");
+        expect(game_state.getSnapshot().score == 10, "Factory collectible score should flow into GameState.");
+        expect(game_state.getSnapshot().state == NexAur::GameState::Victory, "Factory collectible pickup should enter Victory.");
+    }
+
+    if (!success) {
+        std::cerr << "Prefab factory smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Prefab factory smoke passed." << std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--scene-serializer-smoke") {
         return runSceneSerializerSmoke();
@@ -765,6 +920,9 @@ int main(int argc, char** argv) {
     }
     if (argc > 1 && std::string(argv[1]) == "--runtime-game-flow-smoke") {
         return runRuntimeGameFlowSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--prefab-factory-smoke") {
+        return runPrefabFactorySmoke();
     }
 
     NexAur::Engine *engine = new NexAur::Engine();
