@@ -16,6 +16,7 @@
 #include "Function/Input/input_action_system.h"
 #include "Function/Physics/trigger_overlap_system.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Scene/collision_component.h"
@@ -371,6 +372,59 @@ int runInputActionSmoke() {
     }
 
     std::cout << "InputAction smoke passed." << std::endl;
+    return 0;
+}
+
+int runRenderSettingsSmoke() {
+    NexAur::RenderContext render_context;
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    NexAur::RenderSettings settings;
+    settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::None;
+    settings.post_process.exposure = 1.75f;
+    render_context.setRenderSettings(settings);
+    render_context.getWriteData().render_settings = render_context.getRenderSettings();
+    render_context.swapBuffers();
+
+    const NexAur::RenderPostProcessSettings& first_post_process =
+        render_context.getReadData().render_settings.post_process;
+    expect(
+        first_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::None,
+        "RenderSettings smoke failed: tone mapping mode did not reach the read packet.");
+    expect(
+        nearlyEqual(first_post_process.exposure, 1.75f),
+        "RenderSettings smoke failed: exposure did not reach the read packet.");
+
+    settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::ACES;
+    settings.post_process.exposure = 0.5f;
+    render_context.setRenderSettings(settings);
+    render_context.getWriteData().render_settings = render_context.getRenderSettings();
+    render_context.swapBuffers();
+
+    const NexAur::RenderPostProcessSettings& second_post_process =
+        render_context.getReadData().render_settings.post_process;
+    expect(
+        second_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::ACES,
+        "RenderSettings smoke failed: ACES mode did not reach the read packet.");
+    expect(
+        nearlyEqual(second_post_process.exposure, 0.5f),
+        "RenderSettings smoke failed: updated exposure did not reach the read packet.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "RenderSettings smoke passed." << std::endl;
     return 0;
 }
 
@@ -1021,6 +1075,7 @@ namespace {
         { "--scene-serializer-smoke", "SceneSerializer", runSceneSerializerSmoke },
         { "--audio-smoke", "Audio", runAudioSmoke },
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
+        { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },

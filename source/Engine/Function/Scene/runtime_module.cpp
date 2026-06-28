@@ -67,6 +67,7 @@ namespace NexAur {
                 }
 
                 RenderDataPacket& write_packet = m_render_context->getWriteData();
+                write_packet.render_settings = m_render_context->getRenderSettings();
                 write_packet.debug_visualization_options = m_render_context->getDebugVisualizationOptions();
                 active_scene->extractSceneData(&write_packet);
             }

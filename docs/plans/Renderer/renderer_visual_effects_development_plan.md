@@ -262,7 +262,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
 
 ## 5. PR-R27：ACES Tone Mapping + Exposure
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -287,6 +287,15 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
    - 不把 exposure 等可写参数放进 `RendererDebugSnapshot`。
    - 后续再抽成正式 `RenderSettings` asset。
 
+完成记录：
+
+- 新增 backend-neutral `RenderSettings` / `RenderPostProcessSettings` / `RenderToneMappingMode`，由 `RenderContext` 持有并通过 `RenderDataPacket` 双缓冲传递给 renderer。
+- `VulkanPostProcessPass` 增加 fragment push constants，向 HLSL 传递 exposure、tone mapping mode、output gamma 和 manual gamma 标志。
+- `vulkan_post_process.hlsl` 实现手动 exposure、ACES fitted tone mapping、None fallback 和按输出格式控制的手动 gamma。
+- Renderer Debug 面板新增 `Effects` 分组，可切换 `None / ACES` 并调节 exposure；可写效果参数不进入 `RendererDebugSnapshot`。
+- 明确 gamma 约定：sRGB 输出格式由 Vulkan color attachment 自动 encode；非 sRGB 输出格式才由 shader 手动做 `linear -> sRGB`。
+- 新增 `RenderSettingsSmoke`，覆盖 RenderSettings 从 `RenderContext` 写入 read packet 的双缓冲链路。
+
 暂时不做：
 
 - 自动曝光。
@@ -301,6 +310,22 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
 - ACES 开关可控。
 - UI / ImGui 不受 tone mapping 影响。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --preset msvc-vcpkg
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
+```
+
+结果：
+
+- CMake configure 通过。
+- Debug 构建通过，HLSL shader 编译通过。
+- CTest 10/10 通过，其中包含 `NexAur.RenderSettingsSmoke`。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 6. PR-R28：Physically Based Bloom
 

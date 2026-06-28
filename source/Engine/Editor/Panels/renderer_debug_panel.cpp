@@ -34,6 +34,20 @@ namespace NexAur {
             }
         }
 
+        int toneMappingModeToIndex(RenderToneMappingMode mode) {
+            switch (mode) {
+            case RenderToneMappingMode::ACES:
+                return 1;
+            case RenderToneMappingMode::None:
+            default:
+                return 0;
+            }
+        }
+
+        RenderToneMappingMode toneMappingModeFromIndex(int index) {
+            return index == 1 ? RenderToneMappingMode::ACES : RenderToneMappingMode::None;
+        }
+
         void drawKeyValue(const char* label, const char* value) {
             ImGui::Text("%s: %s", label, value);
         }
@@ -72,6 +86,7 @@ namespace NexAur {
             m_context->renderer_debug_service->getDebugSnapshot();
 
         drawDebugVisualizationSection();
+        drawEffectsSection();
         drawRendererSection(snapshot);
         drawFrameSection(snapshot);
         drawViewSection(snapshot);
@@ -110,6 +125,33 @@ namespace NexAur {
 
         if (changed) {
             m_context->render_context->setDebugVisualizationOptions(options);
+        }
+    }
+
+    void RendererDebugPanel::drawEffectsSection() {
+        if (!ImGui::CollapsingHeader("Effects", ImGuiTreeNodeFlags_DefaultOpen)) {
+            return;
+        }
+
+        if (!m_context || !m_context->render_context) {
+            ImGui::TextDisabled("Render context is unavailable.");
+            return;
+        }
+
+        RenderSettings settings = m_context->render_context->getRenderSettings();
+        bool changed = false;
+
+        const char* tone_mapping_items[] = { "None", "ACES" };
+        int tone_mapping_index = toneMappingModeToIndex(settings.post_process.tone_mapping_mode);
+        if (ImGui::Combo("Tone Mapping", &tone_mapping_index, tone_mapping_items, IM_ARRAYSIZE(tone_mapping_items))) {
+            settings.post_process.tone_mapping_mode = toneMappingModeFromIndex(tone_mapping_index);
+            changed = true;
+        }
+
+        changed |= ImGui::SliderFloat("Exposure", &settings.post_process.exposure, 0.0f, 4.0f, "%.2f");
+
+        if (changed) {
+            m_context->render_context->setRenderSettings(settings);
         }
     }
 

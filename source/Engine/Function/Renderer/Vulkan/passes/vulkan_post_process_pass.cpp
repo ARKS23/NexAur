@@ -4,7 +4,51 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_writer.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
 
+#include <algorithm>
+#include <cstdint>
+
 namespace NexAur {
+    namespace {
+        constexpr uint32_t kPostProcessFlagManualGamma = 1u << 0u;
+
+        struct VulkanPostProcessPushConstants {
+            float exposure = 1.0f;
+            float output_gamma = 2.2f;
+            uint32_t tone_mapping_mode = static_cast<uint32_t>(RenderToneMappingMode::ACES);
+            uint32_t flags = 0;
+        };
+
+        static_assert(
+            sizeof(VulkanPostProcessPushConstants) <= 128,
+            "Post process push constants exceed Vulkan minimum limit.");
+
+        bool isSrgbColorFormat(VkFormat format) {
+            switch (format) {
+            case VK_FORMAT_R8_SRGB:
+            case VK_FORMAT_R8G8_SRGB:
+            case VK_FORMAT_R8G8B8_SRGB:
+            case VK_FORMAT_B8G8R8_SRGB:
+            case VK_FORMAT_R8G8B8A8_SRGB:
+            case VK_FORMAT_B8G8R8A8_SRGB:
+            case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        VulkanPostProcessPushConstants makePushConstants(
+            const VulkanPostProcessRenderTarget& target,
+            const RenderPostProcessSettings& settings) {
+            VulkanPostProcessPushConstants constants;
+            constants.exposure = std::max(0.0f, settings.exposure);
+            constants.tone_mapping_mode = static_cast<uint32_t>(settings.tone_mapping_mode);
+            constants.output_gamma = 2.2f;
+            constants.flags = isSrgbColorFormat(target.color_format) ? 0u : kPostProcessFlagManualGamma;
+            return constants;
+        }
+    } // namespace
+
     VulkanPostProcessPass::~VulkanPostProcessPass() {
         shutdown();
     }
@@ -67,7 +111,8 @@ namespace NexAur {
 
     bool VulkanPostProcessPass::record(
         VkCommandBuffer command_buffer,
-        const VulkanPostProcessRenderTarget& target) {
+        const VulkanPostProcessRenderTarget& target,
+        const RenderPostProcessSettings& settings) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
         }
@@ -123,6 +168,14 @@ namespace NexAur {
             &m_input_descriptor_set,
             0,
             nullptr);
+        const VulkanPostProcessPushConstants push_constants = makePushConstants(target, settings);
+        vkCmdPushConstants(
+            command_buffer,
+            m_pipeline_layout,
+            VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,
+            sizeof(VulkanPostProcessPushConstants),
+            &push_constants);
         vkCmdDraw(command_buffer, 3, 1, 0, 0);
 
         vkCmdEndRendering(command_buffer);
@@ -160,6 +213,12 @@ namespace NexAur {
         desc.depth_test_enable = false;
         desc.depth_write_enable = false;
         desc.cull_mode = VK_CULL_MODE_NONE;
+
+        VkPushConstantRange push_constant_range{};
+        push_constant_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        push_constant_range.offset = 0;
+        push_constant_range.size = sizeof(VulkanPostProcessPushConstants);
+        desc.push_constant_ranges = { push_constant_range };
 
         const VulkanGraphicsPipelineState pipeline_state = m_pipeline_cache->getOrCreateGraphicsPipeline(desc);
         if (!pipeline_state.valid()) {

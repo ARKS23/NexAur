@@ -21,8 +21,17 @@ namespace NexAur {
             m_debug_visualization_options = options;
         }
 
+        const RenderSettings& getRenderSettings() const {
+            return m_render_settings;
+        }
+
+        void setRenderSettings(const RenderSettings& settings) {
+            m_render_settings = settings;
+        }
+
     private:
         RenderDataPacket render_data[2]; // 双缓冲渲染数据包
+        RenderSettings m_render_settings;
         RenderDebugVisualizationOptions m_debug_visualization_options;
         int m_write_index = 0;
     };

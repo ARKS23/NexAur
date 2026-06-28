@@ -370,7 +370,7 @@ namespace NexAur {
                 resource_cache,
                 AssetManager::getInstance());
 
-            drawFrame(draw_list);
+            drawFrame(draw_list, render_data.render_settings);
             updateDebugSnapshot(
                 ts,
                 render_data,
@@ -1104,7 +1104,7 @@ namespace NexAur {
             }
         }
 
-        void drawFrame(const VulkanDrawList& draw_list) {
+        void drawFrame(const VulkanDrawList& draw_list, const RenderSettings& render_settings) {
             if (swapchain.swapchain == VK_NULL_HANDLE || swapchain_images.empty()) {
                 return;
             }
@@ -1141,7 +1141,7 @@ namespace NexAur {
                 return;
             }
 
-            if (!recordDrawCommands(image_index, draw_list, shadow_frame)) {
+            if (!recordDrawCommands(image_index, draw_list, shadow_frame, render_settings)) {
                 return;
             }
 
@@ -1185,7 +1185,8 @@ namespace NexAur {
         bool recordDrawCommands(
             uint32_t image_index,
             const VulkanDrawList& draw_list,
-            const VulkanShadowFrame& shadow_frame) {
+            const VulkanShadowFrame& shadow_frame,
+            const RenderSettings& render_settings) {
             if (image_index >= swapchain_images.size()) {
                 return false;
             }
@@ -1205,8 +1206,8 @@ namespace NexAur {
             VulkanPassGraph graph;
             const bool render_to_viewport_image = imgui_renderer.isInitialized() && viewport_target.isReady();
             const bool graph_built = render_to_viewport_image ?
-                buildViewportRenderGraph(graph, image_index, draw_list, shadow_frame) :
-                buildSwapchainRenderGraph(graph, image_index, draw_list, shadow_frame);
+                buildViewportRenderGraph(graph, image_index, draw_list, shadow_frame, render_settings) :
+                buildSwapchainRenderGraph(graph, image_index, draw_list, shadow_frame, render_settings);
             if (!graph_built) {
                 return false;
             }
@@ -1227,7 +1228,8 @@ namespace NexAur {
             VulkanPassGraph& graph,
             uint32_t image_index,
             const VulkanDrawList& draw_list,
-            const VulkanShadowFrame& shadow_frame) {
+            const VulkanShadowFrame& shadow_frame,
+            const RenderSettings& render_settings) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
             const VulkanGraphImageHandle scene_color = addSceneColorImage(graph);
             const VulkanGraphImageHandle viewport_color = addViewportColorImage(graph);
@@ -1271,7 +1273,12 @@ namespace NexAur {
                 return false;
             }
 
-            if (!addPostProcessPass(graph, scene_color, viewport_color, makeViewportPostProcessTarget())) {
+            if (!addPostProcessPass(
+                    graph,
+                    scene_color,
+                    viewport_color,
+                    makeViewportPostProcessTarget(),
+                    render_settings.post_process)) {
                 return false;
             }
 
@@ -1292,7 +1299,8 @@ namespace NexAur {
             VulkanPassGraph& graph,
             uint32_t image_index,
             const VulkanDrawList& draw_list,
-            const VulkanShadowFrame& shadow_frame) {
+            const VulkanShadowFrame& shadow_frame,
+            const RenderSettings& render_settings) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
             const VulkanGraphImageHandle scene_color = addSceneColorImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
@@ -1334,7 +1342,12 @@ namespace NexAur {
                 return false;
             }
 
-            if (!addPostProcessPass(graph, scene_color, swapchain_color, makeSwapchainPostProcessTarget(image_index))) {
+            if (!addPostProcessPass(
+                    graph,
+                    scene_color,
+                    swapchain_color,
+                    makeSwapchainPostProcessTarget(image_index),
+                    render_settings.post_process)) {
                 return false;
             }
 
@@ -1437,7 +1450,8 @@ namespace NexAur {
             VulkanPassGraph& graph,
             VulkanGraphImageHandle input_color,
             VulkanGraphImageHandle output_color,
-            VulkanPostProcessRenderTarget target) {
+            VulkanPostProcessRenderTarget target,
+            RenderPostProcessSettings settings) {
             if (!input_color.valid() || !output_color.valid() || !target.valid() || !post_process_pass.isReady()) {
                 return false;
             }
@@ -1445,8 +1459,8 @@ namespace NexAur {
             graph.addPass("PostProcess")
                 .readImage(input_color, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, target](VkCommandBuffer target_command_buffer) {
-                    return post_process_pass.record(target_command_buffer, target);
+                .execute([this, target, settings](VkCommandBuffer target_command_buffer) {
+                    return post_process_pass.record(target_command_buffer, target, settings);
                 });
             return true;
         }

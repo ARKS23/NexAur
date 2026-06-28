@@ -160,6 +160,7 @@ set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/data/render_debug_draw_builder.h
     Function/Renderer/data/render_debug_draw_builder.cpp
     Function/Renderer/data/render_debug_draw.h
+    Function/Renderer/data/render_settings.h
     Function/Renderer/renderer_service.h
     Function/Renderer/renderer_service_types.h
 )

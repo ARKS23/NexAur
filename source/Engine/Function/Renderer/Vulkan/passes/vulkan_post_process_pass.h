@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/data/render_settings.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 
 namespace NexAur {
@@ -62,7 +63,10 @@ namespace NexAur {
         void shutdown();
 
         bool updateInput(const VulkanPostProcessInput& input);
-        bool record(VkCommandBuffer command_buffer, const VulkanPostProcessRenderTarget& target);
+        bool record(
+            VkCommandBuffer command_buffer,
+            const VulkanPostProcessRenderTarget& target,
+            const RenderPostProcessSettings& settings);
 
         bool isReady() const {
             return m_pipeline != VK_NULL_HANDLE &&
