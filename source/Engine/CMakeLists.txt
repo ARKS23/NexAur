@@ -66,6 +66,11 @@ set(NEXAUR_ENGINE_EDITOR_FILES
 )
 
 set(NEXAUR_ENGINE_FUNCTION_FILES
+    Function/Audio/audio_module.h
+    Function/Audio/audio_module.cpp
+    Function/Audio/audio_service.h
+    Function/Audio/audio_system.h
+    Function/Audio/audio_system_miniaudio.cpp
     Function/File/file_system.h
     Function/File/file_system.cpp
     Function/File/file_system_module.h
@@ -291,6 +296,7 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(imguizmo CONFIG REQUIRED)
+find_path(NEXAUR_MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Stb REQUIRED)
@@ -311,6 +317,10 @@ nexaur_select_dependency_target(NEXAUR_SPDLOG_TARGET spdlog::spdlog spdlog)
 
 target_include_directories(NexAurEngine PUBLIC
     "${Stb_INCLUDE_DIR}"
+)
+
+target_include_directories(NexAurEngine PRIVATE
+    "${NEXAUR_MINIAUDIO_INCLUDE_DIR}"
 )
 
 target_link_libraries(NexAurEngine PUBLIC

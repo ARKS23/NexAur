@@ -23,6 +23,7 @@
     },
     "imguizmo",
     "ktx",
+    "miniaudio",
     "nlohmann-json",
     "spdlog",
     "spirv-headers",

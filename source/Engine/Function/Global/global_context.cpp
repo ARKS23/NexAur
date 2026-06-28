@@ -4,6 +4,7 @@
 #include "Editor/editor_module.h"
 #include "Core/Module/core_engine_module.h"
 #include "Core/Module/module_manager.h"
+#include "Function/Audio/audio_module.h"
 #include "Function/File/file_system.h"
 #include "Function/File/file_system_module.h"
 #include "Function/Game/game_module.h"
@@ -41,6 +42,7 @@ namespace NexAur {
         m_module_manager->registerModule(createPlatformModule());
         m_module_manager->registerModule(createInputActionModule());
         m_module_manager->registerModule(createResourceModule());
+        m_module_manager->registerModule(createAudioModule());
         m_module_manager->registerModule(createRenderContextModule());
         m_module_manager->registerModule(createRendererModule());
         m_module_manager->registerModule(createRuntimeModule());

@@ -1823,12 +1823,178 @@ createProjectile
 
 ### PR-G10：Audio v1
 
-- background music。
-- one-shot sound。
-- volume。
-- pause / resume。
+执行状态：已完成。
 
-可选后端：miniaudio / SoLoud / OpenAL。第一版建议优先评估 miniaudio。
+目标：
+
+- 为 gameplay demo 提供第一版音频能力：背景音乐、一次性音效、音量控制和暂停 / 恢复。
+- 建立 `AudioModule` / `AudioService` 边界，让 Game / Runtime 不直接依赖第三方音频库。
+- 第一版优先选用 miniaudio 作为 backend，保持轻量、可控、易集成。
+- 初始化失败时降级为 no-op，不让引擎因为音频设备问题崩溃。
+
+后端建议：
+
+- 第一版建议使用 miniaudio。
+- miniaudio 适合当前阶段：单文件 / 轻量、高层 engine API 足够覆盖 BGM 和 one-shot。
+- 不建议让 `miniaudio.h` 泄漏到 `Game`、`Scene`、`Editor` 的 public API。
+- 不建议把 miniaudio 作为共享库 ABI 边界；更适合源码 / 静态方式接入。
+- 如果 vcpkg port 可用，优先走 vcpkg；如果版本或 target 不理想，再考虑把官方 single-file 放入 `ThirdParty`。
+
+建议第一版范围：
+
+1. `AudioModule`。
+   - 新增 builtin module name：`Audio`。
+   - 初始化 `AudioSystem`，注册 `AudioService`。
+   - shutdown 时安全释放所有音频资源。
+   - 如果设备初始化失败，注册 no-op service 或让 service 进入 disabled 状态，并写 warning。
+2. `AudioService`。
+   - 对外只暴露 NexAur 自己的窄接口。
+   - Game / Runtime 只通过 `AudioService` 播放声音，不 include miniaudio。
+3. `AudioSystemMiniaudio`。
+   - 内部持有 `ma_engine`。
+   - 内部管理 background music sound。
+   - 内部管理 one-shot sound instances。
+   - 每帧清理播放完成的一次性音效。
+4. 音量分组。
+   - 第一版至少支持 master / music / sfx 三个音量。
+   - 可以用 miniaudio sound group 或内部统一乘法实现。
+5. Pause / resume。
+   - `pauseAll()` 暂停 BGM 和正在播放的 one-shot。
+   - `resumeAll()` 恢复暂停前仍有效的声音。
+
+建议新增文件：
+
+```text
+source/Engine/Function/Audio/
+  audio_module.h
+  audio_module.cpp
+  audio_service.h
+  audio_system.h
+  audio_system_miniaudio.cpp
+```
+
+如果需要把 miniaudio C implementation 单独编译，可以再加：
+
+```text
+source/Engine/ThirdParty/miniaudio.cpp
+```
+
+建议 API：
+
+```cpp
+class AudioService {
+public:
+    virtual ~AudioService() = default;
+
+    virtual bool isAvailable() const = 0;
+
+    virtual void playOneShot(const std::filesystem::path& path, float volume = 1.0f) = 0;
+    virtual void playMusic(const std::filesystem::path& path, bool loop = true, float volume = 1.0f) = 0;
+    virtual void stopMusic() = 0;
+
+    virtual void setMasterVolume(float volume) = 0;
+    virtual void setMusicVolume(float volume) = 0;
+    virtual void setSfxVolume(float volume) = 0;
+
+    virtual void pauseAll() = 0;
+    virtual void resumeAll() = 0;
+};
+```
+
+第一版可以先用 file path。后续 AssetService 更稳定后，再把 `AudioClipHandle` / `AssetHandle` 接进来。
+
+建议模块顺序：
+
+```text
+Core
+FileSystem
+Platform
+InputAction
+Resource
+Audio
+RenderContext
+Renderer
+Runtime
+Game
+UI
+Editor
+```
+
+Audio 可以放在 Resource 后、Runtime / Game 前：
+
+- 后续 Game 可以直接缓存 `AudioService`。
+- Audio 不依赖 Renderer / Editor。
+- Resource 之后更方便未来把 audio clip 纳入 asset pipeline。
+
+生命周期注意点：
+
+- `ma_engine` 和 `ma_sound` 不要随便拷贝。
+- miniaudio 对象需要稳定内存地址；one-shot sound 不建议直接存在会 reallocate 的 `std::vector<ma_sound>`。
+- 建议使用 `std::list<SoundInstance>` 或 `std::vector<std::unique_ptr<SoundInstance>>` 管理 one-shot。
+- `AudioSystem::tick()` 中清理播放结束的 one-shot。
+- BGM 独立保存，切歌时先停止旧 music，再初始化新 music。
+- 音频初始化失败不能让 `Engine::startEngine()` 失败；第一版应该 graceful degradation。
+
+建议内部结构：
+
+```cpp
+class AudioSystem final : public AudioService {
+public:
+    bool initialize();
+    void tick();
+    void shutdown();
+
+    bool isAvailable() const override;
+    void playOneShot(const std::filesystem::path& path, float volume = 1.0f) override;
+    void playMusic(const std::filesystem::path& path, bool loop = true, float volume = 1.0f) override;
+    void stopMusic() override;
+    void setMasterVolume(float volume) override;
+    void setMusicVolume(float volume) override;
+    void setSfxVolume(float volume) override;
+    void pauseAll() override;
+    void resumeAll() override;
+
+private:
+    // miniaudio backend state, hidden from public headers if possible.
+};
+```
+
+测试建议：
+
+- 新增 `Sandbox.exe --audio-smoke`。
+- smoke 不依赖 Editor UI。
+- smoke 可以使用一段很短的测试 wav / generated audio 文件。
+- 验证：
+  - AudioModule 能初始化，初始化失败时也不崩溃。
+  - `AudioService` 能从 ModuleRegistry 查询。
+  - `playMusic()` / `stopMusic()` 不崩溃。
+  - `playOneShot()` 不崩溃，并能被 tick 清理。
+  - master / music / sfx volume 可以设置并被 clamp 到合理范围。
+  - `pauseAll()` / `resumeAll()` 可调用且状态稳定。
+
+暂时不做：
+
+- 不做 `AudioSourceComponent`。
+- 不做 3D audio / listener / attenuation。
+- 不做 audio clip asset pipeline。
+- 不做 streaming asset cache。
+- 不做 fade / crossfade / playlist。
+- 不做 mixer graph UI。
+- 不做 editor audio preview。
+- 不做 hot reload。
+
+验收：
+
+- 新增 `AudioModule` 和 `AudioService`，模块能注册并安全 shutdown。
+- miniaudio 只在 backend 实现层出现，不污染 Game / Scene / Editor public API。
+- 支持 BGM play / stop / loop。
+- 支持 one-shot SFX。
+- 支持 master / music / sfx volume。
+- 支持 pause / resume。
+- 无音频设备或初始化失败时引擎不崩溃。
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- `Sandbox.exe --audio-smoke` 通过。
+- 常规 Sandbox 启动 smoke 通过。
 
 ## 12. 不建议现在做的事
 

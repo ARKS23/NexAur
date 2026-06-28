@@ -6,6 +6,7 @@ namespace NexAur::BuiltinModuleNames {
     inline constexpr const char* Platform = "Platform";
     inline constexpr const char* InputAction = "InputAction";
     inline constexpr const char* Resource = "Resource";
+    inline constexpr const char* Audio = "Audio";
     inline constexpr const char* RenderContext = "RenderContext";
     inline constexpr const char* Renderer = "Renderer";
     inline constexpr const char* Runtime = "Runtime";

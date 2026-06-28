@@ -1,8 +1,11 @@
 #include <iostream>
 #include <filesystem>
 #include <cmath>
+#include <cstdint>
+#include <fstream>
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
+#include "Function/Audio/audio_service.h"
 #include "Function/File/file_system.h"
 #include "Function/Game/game_state.h"
 #include "Function/Game/gameplay_systems.h"
@@ -68,6 +71,57 @@ namespace {
 
         failure = message;
         return false;
+    }
+
+    void writeU16LE(std::ofstream& output, uint16_t value) {
+        output.put(static_cast<char>(value & 0xffu));
+        output.put(static_cast<char>((value >> 8u) & 0xffu));
+    }
+
+    void writeU32LE(std::ofstream& output, uint32_t value) {
+        output.put(static_cast<char>(value & 0xffu));
+        output.put(static_cast<char>((value >> 8u) & 0xffu));
+        output.put(static_cast<char>((value >> 16u) & 0xffu));
+        output.put(static_cast<char>((value >> 24u) & 0xffu));
+    }
+
+    bool writeAudioSmokeWav(const std::filesystem::path& path) {
+        if (path.has_parent_path()) {
+            std::filesystem::create_directories(path.parent_path());
+        }
+
+        constexpr uint16_t kChannels = 1;
+        constexpr uint16_t kBitsPerSample = 16;
+        constexpr uint32_t kSampleRate = 8000;
+        constexpr uint32_t kSampleCount = 800;
+        constexpr uint16_t kBlockAlign = kChannels * kBitsPerSample / 8;
+        constexpr uint32_t kByteRate = kSampleRate * kBlockAlign;
+        constexpr uint32_t kDataSize = kSampleCount * kBlockAlign;
+
+        std::ofstream output(path, std::ios::binary);
+        if (!output) {
+            return false;
+        }
+
+        output.write("RIFF", 4);
+        writeU32LE(output, 36u + kDataSize);
+        output.write("WAVE", 4);
+        output.write("fmt ", 4);
+        writeU32LE(output, 16u);
+        writeU16LE(output, 1u);
+        writeU16LE(output, kChannels);
+        writeU32LE(output, kSampleRate);
+        writeU32LE(output, kByteRate);
+        writeU16LE(output, kBlockAlign);
+        writeU16LE(output, kBitsPerSample);
+        output.write("data", 4);
+        writeU32LE(output, kDataSize);
+
+        for (uint32_t i = 0; i < kSampleCount; ++i) {
+            writeU16LE(output, 0u);
+        }
+
+        return true;
     }
 
     template<typename T>
@@ -198,6 +252,60 @@ int runSceneSerializerSmoke() {
 
     if (!success) {
         NX_CORE_ERROR("{}", failure);
+    }
+
+    engine.shutdownEngine();
+    return success ? 0 : 1;
+}
+
+int runAudioSmoke() {
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    NexAur::ModuleRegistry* registry = NexAur::g_runtime_global_context.getModuleRegistry();
+    std::shared_ptr<NexAur::AudioService> audio_service =
+        registry ? registry->getService<NexAur::AudioService>() : nullptr;
+
+    expect(audio_service != nullptr, "Audio smoke failed: AudioService is not registered.");
+
+    const std::filesystem::path smoke_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "audio_smoke.wav";
+
+    if (success) {
+        expect(writeAudioSmokeWav(smoke_path), "Audio smoke failed: could not write test wav.");
+    }
+
+    if (success && audio_service) {
+        audio_service->setMasterVolume(1.25f);
+        audio_service->setMusicVolume(0.5f);
+        audio_service->setSfxVolume(-0.25f);
+
+        audio_service->playMusic(smoke_path, true, 0.25f);
+        audio_service->playOneShot(smoke_path, 0.25f);
+        audio_service->pauseAll();
+        audio_service->resumeAll();
+        audio_service->stopMusic();
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(smoke_path, remove_error);
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+    } else if (audio_service && !audio_service->isAvailable()) {
+        std::cout << "Audio smoke passed with audio backend disabled." << std::endl;
+    } else {
+        std::cout << "Audio smoke passed." << std::endl;
     }
 
     engine.shutdownEngine();
@@ -905,6 +1013,9 @@ int runPrefabFactorySmoke() {
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--scene-serializer-smoke") {
         return runSceneSerializerSmoke();
+    }
+    if (argc > 1 && std::string(argv[1]) == "--audio-smoke") {
+        return runAudioSmoke();
     }
     if (argc > 1 && std::string(argv[1]) == "--input-action-smoke") {
         return runInputActionSmoke();
