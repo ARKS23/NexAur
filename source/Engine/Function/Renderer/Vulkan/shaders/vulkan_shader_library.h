@@ -14,7 +14,10 @@ namespace NexAur {
         Skybox,
         ShadowDepth,
         DebugDraw,
-        PostProcess
+        PostProcess,
+        BloomDownsample,
+        BloomUpsample,
+        BloomComposite
     };
 
     struct VulkanShaderProgram {

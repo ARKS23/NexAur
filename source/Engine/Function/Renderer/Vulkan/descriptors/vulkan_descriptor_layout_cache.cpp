@@ -43,6 +43,16 @@ namespace NexAur {
             };
             return desc;
         }
+
+        VulkanDescriptorSetLayoutDesc bloomDualInputDescriptorLayoutDesc() {
+            VulkanDescriptorSetLayoutDesc desc;
+            desc.bindings = {
+                { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
+                { 1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
+                { 2, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
+            };
+            return desc;
+        }
     } // namespace
 
     VulkanDescriptorLayoutCache::~VulkanDescriptorLayoutCache() {
@@ -108,6 +118,8 @@ namespace NexAur {
                 return getOrCreateLayout(materialDescriptorLayoutDesc());
             case VulkanDescriptorSetLayoutId::PostProcessInput:
                 return getOrCreateLayout(postProcessInputDescriptorLayoutDesc());
+            case VulkanDescriptorSetLayoutId::BloomDualInput:
+                return getOrCreateLayout(bloomDualInputDescriptorLayoutDesc());
             default:
                 NX_CORE_ERROR("Unknown Vulkan descriptor set layout id.");
                 return VK_NULL_HANDLE;

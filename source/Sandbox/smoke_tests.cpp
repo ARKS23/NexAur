@@ -391,6 +391,10 @@ int runRenderSettingsSmoke() {
     NexAur::RenderSettings settings;
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::None;
     settings.post_process.exposure = 1.75f;
+    settings.post_process.bloom_enabled = false;
+    settings.post_process.bloom_intensity = 0.25f;
+    settings.post_process.bloom_scatter = 0.5f;
+    settings.post_process.bloom_radius = 1.25f;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -403,9 +407,19 @@ int runRenderSettingsSmoke() {
     expect(
         nearlyEqual(first_post_process.exposure, 1.75f),
         "RenderSettings smoke failed: exposure did not reach the read packet.");
+    expect(!first_post_process.bloom_enabled, "RenderSettings smoke failed: bloom enabled did not reach the read packet.");
+    expect(
+        nearlyEqual(first_post_process.bloom_intensity, 0.25f) &&
+        nearlyEqual(first_post_process.bloom_scatter, 0.5f) &&
+        nearlyEqual(first_post_process.bloom_radius, 1.25f),
+        "RenderSettings smoke failed: bloom parameters did not reach the read packet.");
 
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::ACES;
     settings.post_process.exposure = 0.5f;
+    settings.post_process.bloom_enabled = true;
+    settings.post_process.bloom_intensity = 0.08f;
+    settings.post_process.bloom_scatter = 0.7f;
+    settings.post_process.bloom_radius = 1.0f;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -418,6 +432,12 @@ int runRenderSettingsSmoke() {
     expect(
         nearlyEqual(second_post_process.exposure, 0.5f),
         "RenderSettings smoke failed: updated exposure did not reach the read packet.");
+    expect(second_post_process.bloom_enabled, "RenderSettings smoke failed: updated bloom enabled did not reach the read packet.");
+    expect(
+        nearlyEqual(second_post_process.bloom_intensity, 0.08f) &&
+        nearlyEqual(second_post_process.bloom_scatter, 0.7f) &&
+        nearlyEqual(second_post_process.bloom_radius, 1.0f),
+        "RenderSettings smoke failed: updated bloom parameters did not reach the read packet.");
 
     if (!success) {
         std::cerr << failure << std::endl;

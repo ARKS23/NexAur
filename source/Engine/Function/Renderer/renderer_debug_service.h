@@ -71,6 +71,14 @@ namespace NexAur {
         std::string output_format = "None";
     };
 
+    struct RendererDebugBloomStats {
+        bool ready = false;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        uint32_t mip_count = 0;
+        std::string color_format = "None";
+    };
+
     struct RendererDebugResourceStats {
         size_t model_count = 0;
         size_t texture_count = 0;
@@ -89,6 +97,7 @@ namespace NexAur {
         RendererDebugPickingTargetStats picking_target;
         RendererDebugShadowTargetStats shadow_target;
         RendererDebugPostProcessStats post_process;
+        RendererDebugBloomStats bloom;
         RendererDebugResourceStats resources;
     };
 

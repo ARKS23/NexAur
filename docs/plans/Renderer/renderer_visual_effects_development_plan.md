@@ -329,7 +329,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
 
 ## 6. PR-R28：Physically Based Bloom
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -355,6 +355,22 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒图形 smoke
    - Renderer debug snapshot 只显示 bloom target ready / mip count / format 等只读状态。
    - 后续 PR-R34 增加 bloom mip viewer。
 
+完成记录：
+
+- 新增 `VulkanBloomTarget`，为 Bloom downsample chain、upsample chain 和 HDR composite target 管理独立 render target，格式跟随 HDR scene color。
+- 新增 `VulkanBloomPass`，使用 fullscreen triangle 执行 downsample、upsample 和 tone mapping 前的 HDR composite。
+- PassGraph 已接入 `HDRSceneColor -> BloomDownsample -> BloomUpsample -> BloomComposite -> PostProcess/ACES`。
+- Bloom 关闭或 intensity 为 0 时跳过 Bloom graph，PostProcess 直接读取 HDR scene color，画面回到 ACES-only。
+- `RenderPostProcessSettings` 增加 `bloom_enabled`、`bloom_intensity`、`bloom_scatter`、`bloom_radius`。
+- Renderer Debug 面板 `Effects` 分组增加 Bloom 参数，`Targets` 分组增加 Bloom target 只读状态。
+- `RendererDebugSnapshot` 增加 Bloom target ready / size / mip count / format，只记录 renderer 状态，不承载可写调参。
+- HLSL 组织调整为：
+  - `assets/shaders/Renderer/Vulkan/common/vulkan_fullscreen_triangle.hlsli`
+  - `assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_downsample.hlsl`
+  - `assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_upsample.hlsl`
+  - `assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_composite.hlsl`
+- `vulkan_post_process.hlsl` 复用 fullscreen triangle 公共 include，避免 fullscreen pass 重复手写 VS。
+
 建议新增文件：
 
 ```text
@@ -363,8 +379,10 @@ Renderer/Vulkan/passes/
   vulkan_bloom_pass.cpp
 
 assets/shaders/Renderer/Vulkan/
-  vulkan_bloom_downsample.hlsl
-  vulkan_bloom_upsample.hlsl
+  common/vulkan_fullscreen_triangle.hlsli
+  bloom/vulkan_bloom_downsample.hlsl
+  bloom/vulkan_bloom_upsample.hlsl
+  bloom/vulkan_bloom_composite.hlsl
 ```
 
 暂时不做：
@@ -381,6 +399,20 @@ assets/shaders/Renderer/Vulkan/
 - 不明显闪烁。
 - viewport resize 后 bloom targets 正确重建。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Bloom / PostProcess HLSL 编译通过。
+- CTest 10/10 通过，其中包含 `NexAur.RenderSettingsSmoke`。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 7. PR-R29：PBR Material 完整化
 

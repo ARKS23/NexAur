@@ -149,6 +149,10 @@ namespace NexAur {
         }
 
         changed |= ImGui::SliderFloat("Exposure", &settings.post_process.exposure, 0.0f, 4.0f, "%.2f");
+        changed |= ImGui::Checkbox("Bloom", &settings.post_process.bloom_enabled);
+        changed |= ImGui::SliderFloat("Bloom Intensity", &settings.post_process.bloom_intensity, 0.0f, 1.0f, "%.3f");
+        changed |= ImGui::SliderFloat("Bloom Scatter", &settings.post_process.bloom_scatter, 0.0f, 1.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Bloom Radius", &settings.post_process.bloom_radius, 0.25f, 2.5f, "%.2f");
 
         if (changed) {
             m_context->render_context->setRenderSettings(settings);
@@ -247,6 +251,13 @@ namespace NexAur {
         drawKeyValue("  Ready", boolToText(snapshot.shadow_target.ready));
         drawExtent("  Size", snapshot.shadow_target.width, snapshot.shadow_target.height);
         drawKeyValue("  Depth Format", snapshot.shadow_target.depth_format.c_str());
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Bloom Target");
+        drawKeyValue("  Ready", boolToText(snapshot.bloom.ready));
+        drawExtent("  Size", snapshot.bloom.width, snapshot.bloom.height);
+        drawKeyValue("  Mip Count", snapshot.bloom.mip_count);
+        drawKeyValue("  Color Format", snapshot.bloom.color_format.c_str());
     }
 
     void RendererDebugPanel::drawResourcesSection(const RendererDebugSnapshot& snapshot) {

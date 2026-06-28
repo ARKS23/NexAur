@@ -1,3 +1,5 @@
+#include "common/vulkan_fullscreen_triangle.hlsli"
+
 [[vk::binding(0, 0)]]
 Texture2D<float4> g_hdr_scene_color;
 
@@ -18,29 +20,8 @@ struct PostProcessPushConstants {
 [[vk::push_constant]]
 PostProcessPushConstants g_post_process;
 
-struct VSOutput {
-    float4 position : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-VSOutput VSMain(uint vertex_id : SV_VertexID) {
-    VSOutput output;
-
-    float2 positions[3] = {
-        float2(-1.0f, -1.0f),
-        float2(-1.0f, 3.0f),
-        float2(3.0f, -1.0f)
-    };
-
-    float2 uvs[3] = {
-        float2(0.0f, 0.0f),
-        float2(0.0f, 2.0f),
-        float2(2.0f, 0.0f)
-    };
-
-    output.position = float4(positions[vertex_id], 0.0f, 1.0f);
-    output.uv = uvs[vertex_id];
-    return output;
+FullscreenVSOutput VSMain(uint vertex_id : SV_VertexID) {
+    return FullscreenTriangleVS(vertex_id);
 }
 
 float3 applyExposure(float3 color) {
@@ -61,7 +42,7 @@ float3 linearToSrgb(float3 color) {
     return pow(saturate(color), 1.0f / gamma);
 }
 
-float4 PSMain(VSOutput input) : SV_Target0 {
+float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f);
     float3 color = max(hdr_color.rgb, 0.0f);
 
