@@ -114,6 +114,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
     Function/Resource/asset_metadata.h
+    Function/Resource/environment_map_asset.h
+    Function/Resource/environment_map_asset.cpp
     Function/Resource/material_types.h
     Function/Resource/material_asset.h
     Function/Resource/material_asset.cpp
@@ -231,6 +233,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/vulkan_resource_context.h
     Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h
     Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.cpp
+    Function/Renderer/Vulkan/resources/vulkan_environment_resource.h
+    Function/Renderer/Vulkan/resources/vulkan_environment_resource.cpp
     Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h
     Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.cpp
     Function/Renderer/Vulkan/resources/vulkan_material_resource.h

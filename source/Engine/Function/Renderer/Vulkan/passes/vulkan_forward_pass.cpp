@@ -143,6 +143,7 @@ namespace NexAur {
         m_extent = context.extent;
         m_frame_descriptor_set_layout = context.frame_descriptor_set_layout;
         m_material_descriptor_set_layout = context.material_descriptor_set_layout;
+        m_environment_descriptor_set_layout = context.environment_descriptor_set_layout;
         m_pipeline_cache = context.pipeline_cache;
 
         if (!createImageViews(context) || !createDepthResources(context) || !createPipeline()) {
@@ -170,6 +171,7 @@ namespace NexAur {
         m_extent = {};
         m_frame_descriptor_set_layout = VK_NULL_HANDLE;
         m_material_descriptor_set_layout = VK_NULL_HANDLE;
+        m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         m_pipeline_cache = nullptr;
     }
 
@@ -183,8 +185,9 @@ namespace NexAur {
         VkCommandBuffer command_buffer,
         uint32_t image_index,
         const VulkanDrawList& draw_list,
-        VkDescriptorSet frame_descriptor_set) {
-        return record(command_buffer, image_index, draw_list, frame_descriptor_set, defaultRenderOptions());
+        VkDescriptorSet frame_descriptor_set,
+        VkDescriptorSet environment_descriptor_set) {
+        return record(command_buffer, image_index, draw_list, frame_descriptor_set, environment_descriptor_set, defaultRenderOptions());
     }
 
     bool VulkanForwardPass::record(
@@ -192,6 +195,7 @@ namespace NexAur {
         uint32_t image_index,
         const VulkanDrawList& draw_list,
         VkDescriptorSet frame_descriptor_set,
+        VkDescriptorSet environment_descriptor_set,
         const VulkanForwardPassRenderOptions& options) {
         if (command_buffer == VK_NULL_HANDLE || image_index >= m_color_image_views.size()) {
             return false;
@@ -210,15 +214,7 @@ namespace NexAur {
         target.depth_view = m_depth_image_view;
         target.depth_format = m_depth_format;
         target.extent = m_extent;
-        return record(command_buffer, target, draw_list, frame_descriptor_set, options);
-    }
-
-    bool VulkanForwardPass::record(
-        VkCommandBuffer command_buffer,
-        const VulkanRenderTarget& target,
-        const VulkanDrawList& draw_list,
-        VkDescriptorSet frame_descriptor_set) {
-        return record(command_buffer, target, draw_list, frame_descriptor_set, defaultRenderOptions());
+        return record(command_buffer, target, draw_list, frame_descriptor_set, environment_descriptor_set, options);
     }
 
     bool VulkanForwardPass::record(
@@ -226,6 +222,16 @@ namespace NexAur {
         const VulkanRenderTarget& target,
         const VulkanDrawList& draw_list,
         VkDescriptorSet frame_descriptor_set,
+        VkDescriptorSet environment_descriptor_set) {
+        return record(command_buffer, target, draw_list, frame_descriptor_set, environment_descriptor_set, defaultRenderOptions());
+    }
+
+    bool VulkanForwardPass::record(
+        VkCommandBuffer command_buffer,
+        const VulkanRenderTarget& target,
+        const VulkanDrawList& draw_list,
+        VkDescriptorSet frame_descriptor_set,
+        VkDescriptorSet environment_descriptor_set,
         const VulkanForwardPassRenderOptions& options) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
@@ -280,6 +286,7 @@ namespace NexAur {
         if (m_pipeline != VK_NULL_HANDLE &&
             m_pipeline_layout != VK_NULL_HANDLE &&
             frame_descriptor_set != VK_NULL_HANDLE &&
+            environment_descriptor_set != VK_NULL_HANDLE &&
             !draw_list.opaque_items.empty()) {
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
 
@@ -290,6 +297,16 @@ namespace NexAur {
                 0,
                 1,
                 &frame_descriptor_set,
+                0,
+                nullptr);
+
+            vkCmdBindDescriptorSets(
+                command_buffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_pipeline_layout,
+                2,
+                1,
+                &environment_descriptor_set,
                 0,
                 nullptr);
 
@@ -462,7 +479,8 @@ namespace NexAur {
         desc.depth_format = m_depth_format;
         desc.descriptor_set_layouts = {
             m_frame_descriptor_set_layout,
-            m_material_descriptor_set_layout
+            m_material_descriptor_set_layout,
+            m_environment_descriptor_set_layout
         };
         desc.push_constant_ranges = { push_constant_range };
 

@@ -9,7 +9,9 @@
 namespace NexAur {
     namespace {
         struct VulkanSkyboxPushConstants {
+            glm::mat4 inverse_view_projection{ 1.0f };
             glm::vec4 background_color_intensity{ 0.08f, 0.10f, 0.14f, 1.0f };
+            glm::vec4 camera_position_use_environment{ 0.0f, 0.0f, 0.0f, 0.0f };
         };
 
         static_assert(sizeof(VulkanSkyboxPushConstants) <= 128, "Skybox pass push constants exceed Vulkan minimum limit.");
@@ -29,6 +31,7 @@ namespace NexAur {
 
         m_device = context.device;
         m_color_format = context.color_format;
+        m_environment_descriptor_set_layout = context.environment_descriptor_set_layout;
         m_pipeline_cache = context.pipeline_cache;
 
         if (!createPipeline()) {
@@ -42,6 +45,7 @@ namespace NexAur {
     void VulkanSkyboxPass::cleanupResources() {
         cleanupPipeline();
         m_color_format = VK_FORMAT_UNDEFINED;
+        m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         m_pipeline_cache = nullptr;
     }
 
@@ -53,7 +57,8 @@ namespace NexAur {
     bool VulkanSkyboxPass::record(
         VkCommandBuffer command_buffer,
         const VulkanSkyboxRenderTarget& target,
-        const VulkanDrawList& draw_list) {
+        const VulkanDrawList& draw_list,
+        VkDescriptorSet environment_descriptor_set) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
         }
@@ -65,6 +70,10 @@ namespace NexAur {
 
         if (m_pipeline == VK_NULL_HANDLE || m_pipeline_layout == VK_NULL_HANDLE) {
             NX_CORE_ERROR("VulkanSkyboxPass has no valid pipeline.");
+            return false;
+        }
+        if (environment_descriptor_set == VK_NULL_HANDLE) {
+            NX_CORE_ERROR("VulkanSkyboxPass requires an environment descriptor set.");
             return false;
         }
 
@@ -100,11 +109,25 @@ namespace NexAur {
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
         VulkanSkyboxPushConstants push_constants;
+        push_constants.inverse_view_projection =
+            draw_list.view.inverse_view_matrix * draw_list.view.inverse_projection_matrix;
         push_constants.background_color_intensity = glm::vec4(
             glm::max(draw_list.environment_color, glm::vec3{ 0.0f }),
             std::max(0.0f, draw_list.environment_intensity));
+        push_constants.camera_position_use_environment = glm::vec4(
+            draw_list.view.camera_position,
+            draw_list.environment_asset && draw_list.environment != nullptr ? 1.0f : 0.0f);
 
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+        vkCmdBindDescriptorSets(
+            command_buffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_pipeline_layout,
+            0,
+            1,
+            &environment_descriptor_set,
+            0,
+            nullptr);
         vkCmdPushConstants(
             command_buffer,
             m_pipeline_layout,
@@ -137,6 +160,7 @@ namespace NexAur {
         desc.vertex_layout = VulkanPipelineVertexLayout::None;
         desc.depth_test_enable = false;
         desc.depth_write_enable = false;
+        desc.descriptor_set_layouts = { m_environment_descriptor_set_layout };
         desc.push_constant_ranges = { push_constant_range };
 
         const VulkanGraphicsPipelineState pipeline_state = m_pipeline_cache->getOrCreateGraphicsPipeline(desc);

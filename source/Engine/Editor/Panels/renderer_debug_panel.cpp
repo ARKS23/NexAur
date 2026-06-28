@@ -267,11 +267,19 @@ namespace NexAur {
 
         drawKeyValue("Models", snapshot.resources.model_count);
         drawKeyValue("Textures", snapshot.resources.texture_count);
+        drawKeyValue("Environments", snapshot.resources.environment_count);
         drawKeyValue("Meshes", snapshot.resources.mesh_count);
         drawKeyValue("Materials", snapshot.resources.material_count);
         drawKeyValue(
             "Fallback White Texture",
             boolToText(snapshot.resources.fallback_white_texture_ready));
         drawKeyValue("Fallback Material", boolToText(snapshot.resources.fallback_material_ready));
+        drawKeyValue("Fallback Environment", boolToText(snapshot.resources.fallback_environment_ready));
+        drawKeyValue("Environment Ready", boolToText(snapshot.resources.active_environment_ready));
+        drawKeyValue("Environment Size", snapshot.resources.environment_size);
+        drawKeyValue("Irradiance Size", snapshot.resources.irradiance_size);
+        drawKeyValue("Prefilter Size", snapshot.resources.prefilter_size);
+        drawKeyValue("Prefilter Mips", snapshot.resources.prefilter_mip_count);
+        drawKeyValue("BRDF LUT", boolToText(snapshot.resources.brdf_lut_ready));
     }
 } // namespace NexAur

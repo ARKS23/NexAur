@@ -71,6 +71,8 @@ namespace NexAur {
         draw_list.view = scene_frame.view;
         draw_list.directional_light = scene_frame.directional_light;
         draw_list.point_lights = scene_frame.point_lights;
+        draw_list.environment_asset = scene_frame.environment_asset;
+        draw_list.environment = resource_cache.getOrCreateEnvironment(scene_frame.environment_asset, asset_manager);
         draw_list.environment_color = scene_frame.environment_color;
         draw_list.environment_intensity = scene_frame.environment_intensity;
         draw_list.debug_draw = scene_frame.debug_draw;

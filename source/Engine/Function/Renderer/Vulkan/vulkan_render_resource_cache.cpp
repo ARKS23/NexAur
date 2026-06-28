@@ -6,6 +6,7 @@
 #include "vulkan_render_resource_cache.h"
 
 #include "Function/Resource/asset_manager.h"
+#include "Function/Resource/environment_map_asset.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/material_types.h"
 #include "Function/Resource/model.h"
@@ -58,7 +59,9 @@ namespace NexAur {
         }
 
         m_initialized = true;
-        if (!createFallbackTexture() || !createFallbackMaterial()) {
+        if (!createFallbackTexture() ||
+            !createFallbackMaterial() ||
+            !createFallbackEnvironment()) {
             shutdown();
             return false;
         }
@@ -70,6 +73,7 @@ namespace NexAur {
     void VulkanRenderResourceCache::clear() {
         m_model_cache.clear();
         m_texture_cache.clear();
+        m_environment_cache.clear();
     }
 
     void VulkanRenderResourceCache::shutdown() {
@@ -80,6 +84,7 @@ namespace NexAur {
         }
 
         clear();
+        m_fallback_environment.reset();
         m_fallback_material.reset();
         m_fallback_white_texture.reset();
         if (m_upload_command_pool != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
@@ -96,6 +101,7 @@ namespace NexAur {
         m_descriptor_layout_cache = nullptr;
         m_descriptor_allocator = nullptr;
         m_material_descriptor_set_layout = VK_NULL_HANDLE;
+        m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         m_initialized = false;
         NX_CORE_INFO("VulkanRenderResourceCache shutdown.");
     }
@@ -203,6 +209,56 @@ namespace NexAur {
         return cached_it != m_texture_cache.end() ? cached_it->second.get() : nullptr;
     }
 
+    VulkanEnvironmentResource* VulkanRenderResourceCache::getOrCreateEnvironment(
+        AssetHandle environment_asset,
+        AssetManager& asset_manager) {
+        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+            NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
+            return getFallbackEnvironment();
+        }
+        if (!environment_asset) {
+            return getFallbackEnvironment();
+        }
+
+        if (VulkanEnvironmentResource* cached_environment = getEnvironment(environment_asset)) {
+            return cached_environment;
+        }
+
+        const AssetType asset_type = asset_manager.getAssetType(environment_asset);
+        if (asset_type != AssetType::EnvironmentMap) {
+            NX_CORE_WARN(
+                "AssetHandle is not an EnvironmentMap asset: {} ({})",
+                static_cast<uint64_t>(environment_asset.id),
+                assetTypeToString(asset_type));
+            return getFallbackEnvironment();
+        }
+
+        std::shared_ptr<EnvironmentMapAsset> cpu_environment = asset_manager.loadEnvironmentMapCPU(environment_asset);
+        if (!cpu_environment || !cpu_environment->isLoaded()) {
+            NX_CORE_ERROR("Failed to load CPU environment map for Vulkan resource: {}", static_cast<uint64_t>(environment_asset.id));
+            return getFallbackEnvironment();
+        }
+
+        auto environment_resource = std::make_unique<VulkanEnvironmentResource>();
+        if (!environment_resource->create(createEnvironmentContext(), *cpu_environment)) {
+            NX_CORE_ERROR("Failed to create Vulkan environment resource: {}", asset_manager.getPath(environment_asset));
+            return getFallbackEnvironment();
+        }
+
+        VulkanEnvironmentResource* environment_resource_ptr = environment_resource.get();
+        m_environment_cache.emplace(environment_asset, std::move(environment_resource));
+        return environment_resource_ptr;
+    }
+
+    VulkanEnvironmentResource* VulkanRenderResourceCache::getEnvironment(AssetHandle environment_asset) const {
+        if (!environment_asset) {
+            return nullptr;
+        }
+
+        auto cached_it = m_environment_cache.find(environment_asset);
+        return cached_it != m_environment_cache.end() ? cached_it->second.get() : nullptr;
+    }
+
     size_t VulkanRenderResourceCache::getMeshCount() const {
         size_t mesh_count = 0;
         for (const auto& [asset_handle, model_resource] : m_model_cache) {
@@ -235,6 +291,10 @@ namespace NexAur {
 
     bool VulkanRenderResourceCache::hasFallbackMaterial() const {
         return m_fallback_material && m_fallback_material->isReady();
+    }
+
+    bool VulkanRenderResourceCache::hasFallbackEnvironment() const {
+        return m_fallback_environment && m_fallback_environment->isReady();
     }
 
     bool VulkanRenderResourceCache::createMaterialResource(
@@ -312,6 +372,12 @@ namespace NexAur {
             return false;
         }
 
+        m_environment_descriptor_set_layout = m_descriptor_layout_cache->getBuiltinLayout(VulkanDescriptorSetLayoutId::Environment);
+        if (m_environment_descriptor_set_layout == VK_NULL_HANDLE) {
+            NX_CORE_ERROR("Failed to resolve environment descriptor set layout.");
+            return false;
+        }
+
         return true;
     }
 
@@ -353,6 +419,17 @@ namespace NexAur {
         return true;
     }
 
+    bool VulkanRenderResourceCache::createFallbackEnvironment() {
+        auto environment_resource = std::make_unique<VulkanEnvironmentResource>();
+        if (!environment_resource->createFallback(createEnvironmentContext(), glm::vec3{ 0.08f, 0.10f, 0.14f })) {
+            NX_CORE_ERROR("Failed to create Vulkan fallback environment.");
+            return false;
+        }
+
+        m_fallback_environment = std::move(environment_resource);
+        return true;
+    }
+
     VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() const {
         VulkanResourceUploadContext context;
         context.allocator = m_allocator;
@@ -367,6 +444,14 @@ namespace NexAur {
         context.upload_context = createUploadContext();
         context.descriptor_allocator = m_descriptor_allocator;
         context.descriptor_set_layout = m_material_descriptor_set_layout;
+        return context;
+    }
+
+    VulkanEnvironmentResourceCreateContext VulkanRenderResourceCache::createEnvironmentContext() const {
+        VulkanEnvironmentResourceCreateContext context;
+        context.upload_context = createUploadContext();
+        context.descriptor_allocator = m_descriptor_allocator;
+        context.descriptor_set_layout = m_environment_descriptor_set_layout;
         return context;
     }
 } // namespace NexAur

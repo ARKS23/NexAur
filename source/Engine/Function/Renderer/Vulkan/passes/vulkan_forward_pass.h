@@ -20,6 +20,7 @@ namespace NexAur {
         std::vector<VkImage> color_images;
         VkDescriptorSetLayout frame_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout material_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout environment_descriptor_set_layout = VK_NULL_HANDLE;
         VulkanPipelineCache* pipeline_cache = nullptr;
 
         bool valid() const {
@@ -32,6 +33,7 @@ namespace NexAur {
                    !color_images.empty() &&
                    frame_descriptor_set_layout != VK_NULL_HANDLE &&
                    material_descriptor_set_layout != VK_NULL_HANDLE &&
+                   environment_descriptor_set_layout != VK_NULL_HANDLE &&
                    pipeline_cache != nullptr;
         }
     };
@@ -59,23 +61,27 @@ namespace NexAur {
             VkCommandBuffer command_buffer,
             uint32_t image_index,
             const VulkanDrawList& draw_list,
-            VkDescriptorSet frame_descriptor_set);
+            VkDescriptorSet frame_descriptor_set,
+            VkDescriptorSet environment_descriptor_set);
         bool record(
             VkCommandBuffer command_buffer,
             uint32_t image_index,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set,
+            VkDescriptorSet environment_descriptor_set,
             const VulkanForwardPassRenderOptions& options);
         bool record(
             VkCommandBuffer command_buffer,
             const VulkanRenderTarget& target,
             const VulkanDrawList& draw_list,
-            VkDescriptorSet frame_descriptor_set);
+            VkDescriptorSet frame_descriptor_set,
+            VkDescriptorSet environment_descriptor_set);
         bool record(
             VkCommandBuffer command_buffer,
             const VulkanRenderTarget& target,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set,
+            VkDescriptorSet environment_descriptor_set,
             const VulkanForwardPassRenderOptions& options);
         VkImageView getSwapchainColorImageView(uint32_t image_index) const;
         VulkanRenderTarget getSwapchainRenderTarget(uint32_t image_index) const;
@@ -105,6 +111,7 @@ namespace NexAur {
         VkImageLayout m_depth_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkDescriptorSetLayout m_frame_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         VulkanPipelineCache* m_pipeline_cache = nullptr;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;

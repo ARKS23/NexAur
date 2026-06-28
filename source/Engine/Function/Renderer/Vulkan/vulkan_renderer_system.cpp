@@ -546,7 +546,7 @@ namespace NexAur {
             snapshot.shadow_target = buildShadowTargetDebugStats();
             snapshot.post_process = buildPostProcessDebugStats();
             snapshot.bloom = buildBloomDebugStats();
-            snapshot.resources = buildResourceDebugStats();
+            snapshot.resources = buildResourceDebugStats(draw_list);
 
             debug_snapshot = std::move(snapshot);
         }
@@ -693,7 +693,7 @@ namespace NexAur {
             return stats;
         }
 
-        RendererDebugResourceStats buildResourceDebugStats() const {
+        RendererDebugResourceStats buildResourceDebugStats(const VulkanDrawList* draw_list) const {
             RendererDebugResourceStats stats;
             if (!resource_cache.isInitialized()) {
                 return stats;
@@ -701,10 +701,25 @@ namespace NexAur {
 
             stats.model_count = resource_cache.getModelCount();
             stats.texture_count = resource_cache.getTextureCount();
+            stats.environment_count = resource_cache.getEnvironmentCount();
             stats.mesh_count = resource_cache.getMeshCount();
             stats.material_count = resource_cache.getMaterialCount();
             stats.fallback_white_texture_ready = resource_cache.hasFallbackWhiteTexture();
             stats.fallback_material_ready = resource_cache.hasFallbackMaterial();
+            stats.fallback_environment_ready = resource_cache.hasFallbackEnvironment();
+
+            const VulkanEnvironmentResource* active_environment = draw_list ? draw_list->environment : nullptr;
+            if (!active_environment || !active_environment->isReady()) {
+                active_environment = resource_cache.getFallbackEnvironment();
+            }
+            if (active_environment && active_environment->isReady()) {
+                stats.active_environment_ready = true;
+                stats.environment_size = active_environment->getEnvironmentSize();
+                stats.irradiance_size = active_environment->getIrradianceSize();
+                stats.prefilter_size = active_environment->getPrefilterSize();
+                stats.prefilter_mip_count = active_environment->getPrefilterMipCount();
+                stats.brdf_lut_ready = active_environment->hasBrdfLut();
+            }
             return stats;
         }
 
@@ -1076,11 +1091,13 @@ namespace NexAur {
             pass_context.color_images = swapchain_images;
             pass_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
             pass_context.material_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Material);
+            pass_context.environment_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Environment);
             pass_context.pipeline_cache = &pipeline_cache;
 
             VulkanSkyboxPassContext skybox_context;
             skybox_context.device = device.device;
             skybox_context.color_format = scene_color_format;
+            skybox_context.environment_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Environment);
             skybox_context.pipeline_cache = &pipeline_cache;
 
             const bool recreated_skybox_pass = skybox_pass.recreateResources(skybox_context);
@@ -1282,6 +1299,17 @@ namespace NexAur {
             checkVk(present_result, "vkQueuePresentKHR");
         }
 
+        VkDescriptorSet resolveEnvironmentDescriptorSet(const VulkanDrawList& draw_list) const {
+            const VulkanEnvironmentResource* environment = draw_list.environment;
+            if (!environment || !environment->isReady()) {
+                environment = resource_cache.getFallbackEnvironment();
+            }
+
+            return environment && environment->isReady() ?
+                environment->getDescriptorSet() :
+                VK_NULL_HANDLE;
+        }
+
         bool recordDrawCommands(
             uint32_t image_index,
             const VulkanDrawList& draw_list,
@@ -1362,6 +1390,7 @@ namespace NexAur {
                         makeViewportSceneRenderTarget(),
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
+                        resolveEnvironmentDescriptorSet(draw_list),
                         options);
                 });
 
@@ -1443,6 +1472,7 @@ namespace NexAur {
                         makeSwapchainSceneRenderTarget(image_index),
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
+                        resolveEnvironmentDescriptorSet(draw_list),
                         options);
                 });
 
@@ -1514,7 +1544,11 @@ namespace NexAur {
             graph.addPass("Skybox")
                 .writeImage(color_image, VulkanGraphImageUsage::ColorAttachment)
                 .execute([this, target, &draw_list](VkCommandBuffer target_command_buffer) {
-                    return skybox_pass.record(target_command_buffer, target, draw_list);
+                    return skybox_pass.record(
+                        target_command_buffer,
+                        target,
+                        draw_list,
+                        resolveEnvironmentDescriptorSet(draw_list));
                 });
             return true;
         }

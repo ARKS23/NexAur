@@ -13,7 +13,8 @@ namespace NexAur {
         FrameGlobal = 0,
         Material,
         PostProcessInput,
-        BloomDualInput
+        BloomDualInput,
+        Environment
     };
 
     struct VulkanDescriptorBindingDesc {

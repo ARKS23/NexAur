@@ -87,6 +87,21 @@ Texture2D<float4> g_emissive_texture;
 [[vk::binding(8, 1)]]
 SamplerState g_material_sampler;
 
+[[vk::binding(0, 2)]]
+TextureCube<float4> g_environment_map;
+
+[[vk::binding(1, 2)]]
+TextureCube<float4> g_irradiance_map;
+
+[[vk::binding(2, 2)]]
+TextureCube<float4> g_prefiltered_environment_map;
+
+[[vk::binding(3, 2)]]
+Texture2D<float4> g_brdf_lut;
+
+[[vk::binding(4, 2)]]
+SamplerState g_environment_sampler;
+
 VSOutput VSMain(VSInput input) {
     VSOutput output;
     float4 world_position = mul(g_push_constants.model, float4(input.position, 1.0f));
@@ -102,6 +117,7 @@ VSOutput VSMain(VSInput input) {
 }
 
 static const float PI = 3.14159265359f;
+static const float MAX_REFLECTION_LOD = 7.0f;
 
 float DistributionGGX(float3 normal, float3 half_vector, float roughness) {
     float a = roughness * roughness;
@@ -128,6 +144,11 @@ float GeometrySmith(float3 normal, float3 view_dir, float3 light_dir, float roug
 
 float3 FresnelSchlick(float cos_theta, float3 f0) {
     return f0 + (1.0f - f0) * pow(saturate(1.0f - cos_theta), 5.0f);
+}
+
+float3 FresnelSchlickRoughness(float cos_theta, float3 f0, float roughness) {
+    const float3 grazing = max(float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness), f0);
+    return f0 + (grazing - f0) * pow(saturate(1.0f - cos_theta), 5.0f);
 }
 
 bool HasTexture(float flag) {
@@ -244,6 +265,34 @@ float3 EvaluateDirectLight(
     return (diffuse + specular) * radiance * ndotl;
 }
 
+float3 EvaluateIBL(
+    float3 base_color,
+    float metallic,
+    float roughness,
+    float ambient_occlusion,
+    float3 normal,
+    float3 view_dir) {
+    const float ndotv = max(dot(normal, view_dir), 0.0f);
+    const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), base_color, metallic);
+    const float3 fresnel = FresnelSchlickRoughness(ndotv, f0, roughness);
+    const float3 diffuse_weight = (1.0f - fresnel) * (1.0f - metallic);
+
+    const float3 irradiance = max(g_irradiance_map.SampleLevel(g_environment_sampler, normal, 0.0f).rgb, 0.0f);
+    const float3 diffuse = irradiance * base_color;
+
+    const float3 reflection_dir = reflect(-view_dir, normal);
+    const float reflection_lod = roughness * MAX_REFLECTION_LOD;
+    const float3 prefiltered = max(
+        g_prefiltered_environment_map.SampleLevel(g_environment_sampler, reflection_dir, reflection_lod).rgb,
+        0.0f);
+    const float2 brdf = g_brdf_lut.SampleLevel(g_environment_sampler, float2(ndotv, roughness), 0.0f).rg;
+    const float3 specular = prefiltered * (fresnel * brdf.x + brdf.y);
+
+    return (diffuse_weight * diffuse + specular) *
+        ambient_occlusion *
+        max(g_frame.camera_position_environment_intensity.w, 0.0f);
+}
+
 float EvaluateShadowVisibility(float4 shadow_position) {
     if (g_frame.shadow_params.x < 0.5f || shadow_position.w <= 0.0f) {
         return 1.0f;
@@ -291,10 +340,13 @@ float4 PSMain(VSOutput input) : SV_Target0 {
     float3 normal = ResolveNormal(input);
     float3 view_dir = normalize(g_frame.camera_position_environment_intensity.xyz - input.world_position);
 
-    float3 lit_color = g_frame.ambient_color_intensity.rgb *
-        g_frame.ambient_color_intensity.w *
-        base_color.rgb *
-        ambient_occlusion;
+    float3 lit_color = EvaluateIBL(
+        base_color.rgb,
+        metallic,
+        roughness,
+        ambient_occlusion,
+        normal,
+        view_dir);
 
     float3 directional_light_dir = normalize(-g_frame.directional_direction_intensity.xyz);
     float3 directional_radiance = g_frame.directional_color_point_count.rgb * g_frame.directional_direction_intensity.w;

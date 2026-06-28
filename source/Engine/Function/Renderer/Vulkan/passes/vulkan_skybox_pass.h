@@ -11,11 +11,13 @@ namespace NexAur {
     struct VulkanSkyboxPassContext {
         VkDevice device = VK_NULL_HANDLE;
         VkFormat color_format = VK_FORMAT_UNDEFINED;
+        VkDescriptorSetLayout environment_descriptor_set_layout = VK_NULL_HANDLE;
         VulkanPipelineCache* pipeline_cache = nullptr;
 
         bool valid() const {
             return device != VK_NULL_HANDLE &&
                    color_format != VK_FORMAT_UNDEFINED &&
+                   environment_descriptor_set_layout != VK_NULL_HANDLE &&
                    pipeline_cache != nullptr;
         }
     };
@@ -48,7 +50,8 @@ namespace NexAur {
         bool record(
             VkCommandBuffer command_buffer,
             const VulkanSkyboxRenderTarget& target,
-            const VulkanDrawList& draw_list);
+            const VulkanDrawList& draw_list,
+            VkDescriptorSet environment_descriptor_set);
 
     private:
         bool createPipeline();
@@ -57,6 +60,7 @@ namespace NexAur {
     private:
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
+        VkDescriptorSetLayout m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         VulkanPipelineCache* m_pipeline_cache = nullptr;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "asset_manager.h"
+#include "Function/Resource/environment_map_asset.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
 #include "Function/Resource/texture_loader.h"
@@ -12,6 +13,7 @@ namespace NexAur {
     }
 
     void AssetManager::shutdown() {
+        m_uuid_cpu_environment_cache.clear();
         m_uuid_cpu_material_cache.clear();
         m_uuid_cpu_texture_cache.clear();
         m_uuid_cpu_model_cache.clear();
@@ -259,6 +261,34 @@ namespace NexAur {
         recordAssetMetadata(new_uuid, AssetType::EnvironmentMap, hdr_path);
 
         return AssetHandle(new_uuid);
+    }
+
+    std::shared_ptr<EnvironmentMapAsset> AssetManager::loadEnvironmentMapCPU(AssetHandle handle) {
+        if (!handle) {
+            NX_CORE_WARN("Attempted to load CPU environment map with invalid AssetHandle.");
+            return nullptr;
+        }
+
+        auto loaded_it = m_uuid_cpu_environment_cache.find(handle.id);
+        if (loaded_it != m_uuid_cpu_environment_cache.end()) {
+            return loaded_it->second;
+        }
+
+        const AssetMetadata* metadata = getMetadata(handle);
+        if (!metadata || metadata->type != AssetType::EnvironmentMap || metadata->path.empty()) {
+            NX_CORE_WARN("AssetHandle is not a loadable environment map: {}", static_cast<uint64_t>(handle.id));
+            return nullptr;
+        }
+
+        std::shared_ptr<EnvironmentMapAsset> environment =
+            TextureLoader::loadHDREnvironment(metadata->path);
+        if (!environment || !environment->isLoaded()) {
+            NX_CORE_ERROR("Failed to load CPU environment map: {}", metadata->path);
+            return nullptr;
+        }
+
+        m_uuid_cpu_environment_cache[handle.id] = environment;
+        return environment;
     }
 
     UUID AssetManager::loadEnvironmentMap(const std::string& hdr_path) {

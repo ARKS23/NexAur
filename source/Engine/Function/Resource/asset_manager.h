@@ -8,6 +8,7 @@
 #include "Function/Resource/asset_metadata.h"
 
 namespace NexAur {
+    class EnvironmentMapAsset;
     class Model;
     class MaterialAsset;
     class TextureAsset;
@@ -51,6 +52,7 @@ namespace NexAur {
 
         // 环境 HDR 资产：Resource 只登记 HDR 身份，环境贴图资源由 Renderer 后端负责。
         AssetHandle importEnvironmentMapAsset(const std::string& hdr_path);
+        std::shared_ptr<EnvironmentMapAsset> loadEnvironmentMapCPU(AssetHandle handle);
         UUID loadEnvironmentMap(const std::string& hdr_path); // 过渡 API：兼容旧调用，内部等价于 importEnvironmentMapAsset(hdr_path).id
         AssetHandle loadEnvironmentMapAsset(const std::string& hdr_path) { return importEnvironmentMapAsset(hdr_path); }
 
@@ -93,6 +95,7 @@ namespace NexAur {
         std::unordered_map<UUID, std::shared_ptr<Model>> m_uuid_cpu_model_cache;
         std::unordered_map<UUID, std::shared_ptr<TextureAsset>> m_uuid_cpu_texture_cache;
         std::unordered_map<UUID, std::shared_ptr<MaterialAsset>> m_uuid_cpu_material_cache;
+        std::unordered_map<UUID, std::shared_ptr<EnvironmentMapAsset>> m_uuid_cpu_environment_cache;
 
     };
 } // namespace NexAur

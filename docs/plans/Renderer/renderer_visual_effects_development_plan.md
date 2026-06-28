@@ -494,25 +494,124 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - 让 PBR 材质拥有环境漫反射和环境高光。
 - 从 procedural skybox 过渡到真实 HDR environment。
 
+当前状态：
+
+- `SceneFactory` 已经注册 `assets/textures/HDR/warm_restaurant_8k.hdr` 为 `EnvironmentMap`。
+- `RenderSceneFrame` 已经携带 `environment_asset`、`environment_color` 和 `environment_intensity`。
+- `VulkanDrawListBuilder` 当前只传递 environment color / intensity，尚未把 `environment_asset` 传入 Vulkan draw list。
+- `VulkanSkyboxPass` 当前是 procedural fullscreen gradient，不采样 cubemap。
+- `TextureAsset` / `VulkanTextureResource` 当前主要覆盖 2D RGBA8 贴图，不覆盖 HDR float image、cubemap、mip chain 和 IBL bake result。
+- R29 已完成 PBR material texture slots，Forward shader 已具备接入 IBL 所需的 base color、normal、metallic、roughness、AO、emissive 输入。
+
+范围判断：
+
+- R30 建议把真实 environment skybox 一起做掉，因为 Skybox 和 IBL 应该来自同一个 environment source。
+- R30 只做单个全局 environment，不做多 probe、probe blending 或 local reflection。
+- 如果资源是 HDR equirectangular，优先作为 IBL source。
+- 如果资源是 6 张 LDR cubemap，可以作为 skybox-only fallback，但不建议作为第一版 IBL 主输入。
+
 建议工作：
 
-1. HDR environment import。
-   - 支持 HDR equirectangular texture。
-   - 转为 cubemap。
-2. IBL bake。
-   - irradiance cubemap。
-   - prefiltered environment cubemap。
-   - BRDF LUT。
-3. Shader。
-   - diffuse irradiance。
-   - specular prefilter + BRDF LUT。
-   - roughness mip selection。
-4. Skybox。
-   - skybox pass 支持 environment cubemap。
-   - procedural skybox 作为 fallback。
-5. Resource ownership。
-   - Resource 管 HDR asset identity / CPU import。
-   - Vulkan backend 管 cubemap、prefilter 和 GPU bake result。
+1. Resource / asset。
+   - 新增 `EnvironmentMapAsset` 或等价 CPU asset contract。
+   - 支持 HDR equirectangular 读取，建议使用 float RGBA 数据。
+   - `AssetManager` 增加 `loadEnvironmentMapCPU()`，`importEnvironmentMapAsset()` 继续只负责 asset identity。
+   - `TextureLoader` 可增加 `loadHDR()`，但不要把 EnvironmentMap 和普通 2D material texture 语义混在一起。
+2. Vulkan environment resource。
+   - 新增 `VulkanEnvironmentResource`，由 `VulkanRenderResourceCache` 按 `AssetHandle` 缓存。
+   - 内部持有 environment cubemap、irradiance cubemap、prefiltered cubemap、BRDF LUT 和 environment descriptor set。
+   - 提供 fallback environment：没有 environment asset 时仍可稳定渲染。
+3. IBL bake。
+   - HDR equirectangular -> environment cubemap。
+   - environment cubemap -> irradiance cubemap。
+   - environment cubemap -> prefiltered environment cubemap。
+   - 生成 BRDF LUT。
+   - 第一版建议在 environment resource 创建时同步 bake，不每帧重算。
+   - 推荐初始尺寸：environment 512 或 1024；irradiance 32 或 64；prefilter 128 或 256 with mip chain；BRDF LUT 256。
+4. Descriptor / pipeline。
+   - 新增 `VulkanDescriptorSetLayoutId::Environment`。
+   - Forward pipeline 使用：
+
+```text
+set 0: FrameGlobal
+set 1: Material
+set 2: Environment
+```
+
+   - Environment descriptor 建议：
+
+```text
+binding 0: environment cubemap sampled image
+binding 1: irradiance cubemap sampled image
+binding 2: prefiltered environment cubemap sampled image
+binding 3: BRDF LUT sampled image
+binding 4: sampler
+```
+
+5. Forward shader。
+   - 将 R29 中的 GGX / Fresnel / material sampling 逐步整理到 `common/pbr_lighting.hlsli`。
+   - 增加 diffuse IBL：`irradiance * base_color * (1 - metallic)`。
+   - 增加 specular IBL：prefiltered environment + BRDF LUT。
+   - roughness 控制 prefiltered cubemap mip selection。
+   - AO 第一版继续只影响 indirect / ambient 部分。
+6. Skybox。
+   - `VulkanSkyboxPass` 增加 environment descriptor set。
+   - 有 environment cubemap 时采样真实 skybox。
+   - 没有 environment asset 或 resource 不 ready 时保留 procedural skybox fallback。
+   - Skybox intensity 继续使用 `environment_intensity`，避免新增一套调参入口。
+7. Debug / settings。
+   - Renderer debug snapshot 增加 environment resource ready、cubemap size、irradiance size、prefilter mip count、BRDF LUT ready。
+   - R30 不做完整 IBL debug viewer；预留给 PR-R34。
+
+实现记录：
+
+- 新增 `EnvironmentMapAsset`，作为 HDR equirectangular CPU asset contract，保存 float RGBA 像素、尺寸和 source path。
+- `TextureLoader::loadHDREnvironment()` 支持通过 `stbi_loadf()` 读取 HDR environment，并在 CPU 侧压到默认最大宽度，避免第一版直接把 8K float texture 全量送入后端。
+- `AssetManager::loadEnvironmentMapCPU()` 增加 EnvironmentMap CPU 缓存，`importEnvironmentMapAsset()` 继续只负责 asset identity。
+- 新增 `VulkanEnvironmentResource`，由 `VulkanRenderResourceCache` 按 `AssetHandle` 缓存，并创建 fallback environment。
+- R30 实现采用 CPU bootstrap bake：
+  - HDR equirectangular -> environment cubemap。
+  - environment cubemap -> 近似 irradiance cubemap。
+  - environment cubemap -> 近似 prefiltered cubemap mip chain。
+  - CPU 生成 BRDF LUT。
+- 这版先打通 resource / descriptor / shader / pass 链路，后续可把 CPU bootstrap bake 替换为 `vulkan_ibl_baker` GPU 离屏 bake。
+- 新增 `VulkanDescriptorSetLayoutId::Environment`，Forward pipeline 绑定 `set 2: Environment`。
+- `VulkanSkyboxPass` 绑定同一个 Environment descriptor layout，有真实 environment asset 时采样 cubemap，没有 asset 时保留 procedural fallback。
+- `vulkan_forward.hlsl` 增加 diffuse IBL、specular IBL、roughness mip selection 和 BRDF LUT 采样，AO 只作用于 indirect。
+- Renderer Debug 面板 `Resources` 分组展示 environment count、fallback environment、active environment、cubemap / irradiance / prefilter / BRDF LUT 状态。
+
+建议新增 / 调整文件：
+
+```text
+source/Engine/Function/Resource/
+  environment_map_asset.h
+  environment_map_asset.cpp
+  texture_loader.h/.cpp                 # 增加 HDR load helper
+  asset_manager.h/.cpp                  # loadEnvironmentMapCPU()
+
+source/Engine/Function/Renderer/Vulkan/resources/
+  vulkan_environment_resource.h
+  vulkan_environment_resource.cpp
+  vulkan_cubemap_resource.h             # 可选：作为内部 helper
+  vulkan_cubemap_resource.cpp
+
+source/Engine/Function/Renderer/Vulkan/ibl/
+  vulkan_ibl_baker.h
+  vulkan_ibl_baker.cpp
+
+source/Engine/Function/Renderer/Vulkan/passes/
+  vulkan_skybox_pass.h/.cpp             # 支持真实 environment cubemap
+  vulkan_forward_pass.h/.cpp            # 绑定 Environment descriptor set
+
+assets/shaders/Renderer/Vulkan/common/
+  pbr_lighting.hlsli
+
+assets/shaders/Renderer/Vulkan/ibl/
+  vulkan_equirect_to_cubemap.hlsl
+  vulkan_irradiance_convolution.hlsl
+  vulkan_prefilter_environment.hlsl
+  vulkan_brdf_lut.hlsl
+```
 
 暂时不做：
 
@@ -520,6 +619,9 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - Probe blending。
 - Runtime dynamic reflection capture。
 - Local parallax corrected cubemap。
+- Skybox 编辑器 UI / 资源浏览器。
+- IBL irradiance / prefilter debug viewer。
+- LDR cubemap 完整导入链路。
 
 验收：
 
@@ -527,6 +629,9 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - 粗糙度影响 specular lobe。
 - 没有 environment asset 时 fallback 稳定。
 - Skybox 使用真实 environment。
+- Skybox 背景和 PBR 金属反射来自同一个 environment source。
+- AO 只影响 indirect / ambient，不错误压暗 direct lighting。
+- viewport resize 后 environment resource 不重复 bake，目标重建不破坏 IBL descriptor。
 - 构建和 smoke / CTest 通过。
 
 ## 9. PR-R31：Shadow Quality Pass 1：PCF / Bias / Stability

@@ -8,11 +8,17 @@
 #include "Function/Resource/texture_asset.h"
 
 namespace NexAur {
+    class EnvironmentMapAsset;
+
     class NEXAUR_API TextureLoader {
     public:
         static std::shared_ptr<TextureAsset> load2D(
             const std::string& path,
             TextureColorSpace color_space = TextureColorSpace::SRGB);
+
+        static std::shared_ptr<EnvironmentMapAsset> loadHDREnvironment(
+            const std::string& path,
+            uint32_t max_width = 1024);
 
         static std::shared_ptr<TextureAsset> createSolidColorRGBA8(
             uint8_t r,

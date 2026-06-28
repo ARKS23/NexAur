@@ -10,6 +10,7 @@
 #include "Function/Renderer/data/render_view.h"
 
 namespace NexAur {
+    class VulkanEnvironmentResource;
     class VulkanMaterialResource;
     class VulkanMeshResource;
 
@@ -26,6 +27,8 @@ namespace NexAur {
 
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;
+        AssetHandle environment_asset;
+        const VulkanEnvironmentResource* environment = nullptr;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };
         float environment_intensity = 1.0f;
 

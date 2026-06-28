@@ -82,10 +82,18 @@ namespace NexAur {
     struct RendererDebugResourceStats {
         size_t model_count = 0;
         size_t texture_count = 0;
+        size_t environment_count = 0;
         size_t mesh_count = 0;
         size_t material_count = 0;
         bool fallback_white_texture_ready = false;
         bool fallback_material_ready = false;
+        bool fallback_environment_ready = false;
+        bool active_environment_ready = false;
+        uint32_t environment_size = 0;
+        uint32_t irradiance_size = 0;
+        uint32_t prefilter_size = 0;
+        uint32_t prefilter_mip_count = 0;
+        bool brdf_lut_ready = false;
     };
 
     struct RendererDebugSnapshot {
