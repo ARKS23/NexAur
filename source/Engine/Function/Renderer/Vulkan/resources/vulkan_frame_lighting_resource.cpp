@@ -5,6 +5,7 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_writer.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_draw_list.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_environment_resource.h"
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,7 @@ namespace NexAur {
             glm::vec4 directional_color_point_count{ 1.0f, 1.0f, 1.0f, 0.0f };
             glm::vec4 ambient_color_intensity{ 1.0f, 1.0f, 1.0f, kFallbackAmbientIntensity };
             glm::vec4 shadow_params{ 0.0f, 0.65f, 0.002f, 1.0f };
+            glm::vec4 ibl_debug_params{ 0.0f, 0.0f, 0.0f, 0.0f };
         };
 
         struct VulkanGpuPointLight {
@@ -100,7 +102,8 @@ namespace NexAur {
     bool VulkanFrameLightingResource::update(
         const VulkanDrawList& draw_list,
         const glm::mat4& shadow_light_view_projection,
-        float shadow_map_size) {
+        float shadow_map_size,
+        const RenderSettings& render_settings) {
         if (!m_ready) {
             return false;
         }
@@ -131,6 +134,15 @@ namespace NexAur {
             draw_list.directional_light.shadow_strength,
             draw_list.directional_light.shadow_bias,
             std::max(1.0f, shadow_map_size));
+        const uint32_t prefilter_mip_count =
+            draw_list.environment && draw_list.environment->isReady()
+                ? draw_list.environment->getPrefilterMipCount()
+                : 1u;
+        frame_globals.ibl_debug_params = glm::vec4(
+            static_cast<float>(static_cast<uint32_t>(render_settings.ibl_debug.mode)),
+            std::max(0.0f, render_settings.ibl_debug.prefilter_mip),
+            static_cast<float>(prefilter_mip_count > 0u ? prefilter_mip_count - 1u : 0u),
+            0.0f);
 
         std::array<VulkanGpuPointLight, kMaxPointLights> point_lights{};
         for (uint32_t index = 0; index < point_light_count; ++index) {

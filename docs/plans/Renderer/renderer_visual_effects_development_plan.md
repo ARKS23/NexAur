@@ -151,6 +151,7 @@ PR-R27 ACES Tone Mapping + Exposure
 PR-R28 Physically Based Bloom
 PR-R29 PBR Material 完整化
 PR-R30 IBL 基础链路
+PR-R30.5 IBL Quality / Debug View / Shader Cleanup
 PR-R31 Shadow Quality Pass 1：PCF / Bias / Stability
 PR-R32 Cascaded Shadow Maps
 PR-R33 PCSS / Contact Hardening Shadow
@@ -174,6 +175,7 @@ R26 HDR + PostProcess
 R27 ACES
 R29 PBR Material
 R30 IBL
+R30.5 IBL Quality / Debug
 ```
 
 ## 4. PR-R26：HDR Scene Color + PostProcess Framework
@@ -486,7 +488,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 8. PR-R30：IBL 基础链路
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -634,7 +636,130 @@ assets/shaders/Renderer/Vulkan/ibl/
 - viewport resize 后 environment resource 不重复 bake，目标重建不破坏 IBL descriptor。
 - 构建和 smoke / CTest 通过。
 
-## 9. PR-R31：Shadow Quality Pass 1：PCF / Bias / Stability
+## 9. PR-R30.5：IBL Quality / Debug View / Shader Cleanup
+
+执行状态：已完成。
+
+目标：
+
+- 在进入 shadow quality 之前，先把 R30 的 IBL v1 从“链路可用”收口到“可调、可观察、可对齐参考效果”。
+- 以 externalRenderer / 成熟 IBL 管线作为参考，校准 DamagedHelmet、材质球矩阵和默认 HDR environment 的观感。
+- 增加 IBL debug view，避免后续调 PBR / IBL / exposure 时只能凭肉眼猜。
+- 整理 Forward HLSL 组织，让 PBR / IBL / material sampling 不继续堆在单个 `vulkan_forward.hlsl` 里。
+
+当前问题：
+
+- R30 已经打通 environment cubemap、irradiance、prefilter、BRDF LUT 和 Forward IBL 采样，但 bake 质量、mip 选择、环境强度和 debug 可视化还停留在 v1。
+- DamagedHelmet 等高金属模型的观感仍需要和参考渲染器对齐，尤其是环境反射亮度、粗糙度响应、normal map 方向和 exposure / bloom 组合。
+- 现在 Renderer Debug 只能看到 IBL resource ready / size / mip count，不能直接查看 irradiance、prefilter mip、BRDF LUT 或 IBL contribution。
+- `vulkan_forward.hlsl` 同时承担 pass IO、material resolve、BRDF、IBL、shadow 和 direct light，后续接 PCF / CSM / PCSS 前需要先拆干净。
+
+建议工作：
+
+1. IBL 参考对齐。
+   - 固定一组参考场景：DamagedHelmet、PBR 材质球矩阵、单一 HDR environment、固定 camera / exposure / bloom 参数。
+   - 明确参考截图和参数：tone mapping、exposure、gamma、bloom enabled、directional light intensity、environment intensity。
+   - 校准 skybox 和 specular reflection 是否来自同一个 environment source。
+   - 检查 normal / tangent handedness、glTF packed metallic-roughness、AO 只影响 indirect 的约定。
+   - prefiltered cubemap 采样 LOD 不再硬编码常量，优先由 actual prefilter mip count 推导。
+   - 评估 irradiance / prefilter bake resolution 和 sample count 的最低可接受默认值，避免为了快启动牺牲到明显错误。
+2. IBL debug view。
+   - 增加 backend-neutral debug view enum，避免 Editor 直接依赖 Vulkan 类型。
+   - 建议第一版支持：
+     - Final Lit。
+     - Diffuse IBL contribution。
+     - Specular IBL contribution。
+     - Normal / Roughness / Metallic / AO material channels。
+     - Irradiance cubemap preview。
+     - Prefilter cubemap mip preview。
+     - BRDF LUT preview。
+   - Debug view 默认关闭，不影响正常 render path。
+   - Renderer Debug 面板增加 IBL debug view selector、prefilter mip selector、cubemap face / direction preview 控制。
+3. Shader 组织优化。
+   - 把 PBR 公共逻辑拆到 HLSL include：
+
+```text
+assets/shaders/Renderer/Vulkan/common/
+  pbr_material.hlsli      # material texture flags / resolve helpers
+  pbr_brdf.hlsli          # GGX / Smith / Fresnel / direct lighting
+  pbr_ibl.hlsli           # irradiance / prefilter / BRDF LUT sampling
+```
+
+   - `vulkan_forward.hlsl` 保留 pass 输入输出、descriptor 声明和 PS orchestration。
+   - 后续 shadow sampling 可继续拆到 `common/shadow_sampling.hlsli`，但本 PR 只做 PBR / IBL 相关拆分。
+   - 保持 descriptor set contract 不变：`set 0: FrameGlobal`、`set 1: Material`、`set 2: Environment`。
+4. IBL 性能和缓存收口。
+   - 保留 R30 CPU bootstrap bake，但避免每次 resize 或普通 target rebuild 触发重复 bake。
+   - BRDF LUT 应作为共享资源或缓存结果，避免每个 environment 重复计算。
+   - 如时间允许，增加 baked IBL disk cache；如果超范围，至少在文档和代码 TODO 中把 GPU/offline baker 的替换点标清。
+
+建议新增 / 调整文件：
+
+```text
+source/Engine/Function/Renderer/data/
+  render_debug_view.h                 # 可选：backend-neutral debug view enum
+
+source/Engine/Function/Renderer/Vulkan/passes/
+  vulkan_ibl_debug_pass.h
+  vulkan_ibl_debug_pass.cpp
+
+assets/shaders/Renderer/Vulkan/common/
+  pbr_material.hlsli
+  pbr_brdf.hlsli
+  pbr_ibl.hlsli
+
+assets/shaders/Renderer/Vulkan/ibl/
+  vulkan_ibl_debug.hlsl               # 可选：IBL debug fullscreen preview
+```
+
+实现记录：
+
+- 新增 backend-neutral `RenderIblDebugMode` / `RenderIblDebugSettings`，随 `RenderSettings` 通过现有双缓冲 render data 链路传递。
+- Renderer Debug 面板 `Effects` 分组增加 `IBL Debug` 下拉和 `Prefilter Mip` 控制，默认仍为 `Final Lit`，不影响正常渲染路径。
+- `VulkanFrameLightingResource` 的 frame global uniform 增加 `ibl_debug_params`，向 shader 传递 debug mode、debug prefilter mip 和真实 prefilter max LOD。
+- Forward shader 不再硬编码 `MAX_REFLECTION_LOD = 7`，而是由当前 active environment 的 prefilter mip count 推导。
+- `vulkan_forward.hlsl` 拆出 PBR / IBL include：
+  - `common/pbr_material.hlsli`：材质贴图 flags、base color、normal、metallic、roughness、AO、emissive resolve。
+  - `common/pbr_brdf.hlsli`：GGX、Smith、Schlick Fresnel 和 direct-light BRDF。
+  - `common/pbr_ibl.hlsli`：irradiance、prefiltered environment、BRDF LUT 和 IBL contribution。
+- Forward shader 增加 IBL debug early return，支持查看 Final Lit、Diffuse IBL、Specular IBL、Combined IBL、Normal、Metallic、Roughness、AO、Emissive、Irradiance、Prefiltered Environment 和 BRDF LUT。
+- `VulkanEnvironmentResource` 的 CPU BRDF LUT 生成改为返回静态缓存引用，避免每个 environment 创建时重复拷贝 LUT 像素。
+- `RenderSettingsSmoke` 覆盖 IBL debug settings 的双缓冲传递。
+
+暂时不做：
+
+- 多 reflection probe。
+- Probe blending。
+- Runtime dynamic reflection capture。
+- Local parallax corrected cubemap。
+- 完整 GPU IBL baker。
+- 完整 RenderDoc 自动对比或截图 diff 测试。
+- 把所有 renderer debug view 一次性做完；Shadow / Bloom 综合 debug viewer 仍放到 PR-R34。
+
+验收：
+
+- DamagedHelmet 在默认 HDR environment 下不再明显偏黑，金属反射和粗糙度响应接近 externalRenderer 参考观感。
+- Bloom 关闭 / 开启时，IBL 本身的亮度判断仍然清楚，不依赖 bloom 掩盖问题。
+- Renderer Debug 可以切换查看 diffuse IBL、specular IBL、material channel、irradiance、prefilter mip 和 BRDF LUT。
+- `vulkan_forward.hlsl` 明显瘦身，PBR / IBL helper 有独立 include，后续 PR-R31 接 shadow sampling 时不会继续把 forward shader 堆大。
+- IBL bake 不因 viewport resize 重复触发；启动耗时有明确记录，若没有做 baked cache，需要在完成记录中说明原因和后续入口。
+- 构建、shader compile、smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Forward HLSL include 拆分后 shader 编译通过。
+- CTest 12/12 通过，其中 `NexAur.RenderSettingsSmoke` 覆盖 IBL debug settings。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
+
+## 10. PR-R31：Shadow Quality Pass 1：PCF / Bias / Stability
 
 执行状态：计划中。
 
@@ -684,7 +809,7 @@ assets/shaders/Renderer/Vulkan/ibl/
 - PCF kernel 改变能影响边缘软硬。
 - 构建和 smoke / CTest 通过。
 
-## 10. PR-R32：Cascaded Shadow Maps
+## 11. PR-R32：Cascaded Shadow Maps
 
 执行状态：计划中。
 
@@ -726,7 +851,7 @@ assets/shaders/Renderer/Vulkan/ibl/
 - Debug overlay 能显示 cascade 分区。
 - 构建和 smoke / CTest 通过。
 
-## 11. PR-R33：PCSS / Contact Hardening Shadow
+## 12. PR-R33：PCSS / Contact Hardening Shadow
 
 执行状态：计划中。
 
@@ -769,7 +894,7 @@ assets/shaders/Renderer/Vulkan/ibl/
 - 性能有基础统计。
 - 构建和 smoke / CTest 通过。
 
-## 12. PR-R34：Renderer Effects Debug Views
+## 13. PR-R34：Renderer Effects Debug Views
 
 执行状态：计划中。
 
@@ -801,7 +926,7 @@ assets/shaders/Renderer/Vulkan/ibl/
 - Editor 不 include `Renderer/Vulkan/*`。
 - 构建和 smoke / CTest 通过。
 
-## 13. PR-R35：Color Grading / FXAA / Polish Pass
+## 14. PR-R35：Color Grading / FXAA / Polish Pass
 
 执行状态：计划中。
 
@@ -829,7 +954,7 @@ assets/shaders/Renderer/Vulkan/ibl/
 - FXAA 成本低，适合先接。
 - TAA 对后续 SSR、PCSS 噪点和 temporal stability 很有价值，但需要 camera jitter、history buffer、motion vector，建议单独规划。
 
-## 14. 其他可选画面效果建议
+## 15. 其他可选画面效果建议
 
 后续可以考虑：
 
@@ -853,7 +978,7 @@ assets/shaders/Renderer/Vulkan/ibl/
    - 长期很重要。
    - 但需要 history、jitter、motion vectors，不建议过早做。
 
-## 15. 完成标准
+## 16. 完成标准
 
 这一轮 Visual Effects 阶段达到以下状态即可认为完成：
 

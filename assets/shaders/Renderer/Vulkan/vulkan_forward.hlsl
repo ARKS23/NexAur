@@ -32,6 +32,7 @@ struct FrameGlobals {
     float4 directional_color_point_count;
     float4 ambient_color_intensity;
     float4 shadow_params; // x: enabled, y: strength, z: bias, w: shadow map size
+    float4 ibl_debug_params; // x: debug mode, y: debug prefilter mip, z: prefilter max lod, w: reserved
 };
 
 struct PointLightData {
@@ -102,6 +103,10 @@ Texture2D<float4> g_brdf_lut;
 [[vk::binding(4, 2)]]
 SamplerState g_environment_sampler;
 
+#include "common/pbr_brdf.hlsli"
+#include "common/pbr_material.hlsli"
+#include "common/pbr_ibl.hlsli"
+
 VSOutput VSMain(VSInput input) {
     VSOutput output;
     float4 world_position = mul(g_push_constants.model, float4(input.position, 1.0f));
@@ -117,186 +122,49 @@ VSOutput VSMain(VSInput input) {
     return output;
 }
 
-static const float PI = 3.14159265359f;
-static const float MAX_REFLECTION_LOD = 7.0f;
-
-float DistributionGGX(float3 normal, float3 half_vector, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float ndoth = max(dot(normal, half_vector), 0.0f);
-    float ndoth2 = ndoth * ndoth;
-
-    float denominator = ndoth2 * (a2 - 1.0f) + 1.0f;
-    denominator = PI * denominator * denominator;
-    return a2 / max(denominator, 0.000001f);
+uint ResolveIblDebugMode() {
+    return (uint)max(g_frame.ibl_debug_params.x, 0.0f);
 }
 
-float GeometrySchlickGGX(float ndotv, float roughness) {
-    float r = roughness + 1.0f;
-    float k = (r * r) / 8.0f;
-    return ndotv / max(ndotv * (1.0f - k) + k, 0.000001f);
+float3 EncodeNormalDebug(float3 normal) {
+    return normal * 0.5f + 0.5f;
 }
 
-float GeometrySmith(float3 normal, float3 view_dir, float3 light_dir, float roughness) {
-    float ndotv = max(dot(normal, view_dir), 0.0f);
-    float ndotl = max(dot(normal, light_dir), 0.0f);
-    return GeometrySchlickGGX(ndotv, roughness) * GeometrySchlickGGX(ndotl, roughness);
-}
-
-float3 FresnelSchlick(float cos_theta, float3 f0) {
-    return f0 + (1.0f - f0) * pow(saturate(1.0f - cos_theta), 5.0f);
-}
-
-float3 FresnelSchlickRoughness(float cos_theta, float3 f0, float roughness) {
-    const float3 grazing = max(float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness), f0);
-    return f0 + (grazing - f0) * pow(saturate(1.0f - cos_theta), 5.0f);
-}
-
-bool HasTexture(float flag) {
-    return flag > 0.5f;
-}
-
-float3 FallbackTangent(float3 normal) {
-    float3 up = abs(normal.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(0.0f, 1.0f, 0.0f);
-    return normalize(cross(up, normal));
-}
-
-float3 ResolveNormal(VSOutput input) {
-    float3 normal = normalize(input.world_normal);
-    if (!HasTexture(g_material.texture_flags.y)) {
-        return normal;
-    }
-
-    float3 tangent = input.world_tangent;
-    if (dot(tangent, tangent) <= 0.000001f) {
-        tangent = FallbackTangent(normal);
-    } else {
-        tangent = normalize(tangent - normal * dot(normal, tangent));
-    }
-
-    float3 input_bitangent = input.world_bitangent;
-    float handedness = 1.0f;
-    if (dot(input_bitangent, input_bitangent) > 0.000001f) {
-        handedness = dot(cross(normal, tangent), input_bitangent) < 0.0f ? -1.0f : 1.0f;
-    }
-
-    float3 bitangent = cross(normal, tangent) * handedness;
-    if (dot(bitangent, bitangent) <= 0.000001f) {
-        tangent = FallbackTangent(normal);
-        bitangent = cross(normal, tangent) * handedness;
-    }
-    bitangent = normalize(bitangent);
-
-    float3 tangent_normal = g_normal_texture.Sample(g_material_sampler, input.texcoord).xyz * 2.0f - 1.0f;
-    tangent_normal.xy *= max(g_material.emissive_factor_normal_scale.w, 0.0f);
-    return normalize(
-        tangent * tangent_normal.x +
-        bitangent * tangent_normal.y +
-        normal * tangent_normal.z);
-}
-
-float4 ResolveBaseColor(float2 texcoord) {
-    float4 base_color = g_material.base_color_factor;
-    if (HasTexture(g_material.texture_flags.x)) {
-        base_color *= g_base_color_texture.Sample(g_material_sampler, texcoord);
-    }
-    return base_color;
-}
-
-float ResolveMetallic(float2 texcoord) {
-    float metallic = g_material.factors.x;
-    if (HasTexture(g_material.texture_flags2.x)) {
-        metallic *= g_metallic_roughness_texture.Sample(g_material_sampler, texcoord).b;
-    } else if (HasTexture(g_material.texture_flags.z)) {
-        metallic *= g_metallic_texture.Sample(g_material_sampler, texcoord).r;
-    }
-    return saturate(metallic);
-}
-
-float ResolveRoughness(float2 texcoord) {
-    float roughness = g_material.factors.y;
-    if (HasTexture(g_material.texture_flags2.x)) {
-        roughness *= g_metallic_roughness_texture.Sample(g_material_sampler, texcoord).g;
-    } else if (HasTexture(g_material.texture_flags.w)) {
-        roughness *= g_roughness_texture.Sample(g_material_sampler, texcoord).r;
-    }
-    return clamp(roughness, 0.04f, 1.0f);
-}
-
-float ResolveAmbientOcclusion(float2 texcoord) {
-    if (!HasTexture(g_material.texture_flags2.y)) {
-        return 1.0f;
-    }
-
-    const float ao = g_ao_texture.Sample(g_material_sampler, texcoord).r;
-    return lerp(1.0f, ao, saturate(g_material.texture_flags2.w));
-}
-
-float3 ResolveEmissive(float2 texcoord) {
-    float3 emissive_factor = g_material.emissive_factor_normal_scale.xyz;
-    if (!HasTexture(g_material.texture_flags2.z)) {
-        return emissive_factor;
-    }
-
-    if (dot(abs(emissive_factor), float3(1.0f, 1.0f, 1.0f)) <= 0.0001f) {
-        emissive_factor = float3(1.0f, 1.0f, 1.0f);
-    }
-
-    return g_emissive_texture.Sample(g_material_sampler, texcoord).rgb * emissive_factor;
-}
-
-float3 EvaluateDirectLight(
-    float3 base_color,
-    float metallic,
-    float roughness,
-    float3 normal,
-    float3 view_dir,
-    float3 light_dir,
-    float3 radiance) {
-    float3 half_vector = normalize(view_dir + light_dir);
-    float ndotl = max(dot(normal, light_dir), 0.0f);
-    if (ndotl <= 0.0f) {
-        return 0.0f;
-    }
-
-    float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), base_color, metallic);
-    float normal_distribution = DistributionGGX(normal, half_vector, roughness);
-    float geometry = GeometrySmith(normal, view_dir, light_dir, roughness);
-    float3 fresnel = FresnelSchlick(max(dot(half_vector, view_dir), 0.0f), f0);
-
-    float3 numerator = normal_distribution * geometry * fresnel;
-    float denominator = max(4.0f * max(dot(normal, view_dir), 0.0f) * ndotl, 0.000001f);
-    float3 specular = numerator / denominator;
-
-    float3 diffuse = (1.0f - fresnel) * (1.0f - metallic) * base_color / PI;
-    return (diffuse + specular) * radiance * ndotl;
-}
-
-float3 EvaluateIBL(
-    float3 base_color,
-    float metallic,
-    float roughness,
-    float ambient_occlusion,
-    float3 normal,
+float3 EvaluateIblDebugColor(
+    uint mode,
+    NxMaterialSample material,
+    NxIblSample ibl,
     float3 view_dir) {
-    const float ndotv = max(saturate(dot(normal, view_dir)), 0.0001f);
-    const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), base_color, metallic);
-    const float3 fresnel = FresnelSchlickRoughness(ndotv, f0, roughness);
-    const float3 diffuse_weight = (1.0f - fresnel) * (1.0f - metallic);
-
-    const float3 irradiance = max(g_irradiance_map.SampleLevel(g_environment_sampler, normal, 0.0f).rgb, 0.0f);
-    const float3 diffuse = irradiance * base_color;
-
-    const float3 reflection_dir = reflect(-view_dir, normal);
-    const float reflection_lod = roughness * MAX_REFLECTION_LOD;
-    const float3 prefiltered = max(
-        g_prefiltered_environment_map.SampleLevel(g_environment_sampler, reflection_dir, reflection_lod).rgb,
-        0.0f);
-    const float2 brdf = g_brdf_lut.SampleLevel(g_environment_sampler, float2(ndotv, roughness), 0.0f).rg;
-    const float3 specular = prefiltered * (f0 * brdf.x + brdf.y);
-
-    return (diffuse_weight * diffuse * ambient_occlusion + specular) *
-        max(g_frame.camera_position_environment_intensity.w, 0.0f);
+    switch (mode) {
+        case 1:
+            return ibl.diffuse;
+        case 2:
+            return ibl.specular;
+        case 3:
+            return ibl.diffuse + ibl.specular;
+        case 4:
+            return EncodeNormalDebug(material.normal);
+        case 5:
+            return float3(material.metallic, material.metallic, material.metallic);
+        case 6:
+            return float3(material.roughness, material.roughness, material.roughness);
+        case 7:
+            return float3(material.ambient_occlusion, material.ambient_occlusion, material.ambient_occlusion);
+        case 8:
+            return material.emissive;
+        case 9:
+            return ibl.irradiance;
+        case 10:
+            return NxSamplePrefilteredEnvironmentDebug(
+                material.normal,
+                view_dir,
+                min(g_frame.ibl_debug_params.y, max(g_frame.ibl_debug_params.z, 0.0f))) *
+                max(g_frame.camera_position_environment_intensity.w, 0.0f);
+        case 11:
+            return float3(ibl.brdf.r, ibl.brdf.g, 0.0f);
+        default:
+            return 0.0f;
+    }
 }
 
 float EvaluateShadowVisibility(float4 shadow_position) {
@@ -334,34 +202,37 @@ float EvaluateShadowVisibility(float4 shadow_position) {
 }
 
 float4 PSMain(VSOutput input) : SV_Target0 {
-    float4 base_color = ResolveBaseColor(input.texcoord);
+    NxMaterialSample material = NxSampleMaterial(input);
     if (g_material.factors.w > 0.5f && g_material.factors.w < 1.5f) {
-        clip(base_color.a - g_material.factors.z);
+        clip(material.base_color.a - g_material.factors.z);
     }
 
-    float metallic = ResolveMetallic(input.texcoord);
-    float roughness = ResolveRoughness(input.texcoord);
-    float ambient_occlusion = ResolveAmbientOcclusion(input.texcoord);
-    float3 emissive = ResolveEmissive(input.texcoord);
-    float3 normal = ResolveNormal(input);
     float3 view_dir = normalize(g_frame.camera_position_environment_intensity.xyz - input.world_position);
+    NxIblSample ibl = NxEvaluateIbl(
+        material.base_color.rgb,
+        material.metallic,
+        material.roughness,
+        material.ambient_occlusion,
+        material.normal,
+        view_dir,
+        g_frame.camera_position_environment_intensity.w,
+        g_frame.ibl_debug_params.z);
 
-    float3 lit_color = EvaluateIBL(
-        base_color.rgb,
-        metallic,
-        roughness,
-        ambient_occlusion,
-        normal,
-        view_dir);
+    const uint ibl_debug_mode = ResolveIblDebugMode();
+    if (ibl_debug_mode != 0u) {
+        return float4(EvaluateIblDebugColor(ibl_debug_mode, material, ibl, view_dir), material.base_color.a);
+    }
+
+    float3 lit_color = ibl.diffuse + ibl.specular;
 
     float3 directional_light_dir = normalize(-g_frame.directional_direction_intensity.xyz);
     float3 directional_radiance = g_frame.directional_color_point_count.rgb * g_frame.directional_direction_intensity.w;
     const float directional_shadow = EvaluateShadowVisibility(input.shadow_position);
-    lit_color += directional_shadow * EvaluateDirectLight(
-        base_color.rgb,
-        metallic,
-        roughness,
-        normal,
+    lit_color += directional_shadow * NxEvaluateDirectLight(
+        material.base_color.rgb,
+        material.metallic,
+        material.roughness,
+        material.normal,
         view_dir,
         directional_light_dir,
         directional_radiance);
@@ -380,15 +251,15 @@ float4 PSMain(VSOutput input) : SV_Target0 {
             0.0001f);
         float3 radiance = light.color.rgb * light.position_intensity.w * attenuation;
 
-        lit_color += EvaluateDirectLight(
-            base_color.rgb,
-            metallic,
-            roughness,
-            normal,
+        lit_color += NxEvaluateDirectLight(
+            material.base_color.rgb,
+            material.metallic,
+            material.roughness,
+            material.normal,
             view_dir,
             point_light_dir,
             radiance);
     }
 
-    return float4(lit_color + emissive, base_color.a);
+    return float4(lit_color + material.emissive, material.base_color.a);
 }

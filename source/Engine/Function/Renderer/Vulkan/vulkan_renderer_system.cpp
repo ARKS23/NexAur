@@ -1232,7 +1232,8 @@ namespace NexAur {
             if (!frame_lighting_resource.update(
                     draw_list,
                     shadow_frame.light_view_projection,
-                    getShadowMapSize())) {
+                    getShadowMapSize(),
+                    render_settings)) {
                 return;
             }
 

@@ -48,6 +48,40 @@ namespace NexAur {
             return index == 1 ? RenderToneMappingMode::ACES : RenderToneMappingMode::None;
         }
 
+        int iblDebugModeToIndex(RenderIblDebugMode mode) {
+            return static_cast<int>(mode);
+        }
+
+        RenderIblDebugMode iblDebugModeFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return RenderIblDebugMode::DiffuseIbl;
+            case 2:
+                return RenderIblDebugMode::SpecularIbl;
+            case 3:
+                return RenderIblDebugMode::CombinedIbl;
+            case 4:
+                return RenderIblDebugMode::Normal;
+            case 5:
+                return RenderIblDebugMode::Metallic;
+            case 6:
+                return RenderIblDebugMode::Roughness;
+            case 7:
+                return RenderIblDebugMode::AmbientOcclusion;
+            case 8:
+                return RenderIblDebugMode::Emissive;
+            case 9:
+                return RenderIblDebugMode::Irradiance;
+            case 10:
+                return RenderIblDebugMode::PrefilteredEnvironment;
+            case 11:
+                return RenderIblDebugMode::BrdfLut;
+            case 0:
+            default:
+                return RenderIblDebugMode::FinalLit;
+            }
+        }
+
         void drawKeyValue(const char* label, const char* value) {
             ImGui::Text("%s: %s", label, value);
         }
@@ -153,6 +187,28 @@ namespace NexAur {
         changed |= ImGui::SliderFloat("Bloom Intensity", &settings.post_process.bloom_intensity, 0.0f, 1.0f, "%.3f");
         changed |= ImGui::SliderFloat("Bloom Scatter", &settings.post_process.bloom_scatter, 0.0f, 1.0f, "%.2f");
         changed |= ImGui::SliderFloat("Bloom Radius", &settings.post_process.bloom_radius, 0.25f, 2.5f, "%.2f");
+
+        ImGui::Spacing();
+        const char* ibl_debug_items[] = {
+            "Final Lit",
+            "Diffuse IBL",
+            "Specular IBL",
+            "Combined IBL",
+            "Normal",
+            "Metallic",
+            "Roughness",
+            "Ambient Occlusion",
+            "Emissive",
+            "Irradiance",
+            "Prefiltered Environment",
+            "BRDF LUT"
+        };
+        int ibl_debug_index = iblDebugModeToIndex(settings.ibl_debug.mode);
+        if (ImGui::Combo("IBL Debug", &ibl_debug_index, ibl_debug_items, IM_ARRAYSIZE(ibl_debug_items))) {
+            settings.ibl_debug.mode = iblDebugModeFromIndex(ibl_debug_index);
+            changed = true;
+        }
+        changed |= ImGui::SliderFloat("Prefilter Mip", &settings.ibl_debug.prefilter_mip, 0.0f, 7.0f, "%.1f");
 
         if (changed) {
             m_context->render_context->setRenderSettings(settings);

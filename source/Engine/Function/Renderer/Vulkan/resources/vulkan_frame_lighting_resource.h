@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/data/render_settings.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
@@ -30,7 +31,8 @@ namespace NexAur {
         bool update(
             const VulkanDrawList& draw_list,
             const glm::mat4& shadow_light_view_projection,
-            float shadow_map_size);
+            float shadow_map_size,
+            const RenderSettings& render_settings);
         bool updateShadowMap(VkImageView shadow_map_view, VkSampler shadow_sampler);
 
         bool isReady() const { return m_ready; }

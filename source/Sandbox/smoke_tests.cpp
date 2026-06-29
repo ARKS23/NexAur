@@ -398,12 +398,16 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_intensity = 0.25f;
     settings.post_process.bloom_scatter = 0.5f;
     settings.post_process.bloom_radius = 1.25f;
+    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
+    settings.ibl_debug.prefilter_mip = 3.0f;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
 
     const NexAur::RenderPostProcessSettings& first_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderIblDebugSettings& first_ibl_debug =
+        render_context.getReadData().render_settings.ibl_debug;
     expect(
         first_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::None,
         "RenderSettings smoke failed: tone mapping mode did not reach the read packet.");
@@ -416,6 +420,10 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_post_process.bloom_scatter, 0.5f) &&
         nearlyEqual(first_post_process.bloom_radius, 1.25f),
         "RenderSettings smoke failed: bloom parameters did not reach the read packet.");
+    expect(
+        first_ibl_debug.mode == NexAur::RenderIblDebugMode::SpecularIbl &&
+        nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
+        "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
 
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::ACES;
     settings.post_process.exposure = 0.5f;
@@ -423,12 +431,16 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_intensity = 0.08f;
     settings.post_process.bloom_scatter = 0.7f;
     settings.post_process.bloom_radius = 1.0f;
+    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
+    settings.ibl_debug.prefilter_mip = 0.0f;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
 
     const NexAur::RenderPostProcessSettings& second_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderIblDebugSettings& second_ibl_debug =
+        render_context.getReadData().render_settings.ibl_debug;
     expect(
         second_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::ACES,
         "RenderSettings smoke failed: ACES mode did not reach the read packet.");
@@ -441,6 +453,10 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_post_process.bloom_scatter, 0.7f) &&
         nearlyEqual(second_post_process.bloom_radius, 1.0f),
         "RenderSettings smoke failed: updated bloom parameters did not reach the read packet.");
+    expect(
+        second_ibl_debug.mode == NexAur::RenderIblDebugMode::FinalLit &&
+        nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),
+        "RenderSettings smoke failed: updated IBL debug settings did not reach the read packet.");
 
     if (!success) {
         std::cerr << failure << std::endl;

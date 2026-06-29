@@ -348,7 +348,7 @@ namespace NexAur {
             return mips;
         }
 
-        std::vector<float> generateBrdfLut(uint32_t size) {
+        const std::vector<float>& generateBrdfLut(uint32_t size) {
             constexpr uint32_t kSampleCount = 128;
             static uint32_t cached_size = 0;
             static std::vector<float> cached_pixels;
@@ -374,8 +374,8 @@ namespace NexAur {
             }
 
             cached_size = size;
-            cached_pixels = pixels;
-            return pixels;
+            cached_pixels = std::move(pixels);
+            return cached_pixels;
         }
 
         std::vector<float> flattenCubeMips(const std::vector<CubeMipPixels>& mips) {
@@ -858,7 +858,7 @@ namespace NexAur {
         irradiance_mips.push_back(generateIrradianceMip(environment_asset, kIrradianceCubeSize));
         std::vector<CubeMipPixels> prefilter_mips =
             generatePrefilterMips(environment_asset, kPrefilterCubeSize);
-        std::vector<float> brdf_lut = generateBrdfLut(kBrdfLutSize);
+        const std::vector<float>& brdf_lut = generateBrdfLut(kBrdfLutSize);
 
         if (!uploadCubeImage(context.upload_context, environment_mips, m_environment) ||
             !uploadCubeImage(context.upload_context, irradiance_mips, m_irradiance) ||
