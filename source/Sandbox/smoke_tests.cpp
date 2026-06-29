@@ -648,6 +648,74 @@ int runGltfModelImportSmoke() {
     return 0;
 }
 
+int runTinyGltfMetadataSmoke() {
+    const std::filesystem::path damaged_helmet_path =
+        std::filesystem::path(NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"));
+
+    if (!std::filesystem::exists(damaged_helmet_path)) {
+        std::cout << "TinyGltfMetadata smoke skipped: optional DamagedHelmet asset is missing." << std::endl;
+        return 0;
+    }
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto joinMessages = [](const std::vector<std::string>& messages) {
+        std::string joined;
+        for (const std::string& message : messages) {
+            if (!joined.empty()) {
+                joined += " ";
+            }
+            joined += message;
+        }
+        return joined;
+    };
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+    const NexAur::ModelImporterRegistry& registry = asset_manager.getModelImporterRegistry();
+    expect(registry.getImporterCount() > 0, "TinyGltfMetadata smoke failed: no importers are registered.");
+    expect(
+        registry.findImporter(damaged_helmet_path) != nullptr,
+        "TinyGltfMetadata smoke failed: .gltf was not recognized by the importer registry.");
+
+    const NexAur::ModelImportResult result =
+        asset_manager.inspectModelImportMetadata(damaged_helmet_path.string());
+    expect(result.success, "TinyGltfMetadata smoke failed: " + joinMessages(result.errors));
+    expect(result.errors.empty(), "TinyGltfMetadata smoke should not produce parse errors.");
+
+    if (result.success) {
+        const NexAur::ModelImportMetadata& metadata = result.metadata;
+        expect(metadata.asset_version == "2.0", "DamagedHelmet should report glTF asset version 2.0.");
+        expect(metadata.scene_count >= 1, "DamagedHelmet should contain at least one scene.");
+        expect(metadata.node_count >= 1, "DamagedHelmet should contain nodes.");
+        expect(metadata.mesh_count == 1, "DamagedHelmet metadata should report one mesh.");
+        expect(metadata.primitive_count == 1, "DamagedHelmet metadata should report one primitive.");
+        expect(metadata.material_count == 1, "DamagedHelmet metadata should report one material.");
+        expect(metadata.texture_count >= 5, "DamagedHelmet metadata should report its PBR textures.");
+        expect(metadata.image_count >= 5, "DamagedHelmet metadata should report its PBR images.");
+    }
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "TinyGltfMetadata smoke passed." << std::endl;
+    engine.shutdownEngine();
+    return 0;
+}
+
 int runGameplaySystemsSmoke() {
     auto fake_input = std::make_shared<FakeInputService>();
     NexAur::InputActionSystem input_actions(fake_input);
@@ -1298,6 +1366,7 @@ namespace {
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
+        { "--tiny-gltf-metadata-smoke", "TinyGltfMetadata", runTinyGltfMetadataSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },

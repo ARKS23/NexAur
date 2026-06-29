@@ -3,12 +3,14 @@
 #include "Function/Resource/environment_map_asset.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
+#include "Function/Resource/Import/gltf/tiny_gltf_importer.h"
 #include "Function/Resource/texture_loader.h"
 
 
 namespace NexAur {
     void AssetManager::init() {
-        // TODO
+        m_model_importers.clear();
+        m_model_importers.registerImporter(std::make_unique<TinyGltfImporter>());
         NX_CORE_INFO("AssetManager Initialized.");
     }
 
@@ -20,6 +22,7 @@ namespace NexAur {
         m_uuid_metadata.clear();
         m_uuid_to_path.clear();
         m_path_to_uuid.clear();
+        m_model_importers.clear();
 
         NX_CORE_INFO("AssetManager Shutdown.");
     }
@@ -52,6 +55,13 @@ namespace NexAur {
     UUID AssetManager::loadModel(const std::string& path) {
         // 过渡 API：旧代码仍可拿 UUID，但不会再触发 GPU 上传。
         return importModelAsset(path).id;
+    }
+
+    ModelImportResult AssetManager::inspectModelImportMetadata(const std::string& path) const {
+        ModelImportRequest request;
+        request.path = path;
+        request.mode = ModelImportMode::MetadataOnly;
+        return m_model_importers.importModel(request);
     }
 
     AssetHandle AssetManager::importTextureAsset(const std::string& path, TextureColorSpace color_space) {

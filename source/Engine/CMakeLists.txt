@@ -114,6 +114,12 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
     Function/Resource/asset_metadata.h
+    Function/Resource/Import/gltf/tiny_gltf_importer.h
+    Function/Resource/Import/gltf/tiny_gltf_importer.cpp
+    Function/Resource/Import/model_importer.h
+    Function/Resource/Import/model_importer_registry.h
+    Function/Resource/Import/model_importer_registry.cpp
+    Function/Resource/Import/model_import_types.h
     Function/Resource/environment_map_asset.h
     Function/Resource/environment_map_asset.cpp
     Function/Resource/material_types.h
@@ -321,6 +327,7 @@ find_path(NEXAUR_MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Stb REQUIRED)
+find_path(NEXAUR_TINYGLTF_INCLUDE_DIR tiny_gltf.h REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(directx-dxc CONFIG REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)
@@ -342,6 +349,7 @@ target_include_directories(NexAurEngine PUBLIC
 
 target_include_directories(NexAurEngine PRIVATE
     "${NEXAUR_MINIAUDIO_INCLUDE_DIR}"
+    "${NEXAUR_TINYGLTF_INCLUDE_DIR}"
 )
 
 target_link_libraries(NexAurEngine PUBLIC

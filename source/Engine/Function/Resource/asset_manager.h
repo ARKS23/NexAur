@@ -6,6 +6,7 @@
 #include "Core/Base.h"
 #include "Core/UUID.h"
 #include "Function/Resource/asset_metadata.h"
+#include "Function/Resource/Import/model_importer_registry.h"
 
 namespace NexAur {
     class EnvironmentMapAsset;
@@ -31,6 +32,9 @@ namespace NexAur {
         UUID loadModel(const std::string& path); // 过渡 API：兼容旧调用，内部等价于 importModelAsset(path).id
         AssetHandle loadModelAsset(const std::string& path) { return importModelAsset(path); }
         std::shared_ptr<Model> getModel(const UUID& handle); // 通过UUID获取CPU模型数据
+        ModelImportResult inspectModelImportMetadata(const std::string& path) const;
+        ModelImporterRegistry& getModelImporterRegistry() { return m_model_importers; }
+        const ModelImporterRegistry& getModelImporterRegistry() const { return m_model_importers; }
 
         // 贴图资产：AssetManager 只登记身份，GPU texture 由 Renderer 后端创建。
         AssetHandle importTextureAsset(const std::string& path, TextureColorSpace color_space = TextureColorSpace::SRGB);
@@ -96,6 +100,7 @@ namespace NexAur {
         std::unordered_map<UUID, std::shared_ptr<TextureAsset>> m_uuid_cpu_texture_cache;
         std::unordered_map<UUID, std::shared_ptr<MaterialAsset>> m_uuid_cpu_material_cache;
         std::unordered_map<UUID, std::shared_ptr<EnvironmentMapAsset>> m_uuid_cpu_environment_cache;
+        ModelImporterRegistry m_model_importers;
 
     };
 } // namespace NexAur
