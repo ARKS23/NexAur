@@ -763,7 +763,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 9.5. PR-R30.6：DamagedHelmet PBR / IBL Reference Alignment
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -970,39 +970,202 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 - 支持大范围 directional light shadow。
 - 提升第三人称 / 户外 demo 阴影质量。
+- 在不引入复杂 scene culling / shadow atlas 的前提下，建立清爽、可维护的 CSM 数据流。
+- 让后续 PCSS、cascade debug view、caster bounds culling 可以自然接上，而不是把所有逻辑堆进 `VulkanRendererSystem`。
+
+当前基础：
+
+- R31 已完成稳定单张 directional shadow map：
+  - `RenderShadowSettings`。
+  - PCF filter mode / filter radius。
+  - constant / normal / slope bias。
+  - light-space texel snapping。
+  - shadow map resolution runtime 切换。
+- 现有 AABB / Frustum 能力还不能直接支撑 CSM：
+  - `AABBColliderComponent` 和 `WorldCollider` 属于 Physics / Gameplay collider，不应拿来表达 renderable bounds。
+  - `RenderDebugDrawBuilder::addAABB()` / `addFrustum()` 只负责 debug line 展开，不是裁剪或 shadow fit 数学库。
+  - 当前缺少 renderer/resource 级 mesh local bounds、model bounds、world-space render object bounds 和 frustum plane / frustum corner 数据结构。
+- 因此 R32 第一版不要依赖 Physics collider，也不要强行做 caster bounds culling；先用 camera cascade frustum 计算稳定 light-space ortho bounds。
+
+架构原则：
+
+- Renderer-neutral 数据先行，Vulkan 只消费结果。
+  - cascade split、light VP、debug color、cascade count 等应放在 renderer data / shadow frame 结构中。
+  - Vulkan target、image view、array layer、descriptor 才留在 Vulkan backend。
+- 不复用 Physics AABB。
+  - Physics collider 是 gameplay 意图，mesh bounds 是 render resource 属性，两者未来可以互相参考，但不能混为同一契约。
+- 不在 shader 里硬编码 cascade 数量。
+  - GPU uniform 至少支持 4 cascades，实际使用 `cascade_count` 控制。
+- 第一版优先稳定和可观察。
+  - 可以牺牲一部分 shadow pass 绘制成本，暂时不做 per-cascade caster culling。
+  - 必须有 cascade debug overlay 或 split 显示，否则后续调参只能靠猜。
+
+建议新增 / 调整数据结构：
+
+```text
+source/Engine/Function/Renderer/data/
+  render_bounds.h                 # RenderAABB / RenderFrustumCorners / helper，renderer-neutral
+  render_shadow_cascade.h         # RenderShadowCascadeData / RenderShadowCascadeFrame，可选
+  render_settings.h               # 扩展 RenderShadowSettings
+
+source/Engine/Function/Renderer/Vulkan/targets/
+  vulkan_shadow_map_target.h/.cpp # 从 2D depth map 扩展为可选 2D array，或新增 CSM target
+
+source/Engine/Function/Renderer/Vulkan/resources/
+  vulkan_frame_lighting_resource.h/.cpp # frame globals 增加 cascade VP / splits
+
+source/Engine/Function/Renderer/Vulkan/passes/
+  vulkan_shadow_pass.h/.cpp       # 支持 cascade layer rendering
+
+assets/shaders/Renderer/Vulkan/common/
+  shadow_sampling.hlsli           # 扩展 cascade selection / Texture2DArray sampling
+```
+
+推荐数据流：
+
+```text
+RenderSettings.shadow
+  cascade_enabled / cascade_count / max_distance / split_lambda / debug_overlay
+        |
+VulkanRendererSystem::buildDirectionalShadowFrame()
+        |
+Camera frustum split -> per-cascade corners -> light-space ortho bounds -> texel snapping
+        |
+FrameGlobal uniform:
+  shadow_light_view_projection[4]
+  cascade_splits[4]
+  cascade_params
+        |
+VulkanShadowPass:
+  render cascade 0..N-1 into shadow map array layers
+        |
+Forward shader:
+  choose cascade by view-space depth
+  sample Texture2DArray with existing PCF / bias helper
+```
 
 建议工作：
 
 1. Cascades。
-   - 第一版 3 或 4 cascades。
+   - 第一版默认 4 cascades，允许 UI / RenderSettings 调成 1-4。
    - 支持 split lambda。
    - 支持 max shadow distance。
+   - split 计算使用 practical split：
+     - linear split 和 logarithmic split 混合。
+     - `split_lambda = 0` 为 linear，`1` 为 logarithmic。
+   - split depth 存 view-space 正深度或 normalized depth，但 C++ / HLSL 必须统一命名，避免后续反复踩坑。
 2. Stable CSM。
    - 每个 cascade 做 texel snapping。
    - 减少 shimmer。
+   - 每个 cascade 的 light-space ortho box 由该 cascade frustum corners 拟合。
+   - 第一版不强行 fit scene bounds，避免因为缺少 renderer bounds 而把 Physics collider 混进来。
 3. Shader。
    - 根据 view-space depth 选择 cascade。
    - 每个 cascade 单独 light VP。
    - 支持 cascade blending 可后续再做。
+   - `shadow_sampling.hlsli` 继续作为唯一 shadow sampling 入口：
+     - 单张 shadow map path。
+     - CSM shadow map array path。
+     - PCF / bias 逻辑复用 R31。
+   - cascade debug overlay 第一版可以直接 tint final lit，后续再做独立 debug view。
 4. Resource。
    - shadow map array 或多个 shadow targets。
    - 第一版建议 array texture，更利于 shader 选择。
+   - 推荐 `Texture2DArray<float>`：
+     - 一个 depth image。
+     - `arrayLayers = max_cascade_count`。
+     - 每个 cascade 一个 layer。
+   - Descriptor 尽量保持 frame-global set 语义不变，只把 shadow map 从 `Texture2D` 升级到 array。
 5. Debug。
    - cascade color overlay。
    - cascade split 显示。
+   - Renderer Debug 面板显示：
+     - cascade enabled。
+     - cascade count。
+     - split lambda。
+     - max shadow distance。
+     - shadow map array size / layer count。
+
+拆分步骤与实现结果：
+
+1. PR-R32-A：Renderer-neutral cascade data。
+   - 增加 `RenderShadowSettings` 的 CSM 字段。
+   - 增加 `RenderShadowCascadeFrame`，作为 renderer-neutral 的 cascade VP / split / debug color 数据契约。
+   - 在 `VulkanRendererSystem::buildDirectionalShadowFrame()` 中完成 practical split、cascade frustum corner、light VP 和 texel snapping 计算。
+   - smoke 覆盖 settings 双缓冲。
+2. PR-R32-B：Shadow target array。
+   - `VulkanShadowMapTarget` 支持 array layers。
+   - sampled view 使用 2D array view，每个 cascade layer 额外创建单层 2D depth view 供 shadow pass 渲染。
+   - 确保 resize / resolution 切换不破坏 descriptor。
+3. PR-R32-C：Shadow pass layer rendering。
+   - 循环 cascade。
+   - 每层 clear depth。
+   - push 当前 cascade light VP。
+   - PassGraph 的 image barrier 支持 `layer_count`，shadow array layout transition 覆盖所有 cascade layer。
+4. PR-R32-D：Frame global + shader sampling。
+   - uniform 上传 cascade VP / split / count。
+   - `shadow_sampling.hlsli` 根据 view depth 选择 cascade。
+   - shadow map descriptor 从 `Texture2D<float>` 升级为 `Texture2DArray<float>`。
+   - PCF / bias / normal bias / slope bias 继续复用 R31 的 shadow sampling helper。
+5. PR-R32-E：Debug overlay + 文档验收。
+   - Renderer Debug 增加 CSM 控制。
+   - cascade tint overlay 可开关。
+   - 更新文档结果。
+
+实现记录：
+
+- 新增 `source/Engine/Function/Renderer/data/render_shadow_cascade.h`。
+- `RenderShadowSettings` 新增：
+  - `cascades_enabled`。
+  - `cascade_count`。
+  - `cascade_split_lambda`。
+  - `cascade_debug_overlay`。
+- `VulkanShadowMapTarget` 支持 1-4 layer depth array，并保留单 cascade 退化路径。
+- `VulkanFrameLightingResource` 上传：
+  - `shadow_light_view_projection[4]`。
+  - `shadow_cascade_splits`。
+  - `shadow_cascade_params`。
+  - `shadow_cascade_colors[4]`。
+- `shadow_sampling.hlsli` 统一 cascade selection、Texture2DArray sampling 和 cascade overlay。
+- Renderer Debug `Effects` 分组增加 CSM、Cascade Count、Split Lambda、Cascade Overlay 控制。
+- Renderer Debug `Targets / Shadow Target` 增加 layer count 显示。
+- `RenderSettingsSmoke` 覆盖 CSM settings 双缓冲传递。
 
 暂时不做：
 
 - PCSS per cascade。
 - cascade blending 高级优化。
 - shadow atlas。
+- per-cascade caster bounds culling。
+- mesh / model bounds 完整资产化。
+- scene receiver / caster bounds 精确 fit。
+- point light / spot light shadow。
+- transparent shadow。
+- runtime shadow cache。
 
 验收：
 
 - 近处阴影清晰，远处阴影覆盖范围更大。
 - cascade 切换不明显跳变。
+- 相机小幅移动时，cascade 阴影不明显 shimmer。
 - Debug overlay 能显示 cascade 分区。
+- `cascade_count = 1` 时能退化到接近 R31 的单 cascade 行为。
+- PCF / bias / filter radius 仍沿用 R31 控制，不因 CSM 分支失效。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build build\msvc-vcpkg --config Debug
+ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Forward / Shadow HLSL 编译通过。
+- CTest 18/18 通过，其中 `NexAur.RenderSettingsSmoke` 覆盖 CSM settings。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 12. PR-R33：PCSS / Contact Hardening Shadow
 

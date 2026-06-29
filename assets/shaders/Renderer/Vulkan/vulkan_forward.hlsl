@@ -13,6 +13,7 @@ struct VSOutput {
     float3 world_normal : TEXCOORD2;
     float3 world_tangent : TEXCOORD3;
     float3 world_bitangent : TEXCOORD4;
+    float view_depth : TEXCOORD5;
 };
 
 struct PushConstants {
@@ -25,14 +26,18 @@ PushConstants g_push_constants;
 
 struct FrameGlobals {
     float4x4 view_projection;
-    float4x4 shadow_light_view_projection;
+    float4x4 shadow_light_view_projection[4];
     float4 camera_position_environment_intensity;
     float4 directional_direction_intensity;
     float4 directional_color_point_count;
     float4 ambient_color_intensity;
     float4 shadow_params; // x: enabled, y: strength, z: bias, w: shadow map size
     float4 shadow_quality_params; // x: filter mode, y: radius, z: normal bias, w: slope bias
+    float4 shadow_cascade_splits; // xyz/w: view-space far split depth per cascade
+    float4 shadow_cascade_params; // x: enabled, y: cascade count, z: debug overlay, w: reserved
+    float4 shadow_cascade_colors[4];
     float4 ibl_debug_params; // x: debug mode, y: debug prefilter mip, z: prefilter max lod, w: reserved
+    float4x4 view_matrix;
 };
 
 struct PointLightData {
@@ -48,7 +53,7 @@ ConstantBuffer<FrameGlobals> g_frame;
 StructuredBuffer<PointLightData> g_point_lights;
 
 [[vk::binding(2, 0)]]
-Texture2D<float> g_shadow_map;
+Texture2DArray<float> g_shadow_map;
 
 [[vk::binding(3, 0)]]
 SamplerState g_shadow_sampler;
@@ -119,6 +124,7 @@ VSOutput VSMain(VSInput input) {
     output.world_tangent = mul(model_matrix, input.tangent);
     output.world_bitangent = mul(model_matrix, input.bitangent);
     output.texcoord = input.texcoord;
+    output.view_depth = max(-mul(g_frame.view_matrix, world_position).z, 0.0f);
     return output;
 }
 
@@ -196,7 +202,8 @@ float4 PSMain(VSOutput input) : SV_Target0 {
     const float directional_shadow = NxEvaluateShadowVisibility(
         input.world_position,
         material.normal,
-        directional_light_dir);
+        directional_light_dir,
+        input.view_depth);
     lit_color += directional_shadow * NxEvaluateDirectLight(
         material.base_color.rgb,
         material.metallic,
@@ -229,6 +236,8 @@ float4 PSMain(VSOutput input) : SV_Target0 {
             point_light_dir,
             radiance);
     }
+
+    lit_color = NxApplyCascadeDebugOverlay(lit_color, input.view_depth);
 
     return float4(lit_color + material.emissive, material.base_color.a);
 }

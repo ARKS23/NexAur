@@ -20,7 +20,7 @@ namespace NexAur {
         shutdown();
     }
 
-    bool VulkanShadowMapTarget::init(const VulkanResourceContext& context, uint32_t resolution) {
+    bool VulkanShadowMapTarget::init(const VulkanResourceContext& context, uint32_t resolution, uint32_t layer_count) {
         shutdown();
 
         if (!context.valid()) {
@@ -38,7 +38,8 @@ namespace NexAur {
         }
 
         resolution = std::max(1u, resolution);
-        if (!createImage(resolution) || !createSampler()) {
+        layer_count = std::max(1u, layer_count);
+        if (!createImage(resolution, layer_count) || !createSampler()) {
             shutdown();
             return false;
         }
@@ -55,18 +56,27 @@ namespace NexAur {
         m_device = VK_NULL_HANDLE;
         m_depth_format = VK_FORMAT_UNDEFINED;
         m_extent = {};
+        m_layer_count = 1;
         m_ready = false;
     }
 
     VulkanDepthRenderTarget VulkanShadowMapTarget::getRenderTarget() const {
+        return getRenderTarget(0);
+    }
+
+    VulkanDepthRenderTarget VulkanShadowMapTarget::getRenderTarget(uint32_t layer_index) const {
         VulkanDepthRenderTarget target;
-        target.depth_view = m_depth_image_view;
+        if (layer_index >= m_depth_layer_views.size()) {
+            return target;
+        }
+
+        target.depth_view = m_depth_layer_views[layer_index];
         target.depth_format = m_depth_format;
         target.extent = m_extent;
         return target;
     }
 
-    bool VulkanShadowMapTarget::createImage(uint32_t resolution) {
+    bool VulkanShadowMapTarget::createImage(uint32_t resolution, uint32_t layer_count) {
         VkImageCreateInfo image_info{};
         image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         image_info.imageType = VK_IMAGE_TYPE_2D;
@@ -74,7 +84,7 @@ namespace NexAur {
         image_info.extent.height = resolution;
         image_info.extent.depth = 1;
         image_info.mipLevels = 1;
-        image_info.arrayLayers = 1;
+        image_info.arrayLayers = layer_count;
         image_info.format = m_depth_format;
         image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
         image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -110,19 +120,34 @@ namespace NexAur {
         VkImageViewCreateInfo view_info{};
         view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         view_info.image = m_depth_image;
-        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         view_info.format = m_depth_format;
         view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         view_info.subresourceRange.baseMipLevel = 0;
         view_info.subresourceRange.levelCount = 1;
         view_info.subresourceRange.baseArrayLayer = 0;
-        view_info.subresourceRange.layerCount = 1;
+        view_info.subresourceRange.layerCount = layer_count;
 
-        if (!checkVk(vkCreateImageView(m_device, &view_info, nullptr, &m_depth_image_view), "vkCreateImageView(shadow map)")) {
+        if (!checkVk(vkCreateImageView(m_device, &view_info, nullptr, &m_depth_image_view), "vkCreateImageView(shadow map sampled array)")) {
             return false;
         }
 
+        m_depth_layer_views.resize(layer_count, VK_NULL_HANDLE);
+        for (uint32_t layer_index = 0; layer_index < layer_count; ++layer_index) {
+            VkImageViewCreateInfo layer_view_info = view_info;
+            layer_view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            layer_view_info.subresourceRange.baseArrayLayer = layer_index;
+            layer_view_info.subresourceRange.layerCount = 1;
+
+            if (!checkVk(
+                    vkCreateImageView(m_device, &layer_view_info, nullptr, &m_depth_layer_views[layer_index]),
+                    "vkCreateImageView(shadow map layer)")) {
+                return false;
+            }
+        }
+
         m_extent = { resolution, resolution };
+        m_layer_count = layer_count;
         m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         return true;
     }
@@ -145,6 +170,13 @@ namespace NexAur {
     }
 
     void VulkanShadowMapTarget::cleanupImage() {
+        for (VkImageView layer_view : m_depth_layer_views) {
+            if (layer_view != VK_NULL_HANDLE) {
+                vkDestroyImageView(m_device, layer_view, nullptr);
+            }
+        }
+        m_depth_layer_views.clear();
+
         if (m_depth_image_view != VK_NULL_HANDLE) {
             vkDestroyImageView(m_device, m_depth_image_view, nullptr);
             m_depth_image_view = VK_NULL_HANDLE;
@@ -160,6 +192,7 @@ namespace NexAur {
 
         m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         m_extent = {};
+        m_layer_count = 1;
         m_ready = false;
     }
 

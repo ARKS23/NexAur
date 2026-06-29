@@ -62,6 +62,7 @@ namespace NexAur {
         bool ready = false;
         uint32_t width = 0;
         uint32_t height = 0;
+        uint32_t layer_count = 0;
         std::string depth_format = "None";
     };
 

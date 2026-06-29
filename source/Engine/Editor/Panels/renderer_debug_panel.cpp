@@ -258,6 +258,20 @@ namespace NexAur {
             changed = true;
         }
         changed |= ImGui::Checkbox("Shadow Stabilize", &settings.shadow.stabilize);
+        changed |= ImGui::Checkbox("CSM", &settings.shadow.cascades_enabled);
+        if (!settings.shadow.cascades_enabled) {
+            ImGui::BeginDisabled();
+        }
+        int cascade_count = static_cast<int>(settings.shadow.cascade_count);
+        if (ImGui::SliderInt("Cascade Count", &cascade_count, 1, 4)) {
+            settings.shadow.cascade_count = static_cast<uint32_t>(cascade_count);
+            changed = true;
+        }
+        changed |= ImGui::SliderFloat("Split Lambda", &settings.shadow.cascade_split_lambda, 0.0f, 1.0f, "%.2f");
+        changed |= ImGui::Checkbox("Cascade Overlay", &settings.shadow.cascade_debug_overlay);
+        if (!settings.shadow.cascades_enabled) {
+            ImGui::EndDisabled();
+        }
 
         ImGui::Spacing();
         const char* ibl_debug_items[] = {
@@ -377,6 +391,7 @@ namespace NexAur {
         ImGui::TextUnformatted("Shadow Target");
         drawKeyValue("  Ready", boolToText(snapshot.shadow_target.ready));
         drawExtent("  Size", snapshot.shadow_target.width, snapshot.shadow_target.height);
+        drawKeyValue("  Layers", snapshot.shadow_target.layer_count);
         drawKeyValue("  Depth Format", snapshot.shadow_target.depth_format.c_str());
 
         ImGui::Spacing();

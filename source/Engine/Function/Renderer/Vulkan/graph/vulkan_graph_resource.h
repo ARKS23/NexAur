@@ -27,6 +27,7 @@ namespace NexAur {
         std::string name;
         VkImage image = VK_NULL_HANDLE;
         VkImageAspectFlags aspect_mask = 0;
+        uint32_t layer_count = 1;
         VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         std::function<void(VkImageLayout)> commit_layout;
 

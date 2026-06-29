@@ -3,6 +3,8 @@
 
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 
+#include <algorithm>
+
 namespace NexAur {
     bool VulkanGraphExecutor::execute(VulkanPassGraph& graph, VkCommandBuffer command_buffer) {
         if (command_buffer == VK_NULL_HANDLE) {
@@ -56,7 +58,7 @@ namespace NexAur {
         barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = 1;
+        barrier.subresourceRange.layerCount = std::max(1u, image->desc.layer_count);
 
         vkCmdPipelineBarrier(
             command_buffer,

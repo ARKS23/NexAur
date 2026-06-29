@@ -54,6 +54,10 @@ namespace NexAur {
         float distance = 35.0f;
         uint32_t map_resolution = 2048;
         bool stabilize = true;
+        bool cascades_enabled = true;
+        uint32_t cascade_count = 4;
+        float cascade_split_lambda = 0.65f;
+        bool cascade_debug_overlay = false;
     };
 
     struct RenderSettings {

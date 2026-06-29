@@ -20,14 +20,28 @@ namespace NexAur {
 
         struct VulkanGpuFrameGlobals {
             glm::mat4 view_projection{ 1.0f };
-            glm::mat4 shadow_light_view_projection{ 1.0f };
+            std::array<glm::mat4, kMaxRenderShadowCascadeCount> shadow_light_view_projections{
+                glm::mat4{ 1.0f },
+                glm::mat4{ 1.0f },
+                glm::mat4{ 1.0f },
+                glm::mat4{ 1.0f }
+            };
             glm::vec4 camera_position_environment_intensity{ 0.0f, 0.0f, 0.0f, 1.0f };
             glm::vec4 directional_direction_intensity{ -0.2f, -1.0f, -0.3f, 1.0f };
             glm::vec4 directional_color_point_count{ 1.0f, 1.0f, 1.0f, 0.0f };
             glm::vec4 ambient_color_intensity{ 1.0f, 1.0f, 1.0f, kFallbackAmbientIntensity };
             glm::vec4 shadow_params{ 0.0f, 0.65f, 0.002f, 1.0f };
             glm::vec4 shadow_quality_params{ 1.0f, 1.0f, 0.0f, 0.001f };
+            glm::vec4 shadow_cascade_splits{ 0.0f, 0.0f, 0.0f, 0.0f };
+            glm::vec4 shadow_cascade_params{ 0.0f, 1.0f, 0.0f, 0.0f };
+            std::array<glm::vec4, kMaxRenderShadowCascadeCount> shadow_cascade_colors{
+                glm::vec4{ 0.95f, 0.25f, 0.20f, 1.0f },
+                glm::vec4{ 0.20f, 0.85f, 0.30f, 1.0f },
+                glm::vec4{ 0.20f, 0.45f, 1.00f, 1.0f },
+                glm::vec4{ 1.00f, 0.80f, 0.20f, 1.0f }
+            };
             glm::vec4 ibl_debug_params{ 0.0f, 0.0f, 0.0f, 0.0f };
+            glm::mat4 view_matrix{ 1.0f };
         };
 
         struct VulkanGpuPointLight {
@@ -125,7 +139,7 @@ namespace NexAur {
 
     bool VulkanFrameLightingResource::update(
         const VulkanDrawList& draw_list,
-        const glm::mat4& shadow_light_view_projection,
+        const RenderShadowCascadeFrame& shadow_frame,
         float shadow_map_size,
         const RenderSettings& render_settings) {
         if (!m_ready) {
@@ -136,7 +150,12 @@ namespace NexAur {
 
         VulkanGpuFrameGlobals frame_globals;
         frame_globals.view_projection = draw_list.view.view_projection_matrix;
-        frame_globals.shadow_light_view_projection = shadow_light_view_projection;
+        frame_globals.view_matrix = draw_list.view.view_matrix;
+        for (uint32_t index = 0; index < kMaxRenderShadowCascadeCount; ++index) {
+            frame_globals.shadow_light_view_projections[index] = shadow_frame.light_view_projections[index];
+            frame_globals.shadow_cascade_splits[index] = shadow_frame.split_depths[index];
+            frame_globals.shadow_cascade_colors[index] = shadow_frame.debug_colors[index];
+        }
         frame_globals.camera_position_environment_intensity = glm::vec4(
             draw_list.view.camera_position,
             draw_list.environment_intensity);
@@ -155,6 +174,10 @@ namespace NexAur {
             std::max(0.0f, draw_list.environment_intensity) * kFallbackAmbientIntensity);
         const RenderShadowSettings& shadow_settings = render_settings.shadow;
         const bool shadow_enabled = draw_list.directional_light.cast_shadow && shadow_settings.enabled;
+        const uint32_t cascade_count = std::clamp(
+            shadow_frame.cascade_count,
+            1u,
+            kMaxRenderShadowCascadeCount);
         frame_globals.shadow_params = glm::vec4(
             shadow_enabled ? 1.0f : 0.0f,
             sanitizeUnit(shadow_settings.strength, draw_list.directional_light.shadow_strength),
@@ -165,6 +188,11 @@ namespace NexAur {
             sanitizeMin(shadow_settings.filter_radius, 1.0f, 0.0f),
             sanitizeMin(shadow_settings.normal_bias, 0.0f, 0.0f),
             sanitizeMin(shadow_settings.slope_bias, 0.001f, 0.0f));
+        frame_globals.shadow_cascade_params = glm::vec4(
+            shadow_enabled && shadow_frame.cascades_enabled ? 1.0f : 0.0f,
+            static_cast<float>(cascade_count),
+            shadow_frame.debug_overlay ? 1.0f : 0.0f,
+            0.0f);
         const uint32_t prefilter_mip_count =
             draw_list.environment && draw_list.environment->isReady()
                 ? draw_list.environment->getPrefilterMipCount()

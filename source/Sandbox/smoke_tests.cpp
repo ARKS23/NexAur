@@ -874,6 +874,10 @@ int runRenderSettingsSmoke() {
     settings.shadow.distance = 64.0f;
     settings.shadow.map_resolution = 4096u;
     settings.shadow.stabilize = false;
+    settings.shadow.cascades_enabled = true;
+    settings.shadow.cascade_count = 4u;
+    settings.shadow.cascade_split_lambda = 0.82f;
+    settings.shadow.cascade_debug_overlay = true;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -910,7 +914,11 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_shadow.filter_radius, 2.0f) &&
         nearlyEqual(first_shadow.distance, 64.0f) &&
         first_shadow.map_resolution == 4096u &&
-        !first_shadow.stabilize,
+        !first_shadow.stabilize &&
+        first_shadow.cascades_enabled &&
+        first_shadow.cascade_count == 4u &&
+        nearlyEqual(first_shadow.cascade_split_lambda, 0.82f) &&
+        first_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: shadow settings did not reach the read packet.");
 
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::ACES;
@@ -931,6 +939,10 @@ int runRenderSettingsSmoke() {
     settings.shadow.distance = 35.0f;
     settings.shadow.map_resolution = 2048u;
     settings.shadow.stabilize = true;
+    settings.shadow.cascades_enabled = false;
+    settings.shadow.cascade_count = 1u;
+    settings.shadow.cascade_split_lambda = 0.65f;
+    settings.shadow.cascade_debug_overlay = false;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -967,7 +979,11 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_shadow.filter_radius, 1.0f) &&
         nearlyEqual(second_shadow.distance, 35.0f) &&
         second_shadow.map_resolution == 2048u &&
-        second_shadow.stabilize,
+        second_shadow.stabilize &&
+        !second_shadow.cascades_enabled &&
+        second_shadow.cascade_count == 1u &&
+        nearlyEqual(second_shadow.cascade_split_lambda, 0.65f) &&
+        !second_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: updated shadow settings did not reach the read packet.");
 
     if (!success) {
