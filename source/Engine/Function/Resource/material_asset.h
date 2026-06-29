@@ -39,6 +39,7 @@ namespace NexAur {
         MaterialMetallicRoughnessTextureMode getMetallicRoughnessMode() const { return m_metallic_roughness_mode; }
         MaterialAlphaMode getAlphaMode() const { return m_alpha_mode; }
         float getAlphaCutoff() const { return m_alpha_cutoff; }
+        bool isDoubleSided() const { return m_double_sided; }
 
         bool hasBaseColorTexture() const { return m_base_color_texture.isValid(); }
         bool hasNormalTexture() const { return m_normal_texture.isValid(); }
@@ -72,5 +73,6 @@ namespace NexAur {
             MaterialMetallicRoughnessTextureMode::Separate;
         MaterialAlphaMode m_alpha_mode = MaterialAlphaMode::Opaque;
         float m_alpha_cutoff = 0.5f;
+        bool m_double_sided = false;
     };
 } // namespace NexAur

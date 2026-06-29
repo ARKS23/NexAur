@@ -2,6 +2,7 @@
 #include "Function/Resource/Import/gltf/tiny_gltf_importer.h"
 
 #include "Function/Resource/model.h"
+#include "Function/Resource/texture_loader.h"
 
 #define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_STB_IMAGE
@@ -9,6 +10,7 @@
 #include <tiny_gltf.h>
 
 #include <cctype>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -23,24 +25,31 @@ namespace NexAur {
             return value;
         }
 
-        bool loadMetadataImage(
+        bool loadImageBytes(
             tinygltf::Image* image,
             const int,
             std::string* err,
             std::string*,
             int,
             int,
-            const unsigned char*,
-            int,
+            const unsigned char* bytes,
+            int size,
             void*) {
             if (!image) {
                 if (err) {
-                    *err += "TinyGltf metadata image loader received a null image.\n";
+                    *err += "TinyGltf image loader received a null image.\n";
                 }
                 return false;
             }
 
-            image->image.clear();
+            if (!bytes || size <= 0) {
+                if (err) {
+                    *err += "TinyGltf image loader received empty image bytes.\n";
+                }
+                return false;
+            }
+
+            image->image.assign(bytes, bytes + size);
             image->as_is = true;
             if (image->bits < 0) {
                 image->bits = 8;
@@ -49,6 +58,26 @@ namespace NexAur {
                 image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
             }
             return true;
+        }
+
+        std::string normalizePathString(const std::filesystem::path& path) {
+            return path.lexically_normal().string();
+        }
+
+        bool isDataUri(const std::string& uri) {
+            return uri.rfind("data:", 0) == 0;
+        }
+
+        std::string resolveImagePath(const std::filesystem::path& model_path, const std::string& uri) {
+            const std::filesystem::path texture_path(uri);
+            if (texture_path.empty()) {
+                return "";
+            }
+            if (texture_path.is_absolute() || !model_path.has_parent_path()) {
+                return normalizePathString(texture_path);
+            }
+
+            return normalizePathString(model_path.parent_path() / texture_path);
         }
 
         void appendMessage(std::vector<std::string>& messages, const std::string& message) {
@@ -432,7 +461,88 @@ namespace NexAur {
             return MaterialAlphaMode::Opaque;
         }
 
-        MaterialImportData buildMaterial(const tinygltf::Model& model, int material_index) {
+        struct ImportedTextureSlot {
+            std::string path;
+            std::shared_ptr<TextureAsset> texture;
+        };
+
+        std::string makeTextureDebugName(
+            const std::filesystem::path& model_path,
+            const tinygltf::Image& image,
+            int image_index,
+            const std::string& slot_label) {
+            std::string name = model_path.filename().string();
+            if (name.empty()) {
+                name = "TinyGltfModel";
+            }
+
+            name += ".";
+            name += slot_label;
+            name += ".";
+            name += image.name.empty() ? std::to_string(image_index) : image.name;
+            return name;
+        }
+
+        bool resolveTextureSlot(
+            const tinygltf::Model& model,
+            int texture_index,
+            const std::filesystem::path& model_path,
+            TextureColorSpace color_space,
+            const std::string& slot_label,
+            ImportedTextureSlot& output,
+            std::vector<std::string>& errors) {
+            if (texture_index < 0) {
+                return true;
+            }
+            if (texture_index >= static_cast<int>(model.textures.size())) {
+                errors.push_back(slot_label + " texture index is out of range.");
+                return false;
+            }
+
+            const tinygltf::Texture& texture = model.textures[texture_index];
+            if (texture.source < 0 || texture.source >= static_cast<int>(model.images.size())) {
+                errors.push_back(slot_label + " texture references an invalid image source.");
+                return false;
+            }
+
+            const tinygltf::Image& image = model.images[texture.source];
+            if (!image.uri.empty() && !isDataUri(image.uri)) {
+                output.path = resolveImagePath(model_path, image.uri);
+                return !output.path.empty();
+            }
+
+            if (image.image.empty()) {
+                errors.push_back(slot_label + " texture has no file path or embedded image bytes.");
+                return false;
+            }
+
+            const std::string debug_name = makeTextureDebugName(model_path, image, texture.source, slot_label);
+            output.texture = TextureLoader::load2DFromMemory(
+                image.image.data(),
+                image.image.size(),
+                color_space,
+                debug_name);
+            if (!output.texture || !output.texture->isLoaded()) {
+                errors.push_back(slot_label + " texture failed to decode embedded image bytes.");
+                return false;
+            }
+
+            return true;
+        }
+
+        void applyTextureSlot(
+            const ImportedTextureSlot& source,
+            std::string& path,
+            std::shared_ptr<TextureAsset>& texture) {
+            path = source.path;
+            texture = source.texture;
+        }
+
+        MaterialImportData buildMaterial(
+            const tinygltf::Model& model,
+            const std::filesystem::path& model_path,
+            int material_index,
+            std::vector<std::string>& errors) {
             MaterialImportData material;
             if (material_index < 0 || material_index >= static_cast<int>(model.materials.size())) {
                 material.name = "TinyGltfDefaultMaterial";
@@ -442,19 +552,93 @@ namespace NexAur {
             const tinygltf::Material& gltf_material = model.materials[material_index];
             material.name = gltf_material.name.empty() ? "TinyGltfMaterial" : gltf_material.name;
 
-            const std::vector<double>& base_color = gltf_material.pbrMetallicRoughness.baseColorFactor;
-            if (base_color.size() >= 4) {
+            const std::vector<double>& base_color_factor = gltf_material.pbrMetallicRoughness.baseColorFactor;
+            if (base_color_factor.size() >= 4) {
                 material.base_color_factor = {
-                    static_cast<float>(base_color[0]),
-                    static_cast<float>(base_color[1]),
-                    static_cast<float>(base_color[2]),
-                    static_cast<float>(base_color[3])
+                    static_cast<float>(base_color_factor[0]),
+                    static_cast<float>(base_color_factor[1]),
+                    static_cast<float>(base_color_factor[2]),
+                    static_cast<float>(base_color_factor[3])
                 };
             }
             material.metallic_factor = static_cast<float>(gltf_material.pbrMetallicRoughness.metallicFactor);
             material.roughness_factor = static_cast<float>(gltf_material.pbrMetallicRoughness.roughnessFactor);
+
+            const std::vector<double>& emissive = gltf_material.emissiveFactor;
+            if (emissive.size() >= 3) {
+                material.emissive_factor = {
+                    static_cast<float>(emissive[0]),
+                    static_cast<float>(emissive[1]),
+                    static_cast<float>(emissive[2])
+                };
+            }
+            material.normal_scale = static_cast<float>(gltf_material.normalTexture.scale);
+            material.occlusion_strength = static_cast<float>(gltf_material.occlusionTexture.strength);
             material.alpha_mode = parseAlphaMode(gltf_material.alphaMode);
             material.alpha_cutoff = static_cast<float>(gltf_material.alphaCutoff);
+            material.double_sided = gltf_material.doubleSided;
+
+            ImportedTextureSlot base_color_texture;
+            ImportedTextureSlot metallic_roughness;
+            ImportedTextureSlot normal;
+            ImportedTextureSlot occlusion;
+            ImportedTextureSlot emissive_texture;
+
+            if (!resolveTextureSlot(
+                    model,
+                    gltf_material.pbrMetallicRoughness.baseColorTexture.index,
+                    model_path,
+                    TextureColorSpace::SRGB,
+                    "BaseColor",
+                    base_color_texture,
+                    errors) ||
+                !resolveTextureSlot(
+                    model,
+                    gltf_material.pbrMetallicRoughness.metallicRoughnessTexture.index,
+                    model_path,
+                    TextureColorSpace::Linear,
+                    "MetallicRoughness",
+                    metallic_roughness,
+                    errors) ||
+                !resolveTextureSlot(
+                    model,
+                    gltf_material.normalTexture.index,
+                    model_path,
+                    TextureColorSpace::Linear,
+                    "Normal",
+                    normal,
+                    errors) ||
+                !resolveTextureSlot(
+                    model,
+                    gltf_material.occlusionTexture.index,
+                    model_path,
+                    TextureColorSpace::Linear,
+                    "Occlusion",
+                    occlusion,
+                    errors) ||
+                !resolveTextureSlot(
+                    model,
+                    gltf_material.emissiveTexture.index,
+                    model_path,
+                    TextureColorSpace::SRGB,
+                    "Emissive",
+                    emissive_texture,
+                    errors)) {
+                return material;
+            }
+
+            applyTextureSlot(base_color_texture, material.base_color_texture_path, material.base_color_texture_asset);
+            applyTextureSlot(
+                metallic_roughness,
+                material.metallic_roughness_texture_path,
+                material.metallic_roughness_texture_asset);
+            if (!material.metallic_roughness_texture_path.empty() || material.metallic_roughness_texture_asset) {
+                material.metallic_roughness_mode = MaterialMetallicRoughnessTextureMode::PackedGltf;
+            }
+            applyTextureSlot(normal, material.normal_texture_path, material.normal_texture_asset);
+            applyTextureSlot(occlusion, material.ao_texture_path, material.ao_texture_asset);
+            applyTextureSlot(emissive_texture, material.emissive_texture_path, material.emissive_texture_asset);
+
             return material;
         }
 
@@ -556,7 +740,11 @@ namespace NexAur {
                 generateTangents(vertices, indices);
             }
 
-            MaterialImportData material = buildMaterial(model, primitive.material);
+            const size_t error_count_before_material = result.errors.size();
+            MaterialImportData material = buildMaterial(model, request.path, primitive.material, result.errors);
+            if (result.errors.size() != error_count_before_material) {
+                return false;
+            }
             if (!gltf_mesh.name.empty() && material.name == "TinyGltfDefaultMaterial") {
                 material.name = gltf_mesh.name + ".Material";
             }
@@ -646,7 +834,7 @@ namespace NexAur {
 
         tinygltf::Model model;
         tinygltf::TinyGLTF loader;
-        loader.SetImageLoader(loadMetadataImage, nullptr);
+        loader.SetImageLoader(loadImageBytes, nullptr);
 
         std::string warning;
         std::string error;

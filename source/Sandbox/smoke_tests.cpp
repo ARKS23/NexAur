@@ -26,6 +26,7 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
+#include "Function/Resource/texture_asset.h"
 #include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
@@ -104,6 +105,42 @@ namespace {
         while (output.size() % 4u != 0u) {
             output.push_back(value);
         }
+    }
+
+    std::vector<unsigned char> decodeBase64(std::string_view text) {
+        constexpr std::string_view kAlphabet =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+        std::vector<unsigned char> output;
+        int value = 0;
+        int bits = -8;
+        for (unsigned char character : text) {
+            if (character == '=') {
+                break;
+            }
+
+            const size_t digit = kAlphabet.find(static_cast<char>(character));
+            if (digit == std::string_view::npos) {
+                continue;
+            }
+
+            value = (value << 6) + static_cast<int>(digit);
+            bits += 6;
+            if (bits >= 0) {
+                output.push_back(static_cast<unsigned char>((value >> bits) & 0xff));
+                bits -= 8;
+            }
+        }
+
+        return output;
+    }
+
+    constexpr std::string_view tinyPngBase64() {
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+    }
+
+    std::vector<unsigned char> tinyPngBytes() {
+        return decodeBase64(tinyPngBase64());
     }
 
     struct GltfSmokeVertex {
@@ -221,6 +258,192 @@ namespace {
         writeU32LE(output, 0x004E4942u);
         output.write(reinterpret_cast<const char*>(binary.data()), static_cast<std::streamsize>(binary.size()));
         return output.good();
+    }
+
+    bool writeTinyGltfMaterialSmokeGlb(const std::filesystem::path& path) {
+        if (path.has_parent_path()) {
+            std::filesystem::create_directories(path.parent_path());
+        }
+
+        const std::array<GltfSmokeVertex, 4> vertices = { {
+            { -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+            { 0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f },
+            { 0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f },
+            { -0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f },
+        } };
+        const std::array<uint16_t, 6> indices = { { 0, 1, 2, 2, 3, 0 } };
+        const std::vector<unsigned char> png = tinyPngBytes();
+        if (png.empty()) {
+            return false;
+        }
+
+        std::vector<unsigned char> binary;
+        binary.reserve(vertices.size() * sizeof(GltfSmokeVertex) + indices.size() * sizeof(uint16_t) + png.size() * 5);
+        for (const GltfSmokeVertex& vertex : vertices) {
+            appendBinary(binary, vertex);
+        }
+        const size_t index_buffer_offset = binary.size();
+        for (uint16_t index : indices) {
+            appendBinary(binary, index);
+        }
+        padTo4(binary, 0);
+
+        std::array<size_t, 5> image_offsets{};
+        std::array<size_t, 5> image_sizes{};
+        for (size_t image_index = 0; image_index < image_offsets.size(); ++image_index) {
+            image_offsets[image_index] = binary.size();
+            image_sizes[image_index] = png.size();
+            binary.insert(binary.end(), png.begin(), png.end());
+            padTo4(binary, 0);
+        }
+
+        const size_t vertex_buffer_size = vertices.size() * sizeof(GltfSmokeVertex);
+        const size_t index_buffer_size = indices.size() * sizeof(uint16_t);
+
+        std::ostringstream json_stream;
+        json_stream
+            << "{\"asset\":{\"version\":\"2.0\",\"generator\":\"NexAur TinyGltfMaterialSmoke\"},"
+            << "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+            << "\"nodes\":[{\"name\":\"TinyGltfMaterialQuad\",\"mesh\":0}],"
+            << "\"samplers\":[{\"magFilter\":9729,\"minFilter\":9729,\"wrapS\":10497,\"wrapT\":10497}],"
+            << "\"images\":["
+            << "{\"name\":\"BaseColorEmbedded\",\"bufferView\":2,\"mimeType\":\"image/png\"},"
+            << "{\"name\":\"MetallicRoughnessEmbedded\",\"bufferView\":3,\"mimeType\":\"image/png\"},"
+            << "{\"name\":\"NormalEmbedded\",\"bufferView\":4,\"mimeType\":\"image/png\"},"
+            << "{\"name\":\"OcclusionEmbedded\",\"bufferView\":5,\"mimeType\":\"image/png\"},"
+            << "{\"name\":\"EmissiveEmbedded\",\"bufferView\":6,\"mimeType\":\"image/png\"}],"
+            << "\"textures\":["
+            << "{\"sampler\":0,\"source\":0},{\"sampler\":0,\"source\":1},{\"sampler\":0,\"source\":2},"
+            << "{\"sampler\":0,\"source\":3},{\"sampler\":0,\"source\":4}],"
+            << "\"materials\":[{\"name\":\"TinyGltfMaterialSmoke\",\"doubleSided\":true,"
+            << "\"alphaMode\":\"MASK\",\"alphaCutoff\":0.42,"
+            << "\"emissiveFactor\":[0.1,0.2,0.3],\"emissiveTexture\":{\"index\":4},"
+            << "\"normalTexture\":{\"index\":2,\"scale\":0.5},"
+            << "\"occlusionTexture\":{\"index\":3,\"strength\":0.25},"
+            << "\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.2,0.4,0.6,0.8],"
+            << "\"metallicFactor\":0.7,\"roughnessFactor\":0.3,"
+            << "\"baseColorTexture\":{\"index\":0},\"metallicRoughnessTexture\":{\"index\":1}}}],"
+            << "\"meshes\":[{\"name\":\"TinyGltfMaterialQuad\",\"primitives\":[{\"attributes\":"
+            << "{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3,\"material\":0}]}],"
+            << "\"buffers\":[{\"byteLength\":" << binary.size() << "}],"
+            << "\"bufferViews\":["
+            << "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" << vertex_buffer_size
+            << ",\"byteStride\":" << sizeof(GltfSmokeVertex) << ",\"target\":34962},"
+            << "{\"buffer\":0,\"byteOffset\":" << index_buffer_offset
+            << ",\"byteLength\":" << index_buffer_size << ",\"target\":34963}";
+
+        for (size_t image_index = 0; image_index < image_offsets.size(); ++image_index) {
+            json_stream
+                << ",{\"buffer\":0,\"byteOffset\":" << image_offsets[image_index]
+                << ",\"byteLength\":" << image_sizes[image_index] << "}";
+        }
+
+        json_stream
+            << "],\"accessors\":["
+            << "{\"bufferView\":0,\"byteOffset\":0,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC3\",\"min\":[-0.5,-0.5,0.0],\"max\":[0.5,0.5,0.0]},"
+            << "{\"bufferView\":0,\"byteOffset\":12,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC3\"},"
+            << "{\"bufferView\":0,\"byteOffset\":24,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC2\"},"
+            << "{\"bufferView\":1,\"byteOffset\":0,\"componentType\":5123,\"count\":" << indices.size()
+            << ",\"type\":\"SCALAR\"}]}";
+
+        const std::string json_string = json_stream.str();
+        std::vector<unsigned char> json(json_string.begin(), json_string.end());
+        padTo4(json, static_cast<unsigned char>(' '));
+        padTo4(binary, 0);
+
+        const uint32_t total_length = static_cast<uint32_t>(12 + 8 + json.size() + 8 + binary.size());
+        std::ofstream output(path, std::ios::binary);
+        if (!output) {
+            return false;
+        }
+
+        writeU32LE(output, 0x46546C67u);
+        writeU32LE(output, 2u);
+        writeU32LE(output, total_length);
+        writeU32LE(output, static_cast<uint32_t>(json.size()));
+        writeU32LE(output, 0x4E4F534Au);
+        output.write(reinterpret_cast<const char*>(json.data()), static_cast<std::streamsize>(json.size()));
+        writeU32LE(output, static_cast<uint32_t>(binary.size()));
+        writeU32LE(output, 0x004E4942u);
+        output.write(reinterpret_cast<const char*>(binary.data()), static_cast<std::streamsize>(binary.size()));
+        return output.good();
+    }
+
+    bool writeTinyGltfDataUriMaterialSmokeGltf(
+        const std::filesystem::path& gltf_path,
+        const std::filesystem::path& bin_path) {
+        if (gltf_path.has_parent_path()) {
+            std::filesystem::create_directories(gltf_path.parent_path());
+        }
+        if (bin_path.has_parent_path()) {
+            std::filesystem::create_directories(bin_path.parent_path());
+        }
+
+        const std::array<GltfSmokeVertex, 4> vertices = { {
+            { -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+            { 0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f },
+            { 0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f },
+            { -0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f },
+        } };
+        const std::array<uint16_t, 6> indices = { { 0, 1, 2, 2, 3, 0 } };
+
+        std::vector<unsigned char> binary;
+        binary.reserve(vertices.size() * sizeof(GltfSmokeVertex) + indices.size() * sizeof(uint16_t));
+        for (const GltfSmokeVertex& vertex : vertices) {
+            appendBinary(binary, vertex);
+        }
+        const size_t index_buffer_offset = binary.size();
+        for (uint16_t index : indices) {
+            appendBinary(binary, index);
+        }
+
+        std::ofstream bin_output(bin_path, std::ios::binary);
+        if (!bin_output) {
+            return false;
+        }
+        bin_output.write(reinterpret_cast<const char*>(binary.data()), static_cast<std::streamsize>(binary.size()));
+        if (!bin_output.good()) {
+            return false;
+        }
+
+        std::ostringstream json_stream;
+        json_stream
+            << "{\"asset\":{\"version\":\"2.0\",\"generator\":\"NexAur TinyGltfDataUriMaterialSmoke\"},"
+            << "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+            << "\"nodes\":[{\"name\":\"TinyGltfDataUriQuad\",\"mesh\":0}],"
+            << "\"images\":[{\"name\":\"BaseColorDataUri\",\"uri\":\"data:image/png;base64,"
+            << tinyPngBase64() << "\"}],"
+            << "\"textures\":[{\"source\":0}],"
+            << "\"materials\":[{\"name\":\"TinyGltfDataUriMaterial\",\"pbrMetallicRoughness\":"
+            << "{\"baseColorFactor\":[1.0,1.0,1.0,1.0],\"baseColorTexture\":{\"index\":0}}}],"
+            << "\"meshes\":[{\"name\":\"TinyGltfDataUriQuad\",\"primitives\":[{\"attributes\":"
+            << "{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3,\"material\":0}]}],"
+            << "\"buffers\":[{\"uri\":\"" << bin_path.filename().string() << "\",\"byteLength\":" << binary.size() << "}],"
+            << "\"bufferViews\":["
+            << "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" << vertices.size() * sizeof(GltfSmokeVertex)
+            << ",\"byteStride\":" << sizeof(GltfSmokeVertex) << ",\"target\":34962},"
+            << "{\"buffer\":0,\"byteOffset\":" << index_buffer_offset
+            << ",\"byteLength\":" << indices.size() * sizeof(uint16_t) << ",\"target\":34963}],"
+            << "\"accessors\":["
+            << "{\"bufferView\":0,\"byteOffset\":0,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC3\",\"min\":[-0.5,-0.5,0.0],\"max\":[0.5,0.5,0.0]},"
+            << "{\"bufferView\":0,\"byteOffset\":12,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC3\"},"
+            << "{\"bufferView\":0,\"byteOffset\":24,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC2\"},"
+            << "{\"bufferView\":1,\"byteOffset\":0,\"componentType\":5123,\"count\":" << indices.size()
+            << ",\"type\":\"SCALAR\"}]}";
+
+        std::ofstream gltf_output(gltf_path, std::ios::binary);
+        if (!gltf_output) {
+            return false;
+        }
+        const std::string json = json_stream.str();
+        gltf_output.write(json.data(), static_cast<std::streamsize>(json.size()));
+        return gltf_output.good();
     }
 
     bool writeAudioSmokeWav(const std::filesystem::path& path) {
@@ -935,6 +1158,187 @@ int runTinyGltfGeometrySmoke() {
     return 0;
 }
 
+int runTinyGltfMaterialSmoke() {
+    const std::filesystem::path glb_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_material_smoke.glb";
+    const std::filesystem::path data_uri_gltf_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_material_data_uri_smoke.gltf";
+    const std::filesystem::path data_uri_bin_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_material_data_uri_smoke.bin";
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto expectTextureAsset = [&](
+        NexAur::AssetManager& asset_manager,
+        NexAur::AssetHandle handle,
+        NexAur::TextureColorSpace color_space,
+        const std::string& label) {
+        const NexAur::AssetMetadata* metadata = asset_manager.getMetadata(handle);
+        expect(metadata != nullptr, label + " metadata should exist.");
+        if (metadata) {
+            expect(metadata->type == NexAur::AssetType::Texture2D, label + " should register as Texture2D.");
+            expect(metadata->texture_color_space == color_space, label + " should register with expected color space.");
+        }
+
+        std::shared_ptr<NexAur::TextureAsset> texture = asset_manager.loadTextureCPU(handle);
+        expect(texture != nullptr && texture->isLoaded(), label + " CPU texture should be loaded.");
+        if (texture) {
+            expect(texture->getWidth() == 1 && texture->getHeight() == 1, label + " should decode the embedded 1x1 PNG.");
+            expect(texture->getColorSpace() == color_space, label + " CPU texture should keep expected color space.");
+        }
+    };
+
+    expect(writeTinyGltfMaterialSmokeGlb(glb_path), "TinyGltfMaterial smoke failed: could not write material GLB.");
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+
+    NexAur::ModelImportRequest request;
+    request.path = glb_path;
+    request.mode = NexAur::ModelImportMode::FullModel;
+    request.tangent_policy = NexAur::TangentGenerationPolicy::GenerateIfMissing;
+
+    const NexAur::ModelImportResult import_result =
+        asset_manager.getModelImporterRegistry().importModel(request);
+    expect(import_result.success, "TinyGltfMaterial smoke failed: embedded material GLB did not import.");
+    expect(import_result.model && import_result.model->isLoaded(), "TinyGltfMaterial smoke failed: CPU model missing.");
+    expect(import_result.metadata.texture_count == 5, "TinyGltfMaterial smoke should report five glTF textures.");
+    expect(import_result.metadata.image_count == 5, "TinyGltfMaterial smoke should report five glTF images.");
+
+    if (import_result.model && import_result.model->isLoaded() && !import_result.model->getMeshes().empty()) {
+        const NexAur::MaterialImportData& material =
+            import_result.model->getMeshes().front().getMaterialImportData();
+
+        expect(material.name == "TinyGltfMaterialSmoke", "TinyGltfMaterial smoke material name should round-trip.");
+        expect(nearlyEqual(material.base_color_factor.x, 0.2f) &&
+               nearlyEqual(material.base_color_factor.y, 0.4f) &&
+               nearlyEqual(material.base_color_factor.z, 0.6f) &&
+               nearlyEqual(material.base_color_factor.w, 0.8f),
+            "TinyGltfMaterial smoke base color factor should round-trip.");
+        expect(nearlyEqual(material.metallic_factor, 0.7f), "TinyGltfMaterial smoke metallic factor should round-trip.");
+        expect(nearlyEqual(material.roughness_factor, 0.3f), "TinyGltfMaterial smoke roughness factor should round-trip.");
+        expect(nearlyEqualVec3(material.emissive_factor, glm::vec3{ 0.1f, 0.2f, 0.3f }), "TinyGltfMaterial smoke emissive factor should round-trip.");
+        expect(nearlyEqual(material.normal_scale, 0.5f), "TinyGltfMaterial smoke normal scale should round-trip.");
+        expect(nearlyEqual(material.occlusion_strength, 0.25f), "TinyGltfMaterial smoke AO strength should round-trip.");
+        expect(material.alpha_mode == NexAur::MaterialAlphaMode::Mask, "TinyGltfMaterial smoke alpha mode should be MASK.");
+        expect(nearlyEqual(material.alpha_cutoff, 0.42f), "TinyGltfMaterial smoke alpha cutoff should round-trip.");
+        expect(material.double_sided, "TinyGltfMaterial smoke doubleSided should round-trip.");
+        expect(material.metallic_roughness_mode == NexAur::MaterialMetallicRoughnessTextureMode::PackedGltf,
+            "TinyGltfMaterial smoke should use packed glTF metallic-roughness.");
+
+        expect(material.base_color_texture_path.empty(), "Embedded base color texture should not use a file path.");
+        expect(material.normal_texture_path.empty(), "Embedded normal texture should not use a file path.");
+        expect(material.metallic_roughness_texture_path.empty(), "Embedded metallic-roughness texture should not use a file path.");
+        expect(material.ao_texture_path.empty(), "Embedded AO texture should not use a file path.");
+        expect(material.emissive_texture_path.empty(), "Embedded emissive texture should not use a file path.");
+        expect(material.base_color_texture_asset && material.base_color_texture_asset->isLoaded(), "Embedded base color texture asset should be decoded.");
+        expect(material.normal_texture_asset && material.normal_texture_asset->isLoaded(), "Embedded normal texture asset should be decoded.");
+        expect(material.metallic_roughness_texture_asset && material.metallic_roughness_texture_asset->isLoaded(), "Embedded MR texture asset should be decoded.");
+        expect(material.ao_texture_asset && material.ao_texture_asset->isLoaded(), "Embedded AO texture asset should be decoded.");
+        expect(material.emissive_texture_asset && material.emissive_texture_asset->isLoaded(), "Embedded emissive texture asset should be decoded.");
+
+        std::shared_ptr<NexAur::MaterialAsset> material_asset =
+            asset_manager.createMaterialFromImportData(material);
+        expect(material_asset != nullptr, "TinyGltfMaterial smoke material asset should be created.");
+        if (material_asset) {
+            expect(material_asset->usesPackedMetallicRoughness(), "TinyGltfMaterial smoke material asset should use packed MR.");
+            expect(material_asset->isDoubleSided(), "TinyGltfMaterial smoke material asset should keep doubleSided.");
+
+            expectTextureAsset(asset_manager, material_asset->getBaseColorTexture(), NexAur::TextureColorSpace::SRGB, "Embedded base color texture");
+            expectTextureAsset(asset_manager, material_asset->getMetallicRoughnessTexture(), NexAur::TextureColorSpace::Linear, "Embedded metallic-roughness texture");
+            expectTextureAsset(asset_manager, material_asset->getNormalTexture(), NexAur::TextureColorSpace::Linear, "Embedded normal texture");
+            expectTextureAsset(asset_manager, material_asset->getAOTexture(), NexAur::TextureColorSpace::Linear, "Embedded AO texture");
+            expectTextureAsset(asset_manager, material_asset->getEmissiveTexture(), NexAur::TextureColorSpace::SRGB, "Embedded emissive texture");
+        }
+    }
+
+    expect(
+        writeTinyGltfDataUriMaterialSmokeGltf(data_uri_gltf_path, data_uri_bin_path),
+        "TinyGltfMaterial smoke failed: could not write Data URI material glTF.");
+
+    NexAur::ModelImportRequest data_uri_request;
+    data_uri_request.path = data_uri_gltf_path;
+    data_uri_request.mode = NexAur::ModelImportMode::FullModel;
+
+    const NexAur::ModelImportResult data_uri_result =
+        asset_manager.getModelImporterRegistry().importModel(data_uri_request);
+    expect(data_uri_result.success, "TinyGltfMaterial smoke failed: Data URI material glTF did not import.");
+    if (data_uri_result.model && !data_uri_result.model->getMeshes().empty()) {
+        const NexAur::MaterialImportData& data_uri_material =
+            data_uri_result.model->getMeshes().front().getMaterialImportData();
+        expect(data_uri_material.base_color_texture_path.empty(), "Data URI base color should not use a file path.");
+        expect(
+            data_uri_material.base_color_texture_asset && data_uri_material.base_color_texture_asset->isLoaded(),
+            "Data URI base color should decode into a CPU texture asset.");
+
+        std::shared_ptr<NexAur::MaterialAsset> data_uri_material_asset =
+            asset_manager.createMaterialFromImportData(data_uri_material);
+        expect(data_uri_material_asset != nullptr, "Data URI material asset should be created.");
+        if (data_uri_material_asset) {
+            expectTextureAsset(
+                asset_manager,
+                data_uri_material_asset->getBaseColorTexture(),
+                NexAur::TextureColorSpace::SRGB,
+                "Data URI base color texture");
+        }
+    }
+
+    const std::filesystem::path damaged_helmet_path =
+        std::filesystem::path(NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"));
+    if (std::filesystem::exists(damaged_helmet_path)) {
+        NexAur::ModelImportRequest helmet_request;
+        helmet_request.path = damaged_helmet_path;
+        helmet_request.mode = NexAur::ModelImportMode::FullModel;
+
+        const NexAur::ModelImportResult helmet_result =
+            asset_manager.getModelImporterRegistry().importModel(helmet_request);
+        expect(helmet_result.success, "TinyGltfMaterial smoke failed: DamagedHelmet tinygltf material import failed.");
+        if (helmet_result.model && !helmet_result.model->getMeshes().empty()) {
+            const NexAur::MaterialImportData& helmet_material =
+                helmet_result.model->getMeshes().front().getMaterialImportData();
+            expect(std::filesystem::path(helmet_material.base_color_texture_path).filename().string() == "Default_albedo.jpg",
+                "DamagedHelmet tinygltf base color texture path should resolve.");
+            expect(std::filesystem::path(helmet_material.normal_texture_path).filename().string() == "Default_normal.jpg",
+                "DamagedHelmet tinygltf normal texture path should resolve.");
+            expect(std::filesystem::path(helmet_material.metallic_roughness_texture_path).filename().string() == "Default_metalRoughness.jpg",
+                "DamagedHelmet tinygltf metallic-roughness texture path should resolve.");
+            expect(std::filesystem::path(helmet_material.ao_texture_path).filename().string() == "Default_AO.jpg",
+                "DamagedHelmet tinygltf AO texture path should resolve.");
+            expect(std::filesystem::path(helmet_material.emissive_texture_path).filename().string() == "Default_emissive.jpg",
+                "DamagedHelmet tinygltf emissive texture path should resolve.");
+            expect(helmet_material.metallic_roughness_mode == NexAur::MaterialMetallicRoughnessTextureMode::PackedGltf,
+                "DamagedHelmet tinygltf material should use packed MR.");
+            expect(nearlyEqual(helmet_material.metallic_factor, 1.0f), "DamagedHelmet tinygltf metallic factor should follow glTF default.");
+            expect(nearlyEqual(helmet_material.roughness_factor, 1.0f), "DamagedHelmet tinygltf roughness factor should follow glTF default.");
+        }
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(glb_path, remove_error);
+    std::filesystem::remove(data_uri_gltf_path, remove_error);
+    std::filesystem::remove(data_uri_bin_path, remove_error);
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "TinyGltfMaterial smoke passed." << std::endl;
+    engine.shutdownEngine();
+    return 0;
+}
+
 int runGameplaySystemsSmoke() {
     auto fake_input = std::make_shared<FakeInputService>();
     NexAur::InputActionSystem input_actions(fake_input);
@@ -1587,6 +1991,7 @@ namespace {
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
         { "--tiny-gltf-metadata-smoke", "TinyGltfMetadata", runTinyGltfMetadataSmoke },
         { "--tiny-gltf-geometry-smoke", "TinyGltfGeometry", runTinyGltfGeometrySmoke },
+        { "--tiny-gltf-material-smoke", "TinyGltfMaterial", runTinyGltfMaterialSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },

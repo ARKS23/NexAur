@@ -27,5 +27,6 @@ namespace NexAur {
         , m_occlusion_strength(import_data.occlusion_strength)
         , m_metallic_roughness_mode(import_data.metallic_roughness_mode)
         , m_alpha_mode(import_data.alpha_mode)
-        , m_alpha_cutoff(import_data.alpha_cutoff) {}
+        , m_alpha_cutoff(import_data.alpha_cutoff)
+        , m_double_sided(import_data.double_sided) {}
 } // namespace NexAur

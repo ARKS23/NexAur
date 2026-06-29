@@ -133,6 +133,24 @@ namespace NexAur {
         return AssetHandle(new_uuid);
     }
 
+    AssetHandle AssetManager::registerRuntimeTexture(const std::shared_ptr<TextureAsset>& texture, const std::string& debug_name) {
+        if (!texture || !texture->isLoaded()) {
+            NX_CORE_ERROR("Attempted to register invalid runtime texture.");
+            return AssetHandle();
+        }
+
+        UUID new_uuid;
+        m_uuid_cpu_texture_cache[new_uuid] = texture;
+        recordAssetMetadata(
+            new_uuid,
+            AssetType::Texture2D,
+            texture->getSourcePath(),
+            true,
+            debug_name.empty() ? texture->getSourcePath() : debug_name,
+            texture->getColorSpace());
+        return AssetHandle(new_uuid);
+    }
+
     UUID AssetManager::loadTexture(const std::string& path) {
         if (path.empty()) {
             return INVALID_UUID;
@@ -216,24 +234,32 @@ namespace NexAur {
 
 
     std::shared_ptr<MaterialAsset> AssetManager::createMaterialFromImportData(const MaterialImportData& import_data) {
-        auto import_texture = [this](const std::string& path, TextureColorSpace color_space) {
+        auto import_texture = [this](
+            const std::string& path,
+            const std::shared_ptr<TextureAsset>& texture,
+            TextureColorSpace color_space,
+            const std::string& debug_name) {
+            if (texture && texture->isLoaded()) {
+                return registerRuntimeTexture(texture, debug_name);
+            }
+
             return path.empty() ? AssetHandle() : importTextureAsset(path, color_space);
         };
 
         const AssetHandle base_color_texture =
-            import_texture(import_data.base_color_texture_path, TextureColorSpace::SRGB);
+            import_texture(import_data.base_color_texture_path, import_data.base_color_texture_asset, TextureColorSpace::SRGB, import_data.name + ".BaseColor");
         const AssetHandle normal_texture =
-            import_texture(import_data.normal_texture_path, TextureColorSpace::Linear);
+            import_texture(import_data.normal_texture_path, import_data.normal_texture_asset, TextureColorSpace::Linear, import_data.name + ".Normal");
         const AssetHandle metallic_texture =
-            import_texture(import_data.metallic_texture_path, TextureColorSpace::Linear);
+            import_texture(import_data.metallic_texture_path, import_data.metallic_texture_asset, TextureColorSpace::Linear, import_data.name + ".Metallic");
         const AssetHandle roughness_texture =
-            import_texture(import_data.roughness_texture_path, TextureColorSpace::Linear);
+            import_texture(import_data.roughness_texture_path, import_data.roughness_texture_asset, TextureColorSpace::Linear, import_data.name + ".Roughness");
         const AssetHandle metallic_roughness_texture =
-            import_texture(import_data.metallic_roughness_texture_path, TextureColorSpace::Linear);
+            import_texture(import_data.metallic_roughness_texture_path, import_data.metallic_roughness_texture_asset, TextureColorSpace::Linear, import_data.name + ".MetallicRoughness");
         const AssetHandle ao_texture =
-            import_texture(import_data.ao_texture_path, TextureColorSpace::Linear);
+            import_texture(import_data.ao_texture_path, import_data.ao_texture_asset, TextureColorSpace::Linear, import_data.name + ".AO");
         const AssetHandle emissive_texture =
-            import_texture(import_data.emissive_texture_path, TextureColorSpace::SRGB);
+            import_texture(import_data.emissive_texture_path, import_data.emissive_texture_asset, TextureColorSpace::SRGB, import_data.name + ".Emissive");
 
         return std::make_shared<MaterialAsset>(
             import_data,

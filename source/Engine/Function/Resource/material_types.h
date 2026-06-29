@@ -1,10 +1,13 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include <glm/glm.hpp>
 
 namespace NexAur {
+    class TextureAsset;
+
     enum class MaterialAlphaMode {
         Opaque = 0,
         Mask,
@@ -26,6 +29,13 @@ namespace NexAur {
         std::string metallic_roughness_texture_path;
         std::string ao_texture_path;
         std::string emissive_texture_path;
+        std::shared_ptr<TextureAsset> base_color_texture_asset;
+        std::shared_ptr<TextureAsset> normal_texture_asset;
+        std::shared_ptr<TextureAsset> metallic_texture_asset;
+        std::shared_ptr<TextureAsset> roughness_texture_asset;
+        std::shared_ptr<TextureAsset> metallic_roughness_texture_asset;
+        std::shared_ptr<TextureAsset> ao_texture_asset;
+        std::shared_ptr<TextureAsset> emissive_texture_asset;
         float metallic_factor = 0.0f;
         float roughness_factor = 1.0f;
         glm::vec3 emissive_factor{ 0.0f };
@@ -35,5 +45,6 @@ namespace NexAur {
             MaterialMetallicRoughnessTextureMode::Separate;
         MaterialAlphaMode alpha_mode = MaterialAlphaMode::Opaque;
         float alpha_cutoff = 0.5f;
+        bool double_sided = false;
     };
 } // namespace NexAur

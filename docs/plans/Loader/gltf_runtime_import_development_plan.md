@@ -449,6 +449,17 @@ AssetManager::importModelAsset(path)
 - packed MR 的 G/B 通道正确。
 - baseColor / emissive 为 sRGB，其余为 linear。
 
+实现状态：
+
+- 已完成：`TextureLoader::load2DFromMemory()`，用于 Data URI / GLB bufferView image 的 PNG / JPEG 等内存图片解码。
+- 已完成：`MaterialImportData` 增加可选 CPU texture asset 和 `double_sided`，保留现有 path 字段以兼容外部文件贴图。
+- 已完成：`TinyGltfImporter` 导入 baseColor / metallicRoughness / normal / occlusion / emissive texture slot，并按 slot 固定 sRGB / linear。
+- 已完成：`TinyGltfImporter` 导入 glTF PBR factors、normal scale、occlusion strength、emissive factor、alpha mode / cutoff、doubleSided。
+- 已完成：`AssetManager::registerRuntimeTexture()`，让 embedded / Data URI texture 可进入现有 CPU texture cache 和 Vulkan texture resource 路径。
+- 已完成：新增 `TinyGltfMaterialSmoke`，动态写入 embedded image GLB 和 Data URI glTF，验证 material fields、runtime texture 注册、color space 和 DamagedHelmet tinygltf 外部贴图路径。
+- 边界：sampler wrap/filter 暂时仍使用当前 Vulkan 默认 sampler；texCoord set 仍按 `TEXCOORD_0` 处理，后续在 PR-L4 / material refinement 中展开。
+- 测试：`cmake --build --preset msvc-vcpkg-debug` 通过；`ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure` 15/15 通过。
+
 ### PR-L4：Node Transform / Multi-Primitive / Scene Import
 
 目标：

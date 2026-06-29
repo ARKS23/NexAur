@@ -16,6 +16,12 @@ namespace NexAur {
             const std::string& path,
             TextureColorSpace color_space = TextureColorSpace::SRGB);
 
+        static std::shared_ptr<TextureAsset> load2DFromMemory(
+            const uint8_t* data,
+            size_t size,
+            TextureColorSpace color_space = TextureColorSpace::SRGB,
+            const std::string& debug_name = "MemoryTexture");
+
         static std::shared_ptr<EnvironmentMapAsset> loadHDREnvironment(
             const std::string& path,
             uint32_t max_width = 1024);

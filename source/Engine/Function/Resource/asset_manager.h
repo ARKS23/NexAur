@@ -39,6 +39,7 @@ namespace NexAur {
 
         // 贴图资产：AssetManager 只登记身份，GPU texture 由 Renderer 后端创建。
         AssetHandle importTextureAsset(const std::string& path, TextureColorSpace color_space = TextureColorSpace::SRGB);
+        AssetHandle registerRuntimeTexture(const std::shared_ptr<TextureAsset>& texture, const std::string& debug_name = "RuntimeTexture");
         std::shared_ptr<TextureAsset> loadTextureCPU(AssetHandle handle);
         AssetHandle importTextureCubeAsset(const std::string& path);
         UUID loadTexture(const std::string& path); // 加载贴图并返回UUID

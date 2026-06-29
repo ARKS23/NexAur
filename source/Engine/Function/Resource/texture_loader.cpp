@@ -10,6 +10,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -274,6 +275,56 @@ namespace NexAur {
             color_space,
             std::move(texture_pixels),
             path);
+    }
+
+    std::shared_ptr<TextureAsset> TextureLoader::load2DFromMemory(
+        const uint8_t* data,
+        size_t size,
+        TextureColorSpace color_space,
+        const std::string& debug_name) {
+        if (!data || size == 0) {
+            NX_CORE_WARN("Attempted to load texture from empty memory.");
+            return nullptr;
+        }
+
+        if (size > static_cast<size_t>((std::numeric_limits<int>::max)())) {
+            NX_CORE_ERROR("Memory texture is too large to decode: {}", debug_name);
+            return nullptr;
+        }
+
+        int width = 0;
+        int height = 0;
+        int source_channels = 0;
+        stbi_uc* pixels = stbi_load_from_memory(
+            data,
+            static_cast<int>(size),
+            &width,
+            &height,
+            &source_channels,
+            STBI_rgb_alpha);
+        if (!pixels) {
+            NX_CORE_ERROR("Failed to load memory texture: {} ({})", debug_name, stbi_failure_reason());
+            return nullptr;
+        }
+
+        if (width <= 0 || height <= 0) {
+            NX_CORE_ERROR("Memory texture has invalid dimensions: {}", debug_name);
+            stbi_image_free(pixels);
+            return nullptr;
+        }
+
+        const size_t byte_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+        std::vector<uint8_t> texture_pixels(byte_size);
+        std::memcpy(texture_pixels.data(), pixels, byte_size);
+        stbi_image_free(pixels);
+
+        return std::make_shared<TextureAsset>(
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height),
+            TexturePixelFormat::RGBA8,
+            color_space,
+            std::move(texture_pixels),
+            debug_name);
     }
 
     std::shared_ptr<EnvironmentMapAsset> TextureLoader::loadHDREnvironment(
