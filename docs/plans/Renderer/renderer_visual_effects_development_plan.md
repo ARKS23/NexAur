@@ -152,6 +152,7 @@ PR-R28 Physically Based Bloom
 PR-R29 PBR Material 完整化
 PR-R30 IBL 基础链路
 PR-R30.5 IBL Quality / Debug View / Shader Cleanup
+PR-R30.6 DamagedHelmet PBR / IBL Reference Alignment
 PR-R31 Shadow Quality Pass 1：PCF / Bias / Stability
 PR-R32 Cascaded Shadow Maps
 PR-R33 PCSS / Contact Hardening Shadow
@@ -176,6 +177,7 @@ R27 ACES
 R29 PBR Material
 R30 IBL
 R30.5 IBL Quality / Debug
+R30.6 DamagedHelmet PBR / IBL 对齐
 ```
 
 ## 4. PR-R26：HDR Scene Color + PostProcess Framework
@@ -758,6 +760,121 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - Debug 构建通过，Forward HLSL include 拆分后 shader 编译通过。
 - CTest 12/12 通过，其中 `NexAur.RenderSettingsSmoke` 覆盖 IBL debug settings。
 - Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
+
+## 9.5. PR-R30.6：DamagedHelmet PBR / IBL Reference Alignment
+
+执行状态：计划中。
+
+目标：
+
+- 在进入 Shadow Quality 之前，先把 DamagedHelmet 这类标准 glTF PBR 样例的材质输入、IBL 贡献、曝光和参考对比基线收口干净。
+- 确认当前问题到底是贴图导入、tangent space、IBL 能量、AO 约定、tone mapping / bloom，还是参考场景不一致。
+- 为后续 PR-R31 的 shadow 质量判断提供稳定画面基线，避免把材质 / IBL 问题误判成 shadow 问题。
+
+背景：
+
+- externalRenderer 中 DamagedHelmet 的观感更接近标准参考：金属反射清楚，暗部有足够压暗，蓝色舱盖、白色外壳和黄色条纹都比较稳定。
+- Sandbox 当前画面中 DamagedHelmet 并不像“贴图文件串了”，更像 PBR / IBL / post process 的组合没有对齐：环境反射偏亮，暗部不够压，红色测试地面和高亮 HDR 背景也会影响肉眼判断。
+- 本地 DamagedHelmet 资源结构正常：`Default_albedo.jpg`、`Default_metalRoughness.jpg`、`Default_emissive.jpg`、`Default_AO.jpg`、`Default_normal.jpg` 齐全，glTF material 使用标准 metallic-roughness workflow。
+- 现有 smoke 已覆盖 DamagedHelmet 的 base color、packed metallic-roughness、emissive 路径和 sRGB / linear 注册约定，说明“贴图路径整体错乱”的概率较低。
+
+需要解决的问题：
+
+1. 参考场景不一致。
+   - externalRenderer 参考图中背景、地面、窗帘和 HDR 反射是一组统一测试环境。
+   - Sandbox 当前是红色测试地面 + 默认 HDR environment，不能直接拿最终画面对比贴图是否正确。
+2. Tangent space 可能被二次生成扰动。
+   - Assimp 已启用 `aiProcess_CalcTangentSpace`。
+   - 当前模型导入后仍会对所有带 UV 的 mesh 再跑自定义 `generateTangents()`。
+   - DamagedHelmet 这类复杂 UV atlas 对 tangent / bitangent handedness 很敏感，normal map 误差会让高光和凹槽看起来像贴图错位。
+3. IBL AO 约定需要校准。
+   - 当前 IBL shader 只让 AO 影响 diffuse IBL。
+   - externalRenderer / 常见 PBR baseline 通常会让 AO 影响整个 indirect ambient，至少要评估 specular occlusion。
+   - DamagedHelmet 凹槽多、金属占比高，不压 specular IBL 会显得暗部发白、塑料感偏重。
+4. Tone mapping / Bloom / exposure 需要固定对比基线。
+   - 当前默认 `ACES + exposure 1.0 + Bloom enabled` 容易放大 HDR 背景差异。
+   - 对齐 reference 时应先提供一组固定参数，避免靠反复拖 slider 猜问题。
+5. IBL 启动耗时需要顺手确认。
+   - PR-R30 / R30.5 后启动变慢主要可能来自 HDR load、CPU environment cubemap、irradiance、prefilter 和 BRDF LUT bootstrap bake。
+   - 本 PR 不要求完整 GPU IBL baker，但要确认没有 viewport resize / target rebuild 导致重复 bake。
+
+建议工作：
+
+1. 建立 DamagedHelmet 对齐 preset。
+   - 固定 model、camera、HDR environment、environment intensity、directional light、exposure、bloom enabled / intensity。
+   - 建议第一轮对比关闭 Bloom，使用 neutral floor 或隐藏高饱和红色测试地面。
+   - 记录 externalRenderer 参考截图的关键参数，作为后续视觉验收基线。
+2. 材质输入 debug view 补强。
+   - 在现有 IBL Debug 基础上补齐或确认以下视图：
+     - BaseColor。
+     - Normal。
+     - Metallic。
+     - Roughness。
+     - AO。
+     - Emissive。
+   - 这些视图用于判断“贴图输入是否正确”，不用于最终画面调色。
+3. Tangent space 修正。
+   - 优先保留 Assimp 生成的 tangent / bitangent。
+   - 仅在 mesh 缺失 tangent / bitangent 时调用自定义 `generateTangents()`。
+   - 保持 shader fallback tangent 作为最后兜底，不把它当主路径。
+4. IBL AO / specular occlusion 校准。
+   - 先按成熟 baseline 尝试让 AO 影响 indirect diffuse + specular。
+   - 如效果过重，再引入轻量 specular occlusion 近似，而不是简单无条件压暗 direct lighting。
+   - 明确文档约定：AO 不影响 direct lighting。
+5. Tone mapping / Bloom 基线参数。
+   - Renderer Debug 提供一键或固定说明的 reference 参数。
+   - 对齐阶段先比较 `Bloom off` 和 `Bloom on` 两组截图。
+   - 确认 ACES / gamma 输出没有重复 encode 或漏 encode。
+6. IBL bake 耗时记录。
+   - 打印或记录 environment bake 的关键阶段耗时。
+   - 确认 BRDF LUT 已共享缓存。
+   - 确认 viewport resize 不触发 environment 重新 bake。
+
+建议调整文件：
+
+```text
+source/Engine/Function/Resource/
+  model.cpp                              # tangent 保留 / fallback 生成策略
+
+source/Engine/Function/Renderer/data/
+  render_settings.h                      # 可选：reference preset 参数入口
+
+source/Engine/Editor/Panels/
+  renderer_debug_panel.cpp               # 材质输入 debug view / reference 参数入口
+
+assets/shaders/Renderer/Vulkan/common/
+  pbr_material.hlsli                     # BaseColor 等 material debug 输出支持
+  pbr_ibl.hlsli                          # AO / specular occlusion 校准
+
+docs/plans/Renderer/
+  renderer_visual_effects_development_plan.md
+```
+
+暂时不做：
+
+- 完整 GPU IBL baker。
+- reflection probe / probe blending。
+- RenderDoc 自动截图 diff。
+- 新的 glTF importer 重写。
+- Shadow PCF / CSM / PCSS。
+- 改 Bloom 算法本身。
+
+验收：
+
+- DamagedHelmet 的 BaseColor / Normal / Metallic / Roughness / AO / Emissive debug view 与资源预期一致。
+- 默认 reference preset 下，DamagedHelmet 不再明显发白、偏塑料或暗部漂浮。
+- Bloom 关闭时仍能判断 IBL 本身是否合理；Bloom 开启只增强高亮，不掩盖材质问题。
+- Tangent 修正后 normal map 高光方向稳定，没有明显 seam / handedness 错误。
+- IBL bake 不因 viewport resize 重复触发；启动耗时来源有明确记录。
+- 构建、shader compile、smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
 
 ## 10. PR-R31：Shadow Quality Pass 1：PCF / Bias / Stability
 
