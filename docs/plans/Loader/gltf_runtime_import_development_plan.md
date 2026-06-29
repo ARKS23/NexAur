@@ -543,6 +543,17 @@ AssetManager::importModelAsset(path)
 - 非 glTF 可以通过 Assimp fallback 或工具导入。
 - Renderer / Scene / Runtime 不 include Assimp 头文件。
 
+实现状态：
+
+- 已完成：新增 `Function/Resource/Import/assimp/AssimpModelImporter`，Assimp 只作为 importer registry 中的补充导入器存在；`canImport()` 显式只接 `.obj/.fbx/.dae/.3ds/.ply/.stl` 等非 glTF fallback 格式，不接管 `.gltf/.glb`。
+- 已完成：`Model` 移除路径构造、Assimp 前置声明和导入私有函数，回到纯 CPU asset container；Assimp 解析逻辑集中到 `AssimpModelImporter.cpp`，不再藏在 `Model(path)` 里。
+- 已完成：`AssetManager::importModelAsset()` 默认走 `ModelImporterRegistry`；注册顺序为 `TinyGltfImporter` 优先、`AssimpModelImporter` fallback；`importModelAssetFromRegistry()` 保留为兼容别名，避免旧调用点大范围改动。
+- 已完成：`loadModelCPU()` cache miss 时也通过 importer registry 重载 CPU model，不再直接构造 `Model(path)`。
+- 已完成：Engine CMake 将 Assimp importer 纳入 Resource/Import 源文件，并将 Assimp 链接从 public dependency 收回为 private dependency；Renderer / Scene / Runtime 没有 Assimp 类型泄漏。
+- 已完成：新增 `AssimpFallbackSmoke`，动态写入一个最小 OBJ，验证 `.gltf` 与 `.obj` 命中不同 importer，OBJ metadata / CPU model 可通过默认 `AssetManager::importModelAsset()` 导入。
+- 已完成：更新 `DamagedHelmetReferenceSmoke`，验证 DamagedHelmet 的默认 `importModelAsset()` 与显式 registry 入口共享 tinygltf asset identity。
+- 测试：`cmake --build --preset msvc-vcpkg-debug` 通过；`ctest --test-dir build\msvc-vcpkg -C Debug -R "AssimpFallbackSmoke|GltfModelImportSmoke|DamagedHelmetReferenceSmoke" --output-on-failure` 3/3 通过；`ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure` 18/18 通过；`bin\msvc-vcpkg\Debug\Sandbox.exe` 短启动 smoke 通过。
+
 ## 8. 测试样例矩阵
 
 建议至少准备：

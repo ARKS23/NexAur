@@ -585,6 +585,29 @@ namespace {
 
         return nullptr;
     }
+
+    bool writeAssimpFallbackSmokeObj(const std::filesystem::path& obj_path) {
+        if (obj_path.has_parent_path()) {
+            std::filesystem::create_directories(obj_path.parent_path());
+        }
+
+        std::ofstream output(obj_path, std::ios::binary);
+        if (!output) {
+            return false;
+        }
+
+        output
+            << "o AssimpFallbackTriangle\n"
+            << "v 0.0 0.0 0.0\n"
+            << "v 1.0 0.0 0.0\n"
+            << "v 0.0 1.0 0.0\n"
+            << "vt 0.0 0.0\n"
+            << "vt 1.0 0.0\n"
+            << "vt 0.0 1.0\n"
+            << "vn 0.0 0.0 1.0\n"
+            << "f 1/1/1 2/2/1 3/3/1\n";
+        return output.good();
+    }
 } // namespace
 
 void setupScene() {
@@ -1089,6 +1112,75 @@ int runGltfModelImportSmoke() {
     return 0;
 }
 
+int runAssimpFallbackSmoke() {
+    const std::filesystem::path obj_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "assimp_fallback_smoke.obj";
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    expect(writeAssimpFallbackSmokeObj(obj_path), "AssimpFallback smoke failed: could not write test OBJ.");
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+    const NexAur::ModelImporterRegistry& registry = asset_manager.getModelImporterRegistry();
+    const NexAur::IModelImporter* gltf_importer = registry.findImporter("default_path_probe.gltf");
+    const NexAur::IModelImporter* obj_importer = registry.findImporter(obj_path);
+    expect(gltf_importer != nullptr, "AssimpFallback smoke failed: .gltf should still have an importer.");
+    expect(obj_importer != nullptr, "AssimpFallback smoke failed: .obj should have an Assimp fallback importer.");
+    if (gltf_importer && obj_importer) {
+        expect(gltf_importer != obj_importer, "AssimpFallback smoke failed: .gltf and .obj should not use the same importer.");
+    }
+
+    const NexAur::ModelImportResult metadata_result =
+        asset_manager.inspectModelImportMetadata(obj_path.string());
+    expect(metadata_result.success, "AssimpFallback smoke failed: OBJ metadata import should succeed.");
+    if (metadata_result.success) {
+        expect(metadata_result.metadata.generator == "Assimp", "AssimpFallback metadata should identify Assimp.");
+        expect(metadata_result.metadata.mesh_count == 1, "AssimpFallback metadata should report one mesh.");
+        expect(metadata_result.metadata.vertex_count == 3, "AssimpFallback metadata should report three vertices.");
+        expect(metadata_result.metadata.index_count == 3, "AssimpFallback metadata should report three indices.");
+    }
+
+    const NexAur::AssetHandle model_handle = asset_manager.importModelAsset(obj_path.string());
+    expect(model_handle.isValid(), "AssimpFallback smoke failed: OBJ should import through default AssetManager path.");
+    std::shared_ptr<NexAur::Model> model = asset_manager.loadModelCPU(model_handle);
+    expect(model != nullptr && model->isLoaded(), "AssimpFallback smoke failed: OBJ CPU model should load.");
+    expect(model && model->getMeshes().size() == 1, "AssimpFallback smoke failed: OBJ should produce one mesh.");
+    if (model && !model->getMeshes().empty()) {
+        const NexAur::Mesh& mesh = model->getMeshes().front();
+        expect(mesh.GetVertices().size() == 3, "AssimpFallback smoke failed: OBJ vertex count should be 3.");
+        expect(mesh.GetIndices().size() == 3, "AssimpFallback smoke failed: OBJ index count should be 3.");
+        if (!mesh.GetVertices().empty()) {
+            expect(
+                nearlyEqual(mesh.GetVertices().front().normal.z, 1.0f),
+                "AssimpFallback smoke failed: OBJ normal should import.");
+        }
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(obj_path, remove_error);
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "AssimpFallback smoke passed." << std::endl;
+    engine.shutdownEngine();
+    return 0;
+}
+
 int runTinyGltfMetadataSmoke() {
     const std::filesystem::path damaged_helmet_path =
         std::filesystem::path(NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"));
@@ -1480,14 +1572,14 @@ int runDamagedHelmetReferenceSmoke() {
     engine.startEngine();
 
     NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
-    const NexAur::AssetHandle fallback_handle = asset_manager.importModelAsset(damaged_helmet_path.string());
+    const NexAur::AssetHandle default_handle = asset_manager.importModelAsset(damaged_helmet_path.string());
     const NexAur::AssetHandle tinygltf_handle = asset_manager.importModelAssetFromRegistry(damaged_helmet_path.string());
-    expect(fallback_handle.isValid(), "DamagedHelmet Assimp fallback should remain loadable.");
+    expect(default_handle.isValid(), "DamagedHelmet should import through the default AssetManager path.");
     expect(tinygltf_handle.isValid(), "DamagedHelmet should import through the tinygltf registry path.");
-    if (fallback_handle && tinygltf_handle) {
+    if (default_handle && tinygltf_handle) {
         expect(
-            fallback_handle != tinygltf_handle,
-            "DamagedHelmet fallback and tinygltf imports should not share one asset identity.");
+            default_handle == tinygltf_handle,
+            "DamagedHelmet default and explicit registry imports should share the tinygltf asset identity.");
     }
 
     const NexAur::AssetMetadata* model_metadata = asset_manager.getMetadata(tinygltf_handle);
@@ -2341,6 +2433,7 @@ namespace {
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
+        { "--assimp-fallback-smoke", "AssimpFallback", runAssimpFallbackSmoke },
         { "--tiny-gltf-metadata-smoke", "TinyGltfMetadata", runTinyGltfMetadataSmoke },
         { "--tiny-gltf-geometry-smoke", "TinyGltfGeometry", runTinyGltfGeometrySmoke },
         { "--tiny-gltf-material-smoke", "TinyGltfMaterial", runTinyGltfMaterialSmoke },

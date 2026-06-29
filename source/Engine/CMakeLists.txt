@@ -114,6 +114,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/asset_manager.h
     Function/Resource/asset_manager.cpp
     Function/Resource/asset_metadata.h
+    Function/Resource/Import/assimp/assimp_model_importer.h
+    Function/Resource/Import/assimp/assimp_model_importer.cpp
     Function/Resource/Import/gltf/tiny_gltf_importer.h
     Function/Resource/Import/gltf/tiny_gltf_importer.cpp
     Function/Resource/Import/model_importer.h
@@ -353,7 +355,6 @@ target_include_directories(NexAurEngine PRIVATE
 )
 
 target_link_libraries(NexAurEngine PUBLIC
-    ${NEXAUR_ASSIMP_TARGET}
     ${NEXAUR_ENTT_TARGET}
     ${NEXAUR_GLFW_TARGET}
     ${NEXAUR_GLM_TARGET}
@@ -364,6 +365,7 @@ target_link_libraries(NexAurEngine PUBLIC
 )
 
 target_link_libraries(NexAurEngine PRIVATE
+    ${NEXAUR_ASSIMP_TARGET}
     Vulkan::Vulkan
     vk-bootstrap::vk-bootstrap
     volk::volk

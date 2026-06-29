@@ -28,7 +28,7 @@ namespace NexAur {
 
         // 模型资产：AssetManager 只负责 CPU 数据和资产身份，GPU 上传交给 Renderer 侧缓存。
         AssetHandle importModelAsset(const std::string& path);
-        AssetHandle importModelAssetFromRegistry(const std::string& path);
+        AssetHandle importModelAssetFromRegistry(const std::string& path); // 兼容旧调用，内部等价于 importModelAsset(path)
         std::shared_ptr<Model> loadModelCPU(AssetHandle handle);
         UUID loadModel(const std::string& path); // 过渡 API：兼容旧调用，内部等价于 importModelAsset(path).id
         AssetHandle loadModelAsset(const std::string& path) { return importModelAsset(path); }

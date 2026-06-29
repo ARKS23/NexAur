@@ -3,20 +3,15 @@
 #include "Function/Resource/environment_map_asset.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
+#include "Function/Resource/Import/assimp/assimp_model_importer.h"
 #include "Function/Resource/Import/gltf/tiny_gltf_importer.h"
 #include "Function/Resource/texture_loader.h"
 
-
 namespace NexAur {
-    namespace {
-        std::string makeImporterModelCacheKey(const std::string& path) {
-            return "ModelImporter:" + path;
-        }
-    } // namespace
-
     void AssetManager::init() {
         m_model_importers.clear();
         m_model_importers.registerImporter(std::make_unique<TinyGltfImporter>());
+        m_model_importers.registerImporter(std::make_unique<AssimpModelImporter>());
         NX_CORE_INFO("AssetManager Initialized.");
     }
 
@@ -33,38 +28,16 @@ namespace NexAur {
         NX_CORE_INFO("AssetManager Shutdown.");
     }
 
-    AssetHandle AssetManager::importModelAsset(const std::string& path) {
-        // 已经导入过的模型直接复用资产身份，避免重复解析磁盘文件。
-        auto loaded_it = m_path_to_uuid.find(path);
-        if (loaded_it != m_path_to_uuid.end()) {
-            return AssetHandle(loaded_it->second);
-        }
-
-        // 这里只导入 CPU 模型数据；GPU buffer/VAO 由 Renderer 侧缓存按需创建。
-        std::shared_ptr<Model> model = std::make_shared<Model>(path);
-        if (model->isLoaded()) {
-            UUID new_uuid;
-            m_path_to_uuid[path] = new_uuid;
-            m_uuid_to_path[new_uuid] = path;
-
-            m_uuid_cpu_model_cache[new_uuid] = model;
-            recordAssetMetadata(new_uuid, AssetType::Model, path);
-
-            return AssetHandle(new_uuid);
-        }
-        else {
-            NX_CORE_ERROR("Failed to load model: {}", path);
-            return AssetHandle();
-        }
+    AssetHandle AssetManager::importModelAssetFromRegistry(const std::string& path) {
+        return importModelAsset(path);
     }
 
-    AssetHandle AssetManager::importModelAssetFromRegistry(const std::string& path) {
+    AssetHandle AssetManager::importModelAsset(const std::string& path) {
         if (path.empty()) {
             return AssetHandle();
         }
 
-        const std::string cache_key = makeImporterModelCacheKey(path);
-        auto loaded_it = m_path_to_uuid.find(cache_key);
+        auto loaded_it = m_path_to_uuid.find(path);
         if (loaded_it != m_path_to_uuid.end()) {
             return AssetHandle(loaded_it->second);
         }
@@ -88,7 +61,7 @@ namespace NexAur {
         }
 
         UUID new_uuid;
-        m_path_to_uuid[cache_key] = new_uuid;
+        m_path_to_uuid[path] = new_uuid;
         m_uuid_to_path[new_uuid] = path;
         m_uuid_cpu_model_cache[new_uuid] = import_result.model;
         recordAssetMetadata(new_uuid, AssetType::Model, path, false, import_result.metadata.source_path);
@@ -396,14 +369,26 @@ namespace NexAur {
             return nullptr;
         }
 
-        std::shared_ptr<Model> model = std::make_shared<Model>(metadata->path);
-        if (!model->isLoaded()) {
-            NX_CORE_ERROR("Failed to reload CPU model: {}", metadata->path);
+        ModelImportRequest request;
+        request.path = metadata->path;
+        request.mode = ModelImportMode::FullModel;
+        request.tangent_policy = TangentGenerationPolicy::GenerateIfMissing;
+
+        ModelImportResult import_result = m_model_importers.importModel(request);
+        for (const std::string& warning : import_result.warnings) {
+            NX_CORE_WARN("Model importer warning: {}", warning);
+        }
+
+        if (!import_result || !import_result.model || !import_result.model->isLoaded()) {
+            for (const std::string& error : import_result.errors) {
+                NX_CORE_ERROR("Model importer error: {}", error);
+            }
+            NX_CORE_ERROR("Failed to reload CPU model through registry: {}", metadata->path);
             return nullptr;
         }
 
-        m_uuid_cpu_model_cache[handle.id] = model;
-        return model;
+        m_uuid_cpu_model_cache[handle.id] = import_result.model;
+        return import_result.model;
     }
 
     const AssetMetadata* AssetManager::getMetadata(const UUID& handle) const {
