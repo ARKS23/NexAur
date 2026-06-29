@@ -48,12 +48,25 @@ namespace NexAur {
     }
 
     Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
+        AssetHandle model_asset = m_asset_manager.importModelAsset(model_path);
+        return addModelAssetEntity(std::move(name), model_asset, model_path, position);
+    }
+
+    Entity SceneTestClass::addImportedModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
+        AssetHandle model_asset = m_asset_manager.importModelAssetFromRegistry(model_path);
+        return addModelAssetEntity(std::move(name), model_asset, model_path, position);
+    }
+
+    Entity SceneTestClass::addModelAssetEntity(
+        std::string name,
+        AssetHandle model_asset,
+        const std::string& model_path,
+        const glm::vec3& position) {
         if (!m_scene) {
             NX_CORE_ERROR("SceneTestClass has no active scene.");
             return Entity();
         }
 
-        AssetHandle model_asset = m_asset_manager.importModelAsset(model_path);
         if (!model_asset) {
             NX_CORE_ERROR("Failed to load model: {0}", model_path);
             return Entity();

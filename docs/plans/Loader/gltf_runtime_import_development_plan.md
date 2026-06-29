@@ -513,6 +513,15 @@ AssetManager::importModelAsset(path)
 - Assimp fallback 和 tinygltf 主路径不会混用同一 asset identity 导致 cache 污染。
 - CTest / Sandbox smoke 通过。
 
+实现状态：
+
+- 已完成：`SceneTestClass` 新增 `addImportedModelEntity()`，Sandbox 中可选的 DamagedHelmet 参考样例改为显式走 `AssetManager::importModelAssetFromRegistry()` / tinygltf 路径；旧 `addModelEntity()` 仍保留 Assimp fallback 行为，用于后续 PR-L6 边界清理前的对比。
+- 已完成：新增 `DamagedHelmetReferenceSmoke`，在本地 `assets/models/DamagedHelmet/DamagedHelmet.gltf` 存在时严格验证 tinygltf 导入的 mesh 数量、顶点数 `14556`、索引数 `46356`、材质名、五张 glTF PBR 贴图路径、packed metallic-roughness、默认 factors、alpha / doubleSided 约定。
+- 已完成：`DamagedHelmetReferenceSmoke` 验证 `GenerateIfMissing` 路径会为 DamagedHelmet 生成稳定 tangent frame，避免该资产缺少 glTF `TANGENT` accessor 时 normal map 表现退化。
+- 已完成：`DamagedHelmetReferenceSmoke` 验证 DamagedHelmet 的 baseColor / emissive 以 sRGB 注册，normal / metallic-roughness / AO 以 linear 注册，并确保 Assimp fallback handle 与 tinygltf importer handle 不共享同一 asset identity。
+- 边界：本 PR 仍不把所有 `.gltf` / `.glb` 默认加载切到 importer registry，也不引入截图像素对比；完整 runtime 默认路径切换和 Assimp importer 边界放到 PR-L6。
+- 测试：`cmake --build --preset msvc-vcpkg-debug` 通过；`ctest --test-dir build\msvc-vcpkg -C Debug -R DamagedHelmetReferenceSmoke --output-on-failure` 通过；`ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure` 17/17 通过；`bin\msvc-vcpkg\Debug\Sandbox.exe` 短启动 smoke 通过。
+
 ### PR-L6：Assimp Fallback / Offline Converter Boundary
 
 目标：

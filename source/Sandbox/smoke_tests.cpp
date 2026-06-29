@@ -620,7 +620,7 @@ void setupScene() {
     // DamagedHelmet 是本地可选样例资产，缺失时跳过，避免新克隆仓库启动 Sandbox 时报错。
     const std::string damaged_helmet_path = NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf");
     if (std::filesystem::exists(damaged_helmet_path)) {
-        scene_test.addModelEntity("DamagedHelmet", damaged_helmet_path, glm::vec3(5.0f, 0.0f, 4.0f));
+        scene_test.addImportedModelEntity("DamagedHelmet", damaged_helmet_path, glm::vec3(5.0f, 0.0f, 4.0f));
     } else {
         NX_CORE_WARN("Optional sample model missing: {0}. See assets/asset_manifest.md.", damaged_helmet_path);
     }
@@ -1423,6 +1423,183 @@ int runTinyGltfMaterialSmoke() {
     return 0;
 }
 
+int runDamagedHelmetReferenceSmoke() {
+    const std::filesystem::path damaged_helmet_path =
+        std::filesystem::path(NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"));
+
+    if (!std::filesystem::exists(damaged_helmet_path)) {
+        std::cout << "DamagedHelmetReference smoke skipped: optional DamagedHelmet asset is missing." << std::endl;
+        return 0;
+    }
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto expectFilename = [&](const std::string& path, const std::string& filename, const std::string& label) {
+        expect(!path.empty(), label + " path should not be empty.");
+        if (!path.empty()) {
+            expect(
+                std::filesystem::path(path).filename().string() == filename,
+                label + " should resolve to " + filename + ".");
+        }
+    };
+
+    auto expectTextureMetadata = [&](
+        NexAur::AssetManager& asset_manager,
+        NexAur::AssetHandle texture,
+        NexAur::TextureColorSpace color_space,
+        const std::string& filename,
+        const std::string& label) {
+        expect(texture.isValid(), label + " texture handle should be valid.");
+        const NexAur::AssetMetadata* metadata = asset_manager.getMetadata(texture);
+        expect(metadata != nullptr, label + " metadata should exist.");
+        if (metadata) {
+            expect(metadata->type == NexAur::AssetType::Texture2D, label + " should register as Texture2D.");
+            expect(metadata->texture_color_space == color_space, label + " color space should match glTF slot policy.");
+            expect(
+                std::filesystem::path(metadata->path).filename().string() == filename,
+                label + " metadata path should resolve to " + filename + ".");
+        }
+    };
+
+    auto isValidDirection = [](const glm::vec3& value) {
+        return std::isfinite(value.x) &&
+               std::isfinite(value.y) &&
+               std::isfinite(value.z) &&
+               glm::dot(value, value) > 0.000001f;
+    };
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+    const NexAur::AssetHandle fallback_handle = asset_manager.importModelAsset(damaged_helmet_path.string());
+    const NexAur::AssetHandle tinygltf_handle = asset_manager.importModelAssetFromRegistry(damaged_helmet_path.string());
+    expect(fallback_handle.isValid(), "DamagedHelmet Assimp fallback should remain loadable.");
+    expect(tinygltf_handle.isValid(), "DamagedHelmet should import through the tinygltf registry path.");
+    if (fallback_handle && tinygltf_handle) {
+        expect(
+            fallback_handle != tinygltf_handle,
+            "DamagedHelmet fallback and tinygltf imports should not share one asset identity.");
+    }
+
+    const NexAur::AssetMetadata* model_metadata = asset_manager.getMetadata(tinygltf_handle);
+    expect(model_metadata != nullptr, "DamagedHelmet tinygltf model metadata should exist.");
+    if (model_metadata) {
+        expect(model_metadata->type == NexAur::AssetType::Model, "DamagedHelmet tinygltf metadata should be Model.");
+        expect(
+            std::filesystem::path(model_metadata->path).filename().string() == "DamagedHelmet.gltf",
+            "DamagedHelmet tinygltf metadata path should keep the glTF source filename.");
+    }
+
+    std::shared_ptr<NexAur::Model> model = asset_manager.loadModelCPU(tinygltf_handle);
+    expect(model != nullptr && model->isLoaded(), "DamagedHelmet tinygltf CPU model should load.");
+    expect(model && model->getMeshes().size() == 1, "DamagedHelmet reference should import one mesh.");
+
+    if (model && model->isLoaded() && !model->getMeshes().empty()) {
+        const NexAur::Mesh& mesh = model->getMeshes().front();
+        expect(mesh.GetVertices().size() == 14556, "DamagedHelmet reference vertex count should match the glTF accessor.");
+        expect(mesh.GetIndices().size() == 46356, "DamagedHelmet reference index count should match the glTF accessor.");
+
+        size_t valid_tangent_frames = 0;
+        for (const NexAur::Vertex& vertex : mesh.GetVertices()) {
+            if (!isValidDirection(vertex.normal) ||
+                !isValidDirection(vertex.tangent) ||
+                !isValidDirection(vertex.bitangent)) {
+                continue;
+            }
+
+            const glm::vec3 normal = glm::normalize(vertex.normal);
+            const glm::vec3 tangent = glm::normalize(vertex.tangent);
+            const glm::vec3 bitangent = glm::normalize(vertex.bitangent);
+            const bool nearly_orthogonal =
+                std::abs(glm::dot(normal, tangent)) < 0.25f &&
+                std::abs(glm::dot(normal, bitangent)) < 0.25f &&
+                std::abs(glm::dot(tangent, bitangent)) < 0.35f;
+            if (nearly_orthogonal) {
+                ++valid_tangent_frames;
+            }
+        }
+        expect(
+            valid_tangent_frames * 100 >= mesh.GetVertices().size() * 95,
+            "DamagedHelmet reference should generate stable tangent frames for normal mapping.");
+
+        const NexAur::MaterialImportData& material = mesh.getMaterialImportData();
+        expect(material.name == "Material_MR", "DamagedHelmet material name should match the glTF reference.");
+        expectFilename(material.base_color_texture_path, "Default_albedo.jpg", "Base color texture");
+        expectFilename(material.normal_texture_path, "Default_normal.jpg", "Normal texture");
+        expectFilename(material.metallic_roughness_texture_path, "Default_metalRoughness.jpg", "Metallic-roughness texture");
+        expectFilename(material.ao_texture_path, "Default_AO.jpg", "AO texture");
+        expectFilename(material.emissive_texture_path, "Default_emissive.jpg", "Emissive texture");
+        expect(material.metallic_texture_path.empty(), "DamagedHelmet reference should not keep a separate metallic texture.");
+        expect(material.roughness_texture_path.empty(), "DamagedHelmet reference should not keep a separate roughness texture.");
+        expect(
+            material.metallic_roughness_mode == NexAur::MaterialMetallicRoughnessTextureMode::PackedGltf,
+            "DamagedHelmet reference should use packed glTF metallic-roughness.");
+        expect(nearlyEqual(material.metallic_factor, 1.0f), "DamagedHelmet metallic factor should follow glTF default.");
+        expect(nearlyEqual(material.roughness_factor, 1.0f), "DamagedHelmet roughness factor should follow glTF default.");
+        expect(nearlyEqual(material.normal_scale, 1.0f), "DamagedHelmet normal scale should follow glTF default.");
+        expect(nearlyEqual(material.occlusion_strength, 1.0f), "DamagedHelmet AO strength should follow glTF default.");
+        expect(nearlyEqualVec3(material.emissive_factor, glm::vec3{ 1.0f }), "DamagedHelmet emissive factor should match the reference glTF.");
+        expect(material.alpha_mode == NexAur::MaterialAlphaMode::Opaque, "DamagedHelmet alpha mode should be opaque.");
+        expect(!material.double_sided, "DamagedHelmet doubleSided should stay false.");
+
+        std::shared_ptr<NexAur::MaterialAsset> material_asset =
+            asset_manager.createMaterialFromImportData(material);
+        expect(material_asset != nullptr, "DamagedHelmet reference material asset should be created.");
+        if (material_asset) {
+            expect(material_asset->usesPackedMetallicRoughness(), "DamagedHelmet material asset should use packed MR.");
+            expectTextureMetadata(
+                asset_manager,
+                material_asset->getBaseColorTexture(),
+                NexAur::TextureColorSpace::SRGB,
+                "Default_albedo.jpg",
+                "Base color texture");
+            expectTextureMetadata(
+                asset_manager,
+                material_asset->getNormalTexture(),
+                NexAur::TextureColorSpace::Linear,
+                "Default_normal.jpg",
+                "Normal texture");
+            expectTextureMetadata(
+                asset_manager,
+                material_asset->getMetallicRoughnessTexture(),
+                NexAur::TextureColorSpace::Linear,
+                "Default_metalRoughness.jpg",
+                "Metallic-roughness texture");
+            expectTextureMetadata(
+                asset_manager,
+                material_asset->getAOTexture(),
+                NexAur::TextureColorSpace::Linear,
+                "Default_AO.jpg",
+                "AO texture");
+            expectTextureMetadata(
+                asset_manager,
+                material_asset->getEmissiveTexture(),
+                NexAur::TextureColorSpace::SRGB,
+                "Default_emissive.jpg",
+                "Emissive texture");
+        }
+    }
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "DamagedHelmetReference smoke passed." << std::endl;
+    engine.shutdownEngine();
+    return 0;
+}
+
 int runTinyGltfSceneSmoke() {
     const std::filesystem::path gltf_path =
         std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_scene_smoke.gltf";
@@ -2167,6 +2344,7 @@ namespace {
         { "--tiny-gltf-metadata-smoke", "TinyGltfMetadata", runTinyGltfMetadataSmoke },
         { "--tiny-gltf-geometry-smoke", "TinyGltfGeometry", runTinyGltfGeometrySmoke },
         { "--tiny-gltf-material-smoke", "TinyGltfMaterial", runTinyGltfMaterialSmoke },
+        { "--damaged-helmet-reference-smoke", "DamagedHelmetReference", runDamagedHelmetReferenceSmoke },
         { "--tiny-gltf-scene-smoke", "TinyGltfScene", runTinyGltfSceneSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },

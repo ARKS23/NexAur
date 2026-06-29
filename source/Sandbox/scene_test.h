@@ -20,8 +20,14 @@ namespace NexAur {
         Entity addSphereEntity(std::string name = "Sphere", std::string material_type = "gold", glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f));
         Entity addCubeEntity(std::string name = "Cube", std::string material_type = "gold", glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f));
         Entity addModelEntity(std::string name, const std::string& model_path, glm::vec3 position = glm::vec3(0.0f));
+        Entity addImportedModelEntity(std::string name, const std::string& model_path, glm::vec3 position = glm::vec3(0.0f));
 
     private:
+        Entity addModelAssetEntity(
+            std::string name,
+            AssetHandle model_asset,
+            const std::string& model_path,
+            const glm::vec3& position);
         Entity addRuntimeModelEntity(
             const std::string& name,
             const std::shared_ptr<Model>& model,
