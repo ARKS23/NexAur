@@ -1,12 +1,15 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "Core/Base.h"
 
 namespace NexAur {
+    class Model;
+
     enum class ModelImportMode {
         MetadataOnly,
         FullModel
@@ -39,6 +42,8 @@ namespace NexAur {
         size_t sampler_count = 0;
         size_t animation_count = 0;
         size_t skin_count = 0;
+        size_t vertex_count = 0;
+        size_t index_count = 0;
         std::vector<std::string> extensions_used;
         std::vector<std::string> extensions_required;
     };
@@ -46,6 +51,7 @@ namespace NexAur {
     struct NEXAUR_API ModelImportResult {
         bool success = false;
         ModelImportMetadata metadata;
+        std::shared_ptr<Model> model;
         std::vector<std::string> warnings;
         std::vector<std::string> errors;
 

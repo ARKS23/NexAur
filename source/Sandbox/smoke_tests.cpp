@@ -1,10 +1,14 @@
 #include <iostream>
+#include <array>
 #include <filesystem>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <string_view>
+#include <vector>
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
 #include "Function/Audio/audio_service.h"
@@ -87,6 +91,136 @@ namespace {
         output.put(static_cast<char>((value >> 8u) & 0xffu));
         output.put(static_cast<char>((value >> 16u) & 0xffu));
         output.put(static_cast<char>((value >> 24u) & 0xffu));
+    }
+
+    template <typename T>
+    void appendBinary(std::vector<unsigned char>& output, const T& value) {
+        const size_t offset = output.size();
+        output.resize(offset + sizeof(T));
+        std::memcpy(output.data() + offset, &value, sizeof(T));
+    }
+
+    void padTo4(std::vector<unsigned char>& output, unsigned char value) {
+        while (output.size() % 4u != 0u) {
+            output.push_back(value);
+        }
+    }
+
+    struct GltfSmokeVertex {
+        float px;
+        float py;
+        float pz;
+        float nx;
+        float ny;
+        float nz;
+        float u;
+        float v;
+    };
+
+    bool writeTinyGltfSmokeCubeGlb(const std::filesystem::path& path) {
+        if (path.has_parent_path()) {
+            std::filesystem::create_directories(path.parent_path());
+        }
+
+        const std::array<GltfSmokeVertex, 24> vertices = { {
+            { -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f },
+            { 0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f },
+            { 0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f },
+            { -0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f },
+
+            { 0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+            { -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f },
+            { -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f },
+            { 0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f },
+
+            { -0.5f, -0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+            { -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+            { -0.5f, 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f },
+            { -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f },
+
+            { 0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+            { 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+            { 0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f },
+            { 0.5f, 0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f },
+
+            { -0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f },
+            { 0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f },
+            { 0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f },
+            { -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f },
+
+            { -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f },
+            { 0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f },
+            { 0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f },
+            { -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f },
+        } };
+
+        const std::array<uint16_t, 36> indices = { {
+            0, 1, 2, 2, 3, 0,
+            4, 5, 6, 6, 7, 4,
+            8, 9, 10, 10, 11, 8,
+            12, 13, 14, 14, 15, 12,
+            16, 17, 18, 18, 19, 16,
+            20, 21, 22, 22, 23, 20,
+        } };
+
+        std::vector<unsigned char> binary;
+        binary.reserve(vertices.size() * sizeof(GltfSmokeVertex) + indices.size() * sizeof(uint16_t));
+        for (const GltfSmokeVertex& vertex : vertices) {
+            appendBinary(binary, vertex);
+        }
+        const size_t index_buffer_offset = binary.size();
+        for (uint16_t index : indices) {
+            appendBinary(binary, index);
+        }
+        const size_t vertex_buffer_size = vertices.size() * sizeof(GltfSmokeVertex);
+        const size_t index_buffer_size = indices.size() * sizeof(uint16_t);
+
+        std::ostringstream json_stream;
+        json_stream
+            << "{\"asset\":{\"version\":\"2.0\",\"generator\":\"NexAur TinyGltfGeometrySmoke\"},"
+            << "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+            << "\"nodes\":[{\"name\":\"TinyGltfSmokeCube\",\"mesh\":0}],"
+            << "\"materials\":[{\"name\":\"TinyGltfSmokeMaterial\",\"pbrMetallicRoughness\":"
+            << "{\"baseColorFactor\":[0.8,0.7,0.4,1.0],\"metallicFactor\":0.0,\"roughnessFactor\":0.8}}],"
+            << "\"meshes\":[{\"name\":\"TinyGltfSmokeCube\",\"primitives\":[{\"attributes\":"
+            << "{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3,\"material\":0}]}],"
+            << "\"buffers\":[{\"byteLength\":" << binary.size() << "}],"
+            << "\"bufferViews\":["
+            << "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" << vertex_buffer_size
+            << ",\"byteStride\":" << sizeof(GltfSmokeVertex) << ",\"target\":34962},"
+            << "{\"buffer\":0,\"byteOffset\":" << index_buffer_offset
+            << ",\"byteLength\":" << index_buffer_size << ",\"target\":34963}],"
+            << "\"accessors\":["
+            << "{\"bufferView\":0,\"byteOffset\":0,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC3\",\"min\":[-0.5,-0.5,-0.5],\"max\":[0.5,0.5,0.5]},"
+            << "{\"bufferView\":0,\"byteOffset\":12,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC3\"},"
+            << "{\"bufferView\":0,\"byteOffset\":24,\"componentType\":5126,\"count\":" << vertices.size()
+            << ",\"type\":\"VEC2\"},"
+            << "{\"bufferView\":1,\"byteOffset\":0,\"componentType\":5123,\"count\":" << indices.size()
+            << ",\"type\":\"SCALAR\"}]}";
+
+        const std::string json_string = json_stream.str();
+        std::vector<unsigned char> json(json_string.begin(), json_string.end());
+        padTo4(json, static_cast<unsigned char>(' '));
+        padTo4(binary, 0);
+
+        const uint32_t total_length = static_cast<uint32_t>(12 + 8 + json.size() + 8 + binary.size());
+        std::ofstream output(path, std::ios::binary);
+        if (!output) {
+            return false;
+        }
+
+        writeU32LE(output, 0x46546C67u);
+        writeU32LE(output, 2u);
+        writeU32LE(output, total_length);
+        writeU32LE(output, static_cast<uint32_t>(json.size()));
+        writeU32LE(output, 0x4E4F534Au);
+        output.write(reinterpret_cast<const char*>(json.data()), static_cast<std::streamsize>(json.size()));
+        writeU32LE(output, static_cast<uint32_t>(binary.size()));
+        writeU32LE(output, 0x004E4942u);
+        output.write(reinterpret_cast<const char*>(binary.data()), static_cast<std::streamsize>(binary.size()));
+        return output.good();
     }
 
     bool writeAudioSmokeWav(const std::filesystem::path& path) {
@@ -712,6 +846,91 @@ int runTinyGltfMetadataSmoke() {
     }
 
     std::cout << "TinyGltfMetadata smoke passed." << std::endl;
+    engine.shutdownEngine();
+    return 0;
+}
+
+int runTinyGltfGeometrySmoke() {
+    const std::filesystem::path glb_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_geometry_smoke.glb";
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    expect(writeTinyGltfSmokeCubeGlb(glb_path), "TinyGltfGeometry smoke failed: could not write test GLB.");
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+    NexAur::AssetHandle glb_handle = asset_manager.importModelAssetFromRegistry(glb_path.string());
+    std::shared_ptr<NexAur::Model> glb_model = asset_manager.loadModelCPU(glb_handle);
+    expect(glb_model != nullptr && glb_model->isLoaded(), "TinyGltfGeometry smoke failed: GLB model did not load.");
+    expect(glb_model && glb_model->getMeshes().size() == 1, "TinyGltfGeometry smoke failed: GLB should produce one mesh.");
+
+    if (glb_model && !glb_model->getMeshes().empty()) {
+        const NexAur::Mesh& mesh = glb_model->getMeshes().front();
+        expect(mesh.GetVertices().size() == 24, "TinyGltfGeometry smoke failed: GLB cube vertex count should be 24.");
+        expect(mesh.GetIndices().size() == 36, "TinyGltfGeometry smoke failed: GLB cube index count should be 36.");
+
+        bool has_expected_position = false;
+        bool has_expected_normal = false;
+        bool has_expected_uv = false;
+        for (const NexAur::Vertex& vertex : mesh.GetVertices()) {
+            has_expected_position = has_expected_position ||
+                (nearlyEqual(vertex.position.x, -0.5f) &&
+                 nearlyEqual(vertex.position.y, -0.5f) &&
+                 nearlyEqual(vertex.position.z, -0.5f));
+            has_expected_normal = has_expected_normal ||
+                (nearlyEqual(vertex.normal.x, 0.0f) &&
+                 nearlyEqual(vertex.normal.y, 0.0f) &&
+                 nearlyEqual(vertex.normal.z, -1.0f));
+            has_expected_uv = has_expected_uv ||
+                (nearlyEqual(vertex.texCoords.x, 1.0f) &&
+                 nearlyEqual(vertex.texCoords.y, 1.0f));
+        }
+        expect(has_expected_position, "TinyGltfGeometry smoke failed: POSITION accessor data was not imported.");
+        expect(has_expected_normal, "TinyGltfGeometry smoke failed: NORMAL accessor data was not imported.");
+        expect(has_expected_uv, "TinyGltfGeometry smoke failed: TEXCOORD_0 accessor data was not imported.");
+    }
+
+    const std::filesystem::path damaged_helmet_path =
+        std::filesystem::path(NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"));
+    if (std::filesystem::exists(damaged_helmet_path)) {
+        NexAur::ModelImportRequest request;
+        request.path = damaged_helmet_path;
+        request.mode = NexAur::ModelImportMode::FullModel;
+        request.tangent_policy = NexAur::TangentGenerationPolicy::PreserveImportedTangents;
+
+        const NexAur::ModelImportResult import_result =
+            asset_manager.getModelImporterRegistry().importModel(request);
+        expect(import_result.success, "TinyGltfGeometry smoke failed: DamagedHelmet did not import through tinygltf.");
+        expect(import_result.model && import_result.model->isLoaded(), "TinyGltfGeometry smoke failed: DamagedHelmet CPU model missing.");
+        expect(import_result.metadata.mesh_count == 1, "DamagedHelmet should report one glTF mesh.");
+        expect(import_result.metadata.primitive_count == 1, "DamagedHelmet should report one glTF primitive.");
+        expect(import_result.metadata.vertex_count > 0, "DamagedHelmet tinygltf import should produce vertices.");
+        expect(import_result.metadata.index_count > 0, "DamagedHelmet tinygltf import should produce indices.");
+    } else {
+        std::cout << "TinyGltfGeometry smoke skipped DamagedHelmet geometry check: optional asset is missing." << std::endl;
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(glb_path, remove_error);
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "TinyGltfGeometry smoke passed." << std::endl;
     engine.shutdownEngine();
     return 0;
 }
@@ -1367,6 +1586,7 @@ namespace {
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
         { "--tiny-gltf-metadata-smoke", "TinyGltfMetadata", runTinyGltfMetadataSmoke },
+        { "--tiny-gltf-geometry-smoke", "TinyGltfGeometry", runTinyGltfGeometrySmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },

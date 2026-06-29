@@ -414,6 +414,18 @@ AssetManager::importModelAsset(path)
 - 简单 GLB cube 可导入并渲染。
 - Assimp 路径仍可 fallback。
 
+实现状态：
+
+- 已完成：`ModelImportResult` 增加可选 CPU `Model`，`ModelImportMetadata` 增加 `vertex_count` / `index_count`，用于 geometry smoke 和后续调试。
+- 已完成：`TinyGltfImporter` 在 `FullModel` 模式下读取 glTF / GLB geometry，并转换为现有 `Model` / `Mesh` / `Vertex`。
+- 已完成：accessor reader 支持 bufferView `byteOffset`、accessor `byteOffset`、`byteStride` 和范围校验；当前明确拒绝 sparse accessor。
+- 已完成：支持 `POSITION` / `NORMAL` / `TEXCOORD_0` / `TANGENT`；缺失 normal 时生成基础 normal，`GenerateIfMissing` 策略下生成基础 tangent。
+- 已完成：index accessor 支持 `UNSIGNED_BYTE` / `UNSIGNED_SHORT` / `UNSIGNED_INT`；无 indices 时生成顺序索引。
+- 已完成：`AssetManager::importModelAssetFromRegistry()` 提供显式 importer registry 导入入口，并使用独立 cache key，避免与当前 Assimp path identity 混用。
+- 已完成：新增 `TinyGltfGeometrySmoke`，动态写入一个 interleaved vertex buffer + uint16 index 的最小 cube GLB，并验证 vertex / normal / uv / index 导入；DamagedHelmet 存在时额外验证 tinygltf geometry 计数。
+- 边界：默认 `importModelAsset()` 仍保持现有 Assimp 路径，避免 PR-L3 完成前让 DamagedHelmet 默认材质/贴图退化。
+- 测试：`cmake --build --preset msvc-vcpkg-debug` 通过；`ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure` 14/14 通过。
+
 ### PR-L3：glTF PBR Material / Texture Pipeline
 
 目标：
