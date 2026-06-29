@@ -481,6 +481,17 @@ AssetManager::importModelAsset(path)
 - node transform 正确。
 - 当前 `SceneTestClass::addModelEntity()` 行为保持稳定。
 
+实现状态：
+
+- 已完成：`TinyGltfImporter` 从 default scene root nodes 递归导入 node hierarchy；无 scene 的资产保留 all-mesh fallback。
+- 已完成：支持 node `matrix` 与 TRS，第一版 bake 到现有 `Model` / `Mesh` / `Vertex`，暂不输出 `ImportedSceneNode`。
+- 已完成：position 使用 node world transform 烘焙；normal 使用 inverse-transpose normal matrix；tangent 使用方向矩阵并按 glTF handedness 重建 bitangent。
+- 已完成：同一个 mesh 被多个 node 引用时按实例生成 baked mesh；未被 default scene 引用的 node / mesh 不进入 CPU model。
+- 已完成：mesh 多 primitive 拆分为多个 `Mesh`，每个 primitive 保留自己的 material index。
+- 已完成：新增 `TinyGltfSceneSmoke`，动态写入 default scene / unused scene / parent-child transform / multi-primitive glTF，并验证 baked vertices、material 和 metadata。
+- 边界：本 PR 不引入 Scene 实体生成、animation、skinning、morph target 或多 UV set 策略。
+- 测试：`cmake --build --preset msvc-vcpkg-debug` 通过；`ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure` 16/16 通过。
+
 ### PR-L5：DamagedHelmet Reference Regression
 
 目标：

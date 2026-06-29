@@ -9,6 +9,10 @@
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include <tiny_gltf.h>
 
+#include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+
 #include <cctype>
 #include <algorithm>
 #include <cmath>
@@ -107,6 +111,59 @@ namespace NexAur {
                 ? glm::vec3{ 1.0f, 0.0f, 0.0f }
                 : glm::vec3{ 0.0f, 1.0f, 0.0f };
             return safeNormalize(axis - normal * glm::dot(normal, axis), glm::vec3{ 1.0f, 0.0f, 0.0f });
+        }
+
+        glm::mat3 buildNormalMatrix(const glm::mat4& transform) {
+            const glm::mat3 basis(transform);
+            if (std::abs(glm::determinant(basis)) <= 0.000001f) {
+                return glm::mat3{ 1.0f };
+            }
+
+            return glm::inverseTranspose(basis);
+        }
+
+        glm::vec3 readVec3(const std::vector<double>& values, const glm::vec3& fallback) {
+            if (values.size() < 3) {
+                return fallback;
+            }
+
+            return {
+                static_cast<float>(values[0]),
+                static_cast<float>(values[1]),
+                static_cast<float>(values[2])
+            };
+        }
+
+        glm::quat readQuat(const std::vector<double>& values) {
+            if (values.size() < 4) {
+                return glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+            }
+
+            return glm::quat{
+                static_cast<float>(values[3]),
+                static_cast<float>(values[0]),
+                static_cast<float>(values[1]),
+                static_cast<float>(values[2])
+            };
+        }
+
+        glm::mat4 readNodeMatrix(const tinygltf::Node& node) {
+            if (node.matrix.size() == 16) {
+                glm::mat4 matrix{ 1.0f };
+                for (int column = 0; column < 4; ++column) {
+                    for (int row = 0; row < 4; ++row) {
+                        matrix[column][row] = static_cast<float>(node.matrix[static_cast<size_t>(column * 4 + row)]);
+                    }
+                }
+                return matrix;
+            }
+
+            const glm::vec3 translation = readVec3(node.translation, glm::vec3{ 0.0f });
+            const glm::quat rotation = readQuat(node.rotation);
+            const glm::vec3 scale = readVec3(node.scale, glm::vec3{ 1.0f });
+            return glm::translate(glm::mat4{ 1.0f }, translation) *
+                glm::mat4_cast(rotation) *
+                glm::scale(glm::mat4{ 1.0f }, scale);
         }
 
         struct AccessorSpan {
@@ -651,6 +708,7 @@ namespace NexAur {
             const tinygltf::Model& model,
             const tinygltf::Mesh& gltf_mesh,
             const tinygltf::Primitive& primitive,
+            const glm::mat4& node_transform,
             const ModelImportRequest& request,
             ModelImportResult& result,
             std::vector<Mesh>& meshes) {
@@ -716,11 +774,13 @@ namespace NexAur {
             }
 
             std::vector<Vertex> vertices(positions.size());
+            const glm::mat3 normal_matrix = buildNormalMatrix(node_transform);
+            const glm::mat3 direction_matrix(node_transform);
             for (size_t vertex_index = 0; vertex_index < positions.size(); ++vertex_index) {
                 Vertex& vertex = vertices[vertex_index];
-                vertex.position = positions[vertex_index];
+                vertex.position = glm::vec3(node_transform * glm::vec4{ positions[vertex_index], 1.0f });
                 vertex.normal = normal_accessor
-                    ? safeNormalize(normals[vertex_index], glm::vec3{ 0.0f, 1.0f, 0.0f })
+                    ? safeNormalize(normal_matrix * normals[vertex_index], glm::vec3{ 0.0f, 1.0f, 0.0f })
                     : glm::vec3{ 0.0f };
                 vertex.texCoords = texcoords[vertex_index];
                 vertex.tangent = glm::vec3{ 0.0f };
@@ -728,7 +788,9 @@ namespace NexAur {
 
                 if (tangent_accessor) {
                     const glm::vec4 tangent = tangents[vertex_index];
-                    vertex.tangent = safeNormalize(glm::vec3{ tangent.x, tangent.y, tangent.z }, fallbackTangent(vertex.normal));
+                    vertex.tangent = safeNormalize(
+                        direction_matrix * glm::vec3{ tangent.x, tangent.y, tangent.z },
+                        fallbackTangent(vertex.normal));
                     vertex.bitangent = safeNormalize(glm::cross(vertex.normal, vertex.tangent) * tangent.w);
                 }
             }
@@ -755,18 +817,126 @@ namespace NexAur {
             return true;
         }
 
+        bool appendMeshPrimitives(
+            const tinygltf::Model& gltf_model,
+            int mesh_index,
+            const glm::mat4& node_transform,
+            const ModelImportRequest& request,
+            ModelImportResult& result,
+            std::vector<Mesh>& meshes) {
+            if (mesh_index < 0 || mesh_index >= static_cast<int>(gltf_model.meshes.size())) {
+                result.errors.push_back("glTF node references an invalid mesh index.");
+                return false;
+            }
+
+            const tinygltf::Mesh& gltf_mesh = gltf_model.meshes[mesh_index];
+            for (const tinygltf::Primitive& primitive : gltf_mesh.primitives) {
+                if (!appendPrimitiveMesh(gltf_model, gltf_mesh, primitive, node_transform, request, result, meshes)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool appendNodeMeshes(
+            const tinygltf::Model& gltf_model,
+            int node_index,
+            const glm::mat4& parent_transform,
+            size_t depth,
+            const ModelImportRequest& request,
+            ModelImportResult& result,
+            std::vector<Mesh>& meshes) {
+            if (node_index < 0 || node_index >= static_cast<int>(gltf_model.nodes.size())) {
+                result.errors.push_back("glTF scene references an invalid node index.");
+                return false;
+            }
+            if (depth > gltf_model.nodes.size()) {
+                result.errors.push_back("glTF node hierarchy appears to contain a cycle.");
+                return false;
+            }
+
+            const tinygltf::Node& node = gltf_model.nodes[node_index];
+            const glm::mat4 node_transform = parent_transform * readNodeMatrix(node);
+
+            if (node.mesh >= 0) {
+                if (!appendMeshPrimitives(gltf_model, node.mesh, node_transform, request, result, meshes)) {
+                    return false;
+                }
+            }
+
+            for (int child_index : node.children) {
+                if (!appendNodeMeshes(
+                        gltf_model,
+                        child_index,
+                        node_transform,
+                        depth + 1,
+                        request,
+                        result,
+                        meshes)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        int resolveSceneIndex(const tinygltf::Model& gltf_model) {
+            if (gltf_model.defaultScene >= 0 &&
+                gltf_model.defaultScene < static_cast<int>(gltf_model.scenes.size())) {
+                return gltf_model.defaultScene;
+            }
+
+            return gltf_model.scenes.empty() ? -1 : 0;
+        }
+
+        bool appendSceneMeshes(
+            const tinygltf::Model& gltf_model,
+            const ModelImportRequest& request,
+            ModelImportResult& result,
+            std::vector<Mesh>& meshes) {
+            const int scene_index = resolveSceneIndex(gltf_model);
+            if (scene_index < 0) {
+                result.warnings.push_back("glTF model has no scene; importing all mesh definitions with identity transform.");
+                for (int mesh_index = 0; mesh_index < static_cast<int>(gltf_model.meshes.size()); ++mesh_index) {
+                    if (!appendMeshPrimitives(
+                            gltf_model,
+                            mesh_index,
+                            glm::mat4{ 1.0f },
+                            request,
+                            result,
+                            meshes)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            const tinygltf::Scene& scene = gltf_model.scenes[scene_index];
+            for (int node_index : scene.nodes) {
+                if (!appendNodeMeshes(
+                        gltf_model,
+                        node_index,
+                        glm::mat4{ 1.0f },
+                        0,
+                        request,
+                        result,
+                        meshes)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         bool buildCpuModel(
             const tinygltf::Model& gltf_model,
             const std::filesystem::path& path,
             const ModelImportRequest& request,
             ModelImportResult& result) {
             std::vector<Mesh> meshes;
-            for (const tinygltf::Mesh& gltf_mesh : gltf_model.meshes) {
-                for (const tinygltf::Primitive& primitive : gltf_mesh.primitives) {
-                    if (!appendPrimitiveMesh(gltf_model, gltf_mesh, primitive, request, result, meshes)) {
-                        return false;
-                    }
-                }
+            if (!appendSceneMeshes(gltf_model, request, result, meshes)) {
+                return false;
             }
 
             if (meshes.empty()) {

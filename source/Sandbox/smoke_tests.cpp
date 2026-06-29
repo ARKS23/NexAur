@@ -446,6 +446,90 @@ namespace {
         return gltf_output.good();
     }
 
+    bool writeTinyGltfSceneSmokeGltf(
+        const std::filesystem::path& gltf_path,
+        const std::filesystem::path& bin_path) {
+        if (gltf_path.has_parent_path()) {
+            std::filesystem::create_directories(gltf_path.parent_path());
+        }
+        if (bin_path.has_parent_path()) {
+            std::filesystem::create_directories(bin_path.parent_path());
+        }
+
+        const std::array<GltfSmokeVertex, 6> vertices = { {
+            { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+            { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f },
+            { 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f },
+            { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+            { 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f },
+            { 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f },
+        } };
+        const std::array<uint16_t, 6> indices = { { 0, 1, 2, 0, 1, 2 } };
+
+        std::vector<unsigned char> binary;
+        binary.reserve(vertices.size() * sizeof(GltfSmokeVertex) + indices.size() * sizeof(uint16_t));
+        for (const GltfSmokeVertex& vertex : vertices) {
+            appendBinary(binary, vertex);
+        }
+        const size_t index_buffer_offset = binary.size();
+        for (uint16_t index : indices) {
+            appendBinary(binary, index);
+        }
+
+        std::ofstream bin_output(bin_path, std::ios::binary);
+        if (!bin_output) {
+            return false;
+        }
+        bin_output.write(reinterpret_cast<const char*>(binary.data()), static_cast<std::streamsize>(binary.size()));
+        if (!bin_output.good()) {
+            return false;
+        }
+
+        const size_t vertex_stride = sizeof(GltfSmokeVertex);
+        const size_t second_primitive_vertex_offset = 3u * vertex_stride;
+        const size_t second_primitive_index_offset = 3u * sizeof(uint16_t);
+        std::ostringstream json_stream;
+        json_stream
+            << "{\"asset\":{\"version\":\"2.0\",\"generator\":\"NexAur TinyGltfSceneSmoke\"},"
+            << "\"scene\":1,"
+            << "\"scenes\":[{\"name\":\"UnusedScene\",\"nodes\":[2]},{\"name\":\"DefaultScene\",\"nodes\":[0]}],"
+            << "\"nodes\":["
+            << "{\"name\":\"RootMatrix\",\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,10,0,0,1],\"children\":[1]},"
+            << "{\"name\":\"ChildTRS\",\"mesh\":0,\"translation\":[0,20,30],\"scale\":[2,1,1]},"
+            << "{\"name\":\"UnusedNode\",\"mesh\":0,\"translation\":[-100,0,0]}],"
+            << "\"materials\":[{\"name\":\"SceneSmokeMat0\"},{\"name\":\"SceneSmokeMat1\"}],"
+            << "\"meshes\":[{\"name\":\"SceneSmokeMesh\",\"primitives\":["
+            << "{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3,\"material\":0},"
+            << "{\"attributes\":{\"POSITION\":4,\"NORMAL\":5,\"TEXCOORD_0\":6},\"indices\":7,\"material\":1}]}],"
+            << "\"buffers\":[{\"uri\":\"" << bin_path.filename().string() << "\",\"byteLength\":" << binary.size() << "}],"
+            << "\"bufferViews\":["
+            << "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" << vertices.size() * vertex_stride
+            << ",\"byteStride\":" << vertex_stride << ",\"target\":34962},"
+            << "{\"buffer\":0,\"byteOffset\":" << index_buffer_offset
+            << ",\"byteLength\":" << indices.size() * sizeof(uint16_t) << ",\"target\":34963}],"
+            << "\"accessors\":["
+            << "{\"bufferView\":0,\"byteOffset\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]},"
+            << "{\"bufferView\":0,\"byteOffset\":12,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+            << "{\"bufferView\":0,\"byteOffset\":24,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+            << "{\"bufferView\":1,\"byteOffset\":0,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"},"
+            << "{\"bufferView\":0,\"byteOffset\":" << second_primitive_vertex_offset
+            << ",\"componentType\":5126,\"count\":3,\"type\":\"VEC3\",\"min\":[0,0,1],\"max\":[1,1,1]},"
+            << "{\"bufferView\":0,\"byteOffset\":" << second_primitive_vertex_offset + 12
+            << ",\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+            << "{\"bufferView\":0,\"byteOffset\":" << second_primitive_vertex_offset + 24
+            << ",\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+            << "{\"bufferView\":1,\"byteOffset\":" << second_primitive_index_offset
+            << ",\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}]}";
+
+        std::ofstream gltf_output(gltf_path, std::ios::binary);
+        if (!gltf_output) {
+            return false;
+        }
+        const std::string json = json_stream.str();
+        gltf_output.write(json.data(), static_cast<std::streamsize>(json.size()));
+        return gltf_output.good();
+    }
+
     bool writeAudioSmokeWav(const std::filesystem::path& path) {
         if (path.has_parent_path()) {
             std::filesystem::create_directories(path.parent_path());
@@ -1339,6 +1423,97 @@ int runTinyGltfMaterialSmoke() {
     return 0;
 }
 
+int runTinyGltfSceneSmoke() {
+    const std::filesystem::path gltf_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_scene_smoke.gltf";
+    const std::filesystem::path bin_path =
+        std::filesystem::path(ENGINE_ROOT_DIR) / "build" / "tiny_gltf_scene_smoke.bin";
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto hasPosition = [](const NexAur::Mesh& mesh, const glm::vec3& expected) {
+        for (const NexAur::Vertex& vertex : mesh.GetVertices()) {
+            if (nearlyEqual(vertex.position.x, expected.x) &&
+                nearlyEqual(vertex.position.y, expected.y) &&
+                nearlyEqual(vertex.position.z, expected.z)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    expect(
+        writeTinyGltfSceneSmokeGltf(gltf_path, bin_path),
+        "TinyGltfScene smoke failed: could not write scene glTF.");
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+    NexAur::ModelImportRequest request;
+    request.path = gltf_path;
+    request.mode = NexAur::ModelImportMode::FullModel;
+    request.tangent_policy = NexAur::TangentGenerationPolicy::GenerateIfMissing;
+
+    const NexAur::ModelImportResult result =
+        asset_manager.getModelImporterRegistry().importModel(request);
+    expect(result.success, "TinyGltfScene smoke failed: scene glTF did not import.");
+    expect(result.metadata.default_scene == 1, "TinyGltfScene smoke should report default scene index 1.");
+    expect(result.metadata.scene_count == 2, "TinyGltfScene smoke should report two scenes.");
+    expect(result.metadata.primitive_count == 2, "TinyGltfScene smoke should report two mesh primitives.");
+    expect(result.metadata.vertex_count == 6, "TinyGltfScene smoke should import six baked vertices.");
+    expect(result.metadata.index_count == 6, "TinyGltfScene smoke should import six indices.");
+    expect(result.model && result.model->isLoaded(), "TinyGltfScene smoke failed: CPU model missing.");
+    expect(result.model && result.model->getMeshes().size() == 2, "TinyGltfScene smoke should produce one Mesh per primitive.");
+
+    if (result.model && result.model->getMeshes().size() == 2) {
+        const NexAur::Mesh& first_mesh = result.model->getMeshes()[0];
+        const NexAur::Mesh& second_mesh = result.model->getMeshes()[1];
+
+        expect(first_mesh.GetVertices().size() == 3, "First primitive should keep three vertices.");
+        expect(second_mesh.GetVertices().size() == 3, "Second primitive should keep three vertices.");
+        expect(first_mesh.GetIndices().size() == 3, "First primitive should keep three indices.");
+        expect(second_mesh.GetIndices().size() == 3, "Second primitive should keep three indices.");
+        expect(first_mesh.getMaterialImportData().name == "SceneSmokeMat0", "First primitive should keep material 0.");
+        expect(second_mesh.getMaterialImportData().name == "SceneSmokeMat1", "Second primitive should keep material 1.");
+
+        expect(hasPosition(first_mesh, glm::vec3{ 10.0f, 20.0f, 30.0f }), "First primitive should include baked root+child translation.");
+        expect(hasPosition(first_mesh, glm::vec3{ 12.0f, 20.0f, 30.0f }), "First primitive should include baked child scale.");
+        expect(hasPosition(second_mesh, glm::vec3{ 10.0f, 20.0f, 31.0f }), "Second primitive should keep local z after transform.");
+
+        for (const NexAur::Vertex& vertex : first_mesh.GetVertices()) {
+            expect(
+                nearlyEqual(vertex.normal.x, 0.0f) &&
+                nearlyEqual(vertex.normal.y, 0.0f) &&
+                nearlyEqual(vertex.normal.z, 1.0f),
+                "Transformed normals should remain valid.");
+        }
+    }
+
+    std::error_code remove_error;
+    std::filesystem::remove(gltf_path, remove_error);
+    std::filesystem::remove(bin_path, remove_error);
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "TinyGltfScene smoke passed." << std::endl;
+    engine.shutdownEngine();
+    return 0;
+}
+
 int runGameplaySystemsSmoke() {
     auto fake_input = std::make_shared<FakeInputService>();
     NexAur::InputActionSystem input_actions(fake_input);
@@ -1992,6 +2167,7 @@ namespace {
         { "--tiny-gltf-metadata-smoke", "TinyGltfMetadata", runTinyGltfMetadataSmoke },
         { "--tiny-gltf-geometry-smoke", "TinyGltfGeometry", runTinyGltfGeometrySmoke },
         { "--tiny-gltf-material-smoke", "TinyGltfMaterial", runTinyGltfMaterialSmoke },
+        { "--tiny-gltf-scene-smoke", "TinyGltfScene", runTinyGltfSceneSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },
