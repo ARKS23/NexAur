@@ -50,6 +50,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <string>
 #include <utility>
@@ -58,7 +59,7 @@ namespace NexAur {
     namespace {
         constexpr uint32_t kDefaultViewportWidth = 1280;
         constexpr uint32_t kDefaultViewportHeight = 720;
-        constexpr uint32_t kShadowMapResolution = 2048;
+        constexpr uint32_t kDefaultShadowMapResolution = 2048;
         constexpr uint32_t kRequiredVulkanApiVersion = VK_API_VERSION_1_3;
 
         struct VulkanShadowFrame {
@@ -78,6 +79,45 @@ namespace NexAur {
                 return fallback;
             }
             return glm::normalize(value);
+        }
+
+        float sanitizeMin(float value, float fallback, float minimum) {
+            return std::isfinite(value) && value >= minimum ? value : fallback;
+        }
+
+        uint32_t sanitizeShadowMapResolution(uint32_t resolution) {
+            if (resolution >= 4096u) {
+                return 4096u;
+            }
+            if (resolution >= 2048u) {
+                return 2048u;
+            }
+            return 1024u;
+        }
+
+        glm::vec3 stabilizeShadowCenter(
+            const glm::vec3& center,
+            const glm::vec3& light_direction,
+            const glm::vec3& up,
+            float radius,
+            float shadow_map_size,
+            bool enabled) {
+            if (!enabled || radius <= 0.0f || shadow_map_size <= 1.0f) {
+                return center;
+            }
+
+            const float texel_world_size = (radius * 2.0f) / shadow_map_size;
+            if (texel_world_size <= 0.0f || !std::isfinite(texel_world_size)) {
+                return center;
+            }
+
+            const glm::mat4 light_basis = glm::lookAt(glm::vec3{ 0.0f }, light_direction, up);
+            glm::vec4 light_space_center = light_basis * glm::vec4(center, 1.0f);
+            light_space_center.x = std::round(light_space_center.x / texel_world_size) * texel_world_size;
+            light_space_center.y = std::round(light_space_center.y / texel_world_size) * texel_world_size;
+
+            const glm::vec4 snapped_center = glm::inverse(light_basis) * light_space_center;
+            return glm::vec3(snapped_center);
         }
 
         const char* vkResultToString(VkResult result) {
@@ -269,7 +309,7 @@ namespace NexAur {
                 return false;
             }
 
-            if (!shadow_target.init(createResourceContext(), kShadowMapResolution) ||
+            if (!shadow_target.init(createResourceContext(), kDefaultShadowMapResolution) ||
                 !frame_lighting_resource.updateShadowMap(shadow_target.getDepthImageView(), shadow_target.getSampler())) {
                 shutdown();
                 return false;
@@ -740,13 +780,41 @@ namespace NexAur {
             return getRenderExtent();
         }
 
-        VulkanShadowFrame buildDirectionalShadowFrame(const VulkanDrawList& draw_list) const {
+        bool ensureShadowTarget(const RenderShadowSettings& shadow_settings) {
+            const uint32_t resolution = sanitizeShadowMapResolution(shadow_settings.map_resolution);
+            if (shadow_target.isReady() && shadow_target.getExtent().width == resolution) {
+                return true;
+            }
+
+            if (device.device == VK_NULL_HANDLE) {
+                return false;
+            }
+
+            vkDeviceWaitIdle(device.device);
+            shadow_target.shutdown();
+            if (!shadow_target.init(createResourceContext(), resolution)) {
+                return false;
+            }
+
+            return frame_lighting_resource.updateShadowMap(
+                shadow_target.getDepthImageView(),
+                shadow_target.getSampler());
+        }
+
+        VulkanShadowFrame buildDirectionalShadowFrame(
+            const VulkanDrawList& draw_list,
+            const RenderSettings& render_settings) const {
             VulkanShadowFrame frame;
-            if (!draw_list.directional_light.cast_shadow || !shadow_target.isReady()) {
+            if (!render_settings.shadow.enabled ||
+                !draw_list.directional_light.cast_shadow ||
+                !shadow_target.isReady()) {
                 return frame;
             }
 
-            const float distance = std::max(1.0f, draw_list.directional_light.shadow_distance);
+            const float distance = sanitizeMin(
+                render_settings.shadow.distance,
+                draw_list.directional_light.shadow_distance,
+                1.0f);
             const glm::vec3 fallback_light_direction = glm::normalize(glm::vec3{ -0.2f, -1.0f, -0.3f });
             const glm::vec3 light_direction = safeNormalize(
                 draw_list.directional_light.direction,
@@ -756,14 +824,21 @@ namespace NexAur {
                 glm::vec3{ 0.0f, 0.0f, -1.0f });
 
             const glm::vec3 center = draw_list.view.camera_position + camera_forward * (distance * 0.5f);
-            const glm::vec3 eye = center - light_direction * distance;
             const glm::vec3 world_up{ 0.0f, 1.0f, 0.0f };
             const glm::vec3 up = std::abs(glm::dot(light_direction, world_up)) > 0.95f ?
                 glm::vec3{ 0.0f, 0.0f, 1.0f } :
                 world_up;
 
-            const glm::mat4 light_view = glm::lookAt(eye, center, up);
             const float radius = std::max(5.0f, distance);
+            const glm::vec3 stable_center = stabilizeShadowCenter(
+                center,
+                light_direction,
+                up,
+                radius,
+                getShadowMapSize(),
+                render_settings.shadow.stabilize);
+            const glm::vec3 eye = stable_center - light_direction * distance;
+            const glm::mat4 light_view = glm::lookAt(eye, stable_center, up);
             const glm::mat4 light_projection = glm::ortho(
                 -radius,
                 radius,
@@ -1228,7 +1303,11 @@ namespace NexAur {
 
             vkWaitForFences(device.device, 1, &in_flight, VK_TRUE, UINT64_MAX);
 
-            const VulkanShadowFrame shadow_frame = buildDirectionalShadowFrame(draw_list);
+            if (!ensureShadowTarget(render_settings.shadow)) {
+                return;
+            }
+
+            const VulkanShadowFrame shadow_frame = buildDirectionalShadowFrame(draw_list, render_settings);
             if (!frame_lighting_resource.update(
                     draw_list,
                     shadow_frame.light_view_projection,

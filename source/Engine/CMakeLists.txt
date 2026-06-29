@@ -185,6 +185,7 @@ set(NEXAUR_ENGINE_VULKAN_SHADER_FILES
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_brdf.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_ibl.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_material.hlsli"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/shadow_sampling.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/vulkan_fullscreen_triangle.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_downsample.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_upsample.hlsl"

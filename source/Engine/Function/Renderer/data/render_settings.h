@@ -23,6 +23,12 @@ namespace NexAur {
         BrdfLut = 11
     };
 
+    enum class RenderShadowFilterMode : uint32_t {
+        Hard = 0,
+        PCF3x3 = 1,
+        PCF5x5 = 2
+    };
+
     struct RenderPostProcessSettings {
         RenderToneMappingMode tone_mapping_mode = RenderToneMappingMode::ACES;
         float exposure = 1.0f;
@@ -37,8 +43,22 @@ namespace NexAur {
         float prefilter_mip = 0.0f;
     };
 
+    struct RenderShadowSettings {
+        bool enabled = true;
+        RenderShadowFilterMode filter_mode = RenderShadowFilterMode::PCF3x3;
+        float strength = 0.7f;
+        float constant_bias = 0.003f;
+        float normal_bias = 0.0f;
+        float slope_bias = 0.001f;
+        float filter_radius = 1.0f;
+        float distance = 35.0f;
+        uint32_t map_resolution = 2048;
+        bool stabilize = true;
+    };
+
     struct RenderSettings {
         RenderPostProcessSettings post_process;
         RenderIblDebugSettings ibl_debug;
+        RenderShadowSettings shadow;
     };
 } // namespace NexAur

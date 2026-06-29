@@ -82,6 +82,52 @@ namespace NexAur {
             }
         }
 
+        int shadowFilterModeToIndex(RenderShadowFilterMode mode) {
+            switch (mode) {
+            case RenderShadowFilterMode::PCF3x3:
+                return 1;
+            case RenderShadowFilterMode::PCF5x5:
+                return 2;
+            case RenderShadowFilterMode::Hard:
+            default:
+                return 0;
+            }
+        }
+
+        RenderShadowFilterMode shadowFilterModeFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return RenderShadowFilterMode::PCF3x3;
+            case 2:
+                return RenderShadowFilterMode::PCF5x5;
+            case 0:
+            default:
+                return RenderShadowFilterMode::Hard;
+            }
+        }
+
+        int shadowMapResolutionToIndex(uint32_t resolution) {
+            if (resolution >= 4096u) {
+                return 2;
+            }
+            if (resolution >= 2048u) {
+                return 1;
+            }
+            return 0;
+        }
+
+        uint32_t shadowMapResolutionFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return 2048u;
+            case 2:
+                return 4096u;
+            case 0:
+            default:
+                return 1024u;
+            }
+        }
+
         void drawKeyValue(const char* label, const char* value) {
             ImGui::Text("%s: %s", label, value);
         }
@@ -187,6 +233,31 @@ namespace NexAur {
         changed |= ImGui::SliderFloat("Bloom Intensity", &settings.post_process.bloom_intensity, 0.0f, 1.0f, "%.3f");
         changed |= ImGui::SliderFloat("Bloom Scatter", &settings.post_process.bloom_scatter, 0.0f, 1.0f, "%.2f");
         changed |= ImGui::SliderFloat("Bloom Radius", &settings.post_process.bloom_radius, 0.25f, 2.5f, "%.2f");
+
+        ImGui::Spacing();
+        changed |= ImGui::Checkbox("Shadow", &settings.shadow.enabled);
+
+        const char* shadow_filter_items[] = { "Hard", "PCF 3x3", "PCF 5x5" };
+        int shadow_filter_index = shadowFilterModeToIndex(settings.shadow.filter_mode);
+        if (ImGui::Combo("Shadow Filter", &shadow_filter_index, shadow_filter_items, IM_ARRAYSIZE(shadow_filter_items))) {
+            settings.shadow.filter_mode = shadowFilterModeFromIndex(shadow_filter_index);
+            changed = true;
+        }
+
+        changed |= ImGui::SliderFloat("Shadow Strength", &settings.shadow.strength, 0.0f, 1.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Shadow Bias", &settings.shadow.constant_bias, 0.0f, 0.02f, "%.5f");
+        changed |= ImGui::SliderFloat("Shadow Normal Bias", &settings.shadow.normal_bias, 0.0f, 0.2f, "%.4f");
+        changed |= ImGui::SliderFloat("Shadow Slope Bias", &settings.shadow.slope_bias, 0.0f, 0.02f, "%.5f");
+        changed |= ImGui::SliderFloat("Shadow Filter Radius", &settings.shadow.filter_radius, 0.25f, 3.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Shadow Distance", &settings.shadow.distance, 1.0f, 120.0f, "%.1f");
+
+        const char* shadow_map_items[] = { "1024", "2048", "4096" };
+        int shadow_map_index = shadowMapResolutionToIndex(settings.shadow.map_resolution);
+        if (ImGui::Combo("Shadow Map", &shadow_map_index, shadow_map_items, IM_ARRAYSIZE(shadow_map_items))) {
+            settings.shadow.map_resolution = shadowMapResolutionFromIndex(shadow_map_index);
+            changed = true;
+        }
+        changed |= ImGui::Checkbox("Shadow Stabilize", &settings.shadow.stabilize);
 
         ImGui::Spacing();
         const char* ibl_debug_items[] = {

@@ -864,6 +864,16 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_radius = 1.25f;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
+    settings.shadow.enabled = false;
+    settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCF5x5;
+    settings.shadow.strength = 0.45f;
+    settings.shadow.constant_bias = 0.006f;
+    settings.shadow.normal_bias = 0.05f;
+    settings.shadow.slope_bias = 0.003f;
+    settings.shadow.filter_radius = 2.0f;
+    settings.shadow.distance = 64.0f;
+    settings.shadow.map_resolution = 4096u;
+    settings.shadow.stabilize = false;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -872,6 +882,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.post_process;
     const NexAur::RenderIblDebugSettings& first_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
+    const NexAur::RenderShadowSettings& first_shadow =
+        render_context.getReadData().render_settings.shadow;
     expect(
         first_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::None,
         "RenderSettings smoke failed: tone mapping mode did not reach the read packet.");
@@ -888,6 +900,18 @@ int runRenderSettingsSmoke() {
         first_ibl_debug.mode == NexAur::RenderIblDebugMode::SpecularIbl &&
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
+    expect(
+        !first_shadow.enabled &&
+        first_shadow.filter_mode == NexAur::RenderShadowFilterMode::PCF5x5 &&
+        nearlyEqual(first_shadow.strength, 0.45f) &&
+        nearlyEqual(first_shadow.constant_bias, 0.006f) &&
+        nearlyEqual(first_shadow.normal_bias, 0.05f) &&
+        nearlyEqual(first_shadow.slope_bias, 0.003f) &&
+        nearlyEqual(first_shadow.filter_radius, 2.0f) &&
+        nearlyEqual(first_shadow.distance, 64.0f) &&
+        first_shadow.map_resolution == 4096u &&
+        !first_shadow.stabilize,
+        "RenderSettings smoke failed: shadow settings did not reach the read packet.");
 
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::ACES;
     settings.post_process.exposure = 0.5f;
@@ -897,6 +921,16 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_radius = 1.0f;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
     settings.ibl_debug.prefilter_mip = 0.0f;
+    settings.shadow.enabled = true;
+    settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCF3x3;
+    settings.shadow.strength = 0.7f;
+    settings.shadow.constant_bias = 0.003f;
+    settings.shadow.normal_bias = 0.0f;
+    settings.shadow.slope_bias = 0.001f;
+    settings.shadow.filter_radius = 1.0f;
+    settings.shadow.distance = 35.0f;
+    settings.shadow.map_resolution = 2048u;
+    settings.shadow.stabilize = true;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -905,6 +939,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.post_process;
     const NexAur::RenderIblDebugSettings& second_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
+    const NexAur::RenderShadowSettings& second_shadow =
+        render_context.getReadData().render_settings.shadow;
     expect(
         second_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::ACES,
         "RenderSettings smoke failed: ACES mode did not reach the read packet.");
@@ -921,6 +957,18 @@ int runRenderSettingsSmoke() {
         second_ibl_debug.mode == NexAur::RenderIblDebugMode::FinalLit &&
         nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),
         "RenderSettings smoke failed: updated IBL debug settings did not reach the read packet.");
+    expect(
+        second_shadow.enabled &&
+        second_shadow.filter_mode == NexAur::RenderShadowFilterMode::PCF3x3 &&
+        nearlyEqual(second_shadow.strength, 0.7f) &&
+        nearlyEqual(second_shadow.constant_bias, 0.003f) &&
+        nearlyEqual(second_shadow.normal_bias, 0.0f) &&
+        nearlyEqual(second_shadow.slope_bias, 0.001f) &&
+        nearlyEqual(second_shadow.filter_radius, 1.0f) &&
+        nearlyEqual(second_shadow.distance, 35.0f) &&
+        second_shadow.map_resolution == 2048u &&
+        second_shadow.stabilize,
+        "RenderSettings smoke failed: updated shadow settings did not reach the read packet.");
 
     if (!success) {
         std::cerr << failure << std::endl;

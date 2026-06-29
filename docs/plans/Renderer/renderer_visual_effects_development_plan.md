@@ -878,7 +878,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 10. PR-R31：Shadow Quality Pass 1：PCF / Bias / Stability
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -910,6 +910,28 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
    - Renderer debug snapshot 显示 shadow target ready / size / format。
    - 后续 shadow map viewer 放到 PR-R34。
 
+实现记录：
+
+- 新增 backend-neutral `RenderShadowFilterMode` / `RenderShadowSettings`，随 `RenderSettings` 通过现有双缓冲 render data 链路传递。
+- Renderer Debug 面板 `Effects` 分组增加 Shadow 调参：
+  - enabled。
+  - filter：Hard / PCF 3x3 / PCF 5x5。
+  - strength。
+  - constant bias / normal bias / slope bias。
+  - filter radius。
+  - distance。
+  - shadow map：1024 / 2048 / 4096。
+  - stabilize。
+- `VulkanFrameLightingResource` 的 frame global uniform 增加 `shadow_quality_params`，向 shader 传递 filter mode、filter radius、normal bias 和 slope bias。
+- 新增 `assets/shaders/Renderer/Vulkan/common/shadow_sampling.hlsli`：
+  - 统一 shadow projection / depth compare / PCF sampling。
+  - 支持 hard shadow、3x3 PCF 和 5x5 PCF。
+  - 支持 receiver-side constant bias、normal bias 和 slope-scale bias。
+- `vulkan_forward.hlsl` 去掉内联 shadow sampling，forward shader 只保留 pass IO、材质/光照 orchestration。
+- Directional shadow light-space center 增加 texel snapping，减少 camera 小幅移动时的 shadow shimmer。
+- `VulkanShadowMapTarget` 保持 Vulkan backend 内部资源，运行时根据 `RenderSettings.shadow.map_resolution` 在 1024 / 2048 / 4096 间重建并刷新 frame-global shadow descriptor。
+- `RenderSettingsSmoke` 覆盖 shadow settings 的双缓冲传递。
+
 暂时不做：
 
 - CSM。
@@ -925,6 +947,20 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - bias 可调，能平衡 acne / peter-panning。
 - PCF kernel 改变能影响边缘软硬。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Forward / Shadow HLSL 编译通过。
+- CTest 18/18 通过，其中 `NexAur.RenderSettingsSmoke` 覆盖 Shadow settings。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 11. PR-R32：Cascaded Shadow Maps
 

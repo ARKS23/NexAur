@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <glm/geometric.hpp>
 
@@ -25,6 +26,7 @@ namespace NexAur {
             glm::vec4 directional_color_point_count{ 1.0f, 1.0f, 1.0f, 0.0f };
             glm::vec4 ambient_color_intensity{ 1.0f, 1.0f, 1.0f, kFallbackAmbientIntensity };
             glm::vec4 shadow_params{ 0.0f, 0.65f, 0.002f, 1.0f };
+            glm::vec4 shadow_quality_params{ 1.0f, 1.0f, 0.0f, 0.001f };
             glm::vec4 ibl_debug_params{ 0.0f, 0.0f, 0.0f, 0.0f };
         };
 
@@ -48,6 +50,28 @@ namespace NexAur {
 
         glm::vec3 safeNormalize(const glm::vec3& value, const glm::vec3& fallback) {
             return glm::dot(value, value) > 0.000001f ? glm::normalize(value) : fallback;
+        }
+
+        float sanitizeUnit(float value, float fallback) {
+            if (!std::isfinite(value)) {
+                return fallback;
+            }
+            return std::clamp(value, 0.0f, 1.0f);
+        }
+
+        float sanitizeMin(float value, float fallback, float minimum) {
+            return std::isfinite(value) && value >= minimum ? value : fallback;
+        }
+
+        uint32_t sanitizeShadowFilterMode(RenderShadowFilterMode mode) {
+            switch (mode) {
+            case RenderShadowFilterMode::Hard:
+            case RenderShadowFilterMode::PCF3x3:
+            case RenderShadowFilterMode::PCF5x5:
+                return static_cast<uint32_t>(mode);
+            default:
+                return static_cast<uint32_t>(RenderShadowFilterMode::PCF3x3);
+            }
         }
     } // namespace
 
@@ -129,11 +153,18 @@ namespace NexAur {
         frame_globals.ambient_color_intensity = glm::vec4(
             glm::max(draw_list.environment_color, glm::vec3{ 0.0f }),
             std::max(0.0f, draw_list.environment_intensity) * kFallbackAmbientIntensity);
+        const RenderShadowSettings& shadow_settings = render_settings.shadow;
+        const bool shadow_enabled = draw_list.directional_light.cast_shadow && shadow_settings.enabled;
         frame_globals.shadow_params = glm::vec4(
-            draw_list.directional_light.cast_shadow ? 1.0f : 0.0f,
-            draw_list.directional_light.shadow_strength,
-            draw_list.directional_light.shadow_bias,
+            shadow_enabled ? 1.0f : 0.0f,
+            sanitizeUnit(shadow_settings.strength, draw_list.directional_light.shadow_strength),
+            sanitizeMin(shadow_settings.constant_bias, draw_list.directional_light.shadow_bias, 0.0f),
             std::max(1.0f, shadow_map_size));
+        frame_globals.shadow_quality_params = glm::vec4(
+            static_cast<float>(sanitizeShadowFilterMode(shadow_settings.filter_mode)),
+            sanitizeMin(shadow_settings.filter_radius, 1.0f, 0.0f),
+            sanitizeMin(shadow_settings.normal_bias, 0.0f, 0.0f),
+            sanitizeMin(shadow_settings.slope_bias, 0.001f, 0.0f));
         const uint32_t prefilter_mip_count =
             draw_list.environment && draw_list.environment->isReady()
                 ? draw_list.environment->getPrefilterMipCount()
