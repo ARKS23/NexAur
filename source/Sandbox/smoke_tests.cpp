@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <string_view>
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
@@ -20,6 +21,7 @@
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/material_asset.h"
+#include "Function/Resource/model.h"
 #include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
@@ -528,6 +530,105 @@ int runMaterialAssetSmoke() {
     }
 
     std::cout << "MaterialAsset smoke passed." << std::endl;
+    return 0;
+}
+
+int runGltfModelImportSmoke() {
+    const std::filesystem::path damaged_helmet_path =
+        std::filesystem::path(NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf"));
+
+    if (!std::filesystem::exists(damaged_helmet_path)) {
+        std::cout << "GltfModelImport smoke skipped: optional DamagedHelmet asset is missing." << std::endl;
+        return 0;
+    }
+
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    auto expectFilename = [&](const std::string& path, const std::string& filename, const std::string& label) {
+        expect(!path.empty(), label + " path should not be empty.");
+        if (!path.empty()) {
+            expect(
+                std::filesystem::path(path).filename().string() == filename,
+                label + " should resolve to " + filename + ".");
+        }
+    };
+
+    NexAur::Engine engine;
+    engine.startEngine();
+
+    NexAur::AssetManager& asset_manager = NexAur::AssetManager::getInstance();
+    NexAur::AssetHandle model_handle = asset_manager.importModelAsset(damaged_helmet_path.string());
+    std::shared_ptr<NexAur::Model> model = asset_manager.loadModelCPU(model_handle);
+    expect(model != nullptr && model->isLoaded(), "DamagedHelmet glTF should load.");
+    expect(model && model->getMeshes().size() == 1, "DamagedHelmet should import one mesh.");
+
+    if (model && model->isLoaded() && !model->getMeshes().empty()) {
+        const NexAur::Mesh& mesh = model->getMeshes().front();
+        const NexAur::MaterialImportData& material = mesh.getMaterialImportData();
+
+        expectFilename(material.base_color_texture_path, "Default_albedo.jpg", "Base color texture");
+        expectFilename(material.normal_texture_path, "Default_normal.jpg", "Normal texture");
+        expectFilename(material.metallic_roughness_texture_path, "Default_metalRoughness.jpg", "Metallic-roughness texture");
+        expectFilename(material.ao_texture_path, "Default_AO.jpg", "AO texture");
+        expectFilename(material.emissive_texture_path, "Default_emissive.jpg", "Emissive texture");
+        expect(material.metallic_texture_path.empty(), "DamagedHelmet should not keep a separate metallic texture.");
+        expect(material.roughness_texture_path.empty(), "DamagedHelmet should not keep a separate roughness texture.");
+        expect(
+            material.metallic_roughness_mode == NexAur::MaterialMetallicRoughnessTextureMode::PackedGltf,
+            "DamagedHelmet should use packed glTF metallic-roughness.");
+        expect(nearlyEqual(material.metallic_factor, 1.0f), "DamagedHelmet metallic factor should follow glTF default.");
+        expect(nearlyEqual(material.roughness_factor, 1.0f), "DamagedHelmet roughness factor should follow glTF default.");
+        expect(nearlyEqual(material.normal_scale, 1.0f), "DamagedHelmet normal scale should follow glTF default.");
+        expect(nearlyEqual(material.occlusion_strength, 1.0f), "DamagedHelmet AO strength should follow glTF default.");
+        expect(material.alpha_mode == NexAur::MaterialAlphaMode::Opaque, "DamagedHelmet alpha mode should be opaque.");
+
+        glm::vec3 min_bounds{ std::numeric_limits<float>::max() };
+        glm::vec3 max_bounds{ std::numeric_limits<float>::lowest() };
+        for (const NexAur::Vertex& vertex : mesh.GetVertices()) {
+            min_bounds = glm::min(min_bounds, vertex.position);
+            max_bounds = glm::max(max_bounds, vertex.position);
+        }
+
+        expect(
+            min_bounds.y > -1.05f && max_bounds.y < 1.05f &&
+            min_bounds.z < -1.05f && max_bounds.z > 0.75f,
+            "DamagedHelmet node transform should be baked into imported vertices.");
+
+        std::shared_ptr<NexAur::MaterialAsset> material_asset =
+            asset_manager.createMaterialFromImportData(material);
+        expect(material_asset != nullptr, "DamagedHelmet material asset should be created.");
+        if (material_asset) {
+            expect(material_asset->usesPackedMetallicRoughness(), "DamagedHelmet material asset should use packed MR.");
+
+            const NexAur::AssetMetadata* base_color_metadata =
+                asset_manager.getMetadata(material_asset->getBaseColorTexture());
+            const NexAur::AssetMetadata* mr_metadata =
+                asset_manager.getMetadata(material_asset->getMetallicRoughnessTexture());
+            expect(
+                base_color_metadata && base_color_metadata->texture_color_space == NexAur::TextureColorSpace::SRGB,
+                "DamagedHelmet base color should be registered as sRGB.");
+            expect(
+                mr_metadata && mr_metadata->texture_color_space == NexAur::TextureColorSpace::Linear,
+                "DamagedHelmet metallic-roughness should be registered as linear.");
+        }
+    }
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        engine.shutdownEngine();
+        return 1;
+    }
+
+    std::cout << "GltfModelImport smoke passed." << std::endl;
+    engine.shutdownEngine();
     return 0;
 }
 
@@ -1180,6 +1281,7 @@ namespace {
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
+        { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
         { "--gameplay-systems-smoke", "GameplaySystems", runGameplaySystemsSmoke },
         { "--physics-trigger-smoke", "PhysicsTrigger", runPhysicsTriggerSmoke },
         { "--runtime-camera-smoke", "RuntimeCamera", runRuntimeCameraSmoke },

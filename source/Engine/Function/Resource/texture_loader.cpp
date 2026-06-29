@@ -8,11 +8,179 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <utility>
 #include <vector>
 
 namespace NexAur {
     namespace {
+        constexpr uint32_t kEnvironmentCacheVersion = 1;
+        constexpr uint64_t kEnvironmentCacheMagic = 0x3143564E4558414Eull; // NAXENV C1, little-endian marker.
+
+        uint64_t fnv1a64(const std::string& text) {
+            uint64_t hash = 14695981039346656037ull;
+            for (unsigned char ch : text) {
+                hash ^= static_cast<uint64_t>(ch);
+                hash *= 1099511628211ull;
+            }
+            return hash;
+        }
+
+        bool sourceFileMetadata(
+            const std::filesystem::path& path,
+            uint64_t& file_size,
+            int64_t& write_time) {
+            std::error_code error;
+            file_size = static_cast<uint64_t>(std::filesystem::file_size(path, error));
+            if (error) {
+                return false;
+            }
+
+            const auto last_write_time = std::filesystem::last_write_time(path, error);
+            if (error) {
+                return false;
+            }
+
+            write_time = last_write_time.time_since_epoch().count();
+            return true;
+        }
+
+        std::filesystem::path environmentCachePath(
+            const std::filesystem::path& source_path,
+            uint32_t max_width) {
+            std::error_code error;
+            std::filesystem::path normalized_path = std::filesystem::weakly_canonical(source_path, error);
+            if (error) {
+                normalized_path = source_path.lexically_normal();
+            }
+
+            const std::string key = normalized_path.string() + "#" + std::to_string(max_width);
+            const uint64_t hash = fnv1a64(key);
+            std::filesystem::path cache_root = std::filesystem::temp_directory_path(error);
+            if (error || cache_root.empty()) {
+                cache_root = std::filesystem::current_path();
+            }
+
+            cache_root /= "NexAur";
+            cache_root /= "EnvironmentCache";
+            return cache_root / ("env_" + std::to_string(hash) + ".nxaenv");
+        }
+
+        template<typename Value>
+        bool readBinary(std::ifstream& file, Value& value) {
+            file.read(reinterpret_cast<char*>(&value), sizeof(Value));
+            return file.good();
+        }
+
+        template<typename Value>
+        bool writeBinary(std::ofstream& file, const Value& value) {
+            file.write(reinterpret_cast<const char*>(&value), sizeof(Value));
+            return file.good();
+        }
+
+        std::shared_ptr<EnvironmentMapAsset> loadCachedEnvironment(
+            const std::filesystem::path& source_path,
+            uint32_t max_width) {
+            uint64_t source_size = 0;
+            int64_t source_write_time = 0;
+            if (!sourceFileMetadata(source_path, source_size, source_write_time)) {
+                return nullptr;
+            }
+
+            const std::filesystem::path cache_path = environmentCachePath(source_path, max_width);
+            std::ifstream file(cache_path, std::ios::binary);
+            if (!file.is_open()) {
+                return nullptr;
+            }
+
+            uint64_t magic = 0;
+            uint32_t version = 0;
+            uint32_t width = 0;
+            uint32_t height = 0;
+            uint32_t cached_max_width = 0;
+            uint64_t cached_source_size = 0;
+            int64_t cached_source_write_time = 0;
+            uint64_t value_count = 0;
+
+            if (!readBinary(file, magic) ||
+                !readBinary(file, version) ||
+                !readBinary(file, width) ||
+                !readBinary(file, height) ||
+                !readBinary(file, cached_max_width) ||
+                !readBinary(file, cached_source_size) ||
+                !readBinary(file, cached_source_write_time) ||
+                !readBinary(file, value_count)) {
+                return nullptr;
+            }
+
+            const uint64_t expected_value_count =
+                static_cast<uint64_t>(width) * static_cast<uint64_t>(height) * 4ull;
+            if (magic != kEnvironmentCacheMagic ||
+                version != kEnvironmentCacheVersion ||
+                cached_max_width != max_width ||
+                cached_source_size != source_size ||
+                cached_source_write_time != source_write_time ||
+                width == 0 ||
+                height == 0 ||
+                value_count != expected_value_count) {
+                return nullptr;
+            }
+
+            std::vector<float> pixels(static_cast<size_t>(value_count));
+            file.read(reinterpret_cast<char*>(pixels.data()), static_cast<std::streamsize>(pixels.size() * sizeof(float)));
+            if (!file.good()) {
+                return nullptr;
+            }
+
+            return std::make_shared<EnvironmentMapAsset>(
+                width,
+                height,
+                std::move(pixels),
+                source_path.string());
+        }
+
+        void writeCachedEnvironment(
+            const std::filesystem::path& source_path,
+            uint32_t max_width,
+            uint32_t width,
+            uint32_t height,
+            const std::vector<float>& pixels) {
+            uint64_t source_size = 0;
+            int64_t source_write_time = 0;
+            if (!sourceFileMetadata(source_path, source_size, source_write_time)) {
+                return;
+            }
+
+            const std::filesystem::path cache_path = environmentCachePath(source_path, max_width);
+            std::error_code error;
+            std::filesystem::create_directories(cache_path.parent_path(), error);
+            if (error) {
+                return;
+            }
+
+            std::ofstream file(cache_path, std::ios::binary | std::ios::trunc);
+            if (!file.is_open()) {
+                return;
+            }
+
+            const uint64_t value_count = static_cast<uint64_t>(pixels.size());
+            if (!writeBinary(file, kEnvironmentCacheMagic) ||
+                !writeBinary(file, kEnvironmentCacheVersion) ||
+                !writeBinary(file, width) ||
+                !writeBinary(file, height) ||
+                !writeBinary(file, max_width) ||
+                !writeBinary(file, source_size) ||
+                !writeBinary(file, source_write_time) ||
+                !writeBinary(file, value_count)) {
+                return;
+            }
+
+            file.write(
+                reinterpret_cast<const char*>(pixels.data()),
+                static_cast<std::streamsize>(pixels.size() * sizeof(float)));
+        }
+
         std::vector<float> resampleRGBA32F(
             const float* source_pixels,
             uint32_t source_width,
@@ -116,6 +284,13 @@ namespace NexAur {
             return nullptr;
         }
 
+        const std::filesystem::path source_path(path);
+        if (max_width > 0) {
+            if (std::shared_ptr<EnvironmentMapAsset> cached = loadCachedEnvironment(source_path, max_width)) {
+                return cached;
+            }
+        }
+
         int width = 0;
         int height = 0;
         int source_channels = 0;
@@ -152,6 +327,10 @@ namespace NexAur {
             target_width,
             target_height);
         stbi_image_free(pixels);
+
+        if (max_width > 0) {
+            writeCachedEnvironment(source_path, max_width, target_width, target_height, environment_pixels);
+        }
 
         return std::make_shared<EnvironmentMapAsset>(
             target_width,

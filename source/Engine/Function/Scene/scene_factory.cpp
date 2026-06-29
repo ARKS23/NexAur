@@ -7,6 +7,8 @@
 #include "Function/File/file_system.h"
 #include "Function/Resource/asset_manager.h"
 
+#include <filesystem>
+
 namespace NexAur {
     namespace {
         constexpr float kDefaultCameraFov = 45.0f;
@@ -33,11 +35,18 @@ namespace NexAur {
             camera_entity.addComponent<ActiveCameraComponent>();
         }
 
+        std::string defaultEnvironmentPath() {
+            const std::string lightweight_hdr = NX_ASSET("assets/textures/HDR/2k.hdr");
+            if (std::filesystem::exists(lightweight_hdr)) {
+                return lightweight_hdr;
+            }
+
+            return NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr");
+        }
+
         void addDefaultEnvironment(const std::shared_ptr<SceneV2>& scene) {
             AssetManager& asset_manager = AssetManager::getInstance();
-            AssetHandle environment_asset = asset_manager.importEnvironmentMapAsset(
-                NX_ASSET("assets/textures/HDR/warm_restaurant_8k.hdr"));
-
+            AssetHandle environment_asset = asset_manager.importEnvironmentMapAsset(defaultEnvironmentPath());
             if (!environment_asset) return;
 
             Entity environment_entity = scene->createEntity("Environment");

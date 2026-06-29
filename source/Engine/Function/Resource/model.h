@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 
+#include <glm/mat4x4.hpp>
+
 #include "Function/Resource/mesh.h"
 
 // 前置声明，避免引入 Assimp 头文件
@@ -29,8 +31,8 @@ namespace NexAur {
 
     private:
         void loadModel(const std::string& path);
-        void processNode(aiNode* node, const aiScene* scene);
-        Mesh processMesh(aiMesh* mesh, const aiScene* scene);
+        void processNode(aiNode* node, const aiScene* scene, const glm::mat4& parent_transform);
+        Mesh processMesh(aiMesh* mesh, const aiScene* scene, const glm::mat4& node_transform);
         std::string loadMaterialTexturePath(aiMaterial* material, int type);
         
     private:

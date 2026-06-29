@@ -105,12 +105,13 @@ SamplerState g_environment_sampler;
 VSOutput VSMain(VSInput input) {
     VSOutput output;
     float4 world_position = mul(g_push_constants.model, float4(input.position, 1.0f));
+    float3x3 model_matrix = (float3x3)g_push_constants.model;
     float3x3 normal_matrix = (float3x3)g_push_constants.normal_matrix;
     output.position = mul(g_frame.view_projection, world_position);
     output.world_position = world_position.xyz;
     output.world_normal = normalize(mul(normal_matrix, input.normal));
-    output.world_tangent = mul(normal_matrix, input.tangent);
-    output.world_bitangent = mul(normal_matrix, input.bitangent);
+    output.world_tangent = mul(model_matrix, input.tangent);
+    output.world_bitangent = mul(model_matrix, input.bitangent);
     output.texcoord = input.texcoord;
     output.shadow_position = mul(g_frame.shadow_light_view_projection, world_position);
     return output;
@@ -173,12 +174,18 @@ float3 ResolveNormal(VSOutput input) {
         tangent = normalize(tangent - normal * dot(normal, tangent));
     }
 
-    float3 bitangent = input.world_bitangent;
-    if (dot(bitangent, bitangent) <= 0.000001f) {
-        bitangent = normalize(cross(normal, tangent));
-    } else {
-        bitangent = normalize(bitangent - normal * dot(normal, bitangent));
+    float3 input_bitangent = input.world_bitangent;
+    float handedness = 1.0f;
+    if (dot(input_bitangent, input_bitangent) > 0.000001f) {
+        handedness = dot(cross(normal, tangent), input_bitangent) < 0.0f ? -1.0f : 1.0f;
     }
+
+    float3 bitangent = cross(normal, tangent) * handedness;
+    if (dot(bitangent, bitangent) <= 0.000001f) {
+        tangent = FallbackTangent(normal);
+        bitangent = cross(normal, tangent) * handedness;
+    }
+    bitangent = normalize(bitangent);
 
     float3 tangent_normal = g_normal_texture.Sample(g_material_sampler, input.texcoord).xyz * 2.0f - 1.0f;
     tangent_normal.xy *= max(g_material.emissive_factor_normal_scale.w, 0.0f);
@@ -272,7 +279,7 @@ float3 EvaluateIBL(
     float ambient_occlusion,
     float3 normal,
     float3 view_dir) {
-    const float ndotv = max(dot(normal, view_dir), 0.0f);
+    const float ndotv = max(saturate(dot(normal, view_dir)), 0.0001f);
     const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), base_color, metallic);
     const float3 fresnel = FresnelSchlickRoughness(ndotv, f0, roughness);
     const float3 diffuse_weight = (1.0f - fresnel) * (1.0f - metallic);
@@ -286,10 +293,9 @@ float3 EvaluateIBL(
         g_prefiltered_environment_map.SampleLevel(g_environment_sampler, reflection_dir, reflection_lod).rgb,
         0.0f);
     const float2 brdf = g_brdf_lut.SampleLevel(g_environment_sampler, float2(ndotv, roughness), 0.0f).rg;
-    const float3 specular = prefiltered * (fresnel * brdf.x + brdf.y);
+    const float3 specular = prefiltered * (f0 * brdf.x + brdf.y);
 
-    return (diffuse_weight * diffuse + specular) *
-        ambient_occlusion *
+    return (diffuse_weight * diffuse * ambient_occlusion + specular) *
         max(g_frame.camera_position_environment_intensity.w, 0.0f);
 }
 

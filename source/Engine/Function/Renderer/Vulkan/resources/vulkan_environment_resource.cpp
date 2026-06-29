@@ -48,26 +48,6 @@ namespace NexAur {
             return glm::max(color, glm::vec3{ 0.0f });
         }
 
-        glm::vec3 averageEnvironmentColor(const EnvironmentMapAsset& environment) {
-            const std::vector<float>& pixels = environment.getPixels();
-            if (pixels.empty()) {
-                return glm::vec3{ 0.08f, 0.10f, 0.14f };
-            }
-
-            glm::dvec3 sum{ 0.0 };
-            const size_t pixel_count = pixels.size() / 4u;
-            for (size_t index = 0; index < pixel_count; ++index) {
-                const size_t base = index * 4u;
-                sum += glm::dvec3{
-                    std::max(0.0f, pixels[base + 0]),
-                    std::max(0.0f, pixels[base + 1]),
-                    std::max(0.0f, pixels[base + 2])
-                };
-            }
-
-            return glm::vec3(sum / static_cast<double>(std::max<size_t>(1, pixel_count)));
-        }
-
         glm::vec3 cubeDirection(uint32_t face, float u, float v) {
             switch (face) {
                 case 0: return glm::normalize(glm::vec3{ 1.0f, -v, -u });
@@ -118,11 +98,116 @@ namespace NexAur {
             return glm::mix(top, bottom, fy);
         }
 
-        CubeMipPixels generateCubeMip(
-            const EnvironmentMapAsset& environment,
-            uint32_t size,
-            const glm::vec3& average_color,
-            float average_blend) {
+        void writeCubePixel(CubeMipPixels& mip, uint32_t face, uint32_t x, uint32_t y, const glm::vec3& color) {
+            const size_t base =
+                ((static_cast<size_t>(face) * mip.size * mip.size) +
+                 (static_cast<size_t>(y) * mip.size) +
+                 x) *
+                4u;
+            mip.pixels[base + 0] = color.r;
+            mip.pixels[base + 1] = color.g;
+            mip.pixels[base + 2] = color.b;
+            mip.pixels[base + 3] = 1.0f;
+        }
+
+        void buildBasis(const glm::vec3& normal, glm::vec3& tangent, glm::vec3& bitangent) {
+            const glm::vec3 helper = std::abs(normal.y) < 0.999f
+                ? glm::vec3{ 0.0f, 1.0f, 0.0f }
+                : glm::vec3{ 0.0f, 0.0f, 1.0f };
+            tangent = glm::normalize(glm::cross(helper, normal));
+            bitangent = glm::normalize(glm::cross(normal, tangent));
+        }
+
+        float radicalInverseVdc(uint32_t bits) {
+            bits = (bits << 16u) | (bits >> 16u);
+            bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+            bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+            bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+            bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+            return static_cast<float>(bits) * 2.3283064365386963e-10f;
+        }
+
+        glm::vec2 hammersley(uint32_t index, uint32_t count) {
+            return glm::vec2{
+                static_cast<float>(index) / std::max(static_cast<float>(count), 1.0f),
+                radicalInverseVdc(index)
+            };
+        }
+
+        glm::vec3 importanceSampleGGX(const glm::vec2& xi, float roughness, const glm::vec3& normal) {
+            const float alpha = std::max(roughness * roughness, 0.001f);
+            const float alpha2 = alpha * alpha;
+            const float phi = 2.0f * kPi * xi.x;
+            const float cos_theta = std::sqrt(
+                (1.0f - xi.y) /
+                std::max(1.0f + (alpha2 - 1.0f) * xi.y, 0.0001f));
+            const float sin_theta = std::sqrt(std::max(1.0f - cos_theta * cos_theta, 0.0f));
+
+            const glm::vec3 half_vector_tangent{
+                std::cos(phi) * sin_theta,
+                std::sin(phi) * sin_theta,
+                cos_theta
+            };
+
+            glm::vec3 tangent;
+            glm::vec3 bitangent;
+            buildBasis(normal, tangent, bitangent);
+            return glm::normalize(
+                tangent * half_vector_tangent.x +
+                bitangent * half_vector_tangent.y +
+                normal * half_vector_tangent.z);
+        }
+
+        float geometrySchlickGGXIbl(float n_dot_v, float roughness) {
+            const float k = (roughness * roughness) * 0.5f;
+            return n_dot_v / std::max(n_dot_v * (1.0f - k) + k, 0.0001f);
+        }
+
+        float geometrySmithIbl(float n_dot_v, float n_dot_l, float roughness) {
+            return geometrySchlickGGXIbl(n_dot_v, roughness) *
+                   geometrySchlickGGXIbl(n_dot_l, roughness);
+        }
+
+        glm::vec2 integrateBrdf(float n_dot_v, float roughness, uint32_t sample_count) {
+            const glm::vec3 normal{ 0.0f, 0.0f, 1.0f };
+            const glm::vec3 view_direction{
+                std::sqrt(std::max(1.0f - n_dot_v * n_dot_v, 0.0f)),
+                0.0f,
+                n_dot_v
+            };
+
+            float scale = 0.0f;
+            float bias = 0.0f;
+            for (uint32_t sample_index = 0; sample_index < sample_count; ++sample_index) {
+                const glm::vec2 xi = hammersley(sample_index, sample_count);
+                const glm::vec3 half_vector = importanceSampleGGX(xi, roughness, normal);
+                glm::vec3 light_direction =
+                    2.0f * glm::dot(view_direction, half_vector) * half_vector - view_direction;
+                if (glm::dot(light_direction, light_direction) <= 0.000001f) {
+                    continue;
+                }
+                light_direction = glm::normalize(light_direction);
+
+                const float n_dot_l = std::clamp(light_direction.z, 0.0f, 1.0f);
+                const float n_dot_h = std::clamp(half_vector.z, 0.0f, 1.0f);
+                const float v_dot_h = std::clamp(glm::dot(view_direction, half_vector), 0.0f, 1.0f);
+                if (n_dot_l <= 0.0f) {
+                    continue;
+                }
+
+                const float geometry = geometrySmithIbl(n_dot_v, n_dot_l, roughness);
+                const float geometry_visibility =
+                    geometry * v_dot_h / std::max(n_dot_h * n_dot_v, 0.0001f);
+                const float fresnel = std::pow(1.0f - v_dot_h, 5.0f);
+                scale += (1.0f - fresnel) * geometry_visibility;
+                bias += fresnel * geometry_visibility;
+            }
+
+            const float inv_sample_count = 1.0f / std::max(static_cast<float>(sample_count), 1.0f);
+            return glm::vec2{ scale * inv_sample_count, bias * inv_sample_count };
+        }
+
+        CubeMipPixels generateEnvironmentCubeMip(const EnvironmentMapAsset& environment, uint32_t size) {
             CubeMipPixels mip;
             mip.size = size;
             mip.pixels.resize(static_cast<size_t>(size) * size * 6u * 4u);
@@ -133,17 +218,7 @@ namespace NexAur {
                         const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
                         const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
                         const glm::vec3 direction = cubeDirection(face, u, v);
-                        const glm::vec3 sampled = sampleEnvironment(environment, direction);
-                        const glm::vec3 color = glm::mix(sampled, average_color, std::clamp(average_blend, 0.0f, 1.0f));
-                        const size_t base =
-                            ((static_cast<size_t>(face) * size * size) +
-                             (static_cast<size_t>(y) * size) +
-                             x) *
-                            4u;
-                        mip.pixels[base + 0] = color.r;
-                        mip.pixels[base + 1] = color.g;
-                        mip.pixels[base + 2] = color.b;
-                        mip.pixels[base + 3] = 1.0f;
+                        writeCubePixel(mip, face, x, y, sampleEnvironment(environment, direction));
                     }
                 }
             }
@@ -151,10 +226,90 @@ namespace NexAur {
             return mip;
         }
 
-        std::vector<CubeMipPixels> generatePrefilterMips(
+        CubeMipPixels generateIrradianceMip(const EnvironmentMapAsset& environment, uint32_t size) {
+            constexpr float kSampleDelta = 0.35f;
+            CubeMipPixels mip;
+            mip.size = size;
+            mip.pixels.resize(static_cast<size_t>(size) * size * 6u * 4u);
+
+            for (uint32_t face = 0; face < 6; ++face) {
+                for (uint32_t y = 0; y < size; ++y) {
+                    for (uint32_t x = 0; x < size; ++x) {
+                        const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                        const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                        const glm::vec3 normal = cubeDirection(face, u, v);
+
+                        glm::vec3 right;
+                        glm::vec3 up;
+                        buildBasis(normal, right, up);
+
+                        glm::vec3 irradiance{ 0.0f };
+                        float sample_count = 0.0f;
+                        for (float phi = 0.0f; phi < 2.0f * kPi; phi += kSampleDelta) {
+                            for (float theta = 0.0f; theta < 0.5f * kPi; theta += kSampleDelta) {
+                                const float sin_theta = std::sin(theta);
+                                const float cos_theta = std::cos(theta);
+                                const glm::vec3 tangent_sample{
+                                    sin_theta * std::cos(phi),
+                                    sin_theta * std::sin(phi),
+                                    cos_theta
+                                };
+                                const glm::vec3 sample_direction = glm::normalize(
+                                    tangent_sample.x * right +
+                                    tangent_sample.y * up +
+                                    tangent_sample.z * normal);
+                                irradiance += sampleEnvironment(environment, sample_direction) * cos_theta * sin_theta;
+                                sample_count += 1.0f;
+                            }
+                        }
+
+                        const glm::vec3 color = sample_count > 0.0f
+                            ? kPi * irradiance / sample_count
+                            : sampleEnvironment(environment, normal);
+                        writeCubePixel(mip, face, x, y, color);
+                    }
+                }
+            }
+
+            return mip;
+        }
+
+        glm::vec3 prefilterEnvironment(
             const EnvironmentMapAsset& environment,
-            uint32_t base_size,
-            const glm::vec3& average_color) {
+            const glm::vec3& normal,
+            float roughness) {
+            constexpr uint32_t kSampleCount = 32;
+            if (roughness <= 0.001f) {
+                return sampleEnvironment(environment, normal);
+            }
+
+            const glm::vec3 view_direction = normal;
+            glm::vec3 prefiltered{ 0.0f };
+            float total_weight = 0.0f;
+
+            for (uint32_t sample_index = 0; sample_index < kSampleCount; ++sample_index) {
+                const glm::vec2 xi = hammersley(sample_index, kSampleCount);
+                const glm::vec3 half_vector = importanceSampleGGX(xi, roughness, normal);
+                glm::vec3 light_direction =
+                    2.0f * glm::dot(view_direction, half_vector) * half_vector - view_direction;
+                if (glm::dot(light_direction, light_direction) <= 0.000001f) {
+                    continue;
+                }
+                light_direction = glm::normalize(light_direction);
+
+                const float n_dot_l = std::max(glm::dot(normal, light_direction), 0.0f);
+                if (n_dot_l <= 0.0f) {
+                    continue;
+                }
+
+                prefiltered += sampleEnvironment(environment, light_direction) * n_dot_l;
+                total_weight += n_dot_l;
+            }
+
+            return total_weight > 0.0f ? prefiltered / total_weight : sampleEnvironment(environment, normal);
+        }
+
+        std::vector<CubeMipPixels> generatePrefilterMips(const EnvironmentMapAsset& environment, uint32_t base_size) {
             const uint32_t mip_count = calculateMipCount(base_size);
             std::vector<CubeMipPixels> mips;
             mips.reserve(mip_count);
@@ -164,29 +319,62 @@ namespace NexAur {
                 const float roughness = mip_count > 1
                     ? static_cast<float>(mip) / static_cast<float>(mip_count - 1)
                     : 0.0f;
-                const float average_blend = std::pow(roughness, 0.65f);
-                mips.push_back(generateCubeMip(environment, size, average_color, average_blend));
+                if (mip == 0) {
+                    mips.push_back(generateEnvironmentCubeMip(environment, size));
+                    continue;
+                }
+
+                CubeMipPixels prefiltered_mip;
+                prefiltered_mip.size = size;
+                prefiltered_mip.pixels.resize(static_cast<size_t>(size) * size * 6u * 4u);
+                for (uint32_t face = 0; face < 6; ++face) {
+                    for (uint32_t y = 0; y < size; ++y) {
+                        for (uint32_t x = 0; x < size; ++x) {
+                            const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                            const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                            const glm::vec3 direction = cubeDirection(face, u, v);
+                            writeCubePixel(
+                                prefiltered_mip,
+                                face,
+                                x,
+                                y,
+                                prefilterEnvironment(environment, direction, roughness));
+                        }
+                    }
+                }
+                mips.push_back(std::move(prefiltered_mip));
             }
 
             return mips;
         }
 
         std::vector<float> generateBrdfLut(uint32_t size) {
+            constexpr uint32_t kSampleCount = 128;
+            static uint32_t cached_size = 0;
+            static std::vector<float> cached_pixels;
+            if (cached_size == size && !cached_pixels.empty()) {
+                return cached_pixels;
+            }
+
             std::vector<float> pixels(static_cast<size_t>(size) * size * 4u);
             for (uint32_t y = 0; y < size; ++y) {
                 const float roughness = (static_cast<float>(y) + 0.5f) / static_cast<float>(size);
                 for (uint32_t x = 0; x < size; ++x) {
                     const float ndotv = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
-                    const float fresnel_weight = std::pow(1.0f - ndotv, 5.0f);
-                    const float energy = std::clamp(1.0f - roughness * 0.45f, 0.0f, 1.0f);
+                    const glm::vec2 brdf = integrateBrdf(
+                        std::clamp(ndotv, 0.001f, 1.0f),
+                        std::clamp(roughness, 0.0f, 1.0f),
+                        kSampleCount);
                     const size_t base = (static_cast<size_t>(y) * size + x) * 4u;
-                    pixels[base + 0] = energy;
-                    pixels[base + 1] = fresnel_weight * (1.0f - energy);
+                    pixels[base + 0] = brdf.x;
+                    pixels[base + 1] = brdf.y;
                     pixels[base + 2] = 0.0f;
                     pixels[base + 3] = 1.0f;
                 }
             }
 
+            cached_size = size;
+            cached_pixels = pixels;
             return pixels;
         }
 
@@ -664,13 +852,12 @@ namespace NexAur {
         m_descriptor_set_layout = context.descriptor_set_layout;
         m_debug_name = environment_asset.getSourcePath().empty() ? "Environment" : environment_asset.getSourcePath();
 
-        const glm::vec3 average_color = averageEnvironmentColor(environment_asset);
         std::vector<CubeMipPixels> environment_mips;
-        environment_mips.push_back(generateCubeMip(environment_asset, kEnvironmentCubeSize, average_color, 0.0f));
+        environment_mips.push_back(generateEnvironmentCubeMip(environment_asset, kEnvironmentCubeSize));
         std::vector<CubeMipPixels> irradiance_mips;
-        irradiance_mips.push_back(generateCubeMip(environment_asset, kIrradianceCubeSize, average_color, 0.92f));
+        irradiance_mips.push_back(generateIrradianceMip(environment_asset, kIrradianceCubeSize));
         std::vector<CubeMipPixels> prefilter_mips =
-            generatePrefilterMips(environment_asset, kPrefilterCubeSize, average_color);
+            generatePrefilterMips(environment_asset, kPrefilterCubeSize);
         std::vector<float> brdf_lut = generateBrdfLut(kBrdfLutSize);
 
         if (!uploadCubeImage(context.upload_context, environment_mips, m_environment) ||
