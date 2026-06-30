@@ -49,9 +49,12 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/editor_module.h
     Editor/editor_module.cpp
     Editor/editor_context.h
+    Editor/editor_tool_state.h
     Editor/editor_layer.h
     Editor/editor_layer.cpp
     Editor/editor_services.h
+    Editor/Commands/editor_command.h
+    Editor/Commands/editor_command.cpp
     Editor/Style/editor_icons.h
     Editor/Style/editor_fonts.h
     Editor/Style/editor_fonts.cpp

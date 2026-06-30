@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Base.h"
 #include "Core/Events/mouse_event.h"
+#include "Editor/editor_tool_state.h"
 #include "editor_panel.h"
 
 #include <glm/glm.hpp>
@@ -44,7 +45,7 @@ namespace NexAur {
         bool isSceneViewMode() const;
         bool canUseSceneViewTools() const;
         void syncEditorCameraSize(uint32_t width, uint32_t height);
-        void applyGizmoToSelectedEntity(const glm::mat4& transform);
+        void applyGizmoToSelectedEntity(const glm::mat4& transform, EditorToolOperation operation);
 
         bool onMouseButtonPressed(MouseButtonPressedEvent& e);
         void pickEntityAtMouse();
@@ -57,15 +58,6 @@ namespace NexAur {
         bool m_viewport_focused = false;
         bool m_viewport_hovered = false;
         
-        bool m_show_gizmo = true;
-        ImGuizmo::OPERATION m_gizmo_operation = ImGuizmo::TRANSLATE;
-        ImGuizmo::MODE m_gizmo_mode = ImGuizmo::WORLD;
-
-        bool m_use_snap = false;
-        float m_translate_snap = 0.5f; // 平移时的吸附间隔
-        float m_rotate_snap = 15.0f;   // 旋转时的吸附间隔（单位：度）
-        float m_scale_snap = 0.25f;    // 缩放时的吸附间隔
-
         bool m_was_using_gizmo_last_frame = false;
     };
 } // namespace NexAur

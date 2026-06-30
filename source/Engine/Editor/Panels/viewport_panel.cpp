@@ -26,6 +26,23 @@ namespace NexAur {
 
             return false;
         }
+
+        ImGuizmo::OPERATION toGizmoOperation(EditorToolOperation operation) {
+            switch (operation) {
+            case EditorToolOperation::Rotate:
+                return ImGuizmo::ROTATE;
+            case EditorToolOperation::Scale:
+                return ImGuizmo::SCALE;
+            case EditorToolOperation::Translate:
+            case EditorToolOperation::Select:
+            default:
+                return ImGuizmo::TRANSLATE;
+            }
+        }
+
+        ImGuizmo::MODE toGizmoMode(EditorToolSpace space) {
+            return space == EditorToolSpace::Local ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+        }
     } // namespace
 
     void ViewportPanel::onUpdate(TimeStep delta_time) {
@@ -225,6 +242,9 @@ namespace NexAur {
     }
 
     void ViewportPanel::handleGizmoHotkeys() {
+        if (m_context && m_context->command_registry) {
+            return;
+        }
         if (!isSceneViewMode()) {
             return;
         }
@@ -239,27 +259,31 @@ namespace NexAur {
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_W)) {
-            m_gizmo_operation = ImGuizmo::TRANSLATE;
+            m_context->tool_state.operation = EditorToolOperation::Translate;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_E)) {
-            m_gizmo_operation = ImGuizmo::ROTATE;
+            m_context->tool_state.operation = EditorToolOperation::Rotate;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-            m_gizmo_operation = ImGuizmo::SCALE;
+            m_context->tool_state.operation = EditorToolOperation::Scale;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_T)) {
-            m_gizmo_mode = (m_gizmo_mode == ImGuizmo::WORLD) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+            m_context->tool_state.space =
+                m_context->tool_state.space == EditorToolSpace::World
+                    ? EditorToolSpace::Local
+                    : EditorToolSpace::World;
         }
     }
 
     void ViewportPanel::drawGizmo() {
-        if (!m_show_gizmo) {
-            return;
-        }
         if (!isSceneViewMode()) {
             return;
         }
         if (!m_context || !m_context->active_scene) {
+            return;
+        }
+        const EditorToolState& tool_state = m_context->tool_state;
+        if (!tool_state.gizmo_visible || tool_state.operation == EditorToolOperation::Select) {
             return;
         }
         if (!canUseEmbeddedViewportOutput()) {
@@ -295,38 +319,40 @@ namespace NexAur {
         auto& tc = selected.getComponent<TransformComponent>();
         glm::mat4 transform = tc.getTransform();
 
-        float snap_values[3] = { m_translate_snap, m_translate_snap, m_translate_snap };
-        if (m_gizmo_operation == ImGuizmo::ROTATE) {
-            snap_values[0] = m_rotate_snap;
-            snap_values[1] = m_rotate_snap;
-            snap_values[2] = m_rotate_snap;
-        } else if (m_gizmo_operation == ImGuizmo::SCALE) {
-            snap_values[0] = m_scale_snap;
-            snap_values[1] = m_scale_snap;
-            snap_values[2] = m_scale_snap;
+        const ImGuizmo::OPERATION gizmo_operation = toGizmoOperation(tool_state.operation);
+        const ImGuizmo::MODE gizmo_mode = toGizmoMode(tool_state.space);
+
+        float snap_values[3] = { tool_state.translate_snap, tool_state.translate_snap, tool_state.translate_snap };
+        if (tool_state.operation == EditorToolOperation::Rotate) {
+            snap_values[0] = tool_state.rotate_snap;
+            snap_values[1] = tool_state.rotate_snap;
+            snap_values[2] = tool_state.rotate_snap;
+        } else if (tool_state.operation == EditorToolOperation::Scale) {
+            snap_values[0] = tool_state.scale_snap;
+            snap_values[1] = tool_state.scale_snap;
+            snap_values[2] = tool_state.scale_snap;
         }
 
-        ImGuizmo::MODE mode = (m_gizmo_operation == ImGuizmo::ROTATE) ? ImGuizmo::LOCAL : m_gizmo_mode;
         glm::mat4 delta(1.0f);
 
         ImGuizmo::Manipulate(
             glm::value_ptr(view),
             glm::value_ptr(projection),
-            m_gizmo_operation,
-            mode,
+            gizmo_operation,
+            gizmo_mode,
             glm::value_ptr(transform),
             glm::value_ptr(delta),
-            m_use_snap ? snap_values : nullptr
+            tool_state.snap_enabled ? snap_values : nullptr
         );
 
         if (ImGuizmo::IsUsing()) {
-            if (m_gizmo_operation == ImGuizmo::ROTATE) {
+            if (tool_state.operation == EditorToolOperation::Rotate) {
                 glm::quat q_current = glm::quat(tc.rotation);
                 glm::quat q_delta = glm::normalize(glm::quat_cast(glm::mat3(delta)));
                 glm::quat q_new = glm::normalize(q_delta * q_current);
                 tc.rotation = glm::eulerAngles(q_new);
             } else {
-                applyGizmoToSelectedEntity(transform);
+                applyGizmoToSelectedEntity(transform, tool_state.operation);
             }
         }
 
@@ -365,7 +391,7 @@ namespace NexAur {
         m_camera_viewport_size = target_size;
     }
 
-    void ViewportPanel::applyGizmoToSelectedEntity(const glm::mat4& transform) {
+    void ViewportPanel::applyGizmoToSelectedEntity(const glm::mat4& transform, EditorToolOperation operation) {
         if (!m_context || !m_context->selected_entity) {
             return;
         }
@@ -382,17 +408,17 @@ namespace NexAur {
         float scale[3];
         ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), translation, rotation, scale);
 
-        if (m_gizmo_operation == ImGuizmo::TRANSLATE) {
+        if (operation == EditorToolOperation::Translate) {
             tc.translation = glm::vec3(translation[0], translation[1], translation[2]);
             return;
         }
 
-        if (m_gizmo_operation == ImGuizmo::ROTATE) {
+        if (operation == EditorToolOperation::Rotate) {
             tc.rotation = glm::radians(glm::vec3(rotation[0], rotation[1], rotation[2]));
             return;
         }
 
-        if (m_gizmo_operation == ImGuizmo::SCALE) {
+        if (operation == EditorToolOperation::Scale) {
             tc.scale = glm::vec3(scale[0], scale[1], scale[2]);
         }
     }

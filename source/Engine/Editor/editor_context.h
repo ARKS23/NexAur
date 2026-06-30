@@ -4,10 +4,12 @@
 #include <string>
 
 #include "Core/Base.h"
+#include "Editor/editor_tool_state.h"
 #include "Function/Scene/entity.h"
 
 namespace NexAur {
     class AssetManager;
+    class EditorCommandRegistry;
     class EditorCamera;
     class InputService;
     class RenderContext;
@@ -35,9 +37,11 @@ namespace NexAur {
         std::shared_ptr<RenderContext> render_context;
         std::shared_ptr<UIService> ui_service;
         std::shared_ptr<EditorCamera> viewport_camera;
+        std::shared_ptr<EditorCommandRegistry> command_registry;
         std::weak_ptr<SelectionService> selection_service;
         Entity selected_entity;
         std::string selection_source;
+        EditorToolState tool_state;
         EditorViewportViewMode viewport_view_mode = EditorViewportViewMode::SceneView;
         bool viewport_focused = false;
         bool viewport_hovered = false;

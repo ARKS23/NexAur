@@ -8,7 +8,11 @@
 #include "Editor/Panels/renderer_debug_panel.h"
 #include "Editor/Panels/scene_hierarchy_panel.h"
 #include "Editor/Panels/viewport_panel.h"
+#include "Editor/Commands/editor_command.h"
+#include "Editor/Style/editor_icons.h"
 #include "Editor/Style/editor_style.h"
+#include "Editor/Style/editor_theme.h"
+#include "Editor/Widgets/editor_widgets.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/renderer_debug_service.h"
@@ -37,6 +41,24 @@ namespace NexAur {
         constexpr const char* kTimelinePanelName = "Timeline";
         constexpr const char* kProfilerPanelName = "Profiler";
 
+        constexpr const char* kCommandSaveScene = "scene.save";
+        constexpr const char* kCommandLoadScene = "scene.load";
+        constexpr const char* kCommandShowProject = "panel.project.show";
+        constexpr const char* kCommandShowConsole = "panel.console.show";
+        constexpr const char* kCommandResetLayout = "layout.reset";
+        constexpr const char* kCommandOpenAllPanels = "layout.open_all_panels";
+        constexpr const char* kCommandPlay = "runtime.play";
+        constexpr const char* kCommandPause = "runtime.pause";
+        constexpr const char* kCommandStop = "runtime.stop";
+        constexpr const char* kCommandToolSelect = "tool.select";
+        constexpr const char* kCommandToolTranslate = "tool.translate";
+        constexpr const char* kCommandToolRotate = "tool.rotate";
+        constexpr const char* kCommandToolScale = "tool.scale";
+        constexpr const char* kCommandToolLocal = "tool.space.local";
+        constexpr const char* kCommandToolWorld = "tool.space.world";
+        constexpr const char* kCommandToolToggleSpace = "tool.space.toggle";
+        constexpr const char* kCommandToolSnap = "tool.snap.toggle";
+
         const char* viewportModeToText(EditorViewportViewMode mode) {
             switch (mode) {
             case EditorViewportViewMode::GameView:
@@ -55,6 +77,17 @@ namespace NexAur {
             default:
                 return "Unknown";
             }
+        }
+
+        std::string buildCommandTooltip(const EditorCommand& command) {
+            std::string tooltip = command.tooltip;
+            if (!command.shortcut_text.empty()) {
+                if (!tooltip.empty()) {
+                    tooltip += "\n";
+                }
+                tooltip += command.shortcut_text;
+            }
+            return tooltip;
         }
     } // namespace
 
@@ -100,6 +133,8 @@ namespace NexAur {
         m_panels.push_back(std::make_shared<PlaceholderPanel>(
             kProfilerPanelName,
             "Profiler view is reserved for the diagnostics tool pass."));
+
+        registerEditorCommands();
 
         NX_CORE_INFO("EditorLayer initialized.");
     }
@@ -222,6 +257,8 @@ namespace NexAur {
         }
 
         drawMainMenuBar();
+        processCommandShortcuts();
+        drawMainToolbar();
 
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
@@ -251,6 +288,216 @@ namespace NexAur {
         m_styled_imgui_context = current_context;
     }
 
+    void EditorLayer::registerEditorCommands() {
+        if (!m_context) {
+            return;
+        }
+
+        if (!m_context->command_registry) {
+            m_context->command_registry = std::make_shared<EditorCommandRegistry>();
+        }
+
+        EditorCommandRegistry& commands = *m_context->command_registry;
+
+        commands.registerCommand({
+            kCommandSaveScene,
+            "Save Scene",
+            "Save the active scene to the default editor scene file.",
+            "Ctrl+S",
+            ImGuiMod_Ctrl | ImGuiKey_S,
+            [this]() { return m_context && m_context->active_scene && m_context->asset_manager; },
+            {},
+            [this]() { saveActiveScene(); }
+        });
+
+        commands.registerCommand({
+            kCommandLoadScene,
+            "Load Scene",
+            "Load the default editor scene file.",
+            "Ctrl+O",
+            ImGuiMod_Ctrl | ImGuiKey_O,
+            [this]() { return m_context && m_context->scene_service && m_context->asset_manager; },
+            {},
+            [this]() { loadScene(); }
+        });
+
+        commands.registerCommand({
+            kCommandShowProject,
+            "Show Project",
+            "Open the Project panel.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            [this]() { openPanel(kProjectPanelName); }
+        });
+
+        commands.registerCommand({
+            kCommandShowConsole,
+            "Show Console",
+            "Open the Console panel.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            [this]() { openPanel(kConsolePanelName); }
+        });
+
+        commands.registerCommand({
+            kCommandResetLayout,
+            "Reset Layout",
+            "Restore the default editor dock layout.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            [this]() {
+                m_reset_dock_layout_requested = true;
+                setAllPanelsOpen(true);
+            }
+        });
+
+        commands.registerCommand({
+            kCommandOpenAllPanels,
+            "Open All Panels",
+            "Open every registered editor panel.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            [this]() { setAllPanelsOpen(true); }
+        });
+
+        commands.registerCommand({
+            kCommandPlay,
+            "Play",
+            "Reserved for the runtime play-mode lifecycle pass.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            []() { NX_CORE_INFO("Editor Play command is reserved for a later play-mode lifecycle pass."); }
+        });
+
+        commands.registerCommand({
+            kCommandPause,
+            "Pause",
+            "Reserved for the runtime play-mode lifecycle pass.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            []() { NX_CORE_INFO("Editor Pause command is reserved for a later play-mode lifecycle pass."); }
+        });
+
+        commands.registerCommand({
+            kCommandStop,
+            "Stop",
+            "Reserved for the runtime play-mode lifecycle pass.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            []() { NX_CORE_INFO("Editor Stop command is reserved for a later play-mode lifecycle pass."); }
+        });
+
+        commands.registerCommand({
+            kCommandToolSelect,
+            "Select",
+            "Select entities without showing a transform gizmo.",
+            "Q",
+            ImGuiKey_Q,
+            {},
+            [this]() { return m_context && m_context->tool_state.operation == EditorToolOperation::Select; },
+            [this]() { if (m_context) { m_context->tool_state.operation = EditorToolOperation::Select; } }
+        });
+
+        commands.registerCommand({
+            kCommandToolTranslate,
+            "Move",
+            "Move the selected entity.",
+            "W",
+            ImGuiKey_W,
+            {},
+            [this]() { return m_context && m_context->tool_state.operation == EditorToolOperation::Translate; },
+            [this]() { if (m_context) { m_context->tool_state.operation = EditorToolOperation::Translate; } }
+        });
+
+        commands.registerCommand({
+            kCommandToolRotate,
+            "Rotate",
+            "Rotate the selected entity.",
+            "E",
+            ImGuiKey_E,
+            {},
+            [this]() { return m_context && m_context->tool_state.operation == EditorToolOperation::Rotate; },
+            [this]() { if (m_context) { m_context->tool_state.operation = EditorToolOperation::Rotate; } }
+        });
+
+        commands.registerCommand({
+            kCommandToolScale,
+            "Scale",
+            "Scale the selected entity.",
+            "R",
+            ImGuiKey_R,
+            {},
+            [this]() { return m_context && m_context->tool_state.operation == EditorToolOperation::Scale; },
+            [this]() { if (m_context) { m_context->tool_state.operation = EditorToolOperation::Scale; } }
+        });
+
+        commands.registerCommand({
+            kCommandToolLocal,
+            "Local",
+            "Use local transform space for gizmo operations.",
+            "",
+            ImGuiKey_None,
+            {},
+            [this]() { return m_context && m_context->tool_state.space == EditorToolSpace::Local; },
+            [this]() { if (m_context) { m_context->tool_state.space = EditorToolSpace::Local; } }
+        });
+
+        commands.registerCommand({
+            kCommandToolWorld,
+            "World",
+            "Use world transform space for gizmo operations.",
+            "",
+            ImGuiKey_None,
+            {},
+            [this]() { return m_context && m_context->tool_state.space == EditorToolSpace::World; },
+            [this]() { if (m_context) { m_context->tool_state.space = EditorToolSpace::World; } }
+        });
+
+        commands.registerCommand({
+            kCommandToolToggleSpace,
+            "Toggle Transform Space",
+            "Toggle the gizmo transform space between local and world.",
+            "T",
+            ImGuiKey_T,
+            {},
+            {},
+            [this]() {
+                if (!m_context) {
+                    return;
+                }
+                m_context->tool_state.space =
+                    m_context->tool_state.space == EditorToolSpace::World
+                        ? EditorToolSpace::Local
+                        : EditorToolSpace::World;
+            }
+        });
+
+        commands.registerCommand({
+            kCommandToolSnap,
+            "Snap",
+            "Toggle transform snapping.",
+            "",
+            ImGuiKey_None,
+            {},
+            [this]() { return m_context && m_context->tool_state.snap_enabled; },
+            [this]() { if (m_context) { m_context->tool_state.snap_enabled = !m_context->tool_state.snap_enabled; } }
+        });
+    }
+
     void EditorLayer::drawMainMenuBar() {
         if (!ImGui::BeginMenuBar()) {
             return;
@@ -265,23 +512,72 @@ namespace NexAur {
         ImGui::EndMenuBar();
     }
 
+    void EditorLayer::processCommandShortcuts() {
+        if (m_context && m_context->command_registry) {
+            m_context->command_registry->processShortcuts();
+        }
+    }
+
+    void EditorLayer::drawMainToolbar() {
+        const EditorTheme& theme = EditorThemeTokens::getDefaultTheme();
+        const float toolbar_height = ImGui::GetFrameHeight() + 8.0f;
+        const ImGuiWindowFlags flags =
+            ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse;
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, theme.colors.background_panel);
+        if (!ImGui::BeginChild("##NexAurMainToolbar", ImVec2(0.0f, toolbar_height), false, flags)) {
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+            return;
+        }
+
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
+
+        drawToolbarCommand(kCommandSaveScene, EditorIcons::Save);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandLoadScene, EditorIcons::Load);
+
+        drawToolbarSeparator();
+
+        drawToolbarCommand(kCommandPlay, EditorIcons::Play);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandPause, EditorIcons::Pause);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandStop, EditorIcons::Stop);
+
+        drawToolbarSeparator();
+
+        drawToolbarCommand(kCommandToolSelect, EditorIcons::Select);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandToolTranslate, EditorIcons::Translate);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandToolRotate, EditorIcons::Rotate);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandToolScale, EditorIcons::Scale);
+
+        drawToolbarSeparator();
+
+        drawToolbarCommand(kCommandToolLocal);
+        ImGui::SameLine();
+        drawToolbarCommand(kCommandToolWorld);
+
+        drawToolbarSeparator();
+
+        drawToolbarCommand(kCommandToolSnap);
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+    }
+
     void EditorLayer::drawFileMenu() {
         if (!ImGui::BeginMenu("File")) {
             return;
         }
 
-        const bool can_save =
-            m_context && m_context->active_scene && m_context->asset_manager;
-        const bool can_load =
-            m_context && m_context->scene_service && m_context->asset_manager;
-
-        if (ImGui::MenuItem("Save Scene", nullptr, false, can_save)) {
-            saveActiveScene();
-        }
-
-        if (ImGui::MenuItem("Load Scene", nullptr, false, can_load)) {
-            loadScene();
-        }
+        drawCommandMenuItem(kCommandSaveScene);
+        drawCommandMenuItem(kCommandLoadScene);
 
         ImGui::EndMenu();
     }
@@ -304,13 +600,8 @@ namespace NexAur {
             return;
         }
 
-        if (ImGui::MenuItem("Show Project")) {
-            openPanel(kProjectPanelName);
-        }
-
-        if (ImGui::MenuItem("Show Console")) {
-            openPanel(kConsolePanelName);
-        }
+        drawCommandMenuItem(kCommandShowProject);
+        drawCommandMenuItem(kCommandShowConsole);
 
         ImGui::EndMenu();
     }
@@ -320,14 +611,8 @@ namespace NexAur {
             return;
         }
 
-        if (ImGui::MenuItem("Reset Layout")) {
-            m_reset_dock_layout_requested = true;
-            setAllPanelsOpen(true);
-        }
-
-        if (ImGui::MenuItem("Open All Panels")) {
-            setAllPanelsOpen(true);
-        }
+        drawCommandMenuItem(kCommandResetLayout);
+        drawCommandMenuItem(kCommandOpenAllPanels);
 
         ImGui::Separator();
 
@@ -347,6 +632,66 @@ namespace NexAur {
         }
 
         ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawCommandMenuItem(const std::string& command_id) {
+        if (!m_context || !m_context->command_registry) {
+            return;
+        }
+
+        const EditorCommand* command = m_context->command_registry->find(command_id);
+        if (!command) {
+            return;
+        }
+
+        const bool enabled = m_context->command_registry->isEnabled(command_id);
+        const bool selected = m_context->command_registry->isSelected(command_id);
+        const char* shortcut =
+            command->shortcut_text.empty() ? nullptr : command->shortcut_text.c_str();
+
+        if (ImGui::MenuItem(command->display_name.c_str(), shortcut, selected, enabled)) {
+            m_context->command_registry->execute(command_id);
+        }
+    }
+
+    void EditorLayer::drawToolbarCommand(const std::string& command_id, const char* label) {
+        if (!m_context || !m_context->command_registry) {
+            return;
+        }
+
+        const EditorCommand* command = m_context->command_registry->find(command_id);
+        if (!command) {
+            return;
+        }
+
+        const bool enabled = m_context->command_registry->isEnabled(command_id);
+        const bool selected = m_context->command_registry->isSelected(command_id);
+        const std::string tooltip = buildCommandTooltip(*command);
+        const char* button_label = label && label[0] != '\0'
+            ? label
+            : command->display_name.c_str();
+
+        ImGui::BeginDisabled(!enabled);
+        if (EditorWidgets::toolbarButton(button_label, tooltip.c_str(), selected)) {
+            m_context->command_registry->execute(command_id);
+        }
+        ImGui::EndDisabled();
+    }
+
+    void EditorLayer::drawToolbarSeparator() {
+        ImGui::SameLine();
+
+        const float height = ImGui::GetFrameHeight();
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const EditorTheme& theme = EditorThemeTokens::getDefaultTheme();
+
+        ImGui::GetWindowDrawList()->AddLine(
+            ImVec2(cursor.x + 4.0f, cursor.y + 2.0f),
+            ImVec2(cursor.x + 4.0f, cursor.y + height - 2.0f),
+            ImGui::ColorConvertFloat4ToU32(theme.colors.border_subtle));
+
+        ImGui::Dummy(ImVec2(10.0f, height));
+        ImGui::SameLine();
     }
 
     void EditorLayer::drawHelpMenu() {

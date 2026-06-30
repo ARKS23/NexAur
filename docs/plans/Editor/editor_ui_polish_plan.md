@@ -746,7 +746,7 @@ SuccessGreen         ok 状态
 
 ## 8. PR-E3：Toolbar + Command System v1
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -783,6 +783,15 @@ SuccessGreen         ok 状态
 - W / E / R / T 等快捷键仍工作。
 - 菜单和 toolbar 不复制业务逻辑。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- 新增 `EditorCommand` / `EditorCommandRegistry`，支持 command id、显示名、tooltip、快捷键、enabled / selected predicate 和 execute callback。
+- `EditorLayer` 统一注册 Save / Load、Project / Console 面板打开、Reset Layout / Open All Panels、Play / Pause / Stop placeholder、Select / Move / Rotate / Scale、Local / World、Snap 等命令。
+- 顶部主工具栏接入统一 command registry，工具栏按钮和菜单项不再复制 Save / Load 等业务逻辑。
+- `Ctrl+S` / `Ctrl+O`、`Q` / `W` / `E` / `R` / `T` 走统一快捷键分发；文本输入时快捷键自动让路。
+- 新增 `EditorToolState`，`ViewportPanel` 不再保存私有 gizmo operation / mode / snap 状态，而是消费共享 tool state。
+- Play / Pause / Stop 在本 PR 仍为占位命令，只写日志，不提前引入完整 Play Mode 生命周期。
 
 ## 9. PR-E4：Inspector Property Drawer v1
 
@@ -1065,7 +1074,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E1.5 Editor Theme Calibration / Visual Baseline | 已完成 | 校准深色主题、控件层级和 segmented button active 态，为 dockspace shell 打稳定视觉底。 |
 | PR-E2 Dockspace Layout + Shell Polish | 已完成 | 固定默认 dock layout，补齐 File / Edit / Project / Window / Help、状态栏、Project / Console 底部面板外壳。 |
 | PR-E2.5 Editor Visual System v2 / Engine-like Chrome | 已完成 | 新增 EditorTheme / EditorFonts / EditorWidgets，重构 theme token，并迁移 Project / Console / RendererDebug / Properties 的低风险控件。 |
-| PR-E3 Toolbar + Command System v1 | 计划中 | 建立 toolbar 和轻量 command registry。 |
+| PR-E3 Toolbar + Command System v1 | 已完成 | 建立 toolbar 和轻量 command registry，菜单、工具栏、快捷键共享命令入口，Viewport gizmo 消费统一 tool state。 |
 | PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |
 | PR-E5 Scene Hierarchy / Explorer Polish | 计划中 | 搜索、右键创建、图标和选中态 polish。 |
 | PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
