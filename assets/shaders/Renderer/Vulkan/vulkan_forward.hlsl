@@ -33,6 +33,7 @@ struct FrameGlobals {
     float4 ambient_color_intensity;
     float4 shadow_params; // x: enabled, y: strength, z: bias, w: shadow map size
     float4 shadow_quality_params; // x: filter mode, y: radius, z: normal bias, w: slope bias
+    float4 shadow_pcss_params; // x: light radius, y: search radius, z: min radius, w: max radius
     float4 shadow_cascade_splits; // xyz/w: view-space far split depth per cascade
     float4 shadow_cascade_params; // x: enabled, y: cascade count, z: debug overlay, w: reserved
     float4 shadow_cascade_colors[4];

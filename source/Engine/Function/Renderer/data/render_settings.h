@@ -26,7 +26,9 @@ namespace NexAur {
     enum class RenderShadowFilterMode : uint32_t {
         Hard = 0,
         PCF3x3 = 1,
-        PCF5x5 = 2
+        PCF5x5 = 2,
+        PoissonPCF = 3,
+        PCSS = 4
     };
 
     struct RenderPostProcessSettings {
@@ -51,6 +53,10 @@ namespace NexAur {
         float normal_bias = 0.0f;
         float slope_bias = 0.001f;
         float filter_radius = 1.0f;
+        float pcss_light_radius = 0.5f;
+        float pcss_search_radius = 3.0f;
+        float pcss_min_filter_radius = 0.75f;
+        float pcss_max_filter_radius = 6.0f;
         float distance = 35.0f;
         uint32_t map_resolution = 2048;
         bool stabilize = true;

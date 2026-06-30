@@ -1,6 +1,28 @@
 static const uint NX_SHADOW_FILTER_HARD = 0u;
 static const uint NX_SHADOW_FILTER_PCF_3X3 = 1u;
 static const uint NX_SHADOW_FILTER_PCF_5X5 = 2u;
+static const uint NX_SHADOW_FILTER_POISSON_PCF = 3u;
+static const uint NX_SHADOW_FILTER_PCSS = 4u;
+static const uint NX_SHADOW_POISSON_SAMPLE_COUNT = 16u;
+
+static const float2 NX_SHADOW_POISSON_DISK[16] = {
+    float2(-0.94201624f, -0.39906216f),
+    float2( 0.94558609f, -0.76890725f),
+    float2(-0.09418410f, -0.92938870f),
+    float2( 0.34495938f,  0.29387760f),
+    float2(-0.91588581f,  0.45771432f),
+    float2(-0.81544232f, -0.87912464f),
+    float2(-0.38277543f,  0.27676845f),
+    float2( 0.97484398f,  0.75648379f),
+    float2( 0.44323325f, -0.97511554f),
+    float2( 0.53742981f, -0.47373420f),
+    float2(-0.26496911f, -0.41893023f),
+    float2( 0.79197514f,  0.19090188f),
+    float2(-0.24188840f,  0.99706507f),
+    float2(-0.81409955f,  0.91437590f),
+    float2( 0.19984126f,  0.78641367f),
+    float2( 0.14383161f, -0.14100790f)
+};
 
 float3 NxSafeNormalizeShadowVector(float3 value, float3 fallback) {
     const float length_sq = dot(value, value);
@@ -31,9 +53,16 @@ float NxSampleShadowOcclusion(float2 uv, uint cascade_index, float current_depth
     return current_depth - bias > closest_depth ? 1.0f : 0.0f;
 }
 
+float NxShadowTexelSize() {
+    return 1.0f / max(g_frame.shadow_params.w, 1.0f);
+}
+
+float NxSampleShadowDepth(float2 uv, uint cascade_index) {
+    return g_shadow_map.SampleLevel(g_shadow_sampler, float3(uv, (float)cascade_index), 0.0f);
+}
+
 float NxEvaluatePcfShadow(float2 uv, uint cascade_index, float current_depth, float bias, int radius, float filter_radius) {
-    const float texel_size = 1.0f / max(g_frame.shadow_params.w, 1.0f);
-    const float sample_stride = texel_size * max(filter_radius, 0.0f);
+    const float sample_stride = NxShadowTexelSize() * max(filter_radius, 0.0f);
 
     float occlusion = 0.0f;
     float sample_count = 0.0f;
@@ -49,6 +78,78 @@ float NxEvaluatePcfShadow(float2 uv, uint cascade_index, float current_depth, fl
     }
 
     return occlusion / max(sample_count, 1.0f);
+}
+
+float NxEvaluatePoissonPcfShadow(
+    float2 uv,
+    uint cascade_index,
+    float current_depth,
+    float bias,
+    float filter_radius) {
+    const float sample_stride = NxShadowTexelSize() * max(filter_radius, 0.0f);
+
+    float occlusion = 0.0f;
+    [unroll]
+    for (uint index = 0u; index < NX_SHADOW_POISSON_SAMPLE_COUNT; ++index) {
+        const float2 sample_uv = uv + NX_SHADOW_POISSON_DISK[index] * sample_stride;
+        occlusion += NxSampleShadowOcclusion(sample_uv, cascade_index, current_depth, bias);
+    }
+
+    return occlusion / (float)NX_SHADOW_POISSON_SAMPLE_COUNT;
+}
+
+float NxFindAverageBlockerDepth(
+    float2 uv,
+    uint cascade_index,
+    float current_depth,
+    float bias,
+    float search_radius,
+    out float blocker_count) {
+    const float sample_stride = NxShadowTexelSize() * max(search_radius, 0.0f);
+    const float receiver_depth = current_depth - bias;
+
+    blocker_count = 0.0f;
+    float blocker_depth_sum = 0.0f;
+
+    [unroll]
+    for (uint index = 0u; index < NX_SHADOW_POISSON_SAMPLE_COUNT; ++index) {
+        const float2 sample_uv = uv + NX_SHADOW_POISSON_DISK[index] * sample_stride;
+        const float blocker_depth = NxSampleShadowDepth(sample_uv, cascade_index);
+        if (receiver_depth > blocker_depth) {
+            blocker_depth_sum += blocker_depth;
+            blocker_count += 1.0f;
+        }
+    }
+
+    return blocker_count > 0.0f ? blocker_depth_sum / blocker_count : 1.0f;
+}
+
+float NxEstimatePcssFilterRadius(float receiver_depth, float blocker_depth) {
+    const float light_radius = max(g_frame.shadow_pcss_params.x, 0.0f);
+    const float search_radius = max(g_frame.shadow_pcss_params.y, 0.0f);
+    const float min_radius = max(g_frame.shadow_pcss_params.z, 0.0f);
+    const float max_radius = max(g_frame.shadow_pcss_params.w, min_radius);
+    const float safe_blocker_depth = max(blocker_depth, 0.001f);
+    const float penumbra = max((receiver_depth - blocker_depth) / safe_blocker_depth, 0.0f);
+    return clamp(penumbra * light_radius * search_radius, min_radius, max_radius);
+}
+
+float NxEvaluatePcssShadow(float2 uv, uint cascade_index, float current_depth, float bias) {
+    float blocker_count = 0.0f;
+    const float average_blocker_depth = NxFindAverageBlockerDepth(
+        uv,
+        cascade_index,
+        current_depth,
+        bias,
+        g_frame.shadow_pcss_params.y,
+        blocker_count);
+
+    if (blocker_count <= 0.0f) {
+        return 0.0f;
+    }
+
+    const float filter_radius = NxEstimatePcssFilterRadius(current_depth - bias, average_blocker_depth);
+    return NxEvaluatePoissonPcfShadow(uv, cascade_index, current_depth, bias, filter_radius);
 }
 
 float NxComputeReceiverBias(float3 normal, float3 light_dir) {
@@ -90,7 +191,11 @@ float NxEvaluateShadowVisibility(float3 world_position, float3 world_normal, flo
     const uint filter_mode = (uint)max(g_frame.shadow_quality_params.x, 0.0f);
 
     float occlusion = 0.0f;
-    if (filter_mode == NX_SHADOW_FILTER_PCF_5X5) {
+    if (filter_mode == NX_SHADOW_FILTER_PCSS) {
+        occlusion = NxEvaluatePcssShadow(uv, cascade_index, current_depth, bias);
+    } else if (filter_mode == NX_SHADOW_FILTER_POISSON_PCF) {
+        occlusion = NxEvaluatePoissonPcfShadow(uv, cascade_index, current_depth, bias, g_frame.shadow_quality_params.y);
+    } else if (filter_mode == NX_SHADOW_FILTER_PCF_5X5) {
         occlusion = NxEvaluatePcfShadow(uv, cascade_index, current_depth, bias, 2, g_frame.shadow_quality_params.y);
     } else if (filter_mode == NX_SHADOW_FILTER_PCF_3X3) {
         occlusion = NxEvaluatePcfShadow(uv, cascade_index, current_depth, bias, 1, g_frame.shadow_quality_params.y);

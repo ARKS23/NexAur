@@ -88,6 +88,10 @@ namespace NexAur {
                 return 1;
             case RenderShadowFilterMode::PCF5x5:
                 return 2;
+            case RenderShadowFilterMode::PoissonPCF:
+                return 3;
+            case RenderShadowFilterMode::PCSS:
+                return 4;
             case RenderShadowFilterMode::Hard:
             default:
                 return 0;
@@ -100,6 +104,10 @@ namespace NexAur {
                 return RenderShadowFilterMode::PCF3x3;
             case 2:
                 return RenderShadowFilterMode::PCF5x5;
+            case 3:
+                return RenderShadowFilterMode::PoissonPCF;
+            case 4:
+                return RenderShadowFilterMode::PCSS;
             case 0:
             default:
                 return RenderShadowFilterMode::Hard;
@@ -237,7 +245,7 @@ namespace NexAur {
         ImGui::Spacing();
         changed |= ImGui::Checkbox("Shadow", &settings.shadow.enabled);
 
-        const char* shadow_filter_items[] = { "Hard", "PCF 3x3", "PCF 5x5" };
+        const char* shadow_filter_items[] = { "Hard", "PCF 3x3", "PCF 5x5", "Poisson PCF", "PCSS" };
         int shadow_filter_index = shadowFilterModeToIndex(settings.shadow.filter_mode);
         if (ImGui::Combo("Shadow Filter", &shadow_filter_index, shadow_filter_items, IM_ARRAYSIZE(shadow_filter_items))) {
             settings.shadow.filter_mode = shadowFilterModeFromIndex(shadow_filter_index);
@@ -249,6 +257,19 @@ namespace NexAur {
         changed |= ImGui::SliderFloat("Shadow Normal Bias", &settings.shadow.normal_bias, 0.0f, 0.2f, "%.4f");
         changed |= ImGui::SliderFloat("Shadow Slope Bias", &settings.shadow.slope_bias, 0.0f, 0.02f, "%.5f");
         changed |= ImGui::SliderFloat("Shadow Filter Radius", &settings.shadow.filter_radius, 0.25f, 3.0f, "%.2f");
+
+        const bool pcss_selected = settings.shadow.filter_mode == RenderShadowFilterMode::PCSS;
+        if (!pcss_selected) {
+            ImGui::BeginDisabled();
+        }
+        changed |= ImGui::SliderFloat("PCSS Light Radius", &settings.shadow.pcss_light_radius, 0.01f, 4.0f, "%.2f");
+        changed |= ImGui::SliderFloat("PCSS Search Radius", &settings.shadow.pcss_search_radius, 0.5f, 12.0f, "%.2f");
+        changed |= ImGui::SliderFloat("PCSS Min Radius", &settings.shadow.pcss_min_filter_radius, 0.25f, 4.0f, "%.2f");
+        changed |= ImGui::SliderFloat("PCSS Max Radius", &settings.shadow.pcss_max_filter_radius, 1.0f, 16.0f, "%.2f");
+        if (!pcss_selected) {
+            ImGui::EndDisabled();
+        }
+
         changed |= ImGui::SliderFloat("Shadow Distance", &settings.shadow.distance, 1.0f, 120.0f, "%.1f");
 
         const char* shadow_map_items[] = { "1024", "2048", "4096" };

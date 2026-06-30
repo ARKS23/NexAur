@@ -32,6 +32,7 @@ namespace NexAur {
             glm::vec4 ambient_color_intensity{ 1.0f, 1.0f, 1.0f, kFallbackAmbientIntensity };
             glm::vec4 shadow_params{ 0.0f, 0.65f, 0.002f, 1.0f };
             glm::vec4 shadow_quality_params{ 1.0f, 1.0f, 0.0f, 0.001f };
+            glm::vec4 shadow_pcss_params{ 0.5f, 3.0f, 0.75f, 6.0f };
             glm::vec4 shadow_cascade_splits{ 0.0f, 0.0f, 0.0f, 0.0f };
             glm::vec4 shadow_cascade_params{ 0.0f, 1.0f, 0.0f, 0.0f };
             std::array<glm::vec4, kMaxRenderShadowCascadeCount> shadow_cascade_colors{
@@ -82,6 +83,8 @@ namespace NexAur {
             case RenderShadowFilterMode::Hard:
             case RenderShadowFilterMode::PCF3x3:
             case RenderShadowFilterMode::PCF5x5:
+            case RenderShadowFilterMode::PoissonPCF:
+            case RenderShadowFilterMode::PCSS:
                 return static_cast<uint32_t>(mode);
             default:
                 return static_cast<uint32_t>(RenderShadowFilterMode::PCF3x3);
@@ -188,6 +191,11 @@ namespace NexAur {
             sanitizeMin(shadow_settings.filter_radius, 1.0f, 0.0f),
             sanitizeMin(shadow_settings.normal_bias, 0.0f, 0.0f),
             sanitizeMin(shadow_settings.slope_bias, 0.001f, 0.0f));
+        frame_globals.shadow_pcss_params = glm::vec4(
+            sanitizeMin(shadow_settings.pcss_light_radius, 0.5f, 0.0f),
+            sanitizeMin(shadow_settings.pcss_search_radius, 3.0f, 0.0f),
+            sanitizeMin(shadow_settings.pcss_min_filter_radius, 0.75f, 0.0f),
+            sanitizeMin(shadow_settings.pcss_max_filter_radius, 6.0f, 0.0f));
         frame_globals.shadow_cascade_params = glm::vec4(
             shadow_enabled && shadow_frame.cascades_enabled ? 1.0f : 0.0f,
             static_cast<float>(cascade_count),

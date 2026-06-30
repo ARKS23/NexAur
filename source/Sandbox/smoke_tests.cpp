@@ -890,12 +890,16 @@ int runRenderSettingsSmoke() {
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
     settings.shadow.enabled = false;
-    settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCF5x5;
+    settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCSS;
     settings.shadow.strength = 0.45f;
     settings.shadow.constant_bias = 0.006f;
     settings.shadow.normal_bias = 0.05f;
     settings.shadow.slope_bias = 0.003f;
     settings.shadow.filter_radius = 2.0f;
+    settings.shadow.pcss_light_radius = 1.25f;
+    settings.shadow.pcss_search_radius = 5.5f;
+    settings.shadow.pcss_min_filter_radius = 0.5f;
+    settings.shadow.pcss_max_filter_radius = 8.0f;
     settings.shadow.distance = 64.0f;
     settings.shadow.map_resolution = 4096u;
     settings.shadow.stabilize = false;
@@ -931,12 +935,16 @@ int runRenderSettingsSmoke() {
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
     expect(
         !first_shadow.enabled &&
-        first_shadow.filter_mode == NexAur::RenderShadowFilterMode::PCF5x5 &&
+        first_shadow.filter_mode == NexAur::RenderShadowFilterMode::PCSS &&
         nearlyEqual(first_shadow.strength, 0.45f) &&
         nearlyEqual(first_shadow.constant_bias, 0.006f) &&
         nearlyEqual(first_shadow.normal_bias, 0.05f) &&
         nearlyEqual(first_shadow.slope_bias, 0.003f) &&
         nearlyEqual(first_shadow.filter_radius, 2.0f) &&
+        nearlyEqual(first_shadow.pcss_light_radius, 1.25f) &&
+        nearlyEqual(first_shadow.pcss_search_radius, 5.5f) &&
+        nearlyEqual(first_shadow.pcss_min_filter_radius, 0.5f) &&
+        nearlyEqual(first_shadow.pcss_max_filter_radius, 8.0f) &&
         nearlyEqual(first_shadow.distance, 64.0f) &&
         first_shadow.map_resolution == 4096u &&
         !first_shadow.stabilize &&
@@ -955,12 +963,16 @@ int runRenderSettingsSmoke() {
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
     settings.ibl_debug.prefilter_mip = 0.0f;
     settings.shadow.enabled = true;
-    settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCF3x3;
+    settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PoissonPCF;
     settings.shadow.strength = 0.7f;
     settings.shadow.constant_bias = 0.003f;
     settings.shadow.normal_bias = 0.0f;
     settings.shadow.slope_bias = 0.001f;
     settings.shadow.filter_radius = 1.0f;
+    settings.shadow.pcss_light_radius = 0.5f;
+    settings.shadow.pcss_search_radius = 3.0f;
+    settings.shadow.pcss_min_filter_radius = 0.75f;
+    settings.shadow.pcss_max_filter_radius = 6.0f;
     settings.shadow.distance = 35.0f;
     settings.shadow.map_resolution = 2048u;
     settings.shadow.stabilize = true;
@@ -996,12 +1008,16 @@ int runRenderSettingsSmoke() {
         "RenderSettings smoke failed: updated IBL debug settings did not reach the read packet.");
     expect(
         second_shadow.enabled &&
-        second_shadow.filter_mode == NexAur::RenderShadowFilterMode::PCF3x3 &&
+        second_shadow.filter_mode == NexAur::RenderShadowFilterMode::PoissonPCF &&
         nearlyEqual(second_shadow.strength, 0.7f) &&
         nearlyEqual(second_shadow.constant_bias, 0.003f) &&
         nearlyEqual(second_shadow.normal_bias, 0.0f) &&
         nearlyEqual(second_shadow.slope_bias, 0.001f) &&
         nearlyEqual(second_shadow.filter_radius, 1.0f) &&
+        nearlyEqual(second_shadow.pcss_light_radius, 0.5f) &&
+        nearlyEqual(second_shadow.pcss_search_radius, 3.0f) &&
+        nearlyEqual(second_shadow.pcss_min_filter_radius, 0.75f) &&
+        nearlyEqual(second_shadow.pcss_max_filter_radius, 6.0f) &&
         nearlyEqual(second_shadow.distance, 35.0f) &&
         second_shadow.map_resolution == 2048u &&
         second_shadow.stabilize &&

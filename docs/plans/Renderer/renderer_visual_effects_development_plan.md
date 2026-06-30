@@ -1331,46 +1331,179 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 12. PR-R33：PCSS / Contact Hardening Shadow
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
 - 支持接触硬、远处软的阴影观感。
 - 为 directional light 提供 light angular size / source radius 参数。
+- 增加 Poisson disk PCF，作为规则网格 PCF 和 PCSS 之间的质量档。
+- 让 shadow sampling 继续保持一个清晰入口，不把 PCF / PCSS / CSM 逻辑散落在 forward shader 中。
+
+当前基础：
+
+- R31 已完成 Hard / PCF 3x3 / PCF 5x5、constant bias、normal bias、slope bias 和 filter radius。
+- R32 已完成 CSM，shadow map 已是 `Texture2DArray<float>`，shader 侧已经能按 view depth 选择 cascade。
+- R32.5 已校准 environment / exposure，进入 R33 后可以更准确地判断 shadow 软硬，而不是被整体画面偏白干扰。
+
+设计原则：
+
+- 默认仍使用 `PCF3x3`，PCSS 作为高质量可选模式，避免默认成本突然上升。
+- Poisson PCF 和 PCSS 共用一套固定 sample pattern。
+- PCSS 参数放在 `RenderShadowSettings`，通过 frame global UBO 进入 shader，不放进 debug snapshot。
+- R33 只做 directional shadow map PCSS，不做 screen-space contact shadow，也不做 area light 全套物理阴影。
+- CSM 下第一版允许使用近似半径，但要保留 per-cascade world scale 的扩展点。
+
+完成记录：
+
+- `RenderShadowFilterMode` 增加 `PoissonPCF` 和 `PCSS`。
+- `RenderShadowSettings` 增加 PCSS 参数：
+  - `pcss_light_radius`。
+  - `pcss_search_radius`。
+  - `pcss_min_filter_radius`。
+  - `pcss_max_filter_radius`。
+- `VulkanGpuFrameGlobals` 增加 `shadow_pcss_params`，由 `VulkanFrameLightingResource` 统一上传。
+- Renderer Debug 面板 Shadow filter 增加 `Poisson PCF` / `PCSS`，并在 PCSS 模式下开放 PCSS 参数调节。
+- `shadow_sampling.hlsli` 新增 16 点 Poisson disk sample table。
+- `PoissonPCF` 使用同一套固定 sample pattern 做阴影过滤。
+- `PCSS` 增加：
+  - blocker search。
+  - average blocker depth。
+  - normalized-depth penumbra estimation。
+  - variable Poisson PCF。
+- 默认 shadow filter 仍为 `PCF3x3`，PCSS 不改变默认性能成本。
+- `RenderSettingsSmoke` 覆盖 `PoissonPCF` / `PCSS` mode 和 PCSS 参数传递。
 
 建议工作：
 
-1. Blocker search。
-   - 在 shadow map 中搜索 blocker depth。
-   - 控制 search radius。
-2. Penumbra estimation。
-   - 根据 receiver / blocker depth 估算 penumbra。
-   - 与 light size 参数关联。
-3. Variable PCF。
-   - 根据 penumbra 调整 filter radius。
-   - 注意采样数量和性能。
-4. Debug / fallback。
-   - 支持 PCF / PCSS 切换。
-   - 性能较差时能退回 PCF。
+1. Poisson disk PCF。
+   - 在 `RenderShadowFilterMode` 增加 `PoissonPCF` 或 `PCFPoisson`。
+   - 在 `shadow_sampling.hlsli` 中新增固定 Poisson disk sample table。
+   - 提供 `NxEvaluatePoissonPcfShadow()`，使用 `filter_radius` 控制采样半径。
+   - 采样数建议第一版固定 12 或 16，先保证画面稳定和 shader 简单。
+   - 规则网格 PCF 继续保留，方便 debug 和性能对比。
+2. PCSS 参数接入。
+   - `RenderShadowSettings` 增加：
+     - `pcss_light_radius` 或 `pcss_light_size`。
+     - `pcss_search_radius`。
+     - `pcss_min_filter_radius`。
+     - `pcss_max_filter_radius`。
+   - `VulkanGpuFrameGlobals` 增加 `shadow_pcss_params`，不要继续挤占已有 `shadow_quality_params` 的空位。
+   - Renderer Debug 面板在 filter mode 为 PCSS 时显示 PCSS 参数。
+3. Blocker search。
+   - 在当前 cascade 的 shadow map layer 中搜索 blocker depth。
+   - 使用 Poisson disk sample table，搜索半径由 `pcss_search_radius` 和 shadow texel size 推导。
+   - 找不到 blocker 时直接返回 fully lit，减少后续 PCF 成本。
+4. Penumbra estimation。
+   - 根据 receiver depth 和 average blocker depth 估算 penumbra。
+   - 第一版可以使用 shadow map normalized depth 近似。
+   - 更稳的版本在 `RenderShadowCascadeFrame` 增加 per-cascade depth range / world texel size，用于把 `light_radius` 转换成 cascade-local UV 半径。
+5. Variable PCF。
+   - 根据 penumbra 得到动态 filter radius。
+   - radius clamp 到 `pcss_min_filter_radius` / `pcss_max_filter_radius`。
+   - variable PCF 继续使用 Poisson disk sample table，避免规则网格形成明显 pattern。
+6. CSM 适配。
+   - PCSS 要复用现有 `NxSelectShadowCascade()`。
+   - 每个 cascade 只采自己的 shadow map layer，不跨 cascade 搜索 blocker。
+   - 第一版不做 cascade transition blending；如果 split 接缝明显，后续单独补 cascade blend。
+7. Debug / fallback。
+   - 支持 Hard / PCF 3x3 / PCF 5x5 / Poisson PCF / PCSS 切换。
+   - PCSS 关闭后必须回到 PCF 稳定路径。
+   - Renderer Debug 保留 shadow map size、cascade overlay、filter radius、bias 等调参入口。
+
+数据流：
+
+```text
+RendererDebugPanel / game code
+  -> RenderContext::setRenderSettings()
+  -> RenderSettings::shadow
+  -> VulkanFrameLightingResource::update()
+  -> VulkanGpuFrameGlobals
+  -> assets/shaders/Renderer/Vulkan/common/shadow_sampling.hlsli
+  -> NxEvaluateShadowVisibility()
+```
+
+推荐代码组织：
+
+```text
+source/Engine/Function/Renderer/data/
+  render_settings.h                       # 新增 PoissonPCF / PCSS mode 和 PCSS 参数
+  render_shadow_cascade.h                 # 可选：per-cascade world scale / depth range
+
+source/Engine/Function/Renderer/Vulkan/resources/
+  vulkan_frame_lighting_resource.cpp      # 上传 shadow_pcss_params
+
+source/Engine/Editor/Panels/
+  renderer_debug_panel.cpp                # Shadow filter combo + PCSS 参数 UI
+
+assets/shaders/Renderer/Vulkan/common/
+  shadow_sampling.hlsli                   # Poisson PCF、blocker search、PCSS
+
+source/Sandbox/
+  smoke_tests.cpp                         # RenderSettingsSmoke 覆盖新 shadow settings
+```
+
+建议默认值：
+
+```text
+Shadow Filter: PCF 3x3
+Poisson PCF sample count: 16
+PCSS blocker samples: 16
+PCSS filter samples: 16
+PCSS light radius: 0.5
+PCSS search radius: 3.0 texels
+PCSS min filter radius: 0.75 texels
+PCSS max filter radius: 6.0 texels
+```
 
 建议顺序：
 
-- 可以先在单张 shadow map 上做 PCSS prototype。
-- 但正式整合建议在 CSM 稳定后做。
+1. PR-R33-A：Poisson PCF。
+   - 先把 Poisson disk PCF 做成独立 filter mode。
+   - 通过 HLSL 编译和 visual smoke，确认采样 pattern 没有明显噪点。
+2. PR-R33-B：PCSS settings / UBO / UI。
+   - 数据先打通，PCSS mode 可暂时 fallback 到 Poisson PCF。
+   - `RenderSettingsSmoke` 覆盖新增字段。
+3. PR-R33-C：PCSS shader。
+   - 加 blocker search、penumbra estimation、variable PCF。
+   - 保持 `NxEvaluateShadowVisibility()` 是唯一外部入口。
+4. PR-R33-D：CSM 调参和验收。
+   - 在 1 / 2 / 4 cascade 下观察 split、接触硬度和远处软化。
+   - 调整默认参数和 debug slider 范围。
 
 暂时不做：
 
 - Area light 全套物理阴影。
 - Ray traced shadow。
 - Moment shadow map。
+- Screen-space contact shadow。
+- Cascade transition blending。
+- Shadow caster culling / per-cascade caster list。
 
 验收：
 
 - 接触处阴影较硬。
 - 离接触点越远越软。
+- Poisson PCF 相比规则 PCF pattern 更自然，且关闭后能回到原有 PCF。
 - PCSS 关闭后回到 PCF。
+- CSM 开启时每个 cascade 都能正确采样 PCSS，不出现明显 layer 错采。
+- 默认设置不显著拖慢普通场景，PCSS 成本可通过 debug 面板显式切换。
 - 性能有基础统计。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build build\msvc-vcpkg --config Debug
+ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Vulkan renderer HLSL 编译通过。
+- CTest 18/18 通过。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 13. PR-R34：Renderer Effects Debug Views
 
