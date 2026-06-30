@@ -79,6 +79,33 @@ namespace NexAur {
             return glm::normalize(value);
         }
 
+        float srgbToLinear(float value) {
+            if (value <= 0.04045f) {
+                return value / 12.92f;
+            }
+
+            return std::pow((value + 0.055f) / 1.055f, 2.4f);
+        }
+
+        bool isSrgbColorFormat(VkFormat format) {
+            switch (format) {
+            case VK_FORMAT_R8_SRGB:
+            case VK_FORMAT_R8G8_SRGB:
+            case VK_FORMAT_R8G8B8_SRGB:
+            case VK_FORMAT_B8G8R8_SRGB:
+            case VK_FORMAT_R8G8B8A8_SRGB:
+            case VK_FORMAT_B8G8R8A8_SRGB:
+            case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        float colorForAttachment(float srgb_value, VkFormat format) {
+            return isSrgbColorFormat(format) ? srgbToLinear(srgb_value) : srgb_value;
+        }
+
         float sanitizeMin(float value, float fallback, float minimum) {
             return std::isfinite(value) && value >= minimum ? value : fallback;
         }
@@ -2176,9 +2203,9 @@ namespace NexAur {
             }
 
             VkClearValue clear_value{};
-            clear_value.color.float32[0] = 0.08f;
-            clear_value.color.float32[1] = 0.10f;
-            clear_value.color.float32[2] = 0.14f;
+            clear_value.color.float32[0] = colorForAttachment(0.08f, swapchain.image_format);
+            clear_value.color.float32[1] = colorForAttachment(0.10f, swapchain.image_format);
+            clear_value.color.float32[2] = colorForAttachment(0.14f, swapchain.image_format);
             clear_value.color.float32[3] = 1.0f;
 
             VkRenderingAttachmentInfo color_attachment{};
