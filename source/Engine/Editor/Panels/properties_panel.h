@@ -19,8 +19,10 @@ namespace NexAur {
         void drawTagComponent(Entity entity);
         void drawTransformComponent(Entity entity);
         void drawCameraComponent(Entity entity);
+        void drawActiveCameraComponent(Entity entity);
         void drawMeshRendererComponent(Entity entity);
         void drawDirectionalLightComponent(Entity entity);
+        void drawPointLightComponent(Entity entity);
         void drawEnvironmentComponent(Entity entity);
     };
 } // namespace NexAur

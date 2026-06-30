@@ -795,7 +795,7 @@ SuccessGreen         ok 状态
 
 ## 9. PR-E4：Inspector Property Drawer v1
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -836,6 +836,14 @@ SuccessGreen         ok 状态
 - 新增组件 drawer 有固定模板。
 - 现有组件编辑能力不倒退。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- 新增 `EditorPropertyDrawer`，集中封装 component header、string / float / int / bool / vec3 / color / asset field / read-only text 等 Inspector 字段绘制。
+- `PropertiesPanel` 迁移为消费统一 drawer，Tag、Transform、Camera、Active Camera、MeshRenderer、Directional Light、Point Light、Environment 具备统一 label/value 对齐。
+- `Add Component` 菜单按 Rendering / Camera / Light 分组，并为 Gameplay / Physics / Audio 预留后续分类入口。
+- Asset 字段 v1 只做只读显示和类型展示，不做 asset picker、drag-drop 或 Content Browser 联动。
+- 本 PR 不引入 C++ 反射系统、不做多选编辑、不做 prefab override UI。
 
 ## 10. PR-E5：Scene Hierarchy / Explorer Polish
 
@@ -1075,7 +1083,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E2 Dockspace Layout + Shell Polish | 已完成 | 固定默认 dock layout，补齐 File / Edit / Project / Window / Help、状态栏、Project / Console 底部面板外壳。 |
 | PR-E2.5 Editor Visual System v2 / Engine-like Chrome | 已完成 | 新增 EditorTheme / EditorFonts / EditorWidgets，重构 theme token，并迁移 Project / Console / RendererDebug / Properties 的低风险控件。 |
 | PR-E3 Toolbar + Command System v1 | 已完成 | 建立 toolbar 和轻量 command registry，菜单、工具栏、快捷键共享命令入口，Viewport gizmo 消费统一 tool state。 |
-| PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |
+| PR-E4 Inspector Property Drawer v1 | 已完成 | 新增 EditorPropertyDrawer，统一 Inspector 字段绘制，并补齐基础组件 drawer 与 Add Component 分类菜单。 |
 | PR-E5 Scene Hierarchy / Explorer Polish | 计划中 | 搜索、右键创建、图标和选中态 polish。 |
 | PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
 | PR-E7 Viewport Overlay + Gizmo Polish | 计划中 | 加强 viewport overlay、toolbar 和 gizmo 体验。 |

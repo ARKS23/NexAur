@@ -64,6 +64,8 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/Style/editor_theme.cpp
     Editor/Widgets/editor_widgets.h
     Editor/Widgets/editor_widgets.cpp
+    Editor/Widgets/editor_property_drawer.h
+    Editor/Widgets/editor_property_drawer.cpp
     Editor/Camera/editor_camera.h
     Editor/Camera/editor_camera.cpp
     Editor/Panels/console_panel.h
