@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "project_panel.h"
 
+#include "Editor/Widgets/editor_widgets.h"
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -130,7 +132,7 @@ namespace NexAur {
     }
 
     void ProjectPanel::drawToolbar() {
-        if (ImGui::Button("Assets")) {
+        if (EditorWidgets::toolbarButton("Assets", "Open the project assets root")) {
             m_selected_path = m_root_path;
         }
 
@@ -139,7 +141,7 @@ namespace NexAur {
         if (!can_go_up) {
             ImGui::BeginDisabled();
         }
-        if (ImGui::Button("Up")) {
+        if (EditorWidgets::toolbarButton("Up", "Open parent folder")) {
             const std::filesystem::path parent = m_selected_path.parent_path();
             if (!parent.empty()) {
                 const std::string root = m_root_path.generic_string();
@@ -154,8 +156,7 @@ namespace NexAur {
         }
 
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(220.0f);
-        ImGui::InputTextWithHint("##ProjectFilter", "Search assets", m_filter.data(), m_filter.size());
+        EditorWidgets::searchBox("##ProjectFilter", m_filter.data(), m_filter.size(), "Search assets");
 
         ImGui::SameLine();
         ImGui::Checkbox("Hidden", &m_show_hidden_files);
@@ -227,7 +228,7 @@ namespace NexAur {
                 ImGui::TableSetColumnIndex(0);
 
                 const std::string label = "> " + displayName(entry.path());
-                if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_SpanAllColumns)) {
+                if (EditorWidgets::tableSelectableRow(label.c_str())) {
                     m_selected_path = entry.path();
                 }
 
@@ -252,7 +253,7 @@ namespace NexAur {
                 ImGui::TableSetColumnIndex(0);
 
                 const std::string label = displayName(entry.path());
-                ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_SpanAllColumns);
+                EditorWidgets::tableSelectableRow(label.c_str());
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::TextDisabled("%s", entryTypeText(entry));

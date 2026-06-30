@@ -208,6 +208,7 @@ Undo / Redo 可以后续接入，不挤进第一版。
 PR-E1 Editor Style Foundation
 PR-E1.5 Editor Theme Calibration / Visual Baseline
 PR-E2 Dockspace Layout + Shell Polish
+PR-E2.5 Editor Visual System v2 / Engine-like Chrome
 PR-E3 Toolbar + Command System v1
 PR-E4 Inspector Property Drawer v1
 PR-E5 Scene Hierarchy / Explorer Polish
@@ -223,6 +224,7 @@ PR-E9 Layout / Shortcut Persistence
 E1 Style
 E1.5 Theme Calibration
 E2 Dockspace Shell
+E2.5 Visual System v2
 E3 Toolbar
 E4 Inspector
 ```
@@ -548,6 +550,200 @@ source/Engine/Editor/Style/
 - 新增 `ProjectPanel` 与 `ConsolePanel` 基础外壳，为后续资源浏览、日志 sink 接入、底部工具区 polish 留出干净扩展点。
 - 统一窗口标题为 `Scene Viewport`、`Scene Hierarchy`、`Inspector`、`Renderer Debug`、`Project`、`Console`。
 
+## 7.5. PR-E2.5：Editor Visual System v2 / Engine-like Chrome
+
+执行状态：已完成。
+
+目标：
+
+- 建立统一的编辑器视觉系统，让当前 ImGui 编辑器从默认灰色工具风升级为现代深色引擎编辑器风格。
+- 统一深色 graphite / charcoal 主题，降低默认 ImGui 灰色面板的廉价感。
+- 强化主视口、左侧 Hierarchy、右侧 Inspector、底部 Console / Content Browser 的视觉层级。
+- 统一按钮、tab、toolbar、panel header、separator、input field、slider、checkbox 等控件风格。
+- 为后续编辑器 panel 提供统一封装，减少每个 panel 裸写 ImGui 样式。
+
+建议颜色 token：
+
+```text
+BackgroundMain       #0F1419
+BackgroundPanel      #151B22
+BackgroundPanelLight #1B232C
+Header               #202A34
+BorderSubtle         #2A3440
+TextPrimary          #D7DEE8
+TextSecondary        #9AA7B5
+AccentBlue           cyan / blue，用于 selected、active tab、按钮高亮
+AccentOrange         orange / yellow，用于 warning、selection outline、重要提示
+ErrorRed             error 日志
+SuccessGreen         ok 状态
+```
+
+建议工作：
+
+1. 主题 token 化。
+   - 在 `EditorStyle` 中建立 `EditorThemeColors` / `EditorThemeMetrics` 一类的集中定义。
+   - `applyTheme()` 只消费 token，不散落硬编码颜色。
+   - 统一 window、child、popup、menu、tab、header、table、input、slider、checkbox、separator、scrollbar、dock preview 的颜色和层级。
+2. 字体和 icon 入口。
+   - 预留 `EditorFonts` / `EditorTheme` 字体加载入口。
+   - 默认 UI 字体优先使用项目内可用清晰无衬线字体；仓库没有字体资源时保留接口，不强行引入字体文件。
+   - Console / code 区域预留等宽字体入口。
+   - 图标建议支持 FontAwesome / Material Icons / Codicon 等 Icon Font，但接入前必须检查 license。
+   - 字体路径不能硬编码系统路径，应来自 EditorConfig 或 assets 下的项目路径配置。
+   - 图标字体不可用时，UI 必须 fallback 到纯文本按钮。
+3. Editor UI 组件封装。
+   - 当前已有 `EditorStyle::iconButton()`、`segmentedButton()`、`drawSectionHeader()`、`drawSubtleText()`、`drawHelpTooltip()`，但还不足以支撑后续 panel。
+   - 建议新增或扩展 `EditorWidgets` / `EditorStyle`：
+     - `drawToolbarButton()`
+     - `drawSearchBox()`
+     - `drawPanelHeader()`
+     - `drawPropertyRow()`
+     - `drawAssetField()`
+     - `drawStatusPill()`
+     - `drawConsoleLine()`
+     - `drawTableSelectableRow()`
+   - Panel 内尽量调用统一 helper，避免直接堆 `PushStyleColor()` / `PushStyleVar()`。
+4. Engine-like chrome。
+   - 顶部 menu / toolbar / dock tab / status bar 的背景层级统一。
+   - Viewport 增加更明确的边框和工作区层级。
+   - Inspector、Hierarchy、Project、Console 使用一致的 header、search、row hover、selected 态。
+   - Rounding 保持克制，不做大圆角卡片；工具型 UI 以 0-4px 小圆角为主。
+5. 视觉回归基线。
+   - 在文档中记录当前目标截图方向和颜色 token。
+   - Sandbox 启动后目视确认不再是默认灰色 ImGui 风。
+
+具体开发计划：
+
+1. 文件结构整理。
+   - 保留 `source/Engine/Editor/Style/editor_style.h/.cpp` 作为主题入口。
+   - 新增 `source/Engine/Editor/Style/editor_theme.h/.cpp`，集中定义颜色、尺寸、rounding、spacing token。
+   - 新增 `source/Engine/Editor/Style/editor_fonts.h/.cpp`，预留字体 / icon font 加载入口。
+   - 新增 `source/Engine/Editor/Widgets/editor_widgets.h/.cpp`，放通用控件封装。
+   - `editor_icons.h` 继续作为 icon 名称 / fallback 文本入口，后续如果接 icon font，只替换常量内容或查询接口。
+   - 新文件统一加入 `source/Engine/CMakeLists.txt` 的 editor file list。
+2. Theme token v2。
+   - 定义 `EditorThemeColors`：
+     - `background_main`
+     - `background_panel`
+     - `background_panel_light`
+     - `header`
+     - `header_hovered`
+     - `header_active`
+     - `border_subtle`
+     - `text_primary`
+     - `text_secondary`
+     - `accent_blue`
+     - `accent_cyan`
+     - `accent_orange`
+     - `error_red`
+     - `success_green`
+   - 定义 `EditorThemeMetrics`：
+     - `window_padding`
+     - `frame_padding`
+     - `item_spacing`
+     - `cell_padding`
+     - `indent_spacing`
+     - `scrollbar_size`
+     - `window_rounding`
+     - `panel_rounding`
+     - `frame_rounding`
+     - `tab_rounding`
+     - `border_size`
+   - `EditorStyle::applyTheme()` 改为从 token 写入 ImGuiStyle。
+   - 保留 `EditorStyle::applyGizmoStyle()`，但颜色也尽量引用 theme token。
+3. 字体 / Icon Font 预留。
+   - `EditorFonts` 第一版只提供接口和 fallback，不强制引入字体资源：
+     - `loadFonts(ImGuiIO&, const EditorFontConfig&)`
+     - `hasIconFont()`
+     - `getDefaultFont()`
+     - `getMonoFont()`
+   - `EditorFontConfig` 支持项目内路径，例如：
+     - `ui_font_path`
+     - `mono_font_path`
+     - `icon_font_path`
+     - `ui_font_size`
+     - `mono_font_size`
+   - 字体路径来源先预留为 EditorConfig / assets 路径，不读取系统字体路径。
+   - 如仓库没有字体资源，本 PR 只保留默认 ImGui 字体和文本 icon fallback。
+   - 文档中记录 FontAwesome / Material Icons / Codicon 等候选 icon font 需要 license review。
+4. EditorWidgets v1。
+   - 第一版封装只做“足够复用、低侵入”的控件：
+     - `toolbarButton(label, tooltip, selected)`
+     - `searchBox(id, buffer, size, hint)`
+     - `panelHeader(title)`
+     - `sectionHeader(title, default_open)`
+     - `propertyRow(label, draw_value_callback)`
+     - `statusPill(label, color)`
+     - `consoleLine(level, logger, message)`
+     - `tableSelectableRow(label, selected)`
+   - 不在第一版做复杂模板反射，不把 Inspector 全量重写进 E2.5。
+   - Helper 负责局部 style push/pop，调用者不直接散落颜色。
+5. 迁移现有 panel 的低风险部分。
+   - `ViewportPanel`：
+     - Scene / Game segmented control 继续走统一 helper。
+     - Viewport window 保留零 padding，但边框 / active 层级跟随 theme。
+   - `ProjectPanel`：
+     - 搜索框改用 `EditorWidgets::searchBox()`。
+     - 表格 row hover / selected 风格跟随 theme。
+   - `ConsolePanel`：
+     - 日志行改用 `EditorWidgets::consoleLine()`。
+     - error / warning / info / trace 颜色引用 theme token。
+   - `RendererDebugPanel`：
+     - section header 改用统一 helper。
+   - `PropertiesPanel`：
+     - 只迁移 section header / subtle text，不在本 PR 做完整 property drawer。
+6. Shell chrome 校准。
+   - Dockspace root、menu bar、status bar 背景统一成 graphite / charcoal 层级。
+   - Dock tab active / hovered / unfocused active 明确区分。
+   - Border 使用 `BorderSubtle`，减少亮灰线条。
+   - Window title、child panel、table header、input field、slider、checkbox 的默认灰感统一压暗。
+   - Accent blue / cyan 只用于 active / selected / interaction，不大面积铺色。
+   - Accent orange 只用于 warning / selection outline / important hint。
+7. 验证和回归。
+   - 构建：`cmake --build build\msvc-vcpkg --config Debug`。
+   - 自动测试：`ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure`。
+   - Sandbox smoke：启动 `bin\msvc-vcpkg\Debug\Sandbox.exe`，确认不提前退出。
+   - 目视验收：
+     - 主背景不再是默认灰。
+     - 左中右底面板层级清晰。
+     - Console / Project 不再像原始 ImGui demo table。
+     - Viewport 是第一视觉主体。
+     - 默认字体路径缺失时仍能正常显示。
+
+开发边界：
+
+- E2.5 只做视觉系统和轻量迁移，不把所有 panel 全面重写。
+- 如果需要引入字体文件或 icon font 文件，必须单独确认 license 和资源放置路径。
+- 不为了视觉效果引入新的 UI 技术栈。
+- 不让 Editor panel 直接依赖 Vulkan backend。
+
+暂时不做：
+
+- 不在本 PR 完整实现 Toolbar 命令系统，留给 PR-E3。
+- 不重写 Inspector property drawer，留给 PR-E4。
+- 不做完整 Content Browser 缩略图，留给后续 Project / Asset pass。
+- 不强行引入第三方字体或图标字体文件；如需引入，单独确认 license。
+- 不硬编码 Windows / macOS / Linux 系统字体路径。
+
+验收：
+
+- Editor 主题接近 graphite / charcoal，主背景、panel、header、tab、input 层级清晰。
+- Accent blue / cyan、warning orange、error red、success green 有统一 token 和使用入口。
+- 常用控件视觉更紧凑精致，默认 ImGui 灰色感明显降低。
+- 至少一部分现有 panel 改为使用统一 helper，后续 panel 有明确封装路径。
+- 字体 / icon 加载有集中设计，不在 panel 内零散加载或硬编码系统路径。
+- 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- 新增 `EditorTheme` / `EditorThemeTokens`，集中定义 graphite / charcoal 颜色 token 和 spacing / rounding / border metrics。
+- `EditorStyle::applyTheme()` 改为消费 theme token，统一 window、child、popup、menu、tab、header、table、input、slider、checkbox、separator、scrollbar、dock preview 等颜色。
+- 新增 `EditorFonts` 作为字体 / icon font 集中入口；第一版只保留项目路径加载和 fallback，不硬编码系统字体，不强行引入字体资源。
+- 新增 `EditorWidgets`，提供 toolbar button、search box、panel header、section header、property row、status pill、console line、table selectable row 等轻量 helper。
+- 迁移 `ProjectPanel`、`ConsolePanel`、`RendererDebugPanel`、`PropertiesPanel` 的低风险控件到统一 helper。
+- `ConsolePanel` 的日志等级颜色改为引用 theme token。
+- 本 PR 只做视觉系统和低风险迁移，不做 Toolbar command system、不重写 Inspector property drawer。
+
 ## 8. PR-E3：Toolbar + Command System v1
 
 执行状态：计划中。
@@ -868,6 +1064,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E1 Editor Style Foundation | 已完成 | 新增 EditorStyle / editor_icons，统一 ImGui 主题与 ImGuizmo 风格，并迁移 Viewport 的 Scene/Game segmented button。 |
 | PR-E1.5 Editor Theme Calibration / Visual Baseline | 已完成 | 校准深色主题、控件层级和 segmented button active 态，为 dockspace shell 打稳定视觉底。 |
 | PR-E2 Dockspace Layout + Shell Polish | 已完成 | 固定默认 dock layout，补齐 File / Edit / Project / Window / Help、状态栏、Project / Console 底部面板外壳。 |
+| PR-E2.5 Editor Visual System v2 / Engine-like Chrome | 已完成 | 新增 EditorTheme / EditorFonts / EditorWidgets，重构 theme token，并迁移 Project / Console / RendererDebug / Properties 的低风险控件。 |
 | PR-E3 Toolbar + Command System v1 | 计划中 | 建立 toolbar 和轻量 command registry。 |
 | PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |
 | PR-E5 Scene Hierarchy / Explorer Polish | 计划中 | 搜索、右键创建、图标和选中态 polish。 |

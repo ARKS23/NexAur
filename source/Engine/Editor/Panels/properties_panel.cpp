@@ -1,11 +1,13 @@
 #include "pch.h"
 #include "properties_panel.h"
+
+#include "Editor/Widgets/editor_widgets.h"
 #include "Function/Scene/component.h"
 
 #include <algorithm>
 #include <array>
 
-#include <Imgui.h>
+#include <imgui.h>
 
 namespace NexAur {
     void PropertiesPanel::onUpdate(TimeStep delta_time) {
@@ -58,13 +60,12 @@ namespace NexAur {
         if (entity.hasComponent<TagComponent>()) {
             entity_name = entity.getComponent<TagComponent>().name;
         }
-        ImGui::Text("%s", entity_name.c_str());
+        EditorWidgets::panelHeader(entity_name.c_str());
 
         if (m_context && !m_context->selection_source.empty()) {
             ImGui::TextDisabled("Selected Source: %s", m_context->selection_source.c_str());
         }
 
-        ImGui::Separator(); // 水平分割线
     }
 
     void PropertiesPanel::drawAddComponentMenu(Entity entity) {
@@ -73,7 +74,7 @@ namespace NexAur {
 
     void PropertiesPanel::drawTagComponent(Entity entity) {
         if (!entity.hasComponent<TagComponent>()) return;
-        if (!ImGui::CollapsingHeader("Tag", ImGuiTreeNodeFlags_DefaultOpen)) return;
+        if (!EditorWidgets::sectionHeader("Tag")) return;
 
         TagComponent& tag = entity.getComponent<TagComponent>();
         std::array<char, 256> buffer{};
@@ -87,7 +88,7 @@ namespace NexAur {
 
     void PropertiesPanel::drawTransformComponent(Entity entity) {
         if (!entity.hasComponent<TransformComponent>()) return;
-        if (!ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) return;
+        if (!EditorWidgets::sectionHeader("Transform")) return;
 
         TransformComponent& tc = entity.getComponent<TransformComponent>();
 
@@ -131,7 +132,7 @@ namespace NexAur {
 
     void PropertiesPanel::drawEnvironmentComponent(Entity entity) {
         if (!entity.hasComponent<EnvironmentComponent>()) return;
-        if (!ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) return;
+        if (!EditorWidgets::sectionHeader("Environment")) return;
 
         EnvironmentComponent& environment = entity.getComponent<EnvironmentComponent>();
         ImGui::ColorEdit3("Background", glm::value_ptr(environment.background_color));

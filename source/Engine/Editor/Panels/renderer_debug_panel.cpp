@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "renderer_debug_panel.h"
 
+#include "Editor/Widgets/editor_widgets.h"
 #include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/data/render_context.h"
 
@@ -185,7 +186,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawDebugVisualizationSection() {
-        if (!ImGui::CollapsingHeader("Debug Visualization", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("Debug Visualization")) {
             return;
         }
 
@@ -217,7 +218,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawEffectsSection() {
-        if (!ImGui::CollapsingHeader("Effects", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("Effects")) {
             return;
         }
 
@@ -322,7 +323,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawRendererSection(const RendererDebugSnapshot& snapshot) {
-        if (!ImGui::CollapsingHeader("Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("Renderer")) {
             return;
         }
 
@@ -342,7 +343,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawFrameSection(const RendererDebugSnapshot& snapshot) {
-        if (!ImGui::CollapsingHeader("Frame", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("Frame")) {
             return;
         }
 
@@ -357,7 +358,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawViewSection(const RendererDebugSnapshot& snapshot) {
-        if (!ImGui::CollapsingHeader("View", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("View")) {
             return;
         }
 
@@ -371,7 +372,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawTargetsSection(const RendererDebugSnapshot& snapshot) {
-        if (!ImGui::CollapsingHeader("Targets", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("Targets")) {
             return;
         }
 
@@ -424,7 +425,7 @@ namespace NexAur {
     }
 
     void RendererDebugPanel::drawResourcesSection(const RendererDebugSnapshot& snapshot) {
-        if (!ImGui::CollapsingHeader("Resources", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!EditorWidgets::sectionHeader("Resources")) {
             return;
         }
 

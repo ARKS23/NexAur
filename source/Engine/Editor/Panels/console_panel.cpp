@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "console_panel.h"
 
+#include "Editor/Style/editor_theme.h"
+#include "Editor/Widgets/editor_widgets.h"
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -18,18 +21,19 @@ namespace NexAur {
         }
 
         ImVec4 levelColor(spdlog::level::level_enum level) {
+            const EditorTheme& theme = EditorThemeTokens::getDefaultTheme();
             switch (level) {
             case spdlog::level::warn:
-                return ImVec4(0.96f, 0.72f, 0.30f, 1.0f);
+                return theme.colors.accent_orange;
             case spdlog::level::err:
             case spdlog::level::critical:
-                return ImVec4(0.95f, 0.35f, 0.35f, 1.0f);
+                return theme.colors.error_red;
             case spdlog::level::debug:
             case spdlog::level::trace:
-                return ImVec4(0.60f, 0.68f, 0.76f, 1.0f);
+                return theme.colors.text_secondary;
             case spdlog::level::info:
             default:
-                return ImVec4(0.74f, 0.82f, 0.90f, 1.0f);
+                return theme.colors.text_primary;
             }
         }
     } // namespace
@@ -51,13 +55,12 @@ namespace NexAur {
     }
 
     void ConsolePanel::drawToolbar() {
-        if (ImGui::Button("Clear")) {
+        if (EditorWidgets::toolbarButton("Clear", "Clear recent editor log messages")) {
             LogSystem::clearRecentMessages();
         }
 
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(220.0f);
-        ImGui::InputTextWithHint("##ConsoleFilter", "Filter", m_filter.data(), m_filter.size());
+        EditorWidgets::searchBox("##ConsoleFilter", m_filter.data(), m_filter.size(), "Filter");
 
         ImGui::SameLine();
         ImGui::Checkbox("Auto Scroll", &m_auto_scroll);
@@ -121,14 +124,10 @@ namespace NexAur {
 
     void ConsolePanel::drawMessage(const LogMessage& message) const {
         const char* level = LogSystem::levelToString(message.level);
-        ImGui::PushStyleColor(ImGuiCol_Text, levelColor(message.level));
-        ImGui::Text("[%s]", level);
-        ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", message.logger_name.c_str());
-
-        ImGui::SameLine();
-        ImGui::TextUnformatted(message.message.c_str());
+        EditorWidgets::consoleLine(
+            level,
+            levelColor(message.level),
+            message.logger_name.c_str(),
+            message.message.c_str());
     }
 } // namespace NexAur
