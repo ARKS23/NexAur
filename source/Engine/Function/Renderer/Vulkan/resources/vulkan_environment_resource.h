@@ -53,6 +53,8 @@ namespace NexAur {
 
         const std::string& getDebugName() const { return m_debug_name; }
         VkDescriptorSet getDescriptorSet() const { return m_descriptor_set; }
+        uint32_t getSourceWidth() const { return m_source_width; }
+        uint32_t getSourceHeight() const { return m_source_height; }
         uint32_t getEnvironmentSize() const { return m_environment.width; }
         uint32_t getIrradianceSize() const { return m_irradiance.width; }
         uint32_t getPrefilterSize() const { return m_prefiltered.width; }
@@ -77,6 +79,8 @@ namespace NexAur {
 
     private:
         std::string m_debug_name;
+        uint32_t m_source_width = 0;
+        uint32_t m_source_height = 0;
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VulkanDescriptorAllocator* m_descriptor_allocator = nullptr;

@@ -155,6 +155,7 @@ PR-R30.5 IBL Quality / Debug View / Shader Cleanup
 PR-R30.6 DamagedHelmet PBR / IBL Reference Alignment
 PR-R31 Shadow Quality Pass 1：PCF / Bias / Stability
 PR-R32 Cascaded Shadow Maps
+PR-R32.5 Environment Quality Calibration
 PR-R33 PCSS / Contact Hardening Shadow
 PR-R34 Renderer Effects Debug Views
 PR-R35 Color Grading / FXAA / Polish Pass
@@ -964,7 +965,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 11. PR-R32：Cascaded Shadow Maps
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -1165,6 +1166,167 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 - Debug 构建通过，Forward / Shadow HLSL 编译通过。
 - CTest 18/18 通过，其中 `NexAur.RenderSettingsSmoke` 覆盖 CSM settings。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
+
+## 11.5. PR-R32.5：Environment Quality Calibration
+
+执行状态：已完成。
+
+背景：
+
+- 当前 skybox 看起来偏糊、偏白偏亮。
+- 这不是 shadow / CSM 问题，而是 environment 显示质量和默认曝光校准问题。
+- 现有 R30 IBL 链路已经可用，但为了启动速度和第一版实现简单，environment bake 参数偏保守：
+  - 默认场景优先加载 `assets/textures/HDR/2k.hdr`。
+  - `TextureLoader::loadHDREnvironment()` 默认 `max_width = 1024`。
+  - `VulkanEnvironmentResource` 中 `kEnvironmentCubeSize = 128`。
+  - `kIrradianceCubeSize = 16`。
+  - `kPrefilterCubeSize = 128`。
+- Skybox shader 当前直接采样 environment cubemap 的 mip 0，因此 visible skybox 实际只有 128 cubemap 的清晰度。
+- `environment_intensity` 同时驱动 skybox 和 IBL，默认 directional light intensity / exposure / bloom 叠加后，容易把 HDR 背景和高光推白。
+
+目标：
+
+- 提升 skybox 可见背景清晰度。
+- 校准默认 environment / exposure / bloom / directional light 参数，减少发白。
+- 拆清 skybox display intensity 和 IBL intensity 的职责边界。
+- 给 Renderer Debug 增加足够信息，后续调 HDR / IBL / skybox 时不靠猜。
+- 为 R33 PCSS 前提供稳定的视觉基线，避免 shadow 质量判断被曝光和 environment 质量干扰。
+
+建议工作：
+
+1. Environment quality profile。
+   - 增加 backend-neutral 或 renderer-local quality 参数。
+   - 第一版可先使用固定 profile：
+     - skybox / environment cubemap：512 或 1024。
+     - irradiance：32 或 64。
+     - prefilter：256 或 512。
+     - BRDF LUT：256。
+   - 避免直接把所有尺寸写死在 `vulkan_environment_resource.cpp` 中。
+2. HDR source resolution。
+   - 本 PR 实测后暂不改 `TextureLoader::loadHDREnvironment()` 默认 `max_width = 1024`。
+   - 先把质量收益集中在 visible environment cubemap，避免 HDR CPU cache 和启动时间继续膨胀。
+   - 后续如果要引入 2048 / 4096 HDR source，应配套 baked environment disk cache 或 GPU bake。
+3. Skybox / IBL intensity 拆分。
+   - 当前 `EnvironmentComponent::intensity` 同时控制 skybox 和 IBL。
+   - 建议新增：
+     - `skybox_intensity` 或 `background_intensity`。
+     - `ibl_intensity`。
+   - 第一版也可以先保留 scene component 字段不变，在 renderer settings 中提供临时 calibration multiplier。
+4. 默认参数校准。
+   - 调低默认 exposure。
+   - 调低默认 directional light intensity。
+   - Bloom 默认保持很轻，或在 debug 对比时可快速关闭。
+   - 以 DamagedHelmet / 材质球矩阵 / 默认地面场景作为观感回归样例。
+5. Renderer Debug 可观测性。
+   - Resources 分组显示：
+     - environment source path。
+     - CPU HDR size。
+     - environment cubemap size。
+     - irradiance size。
+     - prefilter size / mip count。
+   - Effects 分组显示或控制：
+     - exposure。
+     - bloom enabled / intensity。
+     - skybox intensity。
+     - IBL intensity。
+6. 启动性能边界。
+   - 提升 cubemap size 会明显增加 CPU bake 时间。
+   - 第一版允许质量 profile 手动切换；正式方案建议后续加入 baked environment disk cache 或 GPU bake。
+
+代码组织建议：
+
+```text
+source/Engine/Function/Renderer/data/
+  render_settings.h                       # 可选：Environment / IBL calibration settings
+
+source/Engine/Function/Scene/
+  component.h                             # 可选：EnvironmentComponent 拆 skybox / IBL intensity
+
+source/Engine/Function/Resource/
+  texture_loader.h/.cpp                   # HDR max width / cache version
+  environment_map_asset.h/.cpp            # 可选：记录 source width / source height / loaded width
+
+source/Engine/Function/Renderer/Vulkan/resources/
+  vulkan_environment_resource.h/.cpp      # Environment quality profile，避免尺寸散落
+
+source/Engine/Editor/Panels/
+  renderer_debug_panel.cpp                # 暂时承载 calibration UI
+```
+
+建议默认值：
+
+```text
+HDR CPU max width: 1024
+Skybox / environment cubemap: 512
+Irradiance cubemap: 32
+Prefilter cubemap: 256
+BRDF LUT: 256
+Exposure: 0.75 - 0.85
+Environment / IBL intensity: 0.5 - 0.8
+Directional light intensity: 1.5 - 2.2
+Bloom intensity: 0.03 - 0.08
+```
+
+实现记录：
+
+- `VulkanEnvironmentResource` quality 提升：
+  - environment cubemap：128 -> 512。
+  - irradiance cubemap：16 -> 32。
+  - prefiltered cubemap：128 -> 256。
+  - BRDF LUT：128 -> 256。
+- `EnvironmentComponent` 增加：
+  - `skybox_intensity`。
+  - `ibl_intensity`。
+  - `intensity` 继续保留为旧场景 fallback。
+- `SceneV2 -> RenderDataPacket -> RenderSceneFrame -> VulkanDrawList` 已传递 skybox / IBL 双强度。
+- `VulkanSkyboxPass` 使用 `skybox_intensity`。
+- `VulkanFrameLightingResource` / Forward IBL 使用 `ibl_intensity`。
+- 默认 calibration：
+  - default skybox intensity：0.75。
+  - default IBL intensity：0.65。
+  - default directional light intensity：2.0。
+  - default exposure：0.85。
+  - default bloom intensity：0.05。
+- Scene serializer 保存 / 加载 `skybox_intensity` 和 `ibl_intensity`，旧 `intensity` 字段仍可作为 fallback。
+- Properties Panel 的 Environment 分组改为直接编辑 `Skybox Intensity` / `IBL Intensity`。
+- Renderer Debug `Resources` 分组增加：
+  - environment source。
+  - CPU HDR size。
+  - environment / irradiance / prefilter / BRDF 状态。
+- `SceneSerializerSmoke` 覆盖默认 environment calibration 字段的保存 / 加载。
+
+暂时不做：
+
+- 多 environment probe。
+- local reflection probe。
+- GPU compute IBL bake。
+- HDR 自动曝光。
+- 完整 color grading。
+- skybox 编辑器资源浏览器。
+
+验收：
+
+- Renderer Debug 显示 environment cubemap size 不再固定为 128。
+- 默认 skybox 背景清晰度明显提升，远处背景不再像低分辨率贴图。
+- 默认画面不过曝、不大面积发白。
+- DamagedHelmet 金属反射仍然稳定，不能因为降低曝光而变成过暗。
+- Bloom 开关前后画面变化可控，不再成为默认发白的主因。
+- Sandbox 首帧启动 smoke 通过。
+- CTest 通过。
+
+验证：
+
+```powershell
+cmake --build build\msvc-vcpkg --config Debug
+ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Vulkan renderer HLSL 编译通过。
+- CTest 18/18 通过。
 - Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 12. PR-R33：PCSS / Contact Hardening Shadow

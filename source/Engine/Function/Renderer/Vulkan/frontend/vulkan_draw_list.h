@@ -30,7 +30,8 @@ namespace NexAur {
         AssetHandle environment_asset;
         const VulkanEnvironmentResource* environment = nullptr;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };
-        float environment_intensity = 1.0f;
+        float skybox_intensity = 0.75f;
+        float ibl_intensity = 0.65f;
 
         std::vector<VulkanMeshDrawItem> opaque_items;
         std::vector<VulkanMeshDrawItem> transparent_items;

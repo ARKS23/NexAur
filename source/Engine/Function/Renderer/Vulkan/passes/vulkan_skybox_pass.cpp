@@ -113,7 +113,7 @@ namespace NexAur {
             draw_list.view.inverse_view_matrix * draw_list.view.inverse_projection_matrix;
         push_constants.background_color_intensity = glm::vec4(
             glm::max(draw_list.environment_color, glm::vec3{ 0.0f }),
-            std::max(0.0f, draw_list.environment_intensity));
+            std::max(0.0f, draw_list.skybox_intensity));
         push_constants.camera_position_use_environment = glm::vec4(
             draw_list.view.camera_position,
             draw_list.environment_asset && draw_list.environment != nullptr ? 1.0f : 0.0f);

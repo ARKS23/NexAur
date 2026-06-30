@@ -665,6 +665,28 @@ bool hasEntityNamed(const std::shared_ptr<NexAur::SceneV2>& scene, const std::st
     return false;
 }
 
+bool defaultEnvironmentCalibrationMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    const entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<NexAur::TagComponent, NexAur::EnvironmentComponent>();
+    for (entt::entity entity : view) {
+        const auto& tag = view.get<NexAur::TagComponent>(entity);
+        if (tag.name != "Environment") {
+            continue;
+        }
+
+        const auto& environment = view.get<NexAur::EnvironmentComponent>(entity);
+        return nearlyEqual(environment.intensity, 0.65f) &&
+               nearlyEqual(environment.skybox_intensity, 0.75f) &&
+               nearlyEqual(environment.ibl_intensity, 0.65f);
+    }
+
+    return false;
+}
+
 int runSceneSerializerSmoke() {
     NexAur::Engine engine;
     engine.startEngine();
@@ -706,6 +728,9 @@ int runSceneSerializerSmoke() {
                 !hasEntityNamed(load_result.scene, "PointLight")) {
                 success = false;
                 failure = "SceneSerializer smoke failed: loaded scene is missing default entities.";
+            } else if (!defaultEnvironmentCalibrationMatches(load_result.scene)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: environment calibration settings were not preserved.";
             } else {
                 NX_CORE_INFO(
                     "SceneSerializer smoke passed. Saved {} entities and loaded {} entities.",

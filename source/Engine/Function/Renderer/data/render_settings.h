@@ -31,9 +31,9 @@ namespace NexAur {
 
     struct RenderPostProcessSettings {
         RenderToneMappingMode tone_mapping_mode = RenderToneMappingMode::ACES;
-        float exposure = 1.0f;
+        float exposure = 0.85f;
         bool bloom_enabled = true;
-        float bloom_intensity = 0.08f;
+        float bloom_intensity = 0.05f;
         float bloom_scatter = 0.7f;
         float bloom_radius = 1.0f;
     };

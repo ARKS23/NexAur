@@ -15,10 +15,10 @@
 namespace NexAur {
     namespace {
         constexpr VkFormat kEnvironmentFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
-        constexpr uint32_t kEnvironmentCubeSize = 128;
-        constexpr uint32_t kIrradianceCubeSize = 16;
-        constexpr uint32_t kPrefilterCubeSize = 128;
-        constexpr uint32_t kBrdfLutSize = 128;
+        constexpr uint32_t kEnvironmentCubeSize = 512;
+        constexpr uint32_t kIrradianceCubeSize = 32;
+        constexpr uint32_t kPrefilterCubeSize = 256;
+        constexpr uint32_t kBrdfLutSize = 256;
         constexpr float kPi = 3.14159265359f;
 
         struct CubeMipPixels {
@@ -851,6 +851,8 @@ namespace NexAur {
         m_descriptor_allocator = context.descriptor_allocator;
         m_descriptor_set_layout = context.descriptor_set_layout;
         m_debug_name = environment_asset.getSourcePath().empty() ? "Environment" : environment_asset.getSourcePath();
+        m_source_width = environment_asset.getWidth();
+        m_source_height = environment_asset.getHeight();
 
         std::vector<CubeMipPixels> environment_mips;
         environment_mips.push_back(generateEnvironmentCubeMip(environment_asset, kEnvironmentCubeSize));
@@ -890,6 +892,8 @@ namespace NexAur {
         destroyImage(m_environment);
 
         m_debug_name.clear();
+        m_source_width = 0;
+        m_source_height = 0;
         m_allocator = VK_NULL_HANDLE;
         m_device = VK_NULL_HANDLE;
         m_descriptor_allocator = nullptr;

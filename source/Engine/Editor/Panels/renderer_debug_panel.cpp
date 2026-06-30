@@ -418,6 +418,11 @@ namespace NexAur {
         drawKeyValue("Fallback Material", boolToText(snapshot.resources.fallback_material_ready));
         drawKeyValue("Fallback Environment", boolToText(snapshot.resources.fallback_environment_ready));
         drawKeyValue("Environment Ready", boolToText(snapshot.resources.active_environment_ready));
+        drawKeyValue("Environment Source", snapshot.resources.active_environment_name.c_str());
+        drawExtent(
+            "Environment CPU",
+            snapshot.resources.environment_source_width,
+            snapshot.resources.environment_source_height);
         drawKeyValue("Environment Size", snapshot.resources.environment_size);
         drawKeyValue("Irradiance Size", snapshot.resources.irradiance_size);
         drawKeyValue("Prefilter Size", snapshot.resources.prefilter_size);

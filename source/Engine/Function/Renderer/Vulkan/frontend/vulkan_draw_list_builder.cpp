@@ -74,7 +74,8 @@ namespace NexAur {
         draw_list.environment_asset = scene_frame.environment_asset;
         draw_list.environment = resource_cache.getOrCreateEnvironment(scene_frame.environment_asset, asset_manager);
         draw_list.environment_color = scene_frame.environment_color;
-        draw_list.environment_intensity = scene_frame.environment_intensity;
+        draw_list.skybox_intensity = scene_frame.skybox_intensity;
+        draw_list.ibl_intensity = scene_frame.ibl_intensity;
         draw_list.debug_draw = scene_frame.debug_draw;
 
         draw_list.opaque_items.reserve(scene_frame.opaque_objects.size());

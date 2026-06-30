@@ -448,6 +448,8 @@ namespace NexAur {
                     { "environment", writeAssetReference(environment->getEnvironmentHandle(), asset_manager) },
                     { "background_color", writeVec3(environment->background_color) },
                     { "intensity", environment->intensity },
+                    { "skybox_intensity", environment->skybox_intensity },
+                    { "ibl_intensity", environment->ibl_intensity },
                 };
             }
 
@@ -674,6 +676,12 @@ namespace NexAur {
                     environment.background_color =
                         readVec3(environment_json.value("background_color", json::array()), environment.background_color);
                     environment.intensity = environment_json.value("intensity", environment.intensity);
+                    environment.skybox_intensity = environment_json.value(
+                        "skybox_intensity",
+                        environment_json.value("intensity", environment.skybox_intensity));
+                    environment.ibl_intensity = environment_json.value(
+                        "ibl_intensity",
+                        environment_json.value("intensity", environment.ibl_intensity));
                 }
 
                 if (components.contains("Player") && components["Player"].is_object()) {

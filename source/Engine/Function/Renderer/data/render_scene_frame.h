@@ -46,7 +46,9 @@ namespace NexAur {
 
         AssetHandle environment_asset;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };
-        float environment_intensity = 1.0f;
+        float environment_intensity = 0.65f;
+        float skybox_intensity = 0.75f;
+        float ibl_intensity = 0.65f;
         RenderDebugDrawData debug_draw;
 
         bool hasRenderableObjects() const {

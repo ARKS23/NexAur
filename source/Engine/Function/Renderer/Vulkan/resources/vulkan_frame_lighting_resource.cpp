@@ -158,7 +158,7 @@ namespace NexAur {
         }
         frame_globals.camera_position_environment_intensity = glm::vec4(
             draw_list.view.camera_position,
-            draw_list.environment_intensity);
+            draw_list.ibl_intensity);
 
         const glm::vec3 light_direction = safeNormalize(
             draw_list.directional_light.direction,
@@ -171,7 +171,7 @@ namespace NexAur {
             static_cast<float>(point_light_count));
         frame_globals.ambient_color_intensity = glm::vec4(
             glm::max(draw_list.environment_color, glm::vec3{ 0.0f }),
-            std::max(0.0f, draw_list.environment_intensity) * kFallbackAmbientIntensity);
+            std::max(0.0f, draw_list.ibl_intensity) * kFallbackAmbientIntensity);
         const RenderShadowSettings& shadow_settings = render_settings.shadow;
         const bool shadow_enabled = draw_list.directional_light.cast_shadow && shadow_settings.enabled;
         const uint32_t cascade_count = std::clamp(

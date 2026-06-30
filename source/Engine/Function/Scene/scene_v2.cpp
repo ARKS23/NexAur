@@ -140,6 +140,8 @@ namespace NexAur {
             render_packet->environment_data.environment_asset = env_comp.getEnvironmentHandle();
             render_packet->environment_data.background_color = env_comp.background_color;
             render_packet->environment_data.intensity = env_comp.intensity;
+            render_packet->environment_data.skybox_intensity = env_comp.skybox_intensity;
+            render_packet->environment_data.ibl_intensity = env_comp.ibl_intensity;
             break;
         }
 

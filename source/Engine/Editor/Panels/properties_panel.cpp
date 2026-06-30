@@ -135,6 +135,7 @@ namespace NexAur {
 
         EnvironmentComponent& environment = entity.getComponent<EnvironmentComponent>();
         ImGui::ColorEdit3("Background", glm::value_ptr(environment.background_color));
-        ImGui::DragFloat("Intensity", &environment.intensity, 0.02f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragFloat("Skybox Intensity", &environment.skybox_intensity, 0.02f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragFloat("IBL Intensity", &environment.ibl_intensity, 0.02f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     }
 } // namespace NexAur

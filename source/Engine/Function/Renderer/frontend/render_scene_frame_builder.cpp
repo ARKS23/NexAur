@@ -10,7 +10,9 @@
 namespace NexAur {
     namespace {
         constexpr size_t kMaxPointLights = 64;
-        constexpr float kDefaultEnvironmentIntensity = 1.0f;
+        constexpr float kDefaultEnvironmentIntensity = 0.65f;
+        constexpr float kDefaultSkyboxIntensity = 0.75f;
+        constexpr float kDefaultIblIntensity = 0.65f;
         constexpr glm::vec3 kDefaultLightDirection{ -0.2f, -1.0f, -0.3f };
 
         bool isFinite(float value) {
@@ -190,6 +192,12 @@ namespace NexAur {
         frame.environment_intensity = sanitizeNonNegative(
             render_data.environment_data.intensity,
             kDefaultEnvironmentIntensity);
+        frame.skybox_intensity = sanitizeNonNegative(
+            render_data.environment_data.skybox_intensity,
+            frame.environment_intensity > 0.0f ? frame.environment_intensity : kDefaultSkyboxIntensity);
+        frame.ibl_intensity = sanitizeNonNegative(
+            render_data.environment_data.ibl_intensity,
+            frame.environment_intensity > 0.0f ? frame.environment_intensity : kDefaultIblIntensity);
         appendDebugLines(render_data.debug_draw, frame.debug_draw);
 
         return frame;

@@ -51,7 +51,9 @@ namespace NexAur {
 
             Entity environment_entity = scene->createEntity("Environment");
             auto& environment = environment_entity.addComponent<EnvironmentComponent>(environment_asset);
-            environment.intensity = 1.0f;
+            environment.intensity = 0.65f;
+            environment.skybox_intensity = 0.75f;
+            environment.ibl_intensity = 0.65f;
         }
 
         void addDefaultLights(const std::shared_ptr<SceneV2>& scene) {
@@ -59,7 +61,7 @@ namespace NexAur {
             auto& directional_light = directional_light_entity.addComponent<DirectionalLightComponent>();
             directional_light.direction = glm::normalize(glm::vec3(-0.6f, -0.6f, 0.6f));
             directional_light.color = glm::vec3(1.0f);
-            directional_light.intensity = 3.3f;
+            directional_light.intensity = 2.0f;
             directional_light.cast_shadow = true;
             directional_light.shadow_strength = 0.7f;
             directional_light.shadow_bias = 0.003f;

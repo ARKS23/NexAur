@@ -879,6 +879,9 @@ namespace NexAur {
             }
             if (active_environment && active_environment->isReady()) {
                 stats.active_environment_ready = true;
+                stats.active_environment_name = active_environment->getDebugName();
+                stats.environment_source_width = active_environment->getSourceWidth();
+                stats.environment_source_height = active_environment->getSourceHeight();
                 stats.environment_size = active_environment->getEnvironmentSize();
                 stats.irradiance_size = active_environment->getIrradianceSize();
                 stats.prefilter_size = active_environment->getPrefilterSize();

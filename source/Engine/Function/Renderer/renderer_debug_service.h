@@ -90,6 +90,9 @@ namespace NexAur {
         bool fallback_material_ready = false;
         bool fallback_environment_ready = false;
         bool active_environment_ready = false;
+        std::string active_environment_name = "None";
+        uint32_t environment_source_width = 0;
+        uint32_t environment_source_height = 0;
         uint32_t environment_size = 0;
         uint32_t irradiance_size = 0;
         uint32_t prefilter_size = 0;
