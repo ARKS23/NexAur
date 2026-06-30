@@ -5,6 +5,7 @@
 #include "Editor/Panels/renderer_debug_panel.h"
 #include "Editor/Panels/scene_hierarchy_panel.h"
 #include "Editor/Panels/viewport_panel.h"
+#include "Editor/Style/editor_style.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/renderer_service.h"
@@ -132,6 +133,8 @@ namespace NexAur {
             return;
         }
 
+        ensureEditorStyleApplied();
+
         // DockSpace 是编辑器 UI 根窗口，所有 Panel 都挂在它里面。
         beginDockSpace();
 
@@ -182,6 +185,17 @@ namespace NexAur {
 
     void EditorLayer::endDockSpace() {
         ImGui::End();
+    }
+
+    void EditorLayer::ensureEditorStyleApplied() {
+        ImGuiContext* current_context = ImGui::GetCurrentContext();
+        if (!current_context || current_context == m_styled_imgui_context) {
+            return;
+        }
+
+        EditorStyle::applyTheme();
+        EditorStyle::applyGizmoStyle();
+        m_styled_imgui_context = current_context;
     }
 
     void EditorLayer::drawMainMenuBar() {

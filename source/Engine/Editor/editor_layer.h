@@ -10,6 +10,8 @@
 #include <memory>
 #include <vector>
 
+struct ImGuiContext;
+
 namespace NexAur {
     class SceneV2;
     class EditorPanel;
@@ -45,6 +47,7 @@ namespace NexAur {
     private:
         void init();
         void shutdown();
+        void ensureEditorStyleApplied();
         void beginDockSpace();
         void endDockSpace();
         void drawMainMenuBar();
@@ -64,5 +67,6 @@ namespace NexAur {
 
         std::shared_ptr<EditorContext> m_context;    // 编辑器上下文，各个面板需要共享的数据
         bool m_is_enabled = true;
+        ImGuiContext* m_styled_imgui_context = nullptr;
     };
 } // namespace NexAur

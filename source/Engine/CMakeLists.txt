@@ -52,6 +52,9 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/editor_layer.h
     Editor/editor_layer.cpp
     Editor/editor_services.h
+    Editor/Style/editor_icons.h
+    Editor/Style/editor_style.h
+    Editor/Style/editor_style.cpp
     Editor/Camera/editor_camera.h
     Editor/Camera/editor_camera.cpp
     Editor/Panels/editor_panel.h

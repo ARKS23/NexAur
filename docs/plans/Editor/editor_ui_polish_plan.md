@@ -227,13 +227,105 @@ E4 Inspector
 
 ## 6. PR-E1：Editor Style Foundation
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
 - 建立 NexAur Editor 统一主题。
 - 统一 ImGui / ImGuizmo 的基础视觉风格。
 - 为后续面板改造提供稳定 UI helper。
+- 将零散 style 逻辑集中到 Editor 层，避免后续 panel 各自堆样式。
+- 为 E2 Dockspace、E3 Toolbar、E4 Inspector 的视觉一致性打底。
+
+当前观察：
+
+- `EditorLayer::beginDockSpace()` 内有少量 dock root 必需的 `PushStyleVar()`，属于布局型 style，可以保留。
+- `ViewportPanel::beginViewportWindow()` 使用 `WindowPadding = 0`，属于 viewport image 特殊需求，可以保留。
+- `ViewportPanel::drawViewportModeToolbar()` 直接设置 `FramePadding`，后续可迁移到统一 toolbar / segmented control helper。
+- `ViewportPanel::setGizmoStyle()` 直接设置 ImGuizmo style，建议在 E1 中迁到 `EditorStyle`。
+- 当前没有集中 theme / icon / helper 入口，后续继续扩 panel 会越来越散。
+
+设计原则：
+
+- E1 只做视觉基础设施，不改变编辑器布局和业务流程。
+- Editor Style 属于 Editor 层，不放进 Vulkan ImGui backend。
+- `VulkanImGuiRenderer` 继续只负责 ImGui 渲染接入，不负责编辑器主题。
+- 第一版保持低风险：先应用统一 theme，再小范围迁移明显重复的 style。
+- 不为了“好看”牺牲工具信息密度，整体保持紧凑、克制、深色中性。
+
+建议新增文件：
+
+```text
+source/Engine/Editor/Style/
+  editor_style.h
+  editor_style.cpp
+  editor_icons.h
+```
+
+建议职责：
+
+- `editor_style.h/.cpp`
+  - `EditorStyle::applyTheme()`：设置 ImGui 全局颜色和尺寸。
+  - `EditorStyle::applyGizmoStyle()`：统一 ImGuizmo 线宽、颜色和交互厚度。
+  - `EditorStyle::drawSectionHeader()`：后续 Inspector / Debug 面板复用。
+  - `EditorStyle::drawSubtleText()`：弱提示文字。
+  - `EditorStyle::drawHelpTooltip()`：统一 tooltip 行为。
+  - `EditorStyle::iconButton()`：先保留文本 fallback，后续接 icon font。
+- `editor_icons.h`
+  - 第一版可以只定义轻量 icon 常量或占位文本。
+  - 后续接 FontAwesome / Codicon 时只改这里。
+
+建议调用方式：
+
+```text
+EditorLayer
+  -> ensureEditorStyleApplied()
+  -> EditorStyle::applyTheme()
+
+ViewportPanel
+  -> EditorStyle::applyGizmoStyle()
+```
+
+说明：
+
+- `EditorStyle::applyTheme()` 只需要在 ImGui context 创建后调用一次。
+- 如果初始化时机不确定，可以在 `EditorLayer::onUIRender()` 开头用 bool guard 兜底调用一次。
+- 不建议在每帧重复写完整 theme。
+- 不建议从 `VulkanImGuiRenderer` 调用 `EditorStyle`，避免 Renderer backend 反向依赖 Editor。
+
+主题方向：
+
+```text
+Background: 深灰，不使用纯黑
+Panel: 比背景略亮，边界清楚
+Header / Tab: 低饱和蓝灰
+Accent: 少量冷色高亮，用于 selected / active
+Text: 高对比但不过曝
+Disabled: 明确变暗
+Border: 细、低噪声
+Rounding: 2 - 4
+Frame padding: 紧凑但不拥挤
+```
+
+建议默认视觉参数：
+
+```text
+WindowRounding: 0 - 2
+ChildRounding: 2
+FrameRounding: 3
+PopupRounding: 3
+TabRounding: 3
+ScrollbarRounding: 3
+GrabRounding: 2
+WindowBorderSize: 1
+FrameBorderSize: 0
+ChildBorderSize: 1
+WindowPadding: 8, 8
+FramePadding: 6, 3
+ItemSpacing: 6, 4
+ItemInnerSpacing: 4, 4
+IndentSpacing: 14
+```
 
 建议工作：
 
@@ -241,29 +333,75 @@ E4 Inspector
    - 集中设置 ImGui color palette。
    - 集中设置 rounding、border、padding、spacing。
    - 集中设置 window / frame / tab / header / separator 等颜色。
+   - 提供 `applyTheme()`，由 `EditorLayer` 在 Editor UI 渲染前应用。
 2. 新增 style helper。
    - small icon button。
    - section header。
    - property label / value row。
    - disabled text / subtle text。
+   - tooltip helper。
+   - 先提供 API 和少量使用点，不强制一次性改完所有 panel。
 3. ImGuizmo style 收口。
    - 把 `ViewportPanel::setGizmoStyle()` 中的样式迁出或统一调用。
+   - 后续 gizmo 颜色、线宽统一由 `EditorStyle::applyGizmoStyle()` 控制。
 4. 字体策略。
    - 第一版可继续用默认字体。
    - 后续接入 icon font，例如 FontAwesome / Codicon。
+   - E1 可预留 `editor_icons.h`，但不强制引入第三方字体资源。
+5. CMake 接入。
+   - 将新增 Editor Style 文件加入 `source/Engine/CMakeLists.txt`。
+   - 保持 Editor 模块内部依赖，不影响 Runtime / Renderer backend。
+6. 最小迁移点。
+   - `ViewportPanel::setGizmoStyle()` 迁移到 `EditorStyle`。
+   - `ViewportPanel::drawViewportModeToolbar()` 可保留现状，或先使用 helper 做轻量 segmented button。
+   - `RendererDebugPanel` / `PropertiesPanel` 暂不大改，避免 E1 膨胀成 E4。
+
+建议拆分步骤：
+
+1. PR-E1-A：Style 文件和 theme 接入。
+   - 新增 `EditorStyle` 文件。
+   - 在 `EditorLayer` 中调用一次 `EditorStyle::applyTheme()`。
+   - 构建通过，打开编辑器能看到全局 theme 生效。
+2. PR-E1-B：ImGuizmo style 收口。
+   - 删除或弱化 `ViewportPanel::setGizmoStyle()` 的直接样式定义。
+   - 改为调用 `EditorStyle::applyGizmoStyle()`。
+3. PR-E1-C：基础 helper。
+   - 增加 tooltip / subtle text / section header / icon button helper。
+   - 在少量低风险位置试用。
+4. PR-E1-D：文档和验收。
+   - 更新执行日志。
+   - 记录保留的局部 style 例外，例如 viewport `WindowPadding = 0`。
 
 暂时不做：
 
 - 不重写所有 panel。
 - 不接入复杂 skin / theme editor。
 - 不做运行时 UI framework。
+- 不做完整 toolbar。
+- 不做 command system。
+- 不做 dockspace 默认布局重排。
+- 不做 PropertiesPanel / Inspector 大重构。
+- 不做完整 icon font 集成。
+- 不把 Editor theme 放进 Vulkan backend。
 
 验收：
 
 - Editor 全局风格统一。
 - Panel 不再到处临时设置重复 style。
 - ImGuizmo 风格与 Editor 主题协调。
+- `EditorStyle` 是 Editor 层统一入口，Renderer/Vulkan backend 不反向依赖 Editor。
+- Viewport 特殊 padding 等局部 style 有明确理由，不被误清理。
+- 默认布局和现有功能不倒退。
 - 构建和 Sandbox smoke 通过。
+
+实现记录：
+
+- 新增 `source/Engine/Editor/Style/editor_style.h/.cpp`，集中设置 ImGui 深色主题、spacing、rounding、border 和常用 helper。
+- 新增 `source/Engine/Editor/Style/editor_icons.h`，先提供 ASCII 文本 fallback，后续接入 icon font 时只收敛到这一层。
+- `EditorLayer` 在 ImGui context 可用后通过 `ensureEditorStyleApplied()` 应用一次全局主题和 ImGuizmo 风格，不让 Vulkan ImGui backend 反向依赖 Editor。
+- `ViewportPanel` 的 Scene/Game 切换改用 `EditorStyle::segmentedButton()`，并移除本地 `setGizmoStyle()`，统一调用 `EditorStyle::applyGizmoStyle()`。
+- 保留 `EditorLayer::beginDockSpace()` 的 dock root style 和 `ViewportPanel::beginViewportWindow()` 的零 padding，因为它们属于布局/viewport 输出的局部必要样式。
+- 验证：`cmake --build --preset msvc-vcpkg-debug`、`ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure`、Sandbox 隐藏窗口启动 smoke 均通过。
 
 ## 7. PR-E2：Dockspace Layout + Shell Polish
 
@@ -616,7 +754,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 
 | PR | 状态 | 摘要 |
 | --- | --- | --- |
-| PR-E1 Editor Style Foundation | 计划中 | 统一 ImGui / ImGuizmo 风格、字体、图标和 UI helper。 |
+| PR-E1 Editor Style Foundation | 已完成 | 新增 EditorStyle / editor_icons，统一 ImGui 主题与 ImGuizmo 风格，并迁移 Viewport 的 Scene/Game segmented button。 |
 | PR-E2 Dockspace Layout + Shell Polish | 计划中 | 固定默认 dock layout，补 menu / status bar。 |
 | PR-E3 Toolbar + Command System v1 | 计划中 | 建立 toolbar 和轻量 command registry。 |
 | PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |

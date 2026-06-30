@@ -44,7 +44,6 @@ namespace NexAur {
         bool isSceneViewMode() const;
         bool canUseSceneViewTools() const;
         void syncEditorCameraSize(uint32_t width, uint32_t height);
-        void setGizmoStyle();
         void applyGizmoToSelectedEntity(const glm::mat4& transform);
 
         bool onMouseButtonPressed(MouseButtonPressedEvent& e);

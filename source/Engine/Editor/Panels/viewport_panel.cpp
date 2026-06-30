@@ -2,6 +2,7 @@
 #include "viewport_panel.h"
 
 #include "Editor/editor_services.h"
+#include "Editor/Style/editor_style.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Editor/Camera/editor_camera.h"
@@ -63,34 +64,19 @@ namespace NexAur {
             return;
         }
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
-
         const bool scene_view = m_context->viewport_view_mode == EditorViewportViewMode::SceneView;
         const bool game_view = m_context->viewport_view_mode == EditorViewportViewMode::GameView;
 
-        if (scene_view) {
-            ImGui::BeginDisabled();
-        }
-        if (ImGui::Button("Scene")) {
+        if (EditorStyle::segmentedButton("Scene", scene_view)) {
             m_context->viewport_view_mode = EditorViewportViewMode::SceneView;
-        }
-        if (scene_view) {
-            ImGui::EndDisabled();
         }
 
         ImGui::SameLine();
 
-        if (game_view) {
-            ImGui::BeginDisabled();
-        }
-        if (ImGui::Button("Game")) {
+        if (EditorStyle::segmentedButton("Game", game_view)) {
             m_context->viewport_view_mode = EditorViewportViewMode::GameView;
         }
-        if (game_view) {
-            ImGui::EndDisabled();
-        }
 
-        ImGui::PopStyleVar();
         ImGui::Separator();
     }
 
@@ -289,7 +275,7 @@ namespace NexAur {
             return;
         }
 
-        setGizmoStyle();
+        EditorStyle::applyGizmoStyle();
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::SetDrawlist();
         ImGuizmo::SetRect(
@@ -373,12 +359,6 @@ namespace NexAur {
 
         m_context->viewport_camera->setViewportSize(target_size.x, target_size.y);
         m_camera_viewport_size = target_size;
-    }
-
-    void ViewportPanel::setGizmoStyle() {
-        ImGuizmo::Style& style = ImGuizmo::GetStyle();
-        style.RotationLineThickness = 15.0f;
-        style.ScaleLineThickness = 3.0f;
     }
 
     void ViewportPanel::applyGizmoToSelectedEntity(const glm::mat4& transform) {
