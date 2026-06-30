@@ -847,7 +847,7 @@ SuccessGreen         ok 状态
 
 ## 10. PR-E5：Scene Hierarchy / Explorer Polish
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -880,6 +880,14 @@ SuccessGreen         ok 状态
 - Scene hierarchy 查找和常用创建更顺手。
 - 选择状态和 viewport picking 继续同步。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- `SceneHierarchyPanel` 增加按 entity name 过滤的搜索框。
+- Entity 列表从无层级 TreeNode 改为紧凑 selectable row，并按 Camera / Light / Mesh / Entity 使用轻量 icon fallback。
+- 空白左键清空选择保持稳定，entity 点击继续通过 `SelectionService` 同步给 Inspector 和 viewport picking。
+- 空白右键提供 Create 菜单，支持 Empty Entity、Camera、Directional Light、Point Light。
+- Entity 右键支持 Duplicate / Delete；Duplicate 复制当前常用 scene authoring 组件，不引入 prefab 或父子层级语义。
 
 ## 11. PR-E6：Project / Console Panels v1
 
@@ -1084,7 +1092,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E2.5 Editor Visual System v2 / Engine-like Chrome | 已完成 | 新增 EditorTheme / EditorFonts / EditorWidgets，重构 theme token，并迁移 Project / Console / RendererDebug / Properties 的低风险控件。 |
 | PR-E3 Toolbar + Command System v1 | 已完成 | 建立 toolbar 和轻量 command registry，菜单、工具栏、快捷键共享命令入口，Viewport gizmo 消费统一 tool state。 |
 | PR-E4 Inspector Property Drawer v1 | 已完成 | 新增 EditorPropertyDrawer，统一 Inspector 字段绘制，并补齐基础组件 drawer 与 Add Component 分类菜单。 |
-| PR-E5 Scene Hierarchy / Explorer Polish | 计划中 | 搜索、右键创建、图标和选中态 polish。 |
+| PR-E5 Scene Hierarchy / Explorer Polish | 已完成 | 增加搜索过滤、轻量 icon row、空白/实体右键菜单、创建/复制/删除实体操作。 |
 | PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
 | PR-E7 Viewport Overlay + Gizmo Polish | 计划中 | 加强 viewport overlay、toolbar 和 gizmo 体验。 |
 | PR-E8 Preferences / Render Settings Panel | 计划中 | 为渲染效果参数提供可写 UI 入口。 |

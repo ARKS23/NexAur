@@ -16,4 +16,9 @@ namespace NexAur::EditorIcons {
     inline constexpr const char* Settings = "Settings";
     inline constexpr const char* Close = "Close";
     inline constexpr const char* Help = "?";
+    inline constexpr const char* Entity = "E";
+    inline constexpr const char* Camera = "C";
+    inline constexpr const char* Light = "L";
+    inline constexpr const char* Mesh = "M";
+    inline constexpr const char* Audio = "A";
 } // namespace NexAur::EditorIcons
