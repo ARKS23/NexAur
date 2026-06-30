@@ -1,10 +1,20 @@
 #include "pch.h"
 #include "editor_theme.h"
 
+#include <cmath>
+
 namespace NexAur {
     namespace {
+        float srgbToLinear(float value) {
+            if (value <= 0.04045f) {
+                return value / 12.92f;
+            }
+
+            return std::pow((value + 0.055f) / 1.055f, 2.4f);
+        }
+
         ImVec4 color(float r, float g, float b, float a = 1.0f) {
-            return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a);
+            return EditorThemeTokens::fromSrgb(ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a));
         }
 
         EditorTheme makeDefaultTheme() {
@@ -52,6 +62,14 @@ namespace NexAur {
         ImVec4 withAlpha(ImVec4 color, float alpha) {
             color.w = alpha;
             return color;
+        }
+
+        ImVec4 fromSrgb(ImVec4 color) {
+            return ImVec4(
+                srgbToLinear(color.x),
+                srgbToLinear(color.y),
+                srgbToLinear(color.z),
+                color.w);
         }
     } // namespace EditorThemeTokens
 } // namespace NexAur

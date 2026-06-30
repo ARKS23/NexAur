@@ -140,10 +140,10 @@ namespace NexAur::EditorStyle {
         style.HatchedAxisLineThickness = 2.0f;
         style.CenterCircleSize = 5.0f;
 
-        style.Colors[ImGuizmo::DIRECTION_X] = ImVec4(0.93f, 0.22f, 0.24f, 1.00f);
+        style.Colors[ImGuizmo::DIRECTION_X] = EditorThemeTokens::fromSrgb(ImVec4(0.93f, 0.22f, 0.24f, 1.00f));
         style.Colors[ImGuizmo::DIRECTION_Y] = palette.success_green;
         style.Colors[ImGuizmo::DIRECTION_Z] = palette.accent_blue;
-        style.Colors[ImGuizmo::PLANE_X] = ImVec4(0.93f, 0.22f, 0.24f, 0.34f);
+        style.Colors[ImGuizmo::PLANE_X] = EditorThemeTokens::fromSrgb(ImVec4(0.93f, 0.22f, 0.24f, 0.34f));
         style.Colors[ImGuizmo::PLANE_Y] = EditorThemeTokens::withAlpha(palette.success_green, 0.34f);
         style.Colors[ImGuizmo::PLANE_Z] = EditorThemeTokens::withAlpha(palette.accent_blue, 0.34f);
         style.Colors[ImGuizmo::SELECTION] = palette.accent_orange;

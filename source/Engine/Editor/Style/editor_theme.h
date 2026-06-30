@@ -46,5 +46,6 @@ namespace NexAur {
     namespace EditorThemeTokens {
         NEXAUR_API const EditorTheme& getDefaultTheme();
         NEXAUR_API ImVec4 withAlpha(ImVec4 color, float alpha);
+        NEXAUR_API ImVec4 fromSrgb(ImVec4 color);
     } // namespace EditorThemeTokens
 } // namespace NexAur
