@@ -206,6 +206,7 @@ Undo / Redo 可以后续接入，不挤进第一版。
 
 ```text
 PR-E1 Editor Style Foundation
+PR-E1.5 Editor Theme Calibration / Visual Baseline
 PR-E2 Dockspace Layout + Shell Polish
 PR-E3 Toolbar + Command System v1
 PR-E4 Inspector Property Drawer v1
@@ -220,6 +221,7 @@ PR-E9 Layout / Shortcut Persistence
 
 ```text
 E1 Style
+E1.5 Theme Calibration
 E2 Dockspace Shell
 E3 Toolbar
 E4 Inspector
@@ -401,6 +403,100 @@ IndentSpacing: 14
 - `EditorLayer` 在 ImGui context 可用后通过 `ensureEditorStyleApplied()` 应用一次全局主题和 ImGuizmo 风格，不让 Vulkan ImGui backend 反向依赖 Editor。
 - `ViewportPanel` 的 Scene/Game 切换改用 `EditorStyle::segmentedButton()`，并移除本地 `setGizmoStyle()`，统一调用 `EditorStyle::applyGizmoStyle()`。
 - 保留 `EditorLayer::beginDockSpace()` 的 dock root style 和 `ViewportPanel::beginViewportWindow()` 的零 padding，因为它们属于布局/viewport 输出的局部必要样式。
+- 验证：`cmake --build --preset msvc-vcpkg-debug`、`ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure`、Sandbox 隐藏窗口启动 smoke 均通过。
+
+## 6.5. PR-E1.5：Editor Theme Calibration / Visual Baseline
+
+执行状态：已完成。
+
+背景：
+
+- PR-E1 已经建立 `EditorStyle` 统一入口，但当前 sandbox 打开后的实际观感仍然偏灰、偏亮、偏默认 ImGui。
+- 参考目标图的核心不是“更多装饰”，而是深色、紧凑、层级清晰、低噪声的工具界面。
+- 如果直接进入 PR-E2 做 dockspace / shell，容易把布局、菜单、状态栏和主题调色混在一个 PR 里，后续 review 和回退都会变重。
+- 因此在 PR-E2 前插入一个小 PR，先把视觉基线调准，再让 E2 在稳定 theme 上做布局。
+
+目标：
+
+- 让当前 Editor UI 的颜色、对比度和控件质感更接近目标风格。
+- 保持 E1 的集中 style 架构，只调整 `EditorStyle`，不让 panel 继续零散堆样式。
+- 让 Window、Dock、TitleBar、Tab、Header、Frame、Slider、Combo、Scrollbar 的层级更清楚。
+- 降低大面积蓝色 header / selected fill 的存在感，蓝色只作为 active / hover / selected 的少量强调。
+- 形成后续 E2 / E3 / E4 可直接复用的视觉 token。
+
+当前差距：
+
+- Panel 背景和 dock 背景偏亮，整体看起来像一层灰色遮罩，而不是成熟工具 shell。
+- Header / TitleBar / Tab / Frame 的层级不够分明，信息密度有了，但质感不够稳。
+- 控件填充色偏亮，slider / combo / checkbox 在 debug 面板里显得噪声较多。
+- Viewport 内容偏亮属于 renderer / exposure 方向，不能在 Editor UI PR 里混着修；E1.5 只处理 UI shell 本身。
+- 当前左侧仍是 `Renderer Debug`，底部缺 Project / Console，右侧 Inspector 也还没 polish，这些属于 E2 / E4 / E6，不放进 E1.5。
+
+建议工作：
+
+1. 重新校准 `EditorStyle::applyTheme()`。
+   - 深化 `WindowBg`、`ChildBg`、`MenuBarBg`、`TitleBg`、`DockingEmptyBg`。
+   - 保持非纯黑，避免过重，但整体比当前更接近深色工具 UI。
+   - 让 Border / Separator 更细、更低噪声。
+2. 收敛 active / hover 色。
+   - `Header`、`HeaderHovered`、`HeaderActive` 使用低饱和蓝灰。
+   - `Button`、`FrameBg`、`Tab` 以深灰为主，只在交互态轻微提亮。
+   - `CheckMark`、`SliderGrab`、`NavHighlight` 保留冷色 accent。
+3. 优化控件视觉密度。
+   - 调整 `FramePadding`、`ItemSpacing`、`ScrollbarSize`、`GrabMinSize`。
+   - 保持紧凑但不压缩到难读。
+   - 避免每个 panel 自己改 padding。
+4. 校准 dock / tab / title chrome。
+   - Menu bar、Dockspace root、Tab active / unfocused active 有明确层级。
+   - Dock preview 颜色克制，不抢 viewport。
+5. 轻量检查 `ViewportPanel` segmented button。
+   - Scene / Game 选中态更像 segmented control，而不是普通按钮。
+   - 不在本 PR 做完整 viewport toolbar。
+6. 更新文档和截图验收记录。
+   - 记录 E1.5 只处理视觉基线，不处理布局和 renderer exposure。
+
+暂时不做：
+
+- 不做 PR-E2 的默认 dock layout。
+- 不新增顶部 toolbar、底部 Project / Console、状态栏。
+- 不重构 `RendererDebugPanel` / `PropertiesPanel` 的字段布局。
+- 不接入 icon font。
+- 不加载新字体。
+- 不修改 renderer exposure、tone mapping、skybox 或 bloom。
+- 不把 theme 逻辑放进 Vulkan ImGui backend。
+
+代码组织：
+
+```text
+source/Engine/Editor/Style/
+  editor_style.h
+  editor_style.cpp
+  editor_icons.h
+```
+
+- 主要改动集中在 `editor_style.cpp` 内部 palette / metrics。
+- 如有必要，可在 `editor_style.cpp` 内用局部 `Palette` / `Metrics` 常量整理颜色和尺寸。
+- 公共 API 尽量不新增，避免小 PR 变成 UI framework 扩张。
+- `EditorLayer` 继续只调用 `EditorStyle::applyTheme()` / `EditorStyle::applyGizmoStyle()`。
+- `ViewportPanel` 继续只消费 `EditorStyle::segmentedButton()`，不直接写视觉 token。
+
+验收：
+
+- 打开 sandbox 后，Editor UI 不再偏灰白，整体更接近深色、低噪声、专业工具感。
+- Panel / TitleBar / Tab / Header / Frame 的层级肉眼清楚。
+- Debug panel 虽然布局仍旧，但控件噪声明显降低。
+- Scene / Game segmented button 选中态明确。
+- 现有 dock 布局和 editor 功能不倒退。
+- 构建、CTest 和 Sandbox smoke 通过。
+
+实现记录：
+
+- 重新校准 `EditorStyle::applyTheme()` 的深色 palette，压低 `WindowBg`、`ChildBg`、`MenuBarBg`、`TitleBg`、`DockingEmptyBg` 的亮度。
+- 将 `FrameBg`、`Button`、`Header`、`Tab` 调整为深灰 / 低饱和蓝灰，减少大面积蓝色块。
+- 增加 `FrameBorderSize` 并降低 `Border` / `Separator` 亮度，让控件层级更清楚但不变吵。
+- 调整 `WindowPadding`、`FramePadding`、`ItemSpacing`、`ScrollbarSize`、`GrabMinSize`，让 debug 面板的控件密度更紧凑。
+- 优化 `EditorStyle::segmentedButton()` 的 active 态，Scene / Game 切换更像 segmented control。
+- 未改 dock layout、toolbar、Project / Console、Inspector 字段布局、字体和 renderer exposure。
 - 验证：`cmake --build --preset msvc-vcpkg-debug`、`ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure`、Sandbox 隐藏窗口启动 smoke 均通过。
 
 ## 7. PR-E2：Dockspace Layout + Shell Polish
@@ -755,6 +851,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR | 状态 | 摘要 |
 | --- | --- | --- |
 | PR-E1 Editor Style Foundation | 已完成 | 新增 EditorStyle / editor_icons，统一 ImGui 主题与 ImGuizmo 风格，并迁移 Viewport 的 Scene/Game segmented button。 |
+| PR-E1.5 Editor Theme Calibration / Visual Baseline | 已完成 | 校准深色主题、控件层级和 segmented button active 态，为 dockspace shell 打稳定视觉底。 |
 | PR-E2 Dockspace Layout + Shell Polish | 计划中 | 固定默认 dock layout，补 menu / status bar。 |
 | PR-E3 Toolbar + Command System v1 | 计划中 | 建立 toolbar 和轻量 command registry。 |
 | PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |
