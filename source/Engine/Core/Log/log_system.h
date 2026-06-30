@@ -5,16 +5,38 @@
 
 #include "Core/Base.h"
 
+#include <mutex>
+#include <string>
+#include <vector>
+
 namespace NexAur {
+    class RecentLogSink;
+
+    struct NEXAUR_API LogMessage {
+        spdlog::level::level_enum level = spdlog::level::info;
+        std::string logger_name;
+        std::string message;
+    };
+
     class NEXAUR_API LogSystem {
         public:
             static void init();
+            static std::vector<LogMessage> getRecentMessages();
+            static void clearRecentMessages();
+            static const char* levelToString(spdlog::level::level_enum level);
         
         public:
             inline static std::shared_ptr<spdlog::logger>& getCoreLogger() { return s_core_logger; }
 
         private:
+            friend class RecentLogSink;
+
+            static void appendRecentMessage(LogMessage message);
+
+        private:
             static std::shared_ptr<spdlog::logger> s_core_logger;
+            static std::vector<LogMessage> s_recent_messages;
+            static std::mutex s_recent_messages_mutex;
     };
 } // namespace NexAur
 

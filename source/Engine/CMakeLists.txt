@@ -60,6 +60,8 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/Panels/console_panel.h
     Editor/Panels/console_panel.cpp
     Editor/Panels/editor_panel.h
+    Editor/Panels/placeholder_panel.h
+    Editor/Panels/placeholder_panel.cpp
     Editor/Panels/project_panel.h
     Editor/Panels/project_panel.cpp
     Editor/Panels/properties_panel.h

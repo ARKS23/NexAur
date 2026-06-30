@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_panel.h"
+#include "Core/Log/log_system.h"
 
 #include <array>
 
@@ -13,9 +14,13 @@ namespace NexAur {
         void onUIRender() override;
 
     private:
-        void drawMessage(const char* level, const char* text) const;
+        void drawToolbar();
+        void drawMessages();
+        bool passesFilter(const LogMessage& message) const;
+        void drawMessage(const LogMessage& message) const;
 
     private:
         std::array<char, 128> m_filter{};
+        bool m_auto_scroll = true;
     };
 } // namespace NexAur

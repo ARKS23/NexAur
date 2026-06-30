@@ -2,6 +2,7 @@
 #include "editor_layer.h"
 
 #include "Editor/Panels/console_panel.h"
+#include "Editor/Panels/placeholder_panel.h"
 #include "Editor/Panels/project_panel.h"
 #include "Editor/Panels/properties_panel.h"
 #include "Editor/Panels/renderer_debug_panel.h"
@@ -33,6 +34,8 @@ namespace NexAur {
         constexpr const char* kRendererDebugPanelName = "Renderer Debug";
         constexpr const char* kProjectPanelName = "Project";
         constexpr const char* kConsolePanelName = "Console";
+        constexpr const char* kTimelinePanelName = "Timeline";
+        constexpr const char* kProfilerPanelName = "Profiler";
 
         const char* viewportModeToText(EditorViewportViewMode mode) {
             switch (mode) {
@@ -91,6 +94,12 @@ namespace NexAur {
         m_panels.push_back(std::make_shared<RendererDebugPanel>(kRendererDebugPanelName));
         m_panels.push_back(std::make_shared<ProjectPanel>(kProjectPanelName));
         m_panels.push_back(std::make_shared<ConsolePanel>(kConsolePanelName));
+        m_panels.push_back(std::make_shared<PlaceholderPanel>(
+            kTimelinePanelName,
+            "Timeline editor is reserved for the animation tool pass."));
+        m_panels.push_back(std::make_shared<PlaceholderPanel>(
+            kProfilerPanelName,
+            "Profiler view is reserved for the diagnostics tool pass."));
 
         NX_CORE_INFO("EditorLayer initialized.");
     }
@@ -472,6 +481,8 @@ namespace NexAur {
         ImGui::DockBuilderDockWindow(kRendererDebugPanelName, dock_right);
         ImGui::DockBuilderDockWindow(kProjectPanelName, dock_bottom);
         ImGui::DockBuilderDockWindow(kConsolePanelName, dock_bottom);
+        ImGui::DockBuilderDockWindow(kTimelinePanelName, dock_bottom);
+        ImGui::DockBuilderDockWindow(kProfilerPanelName, dock_bottom);
         ImGui::DockBuilderFinish(dockspace_id);
 
         m_dock_layout_initialized = true;

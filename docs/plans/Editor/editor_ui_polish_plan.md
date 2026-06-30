@@ -670,7 +670,7 @@ source/Engine/Editor/Style/
 
 ## 11. PR-E6：Project / Console Panels v1
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -705,6 +705,13 @@ source/Engine/Editor/Style/
 - Console 能看到近期日志或明确 placeholder。
 - Project 能浏览 assets 目录。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- `LogSystem` 增加 recent log ring buffer sink，Console 面板可以读取近期 engine log。
+- `ConsolePanel` 支持 Clear、Filter、Auto Scroll，并按日志等级显示不同颜色。
+- `ProjectPanel` 增加搜索、隐藏文件开关、上一级/回 assets 操作，并显示 Name / Type / Size。
+- 底部工具区补齐 `Timeline` / `Profiler` placeholder tab，但不提前实现 timeline / profiler 业务。
 
 ## 12. PR-E7：Viewport Overlay + Gizmo Polish
 
@@ -864,7 +871,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E3 Toolbar + Command System v1 | 计划中 | 建立 toolbar 和轻量 command registry。 |
 | PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |
 | PR-E5 Scene Hierarchy / Explorer Polish | 计划中 | 搜索、右键创建、图标和选中态 polish。 |
-| PR-E6 Project / Console Panels v1 | 计划中 | 补齐底部 Project / Console 基础面板。 |
+| PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
 | PR-E7 Viewport Overlay + Gizmo Polish | 计划中 | 加强 viewport overlay、toolbar 和 gizmo 体验。 |
 | PR-E8 Preferences / Render Settings Panel | 计划中 | 为渲染效果参数提供可写 UI 入口。 |
 | PR-E9 Layout / Shortcut Persistence | 计划中 | 固定布局、快捷键和 editor config 持久化。 |
