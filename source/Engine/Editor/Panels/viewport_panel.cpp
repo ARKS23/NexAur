@@ -33,7 +33,10 @@ namespace NexAur {
     }
 
     void ViewportPanel::onUIRender() {
-        beginViewportWindow();
+        if (!beginViewportWindow()) {
+            endViewportWindow();
+            return;
+        }
 
         drawViewportModeToolbar();
         updateViewportWindowState();
@@ -54,9 +57,10 @@ namespace NexAur {
         }
     }
 
-    void ViewportPanel::beginViewportWindow() {
+    bool ViewportPanel::beginViewportWindow() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
-        ImGui::Begin("Scene Viewport");
+        bool& open_flag = getOpenFlag();
+        return ImGui::Begin(getName().c_str(), &open_flag);
     }
 
     void ViewportPanel::drawViewportModeToolbar() {

@@ -26,7 +26,7 @@ namespace NexAur {
         virtual void onEvent(Event& event) override;
 
     private:
-        void beginViewportWindow();
+        bool beginViewportWindow();
         void drawViewportModeToolbar();
         void updateViewportWindowState();
         void syncViewportResize();

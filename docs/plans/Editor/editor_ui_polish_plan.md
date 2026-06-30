@@ -501,7 +501,7 @@ source/Engine/Editor/Style/
 
 ## 7. PR-E2：Dockspace Layout + Shell Polish
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -539,6 +539,14 @@ source/Engine/Editor/Style/
 - 用户拖动 dock 后仍能正常使用。
 - 可通过菜单打开 / 关闭常用面板。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- `EditorLayer` 增加稳定默认 DockBuilder layout：左侧 Scene Hierarchy，中间 Scene Viewport，右侧 Inspector / Renderer Debug，底部 Project / Console。
+- 主菜单收口到 File / Edit / Project / Window / Help，并提供 panel 显隐与 Reset Layout。
+- 底部状态栏显示当前 scene、视图模式、renderer backend、FPS / frame time。
+- 新增 `ProjectPanel` 与 `ConsolePanel` 基础外壳，为后续资源浏览、日志 sink 接入、底部工具区 polish 留出干净扩展点。
+- 统一窗口标题为 `Scene Viewport`、`Scene Hierarchy`、`Inspector`、`Renderer Debug`、`Project`、`Console`。
 
 ## 8. PR-E3：Toolbar + Command System v1
 
@@ -852,7 +860,7 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | --- | --- | --- |
 | PR-E1 Editor Style Foundation | 已完成 | 新增 EditorStyle / editor_icons，统一 ImGui 主题与 ImGuizmo 风格，并迁移 Viewport 的 Scene/Game segmented button。 |
 | PR-E1.5 Editor Theme Calibration / Visual Baseline | 已完成 | 校准深色主题、控件层级和 segmented button active 态，为 dockspace shell 打稳定视觉底。 |
-| PR-E2 Dockspace Layout + Shell Polish | 计划中 | 固定默认 dock layout，补 menu / status bar。 |
+| PR-E2 Dockspace Layout + Shell Polish | 已完成 | 固定默认 dock layout，补齐 File / Edit / Project / Window / Help、状态栏、Project / Console 底部面板外壳。 |
 | PR-E3 Toolbar + Command System v1 | 计划中 | 建立 toolbar 和轻量 command registry。 |
 | PR-E4 Inspector Property Drawer v1 | 计划中 | 整理 Properties/Inspector 的组件编辑 UI。 |
 | PR-E5 Scene Hierarchy / Explorer Polish | 计划中 | 搜索、右键创建、图标和选中态 polish。 |

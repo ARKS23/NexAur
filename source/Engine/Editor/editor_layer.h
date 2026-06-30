@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 struct ImGuiContext;
@@ -52,6 +53,16 @@ namespace NexAur {
         void endDockSpace();
         void drawMainMenuBar();
         void drawFileMenu();
+        void drawEditMenu();
+        void drawProjectMenu();
+        void drawWindowMenu();
+        void drawHelpMenu();
+        void drawStatusBar();
+        std::shared_ptr<EditorPanel> findPanel(const std::string& name) const;
+        void openPanel(const std::string& name);
+        void setAllPanelsOpen(bool open);
+        void ensureDefaultDockLayout(unsigned int dockspace_id, float width, float height);
+        bool shouldBuildDefaultDockLayout(unsigned int dockspace_id) const;
         void saveActiveScene();
         void loadScene();
         std::filesystem::path getDefaultScenePath() const;
@@ -68,5 +79,7 @@ namespace NexAur {
         std::shared_ptr<EditorContext> m_context;    // 编辑器上下文，各个面板需要共享的数据
         bool m_is_enabled = true;
         ImGuiContext* m_styled_imgui_context = nullptr;
+        bool m_dock_layout_initialized = false;
+        bool m_reset_dock_layout_requested = false;
     };
 } // namespace NexAur

@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "editor_layer.h"
 
+#include "Editor/Panels/console_panel.h"
+#include "Editor/Panels/project_panel.h"
 #include "Editor/Panels/properties_panel.h"
 #include "Editor/Panels/renderer_debug_panel.h"
 #include "Editor/Panels/scene_hierarchy_panel.h"
@@ -8,6 +10,7 @@
 #include "Editor/Style/editor_style.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Editor/Camera/editor_camera.h"
@@ -16,9 +19,42 @@
 #include "Function/UI/ui_system.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
+
+#include <algorithm>
+#include <sstream>
 #include <utility>
 
 namespace NexAur {
+    namespace {
+        constexpr const char* kSceneViewportPanelName = "Scene Viewport";
+        constexpr const char* kSceneHierarchyPanelName = "Scene Hierarchy";
+        constexpr const char* kInspectorPanelName = "Inspector";
+        constexpr const char* kRendererDebugPanelName = "Renderer Debug";
+        constexpr const char* kProjectPanelName = "Project";
+        constexpr const char* kConsolePanelName = "Console";
+
+        const char* viewportModeToText(EditorViewportViewMode mode) {
+            switch (mode) {
+            case EditorViewportViewMode::GameView:
+                return "Game";
+            case EditorViewportViewMode::SceneView:
+            default:
+                return "Scene";
+            }
+        }
+
+        const char* rendererBackendToText(RendererBackendType backend) {
+            switch (backend) {
+            case RendererBackendType::Vulkan:
+                return "Vulkan";
+            case RendererBackendType::Unknown:
+            default:
+                return "Unknown";
+            }
+        }
+    } // namespace
+
     EditorLayer::EditorLayer()
         : EditorLayer(std::make_shared<EditorContext>()) {}
 
@@ -49,10 +85,12 @@ namespace NexAur {
         }
         m_context->viewport_camera->setInputService(m_context->input_service);
 
-        m_panels.push_back(std::make_shared<ViewportPanel>("Viewport Panel"));
-        m_panels.push_back(std::make_shared<SceneHierarchyPanel>("Scene Hierarchy Panel"));
-        m_panels.push_back(std::make_shared<PropertiesPanel>("Properties Panel"));
-        m_panels.push_back(std::make_shared<RendererDebugPanel>("Renderer Debug"));
+        m_panels.push_back(std::make_shared<ViewportPanel>(kSceneViewportPanelName));
+        m_panels.push_back(std::make_shared<SceneHierarchyPanel>(kSceneHierarchyPanelName));
+        m_panels.push_back(std::make_shared<PropertiesPanel>(kInspectorPanelName));
+        m_panels.push_back(std::make_shared<RendererDebugPanel>(kRendererDebugPanelName));
+        m_panels.push_back(std::make_shared<ProjectPanel>(kProjectPanelName));
+        m_panels.push_back(std::make_shared<ConsolePanel>(kConsolePanelName));
 
         NX_CORE_INFO("EditorLayer initialized.");
     }
@@ -178,9 +216,15 @@ namespace NexAur {
 
         ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
-            ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
-            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+            const ImGuiID dockspace_id = ImGui::GetID("NexAurDockSpace");
+            ImVec2 dockspace_size = ImGui::GetContentRegionAvail();
+            dockspace_size.y = std::max(0.0f, dockspace_size.y - ImGui::GetFrameHeightWithSpacing());
+
+            ensureDefaultDockLayout(dockspace_id, dockspace_size.x, dockspace_size.y);
+            ImGui::DockSpace(dockspace_id, dockspace_size, dockspace_flags);
         }
+
+        drawStatusBar();
     }
 
     void EditorLayer::endDockSpace() {
@@ -204,6 +248,10 @@ namespace NexAur {
         }
 
         drawFileMenu();
+        drawEditMenu();
+        drawProjectMenu();
+        drawWindowMenu();
+        drawHelpMenu();
 
         ImGui::EndMenuBar();
     }
@@ -227,6 +275,216 @@ namespace NexAur {
         }
 
         ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawEditMenu() {
+        if (!ImGui::BeginMenu("Edit")) {
+            return;
+        }
+
+        ImGui::BeginDisabled();
+        ImGui::MenuItem("Undo", "Ctrl+Z");
+        ImGui::MenuItem("Redo", "Ctrl+Y");
+        ImGui::EndDisabled();
+
+        ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawProjectMenu() {
+        if (!ImGui::BeginMenu("Project")) {
+            return;
+        }
+
+        if (ImGui::MenuItem("Show Project")) {
+            openPanel(kProjectPanelName);
+        }
+
+        if (ImGui::MenuItem("Show Console")) {
+            openPanel(kConsolePanelName);
+        }
+
+        ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawWindowMenu() {
+        if (!ImGui::BeginMenu("Window")) {
+            return;
+        }
+
+        if (ImGui::MenuItem("Reset Layout")) {
+            m_reset_dock_layout_requested = true;
+            setAllPanelsOpen(true);
+        }
+
+        if (ImGui::MenuItem("Open All Panels")) {
+            setAllPanelsOpen(true);
+        }
+
+        ImGui::Separator();
+
+        for (const auto& panel : m_panels) {
+            if (!panel) {
+                continue;
+            }
+
+            bool open = panel->isOpen();
+            if (ImGui::MenuItem(panel->getName().c_str(), nullptr, open)) {
+                if (open) {
+                    panel->close();
+                } else {
+                    panel->open();
+                }
+            }
+        }
+
+        ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawHelpMenu() {
+        if (!ImGui::BeginMenu("Help")) {
+            return;
+        }
+
+        ImGui::TextUnformatted("NexAur");
+        ImGui::TextDisabled("Editor shell");
+
+        ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawStatusBar() {
+        ImGui::Separator();
+
+        const ImGuiWindowFlags flags =
+            ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse;
+
+        if (!ImGui::BeginChild("##NexAurStatusBar", ImVec2(0.0f, ImGui::GetFrameHeight()), false, flags)) {
+            ImGui::EndChild();
+            return;
+        }
+
+        const std::string scene_text =
+            (m_context && m_context->active_scene)
+                ? getDefaultScenePath().filename().string()
+                : "No Scene";
+        const char* view_mode_text =
+            m_context ? viewportModeToText(m_context->viewport_view_mode) : "Scene";
+
+        RendererBackendType backend = RendererBackendType::Unknown;
+        double frame_ms = 0.0;
+        if (m_context && m_context->renderer_debug_service) {
+            const RendererDebugSnapshot snapshot =
+                m_context->renderer_debug_service->getDebugSnapshot();
+            backend = snapshot.backend.backend;
+            frame_ms = snapshot.frame.engine_delta_ms;
+        }
+
+        const ImGuiIO& io = ImGui::GetIO();
+        std::ostringstream left_text;
+        left_text << "Scene: " << scene_text
+            << "    View: " << view_mode_text
+            << "    Renderer: " << rendererBackendToText(backend);
+
+        std::ostringstream right_text;
+        right_text << "FPS: " << static_cast<int>(io.Framerate + 0.5f);
+        if (frame_ms > 0.0) {
+            right_text.setf(std::ios::fixed);
+            right_text.precision(2);
+            right_text << "    Frame: " << frame_ms << " ms";
+        }
+
+        const std::string left = left_text.str();
+        const std::string right = right_text.str();
+
+        ImGui::TextUnformatted(left.c_str());
+
+        const float right_width = ImGui::CalcTextSize(right.c_str()).x;
+        const float right_x = ImGui::GetWindowContentRegionMax().x - right_width;
+        if (right_x > ImGui::GetCursorPosX()) {
+            ImGui::SameLine(right_x);
+        } else {
+            ImGui::SameLine();
+        }
+        ImGui::TextDisabled("%s", right.c_str());
+
+        ImGui::EndChild();
+    }
+
+    std::shared_ptr<EditorPanel> EditorLayer::findPanel(const std::string& name) const {
+        const auto it = std::find_if(m_panels.begin(), m_panels.end(), [&name](const auto& panel) {
+            return panel && panel->getName() == name;
+        });
+
+        return it != m_panels.end() ? *it : nullptr;
+    }
+
+    void EditorLayer::openPanel(const std::string& name) {
+        std::shared_ptr<EditorPanel> panel = findPanel(name);
+        if (panel) {
+            panel->open();
+        }
+    }
+
+    void EditorLayer::setAllPanelsOpen(bool open) {
+        for (auto& panel : m_panels) {
+            if (!panel) {
+                continue;
+            }
+
+            if (open) {
+                panel->open();
+            } else {
+                panel->close();
+            }
+        }
+    }
+
+    void EditorLayer::ensureDefaultDockLayout(unsigned int dockspace_id, float width, float height) {
+        if (dockspace_id == 0 || width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+
+        if (!m_reset_dock_layout_requested && m_dock_layout_initialized) {
+            return;
+        }
+
+        if (!m_reset_dock_layout_requested && !shouldBuildDefaultDockLayout(dockspace_id)) {
+            m_dock_layout_initialized = true;
+            return;
+        }
+
+        ImGui::DockBuilderRemoveNode(dockspace_id);
+        ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspace_id, ImVec2(width, height));
+
+        ImGuiID dock_main = dockspace_id;
+        ImGuiID dock_left = 0;
+        ImGuiID dock_right = 0;
+        ImGuiID dock_bottom = 0;
+
+        ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Left, 0.20f, &dock_left, &dock_main);
+        ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Right, 0.26f, &dock_right, &dock_main);
+        ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Down, 0.24f, &dock_bottom, &dock_main);
+
+        ImGui::DockBuilderDockWindow(kSceneViewportPanelName, dock_main);
+        ImGui::DockBuilderDockWindow(kSceneHierarchyPanelName, dock_left);
+        ImGui::DockBuilderDockWindow(kInspectorPanelName, dock_right);
+        ImGui::DockBuilderDockWindow(kRendererDebugPanelName, dock_right);
+        ImGui::DockBuilderDockWindow(kProjectPanelName, dock_bottom);
+        ImGui::DockBuilderDockWindow(kConsolePanelName, dock_bottom);
+        ImGui::DockBuilderFinish(dockspace_id);
+
+        m_dock_layout_initialized = true;
+        m_reset_dock_layout_requested = false;
+    }
+
+    bool EditorLayer::shouldBuildDefaultDockLayout(unsigned int dockspace_id) const {
+        const ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockspace_id);
+        if (!node) {
+            return true;
+        }
+
+        return !node->ChildNodes[0] && !node->ChildNodes[1] && node->Windows.Size == 0;
     }
 
     void EditorLayer::saveActiveScene() {

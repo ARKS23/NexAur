@@ -18,12 +18,18 @@ namespace NexAur {
     }
 
     void SceneHierarchyPanel::onUIRender() {
-        std::shared_ptr<SceneV2> scene = m_context ? m_context->active_scene : nullptr;
-        if (!scene) {
+        bool& open_flag = getOpenFlag();
+        if (!ImGui::Begin(getName().c_str(), &open_flag)) {
+            ImGui::End();
             return;
         }
 
-        ImGui::Begin("Scene Hierarchy");
+        std::shared_ptr<SceneV2> scene = m_context ? m_context->active_scene : nullptr;
+        if (!scene) {
+            ImGui::TextDisabled("No active scene.");
+            ImGui::End();
+            return;
+        }
 
         entt::registry& registry = scene->getRegistry();
         auto view = registry.view<TagComponent>();

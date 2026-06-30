@@ -57,7 +57,11 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/Style/editor_style.cpp
     Editor/Camera/editor_camera.h
     Editor/Camera/editor_camera.cpp
+    Editor/Panels/console_panel.h
+    Editor/Panels/console_panel.cpp
     Editor/Panels/editor_panel.h
+    Editor/Panels/project_panel.h
+    Editor/Panels/project_panel.cpp
     Editor/Panels/properties_panel.h
     Editor/Panels/properties_panel.cpp
     Editor/Panels/renderer_debug_panel.h
