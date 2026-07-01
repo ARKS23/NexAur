@@ -9,7 +9,19 @@
 #include <ImGuizmo.h>
 #include <imgui_impl_glfw.h>
 
+#include <filesystem>
+
+#ifndef ENGINE_ROOT_DIR
+#define ENGINE_ROOT_DIR "."
+#endif
+
 namespace NexAur {
+    namespace {
+        std::filesystem::path getDefaultImguiIniPath() {
+            return std::filesystem::path(ENGINE_ROOT_DIR) / "saved" / "editor" / "imgui.ini";
+        }
+    } // namespace
+
     void UISystem::init(std::shared_ptr<WindowService> window_service, std::shared_ptr<RendererService> renderer_service) {
         NX_CORE_ASSERT(window_service, "UISystem requires a valid WindowService.");
         m_window_service = std::move(window_service);
@@ -21,6 +33,15 @@ namespace NexAur {
 
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+        const std::filesystem::path imgui_ini_path = getDefaultImguiIniPath();
+        std::error_code directory_error;
+        std::filesystem::create_directories(imgui_ini_path.parent_path(), directory_error);
+        if (directory_error) {
+            NX_CORE_WARN("Failed to create ImGui ini directory: {}", directory_error.message());
+        }
+        m_imgui_ini_path = imgui_ini_path.string();
+        io.IniFilename = m_imgui_ini_path.c_str();
 
         ImGui::StyleColorsDark();
 
@@ -62,6 +83,7 @@ namespace NexAur {
         m_backend = Backend::None;
         m_renderer_service.reset();
         m_window_service.reset();
+        m_imgui_ini_path.clear();
 
         NX_CORE_INFO("UI System shut down.");
     }

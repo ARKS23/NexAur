@@ -28,6 +28,7 @@ namespace NexAur {
         bool processShortcuts() const;
         bool isEnabled(const std::string& id) const;
         bool isSelected(const std::string& id) const;
+        bool updateShortcut(const std::string& id, ImGuiKeyChord shortcut, std::string shortcut_text);
 
         const EditorCommand* find(const std::string& id) const;
         const std::vector<std::string>& getCommandOrder() const { return m_ordered_ids; }

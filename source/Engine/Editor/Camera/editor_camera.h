@@ -23,6 +23,7 @@ namespace NexAur {
 
         // 更新视图大小
         void setViewportSize(float width, float height);
+        void setMoveSpeed(float speed);
 
         // 摄像机状态
         glm::quat getOrientation() const;

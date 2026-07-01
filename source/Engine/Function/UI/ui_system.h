@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "Core/Base.h"
 #include "Core/Events/event.h"
@@ -52,6 +53,7 @@ namespace NexAur {
 
         std::shared_ptr<WindowService> m_window_service;
         std::weak_ptr<RendererService> m_renderer_service;
+        std::string m_imgui_ini_path;
         Backend m_backend{Backend::None};
         bool m_context_initialized{false};
     };

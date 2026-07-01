@@ -4,6 +4,7 @@
 #include "Core/Time/TimeStep.h"
 #include "Function/Scene/entity.h"
 #include "Editor/editor_context.h"
+#include "Editor/editor_config.h"
 #include "Editor/editor_services.h"
 
 #include <filesystem>
@@ -67,6 +68,11 @@ namespace NexAur {
         std::shared_ptr<EditorPanel> findPanel(const std::string& name) const;
         void openPanel(const std::string& name);
         void setAllPanelsOpen(bool open);
+        void loadEditorConfig();
+        void saveEditorConfig();
+        void applyPanelVisibilityFromConfig();
+        void capturePanelVisibilityToConfig();
+        void saveEditorLayoutNow() const;
         void ensureDefaultDockLayout(unsigned int dockspace_id, float width, float height);
         bool shouldBuildDefaultDockLayout(unsigned int dockspace_id) const;
         void saveActiveScene();
@@ -80,11 +86,11 @@ namespace NexAur {
         
     private:
         std::vector<std::shared_ptr<EditorPanel>> m_panels; // TODO: 编辑器控制面板列表, 后续OnUIRender更新
-        bool m_show_properties_panel = true; // 测试变量
-
         std::shared_ptr<EditorContext> m_context;    // 编辑器上下文，各个面板需要共享的数据
         bool m_is_enabled = true;
         ImGuiContext* m_styled_imgui_context = nullptr;
+        EditorConfigData m_editor_config;
+        bool m_editor_config_loaded = false;
         bool m_dock_layout_initialized = false;
         bool m_reset_dock_layout_requested = false;
     };

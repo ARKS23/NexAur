@@ -69,6 +69,18 @@ namespace NexAur {
         return command->selected();
     }
 
+    bool EditorCommandRegistry::updateShortcut(const std::string& id, ImGuiKeyChord shortcut, std::string shortcut_text) {
+        const auto found = m_command_indices.find(id);
+        if (found == m_command_indices.end() || found->second >= m_commands.size()) {
+            return false;
+        }
+
+        EditorCommand& command = m_commands[found->second];
+        command.shortcut = shortcut;
+        command.shortcut_text = std::move(shortcut_text);
+        return true;
+    }
+
     const EditorCommand* EditorCommandRegistry::find(const std::string& id) const {
         const auto found = m_command_indices.find(id);
         if (found == m_command_indices.end() || found->second >= m_commands.size()) {

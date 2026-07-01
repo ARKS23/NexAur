@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "editor_layer.h"
 
+#include "Editor/editor_config.h"
 #include "Editor/Panels/console_panel.h"
 #include "Editor/Panels/placeholder_panel.h"
 #include "Editor/Panels/project_panel.h"
@@ -48,6 +49,7 @@ namespace NexAur {
         constexpr const char* kCommandShowProject = "panel.project.show";
         constexpr const char* kCommandShowConsole = "panel.console.show";
         constexpr const char* kCommandShowRenderSettings = "panel.render_settings.show";
+        constexpr const char* kCommandSaveLayout = "layout.save";
         constexpr const char* kCommandResetLayout = "layout.reset";
         constexpr const char* kCommandOpenAllPanels = "layout.open_all_panels";
         constexpr const char* kCommandPlay = "runtime.play";
@@ -139,11 +141,13 @@ namespace NexAur {
             "Profiler view is reserved for the diagnostics tool pass."));
 
         registerEditorCommands();
+        loadEditorConfig();
 
         NX_CORE_INFO("EditorLayer initialized.");
     }
 
     void EditorLayer::shutdown() {
+        saveEditorConfig();
         m_panels.clear();
         NX_CORE_INFO("EditorLayer shutdown.");
     }
@@ -356,6 +360,17 @@ namespace NexAur {
             {},
             {},
             [this]() { openPanel(kRenderSettingsPanelName); }
+        });
+
+        commands.registerCommand({
+            kCommandSaveLayout,
+            "Save Layout",
+            "Save the current editor dock layout.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            [this]() { saveEditorLayoutNow(); }
         });
 
         commands.registerCommand({
@@ -627,6 +642,7 @@ namespace NexAur {
             return;
         }
 
+        drawCommandMenuItem(kCommandSaveLayout);
         drawCommandMenuItem(kCommandResetLayout);
         drawCommandMenuItem(kCommandOpenAllPanels);
 
@@ -806,6 +822,82 @@ namespace NexAur {
             } else {
                 panel->close();
             }
+        }
+    }
+
+    void EditorLayer::loadEditorConfig() {
+        if (!m_context || !m_context->command_registry) {
+            return;
+        }
+
+        m_editor_config = EditorConfigStore::loadOrCreateDefault(*m_context->command_registry);
+        EditorConfigStore::applyShortcuts(*m_context->command_registry, m_editor_config);
+
+        if (m_context->viewport_camera) {
+            m_context->viewport_camera->setMoveSpeed(m_editor_config.viewport_camera_speed);
+        }
+
+        applyPanelVisibilityFromConfig();
+        capturePanelVisibilityToConfig();
+        EditorConfigStore::save(m_editor_config);
+
+        m_editor_config_loaded = true;
+    }
+
+    void EditorLayer::saveEditorConfig() {
+        if (!m_editor_config_loaded || !m_context || !m_context->command_registry) {
+            return;
+        }
+
+        if (m_context->viewport_camera) {
+            m_editor_config.viewport_camera_speed = m_context->viewport_camera->getMoveSpeed();
+        }
+        m_editor_config.shortcuts = EditorConfigStore::captureShortcuts(*m_context->command_registry);
+        capturePanelVisibilityToConfig();
+        EditorConfigStore::save(m_editor_config);
+
+        if (m_editor_config.auto_save_layout) {
+            saveEditorLayoutNow();
+        }
+    }
+
+    void EditorLayer::applyPanelVisibilityFromConfig() {
+        for (auto& panel : m_panels) {
+            if (!panel) {
+                continue;
+            }
+
+            const auto found = m_editor_config.panel_open.find(panel->getName());
+            if (found == m_editor_config.panel_open.end()) {
+                continue;
+            }
+
+            if (found->second) {
+                panel->open();
+            } else {
+                panel->close();
+            }
+        }
+    }
+
+    void EditorLayer::capturePanelVisibilityToConfig() {
+        for (const auto& panel : m_panels) {
+            if (!panel) {
+                continue;
+            }
+
+            m_editor_config.panel_open[panel->getName()] = panel->isOpen();
+        }
+    }
+
+    void EditorLayer::saveEditorLayoutNow() const {
+        if (!ImGui::GetCurrentContext()) {
+            return;
+        }
+
+        const ImGuiIO& io = ImGui::GetIO();
+        if (io.IniFilename && io.IniFilename[0] != '\0') {
+            ImGui::SaveIniSettingsToDisk(io.IniFilename);
         }
     }
 

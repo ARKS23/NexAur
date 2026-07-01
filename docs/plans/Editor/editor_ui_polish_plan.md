@@ -1031,7 +1031,7 @@ SuccessGreen         ok 状态
 
 ## 14. PR-E9：Layout / Shortcut Persistence
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -1063,6 +1063,14 @@ SuccessGreen         ok 状态
 - 可以一键恢复默认布局。
 - 快捷键和基础 editor setting 有清晰存储位置。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- ImGui layout ini 固定到 `saved/editor/imgui.ini`，避免运行目录变化导致 dock layout 丢失。
+- 新增 `EditorConfigStore`，默认配置写入 `saved/editor/editor_config.json`，保存 theme variant、viewport camera speed、panel visibility 和 command shortcuts。
+- `EditorLayer` 启动时加载 editor config，应用 shortcut 覆盖、panel visibility 和 viewport camera speed；关闭时回写当前状态。
+- Window 菜单增加 `Save Layout`，已有 `Reset Layout` 继续负责一键恢复默认 dock layout，并会在后续自动保存到固定 ini。
+- `.gitignore` 忽略 `saved/`，避免本地 editor layout/config 进入仓库。
 
 ## 15. 不建议现在做的事情
 
@@ -1111,4 +1119,4 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
 | PR-E7 Viewport Overlay + Gizmo Polish | 已完成 | 增加 viewport 内 overlay toolbar / 状态信息 / Debug Draw 快捷开关，并改善 gizmo 与 picking 的输入边界。 |
 | PR-E8 Preferences / Render Settings Panel | 已完成 | 新增 Render Settings 面板承接可写渲染参数，并让 Renderer Debug 面板回到只读诊断职责。 |
-| PR-E9 Layout / Shortcut Persistence | 计划中 | 固定布局、快捷键和 editor config 持久化。 |
+| PR-E9 Layout / Shortcut Persistence | 已完成 | 固定 ImGui layout ini 路径，新增 editor config JSON，保存 panel visibility、camera speed 和 command shortcuts。 |

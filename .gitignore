@@ -1,6 +1,7 @@
 # Directories to ignore
 build/
 bin/
+saved/
 cmake-build-debug/
 .idea/
 .DS_Store

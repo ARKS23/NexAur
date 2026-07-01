@@ -11,6 +11,8 @@
 #include <vector>
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
+#include "Editor/Commands/editor_command.h"
+#include "Editor/editor_config.h"
 #include "Function/Audio/audio_service.h"
 #include "Function/File/file_system.h"
 #include "Function/Game/game_state.h"
@@ -2524,6 +2526,105 @@ int runPrefabFactorySmoke() {
     return 0;
 }
 
+int runEditorConfigSmoke() {
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (condition || !success) {
+            return;
+        }
+
+        success = false;
+        failure = message;
+    };
+
+    const std::filesystem::path smoke_dir = std::filesystem::path("saved") / "editor_config_smoke";
+    const std::filesystem::path config_path = smoke_dir / "editor_config.json";
+
+    std::error_code remove_error;
+    std::filesystem::remove_all(smoke_dir, remove_error);
+
+    NexAur::EditorCommandRegistry commands;
+    commands.registerCommand({
+        "test.command",
+        "Test Command",
+        "Command used by editor config smoke.",
+        "Ctrl+S",
+        ImGuiMod_Ctrl | ImGuiKey_S,
+        {},
+        {},
+        []() {}
+    });
+
+    NexAur::EditorConfigData defaults =
+        NexAur::EditorConfigStore::loadOrCreateDefault(commands, config_path);
+    expect(std::filesystem::exists(config_path), "Editor config smoke should create a default config file.");
+    expect(defaults.shortcuts.size() == 1, "Editor config smoke should capture default shortcuts.");
+
+    defaults.viewport_camera_speed = 12.5f;
+    defaults.panel_open["Console"] = false;
+    defaults.panel_open["Project"] = true;
+    defaults.shortcuts = {
+        {
+            "test.command",
+            "Ctrl+Alt+P",
+            ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_P
+        }
+    };
+    expect(NexAur::EditorConfigStore::save(defaults, config_path), "Editor config smoke should save config JSON.");
+
+    NexAur::EditorCommandRegistry reloaded_commands;
+    reloaded_commands.registerCommand({
+        "test.command",
+        "Test Command",
+        "Command used by editor config smoke.",
+        "Ctrl+S",
+        ImGuiMod_Ctrl | ImGuiKey_S,
+        {},
+        {},
+        []() {}
+    });
+    reloaded_commands.registerCommand({
+        "new.command",
+        "New Command",
+        "Command added after the config file existed.",
+        "F5",
+        ImGuiKey_F5,
+        {},
+        {},
+        []() {}
+    });
+
+    NexAur::EditorConfigData loaded =
+        NexAur::EditorConfigStore::loadOrCreateDefault(reloaded_commands, config_path);
+    NexAur::EditorConfigStore::applyShortcuts(reloaded_commands, loaded);
+
+    const NexAur::EditorCommand* test_command = reloaded_commands.find("test.command");
+    const NexAur::EditorCommand* new_command = reloaded_commands.find("new.command");
+
+    expect(nearlyEqual(loaded.viewport_camera_speed, 12.5f), "Editor config smoke should round-trip camera speed.");
+    expect(loaded.panel_open["Console"] == false, "Editor config smoke should round-trip closed panel state.");
+    expect(loaded.panel_open["Project"] == true, "Editor config smoke should round-trip open panel state.");
+    expect(test_command && test_command->shortcut == (ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_P),
+        "Editor config smoke should apply shortcut overrides.");
+    expect(test_command && test_command->shortcut_text == "Ctrl+Alt+P",
+        "Editor config smoke should apply shortcut text overrides.");
+    expect(new_command && new_command->shortcut == ImGuiKey_F5,
+        "Editor config smoke should preserve new default command shortcuts.");
+
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(smoke_dir, cleanup_error);
+
+    if (!success) {
+        std::cerr << "Editor config smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Editor config smoke passed." << std::endl;
+    return 0;
+}
+
 namespace {
     struct SmokeTestEntry {
         const char* argument = nullptr;
@@ -2536,6 +2637,7 @@ namespace {
         { "--audio-smoke", "Audio", runAudioSmoke },
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
+        { "--editor-config-smoke", "EditorConfig", runEditorConfigSmoke },
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
         { "--assimp-fallback-smoke", "AssimpFallback", runAssimpFallbackSmoke },

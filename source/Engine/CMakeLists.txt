@@ -48,6 +48,8 @@ set(NEXAUR_ENGINE_CORE_FILES
 set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/editor_module.h
     Editor/editor_module.cpp
+    Editor/editor_config.h
+    Editor/editor_config.cpp
     Editor/editor_context.h
     Editor/editor_tool_state.h
     Editor/editor_layer.h

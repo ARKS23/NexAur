@@ -4,6 +4,8 @@
 #include "Function/Input/input_state.h"
 #include "Function/Platform/platform_services.h"
 
+#include <algorithm>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
@@ -43,6 +45,10 @@ namespace NexAur {
         m_viewport_width = width;
         m_viewport_height = height;
         updateProjection();
+    }
+
+    void EditorCamera::setMoveSpeed(float speed) {
+        m_move_speed = std::clamp(speed, 0.1f, 100.0f);
     }
 
     void EditorCamera::onUpdate(TimeStep deltaTime) {
