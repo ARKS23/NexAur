@@ -19,10 +19,17 @@ namespace NexAur {
 
         Entity addSphereEntity(std::string name = "Sphere", std::string material_type = "gold", glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f));
         Entity addCubeEntity(std::string name = "Cube", std::string material_type = "gold", glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f));
+        void addCornellBox(glm::vec3 center = glm::vec3(-4.0f, -1.45f, -4.5f), glm::vec3 size = glm::vec3(3.8f, 4.0f, 3.8f));
         Entity addModelEntity(std::string name, const std::string& model_path, glm::vec3 position = glm::vec3(0.0f));
         Entity addImportedModelEntity(std::string name, const std::string& model_path, glm::vec3 position = glm::vec3(0.0f));
 
     private:
+        Entity addSolidCubeEntity(
+            const std::string& name,
+            const MaterialImportData& material,
+            const glm::vec3& position,
+            const glm::vec3& rotation,
+            const glm::vec3& scale);
         Entity addModelAssetEntity(
             std::string name,
             AssetHandle model_asset,

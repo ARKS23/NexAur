@@ -8,6 +8,21 @@
 #include "Function/Scene/scene_service.h"
 
 namespace NexAur {
+    namespace {
+        MaterialImportData makeSolidMaterial(
+            const std::string& name,
+            const glm::vec4& base_color,
+            float roughness = 0.75f,
+            const glm::vec3& emissive = glm::vec3{ 0.0f }) {
+            MaterialImportData material;
+            material.name = name;
+            material.base_color_factor = base_color;
+            material.roughness_factor = roughness;
+            material.emissive_factor = emissive;
+            return material;
+        }
+    } // namespace
+
     SceneTestClass::SceneTestClass()
         : m_asset_manager(AssetManager::getInstance()) {
         ModuleRegistry* registry = g_runtime_global_context.getModuleRegistry();
@@ -47,6 +62,100 @@ namespace NexAur {
             scale);
     }
 
+    void SceneTestClass::addCornellBox(glm::vec3 center, glm::vec3 size) {
+        if (!m_scene) {
+            NX_CORE_ERROR("SceneTestClass has no active scene.");
+            return;
+        }
+
+        constexpr float kWallThickness = 0.08f;
+        const MaterialImportData white_wall = makeSolidMaterial(
+            "Cornell.White",
+            glm::vec4{ 0.78f, 0.74f, 0.68f, 1.0f },
+            0.82f);
+        const MaterialImportData red_wall = makeSolidMaterial(
+            "Cornell.Red",
+            glm::vec4{ 0.72f, 0.12f, 0.08f, 1.0f },
+            0.84f);
+        const MaterialImportData green_wall = makeSolidMaterial(
+            "Cornell.Green",
+            glm::vec4{ 0.12f, 0.48f, 0.18f, 1.0f },
+            0.84f);
+        const MaterialImportData light_panel = makeSolidMaterial(
+            "Cornell.Light",
+            glm::vec4{ 1.0f, 0.92f, 0.78f, 1.0f },
+            0.45f,
+            glm::vec3{ 7.0f, 6.2f, 4.6f });
+
+        const float half_width = size.x * 0.5f;
+        const float half_height = size.y * 0.5f;
+        const float half_depth = size.z * 0.5f;
+        const float floor_y = center.y - half_height;
+        const float ceiling_y = center.y + half_height;
+        const glm::vec3 zero_rotation{ 0.0f };
+
+        addSolidCubeEntity(
+            "CornellBox Floor",
+            white_wall,
+            { center.x, floor_y, center.z },
+            zero_rotation,
+            { size.x, kWallThickness, size.z });
+        addSolidCubeEntity(
+            "CornellBox Ceiling",
+            white_wall,
+            { center.x, ceiling_y, center.z },
+            zero_rotation,
+            { size.x, kWallThickness, size.z });
+        addSolidCubeEntity(
+            "CornellBox BackWall",
+            white_wall,
+            { center.x, center.y, center.z - half_depth },
+            zero_rotation,
+            { size.x, size.y, kWallThickness });
+        addSolidCubeEntity(
+            "CornellBox LeftWall",
+            red_wall,
+            { center.x - half_width, center.y, center.z },
+            zero_rotation,
+            { kWallThickness, size.y, size.z });
+        addSolidCubeEntity(
+            "CornellBox RightWall",
+            green_wall,
+            { center.x + half_width, center.y, center.z },
+            zero_rotation,
+            { kWallThickness, size.y, size.z });
+        addSolidCubeEntity(
+            "CornellBox LightPanel",
+            light_panel,
+            { center.x, ceiling_y - kWallThickness, center.z - half_depth * 0.15f },
+            zero_rotation,
+            { size.x * 0.35f, kWallThickness, size.z * 0.26f });
+
+        addSolidCubeEntity(
+            "CornellBox ShortBlock",
+            white_wall,
+            { center.x - size.x * 0.24f, floor_y + size.y * 0.14f, center.z + size.z * 0.18f },
+            { 0.0f, glm::radians(16.0f), 0.0f },
+            { size.x * 0.20f, size.y * 0.28f, size.z * 0.20f });
+        addSolidCubeEntity(
+            "CornellBox TallBlock",
+            white_wall,
+            { center.x + size.x * 0.23f, floor_y + size.y * 0.22f, center.z - size.z * 0.08f },
+            { 0.0f, glm::radians(-12.0f), 0.0f },
+            { size.x * 0.20f, size.y * 0.44f, size.z * 0.20f });
+
+        Entity light_entity = m_scene->createEntity("CornellBox PointLight");
+        auto& point_light = light_entity.addComponent<PointLightComponent>();
+        point_light.color = glm::vec3{ 1.0f, 0.92f, 0.78f };
+        point_light.intensity = 12.0f;
+        point_light.constant = 1.0f;
+        point_light.linear = 0.18f;
+        point_light.quadratic = 0.04f;
+
+        TransformComponent& light_transform = light_entity.getComponent<TransformComponent>();
+        light_transform.translation = { center.x, ceiling_y - 0.35f, center.z - half_depth * 0.12f };
+    }
+
     Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
         AssetHandle model_asset = m_asset_manager.importModelAsset(model_path);
         return addModelAssetEntity(std::move(name), model_asset, model_path, position);
@@ -79,6 +188,20 @@ namespace NexAur {
         transform.translation = position;
 
         return model_entity;
+    }
+
+    Entity SceneTestClass::addSolidCubeEntity(
+        const std::string& name,
+        const MaterialImportData& material,
+        const glm::vec3& position,
+        const glm::vec3& rotation,
+        const glm::vec3& scale) {
+        return addRuntimeModelEntity(
+            name,
+            ProceduralModelBuilder::createCubeModel(material),
+            position,
+            rotation,
+            scale);
     }
 
     Entity SceneTestClass::addRuntimeModelEntity(

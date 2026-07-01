@@ -614,7 +614,9 @@ namespace {
 
 void setupScene() {
     NexAur::SceneTestClass scene_test;
-    // 材质测试
+    scene_test.addCornellBox();
+
+    // Material test scene.
     for (int i = 0; i < 5; ++i) {
         scene_test.addSphereEntity("gold Sphere" + std::to_string(i), "gold", glm::vec3(i * 1.5f, 0.0f, -2.0f), glm::vec3(0.0f), glm::vec3(0.5f));
         scene_test.addCubeEntity("gold Cube" + std::to_string(i), "gold", glm::vec3(i * 1.5f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.5f));
@@ -642,7 +644,7 @@ void setupScene() {
 
     scene_test.addCubeEntity("Floor", "plastic", glm::vec3(5.0f, -3.5f, -5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(50.0f, 0.1f, 50.0f));
 
-    // DamagedHelmet 是本地可选样例资产，缺失时跳过，避免新克隆仓库启动 Sandbox 时报错。
+    // DamagedHelmet is an optional local sample asset; skip it when the asset pack is missing.
     const std::string damaged_helmet_path = NX_ASSET("assets/models/DamagedHelmet/DamagedHelmet.gltf");
     if (std::filesystem::exists(damaged_helmet_path)) {
         scene_test.addImportedModelEntity("DamagedHelmet", damaged_helmet_path, glm::vec3(5.0f, 0.0f, 4.0f));
