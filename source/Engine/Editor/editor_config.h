@@ -20,7 +20,7 @@ namespace NexAur {
 
     struct NEXAUR_API EditorConfigData {
         int version = 1;
-        std::string theme_variant = "Graphite";
+        std::string theme_variant = "ModernBlack";
         float viewport_camera_speed = 5.0f;
         bool auto_save_layout = true;
         std::vector<EditorShortcutConfig> shortcuts;

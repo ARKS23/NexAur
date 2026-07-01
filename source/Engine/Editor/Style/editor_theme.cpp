@@ -2,6 +2,7 @@
 #include "editor_theme.h"
 
 #include <cmath>
+#include <string>
 
 namespace NexAur {
     namespace {
@@ -17,45 +18,61 @@ namespace NexAur {
             return EditorThemeTokens::fromSrgb(ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a));
         }
 
-        EditorTheme makeDefaultTheme() {
+        EditorTheme makeModernBlackTheme() {
             EditorTheme theme;
 
-            theme.colors.background_main = color(15.0f, 20.0f, 25.0f);
-            theme.colors.background_panel = color(21.0f, 27.0f, 34.0f);
-            theme.colors.background_panel_light = color(27.0f, 35.0f, 44.0f);
-            theme.colors.header = color(32.0f, 42.0f, 52.0f);
-            theme.colors.header_hovered = color(40.0f, 53.0f, 66.0f);
-            theme.colors.header_active = color(47.0f, 64.0f, 80.0f);
-            theme.colors.border_subtle = color(42.0f, 52.0f, 64.0f);
-            theme.colors.text_primary = color(215.0f, 222.0f, 232.0f);
-            theme.colors.text_secondary = color(154.0f, 167.0f, 181.0f);
-            theme.colors.accent_blue = color(72.0f, 145.0f, 220.0f);
-            theme.colors.accent_cyan = color(54.0f, 199.0f, 218.0f);
-            theme.colors.accent_orange = color(232.0f, 155.0f, 70.0f);
-            theme.colors.error_red = color(224.0f, 82.0f, 82.0f);
-            theme.colors.success_green = color(86.0f, 188.0f, 122.0f);
+            theme.colors.background_main = color(11.0f, 13.0f, 15.0f);
+            theme.colors.background_panel = color(17.0f, 19.0f, 21.0f);
+            theme.colors.background_panel_light = color(23.0f, 26.0f, 29.0f);
+            theme.colors.background_input = color(8.0f, 10.0f, 12.0f);
+            theme.colors.header = color(29.0f, 32.0f, 36.0f);
+            theme.colors.header_hovered = color(37.0f, 42.0f, 48.0f);
+            theme.colors.header_active = color(43.0f, 50.0f, 58.0f);
+            theme.colors.border_subtle = color(42.0f, 47.0f, 53.0f);
+            theme.colors.text_primary = color(214.0f, 217.0f, 221.0f);
+            theme.colors.text_secondary = color(139.0f, 146.0f, 154.0f);
+            theme.colors.accent_blue = color(45.0f, 140.0f, 255.0f);
+            theme.colors.accent_cyan = color(22.0f, 183.0f, 200.0f);
+            theme.colors.accent_orange = color(209.0f, 138.0f, 47.0f);
+            theme.colors.error_red = color(214.0f, 73.0f, 73.0f);
+            theme.colors.success_green = color(83.0f, 181.0f, 118.0f);
 
-            theme.metrics.window_padding = ImVec2(7.0f, 6.0f);
+            theme.metrics.window_padding = ImVec2(6.0f, 6.0f);
             theme.metrics.frame_padding = ImVec2(6.0f, 3.0f);
-            theme.metrics.cell_padding = ImVec2(6.0f, 4.0f);
+            theme.metrics.cell_padding = ImVec2(6.0f, 3.0f);
             theme.metrics.item_spacing = ImVec2(6.0f, 4.0f);
             theme.metrics.item_inner_spacing = ImVec2(5.0f, 4.0f);
             theme.metrics.indent_spacing = 14.0f;
-            theme.metrics.scrollbar_size = 11.0f;
-            theme.metrics.grab_min_size = 8.0f;
+            theme.metrics.scrollbar_size = 10.0f;
+            theme.metrics.grab_min_size = 7.0f;
             theme.metrics.window_rounding = 0.0f;
-            theme.metrics.panel_rounding = 3.0f;
-            theme.metrics.frame_rounding = 3.0f;
-            theme.metrics.tab_rounding = 3.0f;
+            theme.metrics.panel_rounding = 2.0f;
+            theme.metrics.frame_rounding = 4.0f;
+            theme.metrics.tab_rounding = 2.0f;
             theme.metrics.border_size = 1.0f;
 
             return theme;
         }
+
+        std::string& activeThemeVariantStorage() {
+            static std::string active_theme_variant(EditorThemeTokens::ModernBlack);
+            return active_theme_variant;
+        }
     } // namespace
 
     namespace EditorThemeTokens {
+        void setActiveThemeVariant(std::string_view variant) {
+            activeThemeVariantStorage() = variant.empty()
+                ? std::string(ModernBlack)
+                : std::string(variant);
+        }
+
+        std::string_view getActiveThemeVariant() {
+            return activeThemeVariantStorage();
+        }
+
         const EditorTheme& getDefaultTheme() {
-            static const EditorTheme theme = makeDefaultTheme();
+            static const EditorTheme theme = makeModernBlackTheme();
             return theme;
         }
 

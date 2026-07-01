@@ -4,11 +4,14 @@
 
 #include <imgui.h>
 
+#include <string_view>
+
 namespace NexAur {
     struct NEXAUR_API EditorThemeColors {
         ImVec4 background_main;
         ImVec4 background_panel;
         ImVec4 background_panel_light;
+        ImVec4 background_input;
         ImVec4 header;
         ImVec4 header_hovered;
         ImVec4 header_active;
@@ -44,6 +47,10 @@ namespace NexAur {
     };
 
     namespace EditorThemeTokens {
+        inline constexpr std::string_view ModernBlack = "ModernBlack";
+
+        NEXAUR_API void setActiveThemeVariant(std::string_view variant);
+        NEXAUR_API std::string_view getActiveThemeVariant();
         NEXAUR_API const EditorTheme& getDefaultTheme();
         NEXAUR_API ImVec4 withAlpha(ImVec4 color, float alpha);
         NEXAUR_API ImVec4 fromSrgb(ImVec4 color);

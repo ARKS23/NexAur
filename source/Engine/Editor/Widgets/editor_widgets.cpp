@@ -27,9 +27,9 @@ namespace NexAur::EditorWidgets {
 
         int pushed_colors = 0;
         if (selected) {
-            ImGui::PushStyleColor(ImGuiCol_Button, EditorThemeTokens::withAlpha(theme.colors.accent_blue, 0.42f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorThemeTokens::withAlpha(theme.colors.accent_blue, 0.55f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, EditorThemeTokens::withAlpha(theme.colors.accent_cyan, 0.58f));
+            ImGui::PushStyleColor(ImGuiCol_Button, EditorThemeTokens::withAlpha(theme.colors.accent_blue, 0.24f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorThemeTokens::withAlpha(theme.colors.accent_blue, 0.34f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, EditorThemeTokens::withAlpha(theme.colors.accent_cyan, 0.42f));
             ImGui::PushStyleColor(ImGuiCol_Text, theme.colors.text_primary);
             pushed_colors = 4;
         }
@@ -47,8 +47,19 @@ namespace NexAur::EditorWidgets {
     }
 
     bool searchBox(const char* id, char* buffer, size_t buffer_size, const char* hint, float width) {
+        const EditorTheme& theme = EditorThemeTokens::getDefaultTheme();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, theme.colors.background_input);
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, EditorThemeTokens::withAlpha(theme.colors.header_hovered, 0.50f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, EditorThemeTokens::withAlpha(theme.colors.header_hovered, 0.68f));
+        ImGui::PushStyleColor(ImGuiCol_Border, EditorThemeTokens::withAlpha(theme.colors.border_subtle, 0.72f));
         ImGui::SetNextItemWidth(width);
-        return ImGui::InputTextWithHint(id, hint, buffer, buffer_size);
+        const bool changed = ImGui::InputTextWithHint(id, hint, buffer, buffer_size);
+        ImGui::PopStyleColor(4);
+        ImGui::PopStyleVar(2);
+        return changed;
     }
 
     void panelHeader(const char* title) {

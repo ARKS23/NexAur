@@ -2561,7 +2561,9 @@ int runEditorConfigSmoke() {
         NexAur::EditorConfigStore::loadOrCreateDefault(commands, config_path);
     expect(std::filesystem::exists(config_path), "Editor config smoke should create a default config file.");
     expect(defaults.shortcuts.size() == 1, "Editor config smoke should capture default shortcuts.");
+    expect(defaults.theme_variant == "ModernBlack", "Editor config smoke should default to ModernBlack theme.");
 
+    defaults.theme_variant = "Graphite";
     defaults.viewport_camera_speed = 12.5f;
     defaults.panel_open["Console"] = false;
     defaults.panel_open["Project"] = true;
@@ -2604,6 +2606,7 @@ int runEditorConfigSmoke() {
     const NexAur::EditorCommand* new_command = reloaded_commands.find("new.command");
 
     expect(nearlyEqual(loaded.viewport_camera_speed, 12.5f), "Editor config smoke should round-trip camera speed.");
+    expect(loaded.theme_variant == "ModernBlack", "Editor config smoke should migrate the legacy Graphite theme.");
     expect(loaded.panel_open["Console"] == false, "Editor config smoke should round-trip closed panel state.");
     expect(loaded.panel_open["Project"] == true, "Editor config smoke should round-trip open panel state.");
     expect(test_command && test_command->shortcut == (ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_P),

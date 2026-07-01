@@ -831,6 +831,7 @@ namespace NexAur {
         }
 
         m_editor_config = EditorConfigStore::loadOrCreateDefault(*m_context->command_registry);
+        EditorThemeTokens::setActiveThemeVariant(m_editor_config.theme_variant);
         EditorConfigStore::applyShortcuts(*m_context->command_registry, m_editor_config);
 
         if (m_context->viewport_camera) {
@@ -852,6 +853,7 @@ namespace NexAur {
         if (m_context->viewport_camera) {
             m_editor_config.viewport_camera_speed = m_context->viewport_camera->getMoveSpeed();
         }
+        m_editor_config.theme_variant = std::string(EditorThemeTokens::getActiveThemeVariant());
         m_editor_config.shortcuts = EditorConfigStore::captureShortcuts(*m_context->command_registry);
         capturePanelVisibilityToConfig();
         EditorConfigStore::save(m_editor_config);

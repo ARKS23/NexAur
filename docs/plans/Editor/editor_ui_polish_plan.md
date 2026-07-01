@@ -216,6 +216,7 @@ PR-E6 Project / Console Panels v1
 PR-E7 Viewport Overlay + Gizmo Polish
 PR-E8 Preferences / Render Settings Panel
 PR-E9 Layout / Shortcut Persistence
+PR-E9.5 UE5-like Dark Theme Calibration
 ```
 
 如果想最快获得“像一个成熟编辑器”的观感，优先：
@@ -1072,6 +1073,87 @@ SuccessGreen         ok 状态
 - Window 菜单增加 `Save Layout`，已有 `Reset Layout` 继续负责一键恢复默认 dock layout，并会在后续自动保存到固定 ini。
 - `.gitignore` 忽略 `saved/`，避免本地 editor layout/config 进入仓库。
 
+## 14.5. PR-E9.5：UE5-like Dark Theme Calibration
+
+执行状态：已完成。
+
+目标：
+
+- 将当前 Editor UI 色调从偏灰蓝的工具风进一步校准为更接近 UE5 的简洁现代黑色风格。
+- 继续复用 `EditorTheme` / `EditorStyle` / `EditorWidgets` 集中视觉系统，不回到每个 panel 裸写 ImGui style。
+- 降低大面积浅灰和蓝色 header 的存在感，让 viewport 内容和 Inspector / Asset Browser 信息层级更稳定。
+- 让 Search、Tab、Panel Header、Section Header、Input、Combo、Slider、Checkbox、Table Header 形成统一的 dark chrome 观感。
+- 为后续 Preferences 切换 theme variant 预留干净入口。
+
+视觉方向：
+
+```text
+BackgroundMain       #0B0D0F
+BackgroundPanel      #111315
+BackgroundPanelLight #171A1D
+Header               #1D2024
+HeaderHovered        #252A30
+InputBg              #080A0C
+BorderSubtle         #2A2F35
+TextPrimary          #D6D9DD
+TextSecondary        #8B929A
+AccentBlue           #2D8CFF
+AccentCyan           #16B7C8
+WarningOrange        #D18A2F
+```
+
+建议工作：
+
+1. 新增或完善 theme variant。
+   - 保留当前 Graphite 主题作为基础。
+   - 新增 `UnrealDark` 或 `ModernBlack` 主题 token。
+   - 将 `EditorConfigData::theme_variant` 真正接入主题选择入口，第一版可以先默认使用新主题。
+2. 校准全局 ImGui palette。
+   - 深化 `WindowBg`、`ChildBg`、`PopupBg`、`MenuBarBg`、`DockingEmptyBg`。
+   - 降低 `Header`、`Tab`、`FrameBg` 的亮度和饱和度。
+   - `CheckMark`、`SliderGrab`、`NavHighlight` 使用少量 cyan / blue accent。
+   - `Border`、`Separator` 保持细、暗、低噪声。
+3. 校准控件质感。
+   - Search box 做成黑色输入框，边界清晰但不抢眼。
+   - Input / Combo / Slider 背景更接近黑色，hover 时只轻微提亮。
+   - Checkbox 和 small toolbar button 避免大面积亮蓝填充。
+   - Tab active 使用细微高亮或低饱和填充，不使用默认 ImGui 强色块。
+4. 校准 panel 层级。
+   - Inspector / Details 类面板使用更深的行背景和 section 分隔。
+   - Project / Asset Browser 的 table header、row hover、selected row 与主题一致。
+   - Console warning / error / success 继续使用语义色，但亮度要克制。
+5. 截图对照和微调。
+   - 以当前 sandbox 默认布局为检查基准。
+   - 对照目标图，优先检查左侧 Hierarchy、右侧 Inspector、底部 Project / Console、顶部 toolbar 和 Viewport 边框。
+   - 不以“完全复制 UE5”为目标，而是形成 NexAur 自己的 modern black engine chrome。
+
+暂时不做：
+
+- 不改 dockspace 默认布局。
+- 不重写 Inspector / Project / Console 的功能结构。
+- 不引入 UE 图标、商标或受限视觉资产。
+- 不强行接入新字体文件。
+- 不做完整 theme editor UI。
+- 不做多 workspace / 多 profile。
+
+验收：
+
+- Editor 打开后整体视觉明显更接近深黑 graphite / charcoal，而不是浅灰调试工具风。
+- 大面积蓝色 header 和浅灰 panel 明显减少，accent 只用于 active / hover / selection。
+- Search、Input、Combo、Slider、Checkbox、Tab、Table、Panel Header 视觉统一。
+- Viewport 内容仍然是第一视觉主体，UI chrome 不抢画面。
+- Theme token 仍然集中在 Editor Style 系统内，panel 不新增零散 style 堆叠。
+- 构建和必要 Sandbox smoke 通过。
+
+完成记录：
+
+- 将默认 editor theme variant 切换为 `ModernBlack`，并让旧配置中的 `Graphite` 自动迁移到新主题，避免本地旧配置继续保留偏灰蓝主题。
+- 扩展 `EditorThemeColors::background_input`，将输入框、搜索框、combo、slider 背景压到更接近黑色的层级。
+- 重新校准 `EditorTheme` token：整体底色转向 UE5-like graphite / charcoal，降低 header、tab、table、dock preview 的蓝色和浅灰存在感。
+- `EditorStyle::applyTheme()` 调整 ImGui 全局 palette，让 frame、tab、table、separator、selected text、resize grip 等状态更克制。
+- `EditorWidgets::toolbarButton()` 降低 selected 填充亮度；`EditorWidgets::searchBox()` 增加黑色圆角搜索框样式。
+- `EditorConfigSmoke` 增加 ModernBlack 默认值和 Graphite 迁移验证。
+
 ## 15. 不建议现在做的事情
 
 当前阶段暂缓：
@@ -1120,3 +1202,4 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E7 Viewport Overlay + Gizmo Polish | 已完成 | 增加 viewport 内 overlay toolbar / 状态信息 / Debug Draw 快捷开关，并改善 gizmo 与 picking 的输入边界。 |
 | PR-E8 Preferences / Render Settings Panel | 已完成 | 新增 Render Settings 面板承接可写渲染参数，并让 Renderer Debug 面板回到只读诊断职责。 |
 | PR-E9 Layout / Shortcut Persistence | 已完成 | 固定 ImGui layout ini 路径，新增 editor config JSON，保存 panel visibility、camera speed 和 command shortcuts。 |
+| PR-E9.5 UE5-like Dark Theme Calibration | 已完成 | 校准 Editor theme token，让 UI 色调转向 UE5-like modern black，同时保持 NexAur 自己的视觉系统。 |

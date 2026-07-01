@@ -2,6 +2,7 @@
 #include "editor_config.h"
 
 #include "Editor/Commands/editor_command.h"
+#include "Editor/Style/editor_theme.h"
 
 #include <algorithm>
 #include <fstream>
@@ -62,6 +63,9 @@ namespace NexAur {
 
             config.version = json.value("version", kEditorConfigVersion);
             config.theme_variant = json.value("theme_variant", config.theme_variant);
+            if (config.theme_variant.empty() || config.theme_variant == "Graphite") {
+                config.theme_variant = std::string(EditorThemeTokens::ModernBlack);
+            }
             config.viewport_camera_speed = std::clamp(
                 json.value("viewport_camera_speed", config.viewport_camera_speed),
                 0.1f,
