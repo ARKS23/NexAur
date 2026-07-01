@@ -77,6 +77,8 @@ set(NEXAUR_ENGINE_EDITOR_FILES
     Editor/Panels/project_panel.cpp
     Editor/Panels/properties_panel.h
     Editor/Panels/properties_panel.cpp
+    Editor/Panels/render_settings_panel.h
+    Editor/Panels/render_settings_panel.cpp
     Editor/Panels/renderer_debug_panel.h
     Editor/Panels/renderer_debug_panel.cpp
     Editor/Panels/scene_hierarchy_panel.h

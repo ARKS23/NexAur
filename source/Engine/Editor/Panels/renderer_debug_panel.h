@@ -17,8 +17,6 @@ namespace NexAur {
         void onUIRender() override;
 
     private:
-        void drawDebugVisualizationSection();
-        void drawEffectsSection();
         void drawRendererSection(const RendererDebugSnapshot& snapshot);
         void drawFrameSection(const RendererDebugSnapshot& snapshot);
         void drawViewSection(const RendererDebugSnapshot& snapshot);

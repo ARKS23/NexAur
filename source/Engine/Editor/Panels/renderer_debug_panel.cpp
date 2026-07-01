@@ -3,7 +3,6 @@
 
 #include "Editor/Widgets/editor_widgets.h"
 #include "Function/Renderer/renderer_debug_service.h"
-#include "Function/Renderer/data/render_context.h"
 
 #include <imgui.h>
 
@@ -32,108 +31,6 @@ namespace NexAur {
             case ViewportOutputKind::None:
             default:
                 return "None";
-            }
-        }
-
-        int toneMappingModeToIndex(RenderToneMappingMode mode) {
-            switch (mode) {
-            case RenderToneMappingMode::ACES:
-                return 1;
-            case RenderToneMappingMode::None:
-            default:
-                return 0;
-            }
-        }
-
-        RenderToneMappingMode toneMappingModeFromIndex(int index) {
-            return index == 1 ? RenderToneMappingMode::ACES : RenderToneMappingMode::None;
-        }
-
-        int iblDebugModeToIndex(RenderIblDebugMode mode) {
-            return static_cast<int>(mode);
-        }
-
-        RenderIblDebugMode iblDebugModeFromIndex(int index) {
-            switch (index) {
-            case 1:
-                return RenderIblDebugMode::DiffuseIbl;
-            case 2:
-                return RenderIblDebugMode::SpecularIbl;
-            case 3:
-                return RenderIblDebugMode::CombinedIbl;
-            case 4:
-                return RenderIblDebugMode::Normal;
-            case 5:
-                return RenderIblDebugMode::Metallic;
-            case 6:
-                return RenderIblDebugMode::Roughness;
-            case 7:
-                return RenderIblDebugMode::AmbientOcclusion;
-            case 8:
-                return RenderIblDebugMode::Emissive;
-            case 9:
-                return RenderIblDebugMode::Irradiance;
-            case 10:
-                return RenderIblDebugMode::PrefilteredEnvironment;
-            case 11:
-                return RenderIblDebugMode::BrdfLut;
-            case 0:
-            default:
-                return RenderIblDebugMode::FinalLit;
-            }
-        }
-
-        int shadowFilterModeToIndex(RenderShadowFilterMode mode) {
-            switch (mode) {
-            case RenderShadowFilterMode::PCF3x3:
-                return 1;
-            case RenderShadowFilterMode::PCF5x5:
-                return 2;
-            case RenderShadowFilterMode::PoissonPCF:
-                return 3;
-            case RenderShadowFilterMode::PCSS:
-                return 4;
-            case RenderShadowFilterMode::Hard:
-            default:
-                return 0;
-            }
-        }
-
-        RenderShadowFilterMode shadowFilterModeFromIndex(int index) {
-            switch (index) {
-            case 1:
-                return RenderShadowFilterMode::PCF3x3;
-            case 2:
-                return RenderShadowFilterMode::PCF5x5;
-            case 3:
-                return RenderShadowFilterMode::PoissonPCF;
-            case 4:
-                return RenderShadowFilterMode::PCSS;
-            case 0:
-            default:
-                return RenderShadowFilterMode::Hard;
-            }
-        }
-
-        int shadowMapResolutionToIndex(uint32_t resolution) {
-            if (resolution >= 4096u) {
-                return 2;
-            }
-            if (resolution >= 2048u) {
-                return 1;
-            }
-            return 0;
-        }
-
-        uint32_t shadowMapResolutionFromIndex(int index) {
-            switch (index) {
-            case 1:
-                return 2048u;
-            case 2:
-                return 4096u;
-            case 0:
-            default:
-                return 1024u;
             }
         }
 
@@ -174,8 +71,6 @@ namespace NexAur {
         const RendererDebugSnapshot snapshot =
             m_context->renderer_debug_service->getDebugSnapshot();
 
-        drawDebugVisualizationSection();
-        drawEffectsSection();
         drawRendererSection(snapshot);
         drawFrameSection(snapshot);
         drawViewSection(snapshot);
@@ -183,143 +78,6 @@ namespace NexAur {
         drawResourcesSection(snapshot);
 
         ImGui::End();
-    }
-
-    void RendererDebugPanel::drawDebugVisualizationSection() {
-        if (!EditorWidgets::sectionHeader("Debug Visualization")) {
-            return;
-        }
-
-        if (!m_context || !m_context->render_context) {
-            ImGui::TextDisabled("Render context is unavailable.");
-            return;
-        }
-
-        RenderDebugVisualizationOptions options =
-            m_context->render_context->getDebugVisualizationOptions();
-
-        bool changed = false;
-        changed |= ImGui::Checkbox("Debug Draw", &options.enabled);
-
-        if (!options.enabled) {
-            ImGui::BeginDisabled();
-        }
-
-        changed |= ImGui::Checkbox("Camera Frustum", &options.camera_frustum);
-        changed |= ImGui::Checkbox("Light Gizmos", &options.light_gizmos);
-
-        if (!options.enabled) {
-            ImGui::EndDisabled();
-        }
-
-        if (changed) {
-            m_context->render_context->setDebugVisualizationOptions(options);
-        }
-    }
-
-    void RendererDebugPanel::drawEffectsSection() {
-        if (!EditorWidgets::sectionHeader("Effects")) {
-            return;
-        }
-
-        if (!m_context || !m_context->render_context) {
-            ImGui::TextDisabled("Render context is unavailable.");
-            return;
-        }
-
-        RenderSettings settings = m_context->render_context->getRenderSettings();
-        bool changed = false;
-
-        const char* tone_mapping_items[] = { "None", "ACES" };
-        int tone_mapping_index = toneMappingModeToIndex(settings.post_process.tone_mapping_mode);
-        if (ImGui::Combo("Tone Mapping", &tone_mapping_index, tone_mapping_items, IM_ARRAYSIZE(tone_mapping_items))) {
-            settings.post_process.tone_mapping_mode = toneMappingModeFromIndex(tone_mapping_index);
-            changed = true;
-        }
-
-        changed |= ImGui::SliderFloat("Exposure", &settings.post_process.exposure, 0.0f, 4.0f, "%.2f");
-        changed |= ImGui::Checkbox("Bloom", &settings.post_process.bloom_enabled);
-        changed |= ImGui::SliderFloat("Bloom Intensity", &settings.post_process.bloom_intensity, 0.0f, 1.0f, "%.3f");
-        changed |= ImGui::SliderFloat("Bloom Scatter", &settings.post_process.bloom_scatter, 0.0f, 1.0f, "%.2f");
-        changed |= ImGui::SliderFloat("Bloom Radius", &settings.post_process.bloom_radius, 0.25f, 2.5f, "%.2f");
-
-        ImGui::Spacing();
-        changed |= ImGui::Checkbox("Shadow", &settings.shadow.enabled);
-
-        const char* shadow_filter_items[] = { "Hard", "PCF 3x3", "PCF 5x5", "Poisson PCF", "PCSS" };
-        int shadow_filter_index = shadowFilterModeToIndex(settings.shadow.filter_mode);
-        if (ImGui::Combo("Shadow Filter", &shadow_filter_index, shadow_filter_items, IM_ARRAYSIZE(shadow_filter_items))) {
-            settings.shadow.filter_mode = shadowFilterModeFromIndex(shadow_filter_index);
-            changed = true;
-        }
-
-        changed |= ImGui::SliderFloat("Shadow Strength", &settings.shadow.strength, 0.0f, 1.0f, "%.2f");
-        changed |= ImGui::SliderFloat("Shadow Bias", &settings.shadow.constant_bias, 0.0f, 0.02f, "%.5f");
-        changed |= ImGui::SliderFloat("Shadow Normal Bias", &settings.shadow.normal_bias, 0.0f, 0.2f, "%.4f");
-        changed |= ImGui::SliderFloat("Shadow Slope Bias", &settings.shadow.slope_bias, 0.0f, 0.02f, "%.5f");
-        changed |= ImGui::SliderFloat("Shadow Filter Radius", &settings.shadow.filter_radius, 0.25f, 3.0f, "%.2f");
-
-        const bool pcss_selected = settings.shadow.filter_mode == RenderShadowFilterMode::PCSS;
-        if (!pcss_selected) {
-            ImGui::BeginDisabled();
-        }
-        changed |= ImGui::SliderFloat("PCSS Light Radius", &settings.shadow.pcss_light_radius, 0.01f, 4.0f, "%.2f");
-        changed |= ImGui::SliderFloat("PCSS Search Radius", &settings.shadow.pcss_search_radius, 0.5f, 12.0f, "%.2f");
-        changed |= ImGui::SliderFloat("PCSS Min Radius", &settings.shadow.pcss_min_filter_radius, 0.25f, 4.0f, "%.2f");
-        changed |= ImGui::SliderFloat("PCSS Max Radius", &settings.shadow.pcss_max_filter_radius, 1.0f, 16.0f, "%.2f");
-        if (!pcss_selected) {
-            ImGui::EndDisabled();
-        }
-
-        changed |= ImGui::SliderFloat("Shadow Distance", &settings.shadow.distance, 1.0f, 120.0f, "%.1f");
-
-        const char* shadow_map_items[] = { "1024", "2048", "4096" };
-        int shadow_map_index = shadowMapResolutionToIndex(settings.shadow.map_resolution);
-        if (ImGui::Combo("Shadow Map", &shadow_map_index, shadow_map_items, IM_ARRAYSIZE(shadow_map_items))) {
-            settings.shadow.map_resolution = shadowMapResolutionFromIndex(shadow_map_index);
-            changed = true;
-        }
-        changed |= ImGui::Checkbox("Shadow Stabilize", &settings.shadow.stabilize);
-        changed |= ImGui::Checkbox("CSM", &settings.shadow.cascades_enabled);
-        if (!settings.shadow.cascades_enabled) {
-            ImGui::BeginDisabled();
-        }
-        int cascade_count = static_cast<int>(settings.shadow.cascade_count);
-        if (ImGui::SliderInt("Cascade Count", &cascade_count, 1, 4)) {
-            settings.shadow.cascade_count = static_cast<uint32_t>(cascade_count);
-            changed = true;
-        }
-        changed |= ImGui::SliderFloat("Split Lambda", &settings.shadow.cascade_split_lambda, 0.0f, 1.0f, "%.2f");
-        changed |= ImGui::Checkbox("Cascade Overlay", &settings.shadow.cascade_debug_overlay);
-        if (!settings.shadow.cascades_enabled) {
-            ImGui::EndDisabled();
-        }
-
-        ImGui::Spacing();
-        const char* ibl_debug_items[] = {
-            "Final Lit",
-            "Diffuse IBL",
-            "Specular IBL",
-            "Combined IBL",
-            "Normal",
-            "Metallic",
-            "Roughness",
-            "Ambient Occlusion",
-            "Emissive",
-            "Irradiance",
-            "Prefiltered Environment",
-            "BRDF LUT"
-        };
-        int ibl_debug_index = iblDebugModeToIndex(settings.ibl_debug.mode);
-        if (ImGui::Combo("IBL Debug", &ibl_debug_index, ibl_debug_items, IM_ARRAYSIZE(ibl_debug_items))) {
-            settings.ibl_debug.mode = iblDebugModeFromIndex(ibl_debug_index);
-            changed = true;
-        }
-        changed |= ImGui::SliderFloat("Prefilter Mip", &settings.ibl_debug.prefilter_mip, 0.0f, 7.0f, "%.1f");
-
-        if (changed) {
-            m_context->render_context->setRenderSettings(settings);
-        }
     }
 
     void RendererDebugPanel::drawRendererSection(const RendererDebugSnapshot& snapshot) {

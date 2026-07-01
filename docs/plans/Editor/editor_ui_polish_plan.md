@@ -30,7 +30,7 @@
 - `ViewportPanel` 已接入 ImGuizmo transform gizmo。
 - `SceneHierarchyPanel` 已提供场景实体列表和基础右键删除。
 - `PropertiesPanel` 已能编辑常用组件。
-- `RendererDebugPanel` 已能显示 renderer snapshot，并控制 debug visualization。
+- `RendererDebugPanel` 已能显示 renderer snapshot；可写渲染参数收口到 `RenderSettingsPanel`。
 - Panel 通过 `EditorContext` 和 service 交互，没有直接访问 Vulkan backend。
 
 这说明：当前不需要换 UI 技术栈。Dear ImGui 足够支撑这一阶段的编辑器体验。
@@ -983,7 +983,7 @@ SuccessGreen         ok 状态
 
 ## 13. PR-E8：Preferences / Render Settings Panel
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -1021,6 +1021,13 @@ SuccessGreen         ok 状态
 - Editor / Scene / Runtime 不依赖 Vulkan backend。
 - 后续 PR-R26 之后的 HDR / ACES / Bloom 有 UI 接入口。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- 新增 `RenderSettingsPanel`，作为 Debug Visualization、Post Processing、IBL Debug、Shadow 参数的可写入口。
+- `RendererDebugPanel` 移除 Debug Visualization / Effects 可写控件，回到 renderer snapshot、frame、target、resource 只读展示职责。
+- `EditorLayer` 注册 `Render Settings` 面板，默认停靠在右侧 Inspector / Renderer Debug 区域，并提供菜单打开入口。
+- 当前设置仍通过 backend-neutral `RenderContext` 写入，不直接依赖 Vulkan backend；持久化留给后续 Layout / Preferences 阶段。
 
 ## 14. PR-E9：Layout / Shortcut Persistence
 
@@ -1103,5 +1110,5 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E5 Scene Hierarchy / Explorer Polish | 已完成 | 增加搜索过滤、轻量 icon row、空白/实体右键菜单、创建/复制/删除实体操作。 |
 | PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
 | PR-E7 Viewport Overlay + Gizmo Polish | 已完成 | 增加 viewport 内 overlay toolbar / 状态信息 / Debug Draw 快捷开关，并改善 gizmo 与 picking 的输入边界。 |
-| PR-E8 Preferences / Render Settings Panel | 计划中 | 为渲染效果参数提供可写 UI 入口。 |
+| PR-E8 Preferences / Render Settings Panel | 已完成 | 新增 Render Settings 面板承接可写渲染参数，并让 Renderer Debug 面板回到只读诊断职责。 |
 | PR-E9 Layout / Shortcut Persistence | 计划中 | 固定布局、快捷键和 editor config 持久化。 |

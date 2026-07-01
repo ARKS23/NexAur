@@ -5,6 +5,7 @@
 #include "Editor/Panels/placeholder_panel.h"
 #include "Editor/Panels/project_panel.h"
 #include "Editor/Panels/properties_panel.h"
+#include "Editor/Panels/render_settings_panel.h"
 #include "Editor/Panels/renderer_debug_panel.h"
 #include "Editor/Panels/scene_hierarchy_panel.h"
 #include "Editor/Panels/viewport_panel.h"
@@ -35,6 +36,7 @@ namespace NexAur {
         constexpr const char* kSceneViewportPanelName = "Scene Viewport";
         constexpr const char* kSceneHierarchyPanelName = "Scene Hierarchy";
         constexpr const char* kInspectorPanelName = "Inspector";
+        constexpr const char* kRenderSettingsPanelName = "Render Settings";
         constexpr const char* kRendererDebugPanelName = "Renderer Debug";
         constexpr const char* kProjectPanelName = "Project";
         constexpr const char* kConsolePanelName = "Console";
@@ -45,6 +47,7 @@ namespace NexAur {
         constexpr const char* kCommandLoadScene = "scene.load";
         constexpr const char* kCommandShowProject = "panel.project.show";
         constexpr const char* kCommandShowConsole = "panel.console.show";
+        constexpr const char* kCommandShowRenderSettings = "panel.render_settings.show";
         constexpr const char* kCommandResetLayout = "layout.reset";
         constexpr const char* kCommandOpenAllPanels = "layout.open_all_panels";
         constexpr const char* kCommandPlay = "runtime.play";
@@ -124,6 +127,7 @@ namespace NexAur {
         m_panels.push_back(std::make_shared<ViewportPanel>(kSceneViewportPanelName));
         m_panels.push_back(std::make_shared<SceneHierarchyPanel>(kSceneHierarchyPanelName));
         m_panels.push_back(std::make_shared<PropertiesPanel>(kInspectorPanelName));
+        m_panels.push_back(std::make_shared<RenderSettingsPanel>(kRenderSettingsPanelName));
         m_panels.push_back(std::make_shared<RendererDebugPanel>(kRendererDebugPanelName));
         m_panels.push_back(std::make_shared<ProjectPanel>(kProjectPanelName));
         m_panels.push_back(std::make_shared<ConsolePanel>(kConsolePanelName));
@@ -341,6 +345,17 @@ namespace NexAur {
             {},
             {},
             [this]() { openPanel(kConsolePanelName); }
+        });
+
+        commands.registerCommand({
+            kCommandShowRenderSettings,
+            "Show Render Settings",
+            "Open the Render Settings panel.",
+            "",
+            ImGuiKey_None,
+            {},
+            {},
+            [this]() { openPanel(kRenderSettingsPanelName); }
         });
 
         commands.registerCommand({
@@ -602,6 +617,7 @@ namespace NexAur {
 
         drawCommandMenuItem(kCommandShowProject);
         drawCommandMenuItem(kCommandShowConsole);
+        drawCommandMenuItem(kCommandShowRenderSettings);
 
         ImGui::EndMenu();
     }
@@ -823,6 +839,7 @@ namespace NexAur {
         ImGui::DockBuilderDockWindow(kSceneViewportPanelName, dock_main);
         ImGui::DockBuilderDockWindow(kSceneHierarchyPanelName, dock_left);
         ImGui::DockBuilderDockWindow(kInspectorPanelName, dock_right);
+        ImGui::DockBuilderDockWindow(kRenderSettingsPanelName, dock_right);
         ImGui::DockBuilderDockWindow(kRendererDebugPanelName, dock_right);
         ImGui::DockBuilderDockWindow(kProjectPanelName, dock_bottom);
         ImGui::DockBuilderDockWindow(kConsolePanelName, dock_bottom);
