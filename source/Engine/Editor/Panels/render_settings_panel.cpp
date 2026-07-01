@@ -136,6 +136,28 @@ namespace NexAur {
             }
         }
 
+        int pointShadowMapResolutionToIndex(uint32_t resolution) {
+            if (resolution >= 1024u) {
+                return 2;
+            }
+            if (resolution >= 512u) {
+                return 1;
+            }
+            return 0;
+        }
+
+        uint32_t pointShadowMapResolutionFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return 512u;
+            case 2:
+                return 1024u;
+            case 0:
+            default:
+                return 256u;
+            }
+        }
+
         int effectDebugViewToIndex(RenderEffectDebugView view) {
             return static_cast<int>(view);
         }
@@ -160,6 +182,8 @@ namespace NexAur {
                 return RenderEffectDebugView::AoRaw;
             case 9:
                 return RenderEffectDebugView::AoBlurred;
+            case 10:
+                return RenderEffectDebugView::PointShadowMap;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -199,6 +223,8 @@ namespace NexAur {
         drawAoSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
+        drawPointShadowSection(settings, changed);
+        drawContactShadowSection(settings, changed);
 
         if (changed) {
             m_context->render_context->setRenderSettings(settings);
@@ -261,7 +287,8 @@ namespace NexAur {
                 "Shadow Cascades",
                 "Scene Depth",
                 "AO Raw",
-                "AO Blurred"
+                "AO Blurred",
+                "Point Shadow Map"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -278,6 +305,8 @@ namespace NexAur {
         const bool shadow_debug =
             settings.effects_debug.view == RenderEffectDebugView::ShadowMap ||
             settings.effects_debug.view == RenderEffectDebugView::ShadowCascades;
+        const bool point_shadow_debug =
+            settings.effects_debug.view == RenderEffectDebugView::PointShadowMap;
 
         if (!mip_debug) {
             ImGui::BeginDisabled();
@@ -306,6 +335,21 @@ namespace NexAur {
             }
         });
         if (!shadow_debug) {
+            ImGui::EndDisabled();
+        }
+
+        if (!point_shadow_debug) {
+            ImGui::BeginDisabled();
+        }
+        EditorWidgets::propertyRow("Point Shadow Layer", [&]() {
+            int layer = static_cast<int>(settings.effects_debug.point_shadow_layer);
+            setControlWidth();
+            if (ImGui::SliderInt("##EffectDebugPointShadowLayer", &layer, 0, 23)) {
+                settings.effects_debug.point_shadow_layer = static_cast<uint32_t>(std::max(0, layer));
+                changed = true;
+            }
+        });
+        if (!point_shadow_debug) {
             ImGui::EndDisabled();
         }
 
@@ -589,6 +633,89 @@ namespace NexAur {
         }
 
         if (!settings.shadow.enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawPointShadowSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Point Shadows")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox("##PointShadowEnabled", &settings.point_shadow.enabled);
+        });
+
+        if (!settings.point_shadow.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Max Lights", [&]() {
+            int max_lights = static_cast<int>(settings.point_shadow.max_shadowed_lights);
+            setControlWidth();
+            if (ImGui::SliderInt("##PointShadowMaxLights", &max_lights, 0, static_cast<int>(kMaxRenderPointShadowLights))) {
+                settings.point_shadow.max_shadowed_lights = static_cast<uint32_t>(std::max(0, max_lights));
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Map", [&]() {
+            const char* items[] = { "256", "512", "1024" };
+            int index = pointShadowMapResolutionToIndex(settings.point_shadow.map_resolution);
+            setControlWidth();
+            if (ImGui::Combo("##PointShadowMap", &index, items, IM_ARRAYSIZE(items))) {
+                settings.point_shadow.map_resolution = pointShadowMapResolutionFromIndex(index);
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Strength", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##PointShadowStrength", &settings.point_shadow.strength, 0.0f, 1.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##PointShadowBias", &settings.point_shadow.constant_bias, 0.0f, 0.08f, "%.4f");
+        });
+        EditorWidgets::propertyRow("Normal Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##PointShadowNormalBias", &settings.point_shadow.normal_bias, 0.0f, 0.2f, "%.4f");
+        });
+        EditorWidgets::propertyRow("Filter Radius", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##PointShadowFilterRadius", &settings.point_shadow.filter_radius, 0.0f, 3.0f, "%.2f");
+        });
+
+        if (!settings.point_shadow.enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawContactShadowSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Contact Shadows", false)) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox("##ContactShadowEnabled", &settings.contact_shadow.enabled);
+        });
+
+        if (!settings.contact_shadow.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Intensity", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##ContactShadowIntensity", &settings.contact_shadow.intensity, 0.0f, 1.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Max Distance", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##ContactShadowMaxDistance", &settings.contact_shadow.max_distance, 0.0f, 2.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Thickness", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##ContactShadowThickness", &settings.contact_shadow.thickness, 0.0f, 0.5f, "%.3f");
+        });
+
+        if (!settings.contact_shadow.enabled) {
             ImGui::EndDisabled();
         }
     }

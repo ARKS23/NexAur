@@ -7,6 +7,7 @@
 #include "Core/Base.h"
 #include "Function/Resource/asset_handle.h"
 #include "Function/Renderer/data/render_debug_draw.h"
+#include "Function/Renderer/data/render_settings.h"
 #include "Function/Renderer/data/render_view.h"
 
 namespace NexAur {
@@ -27,6 +28,11 @@ namespace NexAur {
         float constant = 1.0f;
         float linear = 0.09f;
         float quadratic = 0.032f;
+        bool shadow_requested = false;
+        bool cast_shadow = false;
+        int32_t shadow_slot = -1;
+        float shadow_range = 8.0f;
+        float shadow_strength = 0.85f;
     };
 
     struct RenderSceneFrameObject {

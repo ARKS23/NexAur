@@ -120,6 +120,9 @@ namespace NexAur {
             point_light_data.constant = point_light_comp.constant;
             point_light_data.linear = point_light_comp.linear;
             point_light_data.quadratic = point_light_comp.quadratic;
+            point_light_data.cast_shadow = point_light_comp.cast_shadow;
+            point_light_data.shadow_range = point_light_comp.shadow_range;
+            point_light_data.shadow_strength = point_light_comp.shadow_strength;
 
             render_packet->point_lights_data.push_back(point_light_data);
             if (debug_options.enabled && debug_options.light_gizmos) {

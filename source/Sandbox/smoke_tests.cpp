@@ -692,6 +692,51 @@ bool defaultEnvironmentCalibrationMatches(const std::shared_ptr<NexAur::SceneV2>
     return false;
 }
 
+bool configureDefaultPointLightShadow(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<NexAur::TagComponent, NexAur::PointLightComponent>();
+    for (entt::entity entity : view) {
+        const auto& tag = view.get<NexAur::TagComponent>(entity);
+        if (tag.name != "PointLight") {
+            continue;
+        }
+
+        auto& light = view.get<NexAur::PointLightComponent>(entity);
+        light.cast_shadow = true;
+        light.shadow_range = 9.5f;
+        light.shadow_strength = 0.72f;
+        return true;
+    }
+
+    return false;
+}
+
+bool defaultPointLightShadowMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    const entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<NexAur::TagComponent, NexAur::PointLightComponent>();
+    for (entt::entity entity : view) {
+        const auto& tag = view.get<NexAur::TagComponent>(entity);
+        if (tag.name != "PointLight") {
+            continue;
+        }
+
+        const auto& light = view.get<NexAur::PointLightComponent>(entity);
+        return light.cast_shadow &&
+               nearlyEqual(light.shadow_range, 9.5f) &&
+               nearlyEqual(light.shadow_strength, 0.72f);
+    }
+
+    return false;
+}
+
 int runSceneSerializerSmoke() {
     NexAur::Engine engine;
     engine.startEngine();
@@ -714,6 +759,9 @@ int runSceneSerializerSmoke() {
     } else if (!asset_manager) {
         success = false;
         failure = "SceneSerializer smoke failed: no AssetManager service.";
+    } else if (!configureDefaultPointLightShadow(scene_service->getActiveScene())) {
+        success = false;
+        failure = "SceneSerializer smoke failed: could not configure point light shadow settings.";
     } else {
         NexAur::SceneSerializer serializer(*asset_manager);
         const NexAur::SceneSerializationResult save_result =
@@ -736,6 +784,9 @@ int runSceneSerializerSmoke() {
             } else if (!defaultEnvironmentCalibrationMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: environment calibration settings were not preserved.";
+            } else if (!defaultPointLightShadowMatches(load_result.scene)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: point light shadow settings were not preserved.";
             } else {
                 NX_CORE_INFO(
                     "SceneSerializer smoke passed. Saved {} entities and loaded {} entities.",
@@ -909,6 +960,7 @@ int runRenderSettingsSmoke() {
     settings.effects_debug.view = NexAur::RenderEffectDebugView::BloomDownsampleMip;
     settings.effects_debug.bloom_mip = 3u;
     settings.effects_debug.shadow_cascade = 2u;
+    settings.effects_debug.point_shadow_layer = 5u;
     settings.shadow.enabled = false;
     settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCSS;
     settings.shadow.strength = 0.45f;
@@ -927,6 +979,17 @@ int runRenderSettingsSmoke() {
     settings.shadow.cascade_count = 4u;
     settings.shadow.cascade_split_lambda = 0.82f;
     settings.shadow.cascade_debug_overlay = true;
+    settings.point_shadow.enabled = true;
+    settings.point_shadow.max_shadowed_lights = 2u;
+    settings.point_shadow.map_resolution = 1024u;
+    settings.point_shadow.strength = 0.62f;
+    settings.point_shadow.constant_bias = 0.012f;
+    settings.point_shadow.normal_bias = 0.025f;
+    settings.point_shadow.filter_radius = 1.5f;
+    settings.contact_shadow.enabled = true;
+    settings.contact_shadow.intensity = 0.4f;
+    settings.contact_shadow.max_distance = 0.55f;
+    settings.contact_shadow.thickness = 0.07f;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -943,6 +1006,10 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.effects_debug;
     const NexAur::RenderShadowSettings& first_shadow =
         render_context.getReadData().render_settings.shadow;
+    const NexAur::RenderPointShadowSettings& first_point_shadow =
+        render_context.getReadData().render_settings.point_shadow;
+    const NexAur::RenderContactShadowSettings& first_contact_shadow =
+        render_context.getReadData().render_settings.contact_shadow;
     expect(
         first_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::None,
         "RenderSettings smoke failed: tone mapping mode did not reach the read packet.");
@@ -978,7 +1045,8 @@ int runRenderSettingsSmoke() {
     expect(
         first_effects_debug.view == NexAur::RenderEffectDebugView::BloomDownsampleMip &&
         first_effects_debug.bloom_mip == 3u &&
-        first_effects_debug.shadow_cascade == 2u,
+        first_effects_debug.shadow_cascade == 2u &&
+        first_effects_debug.point_shadow_layer == 5u,
         "RenderSettings smoke failed: effects debug settings did not reach the read packet.");
     expect(
         !first_shadow.enabled &&
@@ -1000,6 +1068,21 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_shadow.cascade_split_lambda, 0.82f) &&
         first_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: shadow settings did not reach the read packet.");
+    expect(
+        first_point_shadow.enabled &&
+        first_point_shadow.max_shadowed_lights == 2u &&
+        first_point_shadow.map_resolution == 1024u &&
+        nearlyEqual(first_point_shadow.strength, 0.62f) &&
+        nearlyEqual(first_point_shadow.constant_bias, 0.012f) &&
+        nearlyEqual(first_point_shadow.normal_bias, 0.025f) &&
+        nearlyEqual(first_point_shadow.filter_radius, 1.5f),
+        "RenderSettings smoke failed: point shadow settings did not reach the read packet.");
+    expect(
+        first_contact_shadow.enabled &&
+        nearlyEqual(first_contact_shadow.intensity, 0.4f) &&
+        nearlyEqual(first_contact_shadow.max_distance, 0.55f) &&
+        nearlyEqual(first_contact_shadow.thickness, 0.07f),
+        "RenderSettings smoke failed: contact shadow settings did not reach the read packet.");
 
     NexAur::applyRenderLightingPreset(settings, NexAur::RenderLightingPreset::Cornell);
     settings.ao.enabled = false;
@@ -1014,6 +1097,7 @@ int runRenderSettingsSmoke() {
     settings.effects_debug.view = NexAur::RenderEffectDebugView::ShadowMap;
     settings.effects_debug.bloom_mip = 0u;
     settings.effects_debug.shadow_cascade = 1u;
+    settings.effects_debug.point_shadow_layer = 2u;
     settings.shadow.enabled = true;
     settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PoissonPCF;
     settings.shadow.strength = 0.7f;
@@ -1032,6 +1116,17 @@ int runRenderSettingsSmoke() {
     settings.shadow.cascade_count = 1u;
     settings.shadow.cascade_split_lambda = 0.65f;
     settings.shadow.cascade_debug_overlay = false;
+    settings.point_shadow.enabled = true;
+    settings.point_shadow.max_shadowed_lights = 1u;
+    settings.point_shadow.map_resolution = 512u;
+    settings.point_shadow.strength = 0.85f;
+    settings.point_shadow.constant_bias = 0.015f;
+    settings.point_shadow.normal_bias = 0.02f;
+    settings.point_shadow.filter_radius = 1.0f;
+    settings.contact_shadow.enabled = false;
+    settings.contact_shadow.intensity = 0.35f;
+    settings.contact_shadow.max_distance = 0.45f;
+    settings.contact_shadow.thickness = 0.08f;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -1048,6 +1143,10 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.effects_debug;
     const NexAur::RenderShadowSettings& second_shadow =
         render_context.getReadData().render_settings.shadow;
+    const NexAur::RenderPointShadowSettings& second_point_shadow =
+        render_context.getReadData().render_settings.point_shadow;
+    const NexAur::RenderContactShadowSettings& second_contact_shadow =
+        render_context.getReadData().render_settings.contact_shadow;
     expect(
         second_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::ACES,
         "RenderSettings smoke failed: ACES mode did not reach the read packet.");
@@ -1083,7 +1182,8 @@ int runRenderSettingsSmoke() {
     expect(
         second_effects_debug.view == NexAur::RenderEffectDebugView::ShadowMap &&
         second_effects_debug.bloom_mip == 0u &&
-        second_effects_debug.shadow_cascade == 1u,
+        second_effects_debug.shadow_cascade == 1u &&
+        second_effects_debug.point_shadow_layer == 2u,
         "RenderSettings smoke failed: updated effects debug settings did not reach the read packet.");
     expect(
         second_shadow.enabled &&
@@ -1105,6 +1205,21 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_shadow.cascade_split_lambda, 0.65f) &&
         !second_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: updated shadow settings did not reach the read packet.");
+    expect(
+        second_point_shadow.enabled &&
+        second_point_shadow.max_shadowed_lights == 1u &&
+        second_point_shadow.map_resolution == 512u &&
+        nearlyEqual(second_point_shadow.strength, 0.85f) &&
+        nearlyEqual(second_point_shadow.constant_bias, 0.015f) &&
+        nearlyEqual(second_point_shadow.normal_bias, 0.02f) &&
+        nearlyEqual(second_point_shadow.filter_radius, 1.0f),
+        "RenderSettings smoke failed: updated point shadow settings did not reach the read packet.");
+    expect(
+        !second_contact_shadow.enabled &&
+        nearlyEqual(second_contact_shadow.intensity, 0.35f) &&
+        nearlyEqual(second_contact_shadow.max_distance, 0.45f) &&
+        nearlyEqual(second_contact_shadow.thickness, 0.08f),
+        "RenderSettings smoke failed: updated contact shadow settings did not reach the read packet.");
 
     NexAur::RenderDataPacket render_data;
     render_data.render_settings = settings;
@@ -1115,7 +1230,13 @@ int runRenderSettingsSmoke() {
 
     NexAur::RendererPointLightData cornell_light;
     cornell_light.intensity = 12.0f;
+    cornell_light.cast_shadow = true;
+    cornell_light.shadow_range = 7.0f;
+    cornell_light.shadow_strength = 0.9f;
     render_data.point_lights_data.push_back(cornell_light);
+    NexAur::RendererPointLightData budget_clipped_light = cornell_light;
+    budget_clipped_light.position = glm::vec3{ 1.0f, 0.0f, 0.0f };
+    render_data.point_lights_data.push_back(budget_clipped_light);
 
     NexAur::RenderView render_view;
     render_view.viewport_width = 1280u;
@@ -1132,6 +1253,17 @@ int runRenderSettingsSmoke() {
         !cornell_frame.point_lights.empty() &&
         nearlyEqual(cornell_frame.point_lights.front().intensity, 12.0f),
         "RenderSettings smoke failed: Cornell preset should preserve local light intensity.");
+    expect(
+        cornell_frame.point_lights.size() == 2u &&
+        cornell_frame.point_lights[0].shadow_requested &&
+        cornell_frame.point_lights[0].cast_shadow &&
+        cornell_frame.point_lights[0].shadow_slot == 0 &&
+        nearlyEqual(cornell_frame.point_lights[0].shadow_range, 7.0f) &&
+        nearlyEqual(cornell_frame.point_lights[0].shadow_strength, 0.9f) &&
+        cornell_frame.point_lights[1].shadow_requested &&
+        !cornell_frame.point_lights[1].cast_shadow &&
+        cornell_frame.point_lights[1].shadow_slot == -1,
+        "RenderSettings smoke failed: point shadow budget or slot assignment was incorrect.");
     expect(
         nearlyEqual(cornell_frame.skybox_intensity, 0.0f) &&
         nearlyEqual(cornell_frame.ibl_intensity, 0.65f * 0.03f),

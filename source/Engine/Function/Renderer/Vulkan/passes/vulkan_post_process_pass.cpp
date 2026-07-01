@@ -50,15 +50,21 @@ namespace NexAur {
             const RenderPostProcessSettings& post_process_settings,
             const RenderAoSettings& ao_settings,
             const RenderEffectDebugSettings& debug_settings,
-            uint32_t shadow_layer_count) {
+            uint32_t shadow_layer_count,
+            uint32_t point_shadow_layer_count) {
             VulkanPostProcessPushConstants constants;
             constants.exposure = std::max(0.0f, post_process_settings.exposure);
             constants.tone_mapping_mode = static_cast<uint32_t>(post_process_settings.tone_mapping_mode);
             constants.output_gamma = 2.2f;
             constants.flags = isSrgbColorFormat(target.color_format) ? 0u : kPostProcessFlagManualGamma;
             constants.effect_debug_view = static_cast<uint32_t>(debug_settings.view);
-            constants.effect_debug_index = debug_settings.shadow_cascade;
-            constants.shadow_layer_count = std::max(1u, shadow_layer_count);
+            if (debug_settings.view == RenderEffectDebugView::PointShadowMap) {
+                constants.effect_debug_index = debug_settings.point_shadow_layer;
+                constants.shadow_layer_count = std::max(1u, point_shadow_layer_count);
+            } else {
+                constants.effect_debug_index = debug_settings.shadow_cascade;
+                constants.shadow_layer_count = std::max(1u, shadow_layer_count);
+            }
             constants.ao_intensity = std::clamp(ao_settings.intensity, 0.0f, 2.0f);
             constants.ao_power = std::max(0.01f, ao_settings.power);
             constants.ao_enabled = ao_settings.enabled ? 1u : 0u;
@@ -126,6 +132,13 @@ namespace NexAur {
         VkDescriptorImageInfo shadow_sampler_info{};
         shadow_sampler_info.sampler = input.shadow_sampler;
 
+        VkDescriptorImageInfo point_shadow_info{};
+        point_shadow_info.imageView = input.point_shadow_view;
+        point_shadow_info.imageLayout = input.point_shadow_layout;
+
+        VkDescriptorImageInfo point_shadow_sampler_info{};
+        point_shadow_sampler_info.sampler = input.point_shadow_sampler;
+
         VkDescriptorImageInfo scene_depth_info{};
         scene_depth_info.imageView = input.scene_depth_view;
         scene_depth_info.imageLayout = input.scene_depth_layout;
@@ -151,6 +164,8 @@ namespace NexAur {
             .writeImage(5, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ao_raw_info)
             .writeImage(6, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ao_blurred_info)
             .writeImage(7, VK_DESCRIPTOR_TYPE_SAMPLER, ao_sampler_info)
+            .writeImage(8, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, point_shadow_info)
+            .writeImage(9, VK_DESCRIPTOR_TYPE_SAMPLER, point_shadow_sampler_info)
             .update(m_device, m_input_descriptor_set);
         m_current_input = input;
         return true;
@@ -222,7 +237,8 @@ namespace NexAur {
             post_process_settings,
             ao_settings,
             debug_settings,
-            m_current_input.shadow_layer_count);
+            m_current_input.shadow_layer_count,
+            m_current_input.point_shadow_layer_count);
         vkCmdPushConstants(
             command_buffer,
             m_pipeline_layout,

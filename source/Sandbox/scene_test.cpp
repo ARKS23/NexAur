@@ -7,6 +7,8 @@
 #include "Function/Resource/procedural_model_builder.h"
 #include "Function/Scene/scene_service.h"
 
+#include <algorithm>
+
 namespace NexAur {
     namespace {
         MaterialImportData makeSolidMaterial(
@@ -151,6 +153,9 @@ namespace NexAur {
         point_light.constant = 1.0f;
         point_light.linear = 0.18f;
         point_light.quadratic = 0.04f;
+        point_light.cast_shadow = true;
+        point_light.shadow_range = std::max(size.x, std::max(size.y, size.z)) * 1.2f;
+        point_light.shadow_strength = 0.9f;
 
         TransformComponent& light_transform = light_entity.getComponent<TransformComponent>();
         light_transform.translation = { center.x, ceiling_y - 0.35f, center.z - half_depth * 0.12f };

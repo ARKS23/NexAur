@@ -5,8 +5,12 @@
 
 #include <glm/glm.hpp>
 
+#include "Function/Renderer/data/render_settings.h"
+
 namespace NexAur {
     constexpr uint32_t kMaxRenderShadowCascadeCount = 4;
+    constexpr uint32_t kMaxRenderPointShadowFaceCount =
+        kMaxRenderPointShadowLights * kRenderPointShadowCubeFaceCount;
 
     struct RenderShadowCascadeFrame {
         std::array<glm::mat4, kMaxRenderShadowCascadeCount> light_view_projections{
@@ -26,5 +30,12 @@ namespace NexAur {
         uint32_t cascade_count = 1;
         bool cascades_enabled = false;
         bool debug_overlay = false;
+    };
+
+    struct RenderPointShadowFrame {
+        std::array<glm::mat4, kMaxRenderPointShadowFaceCount> light_view_projections{};
+        uint32_t shadowed_light_count = 0;
+        uint32_t face_count = 0;
+        bool enabled = false;
     };
 } // namespace NexAur

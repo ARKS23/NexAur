@@ -233,6 +233,9 @@ namespace NexAur {
                 { "constant", light.constant },
                 { "linear", light.linear },
                 { "quadratic", light.quadratic },
+                { "cast_shadow", light.cast_shadow },
+                { "shadow_range", light.shadow_range },
+                { "shadow_strength", light.shadow_strength },
             };
         }
 
@@ -355,6 +358,9 @@ namespace NexAur {
             light.constant = component.value("constant", light.constant);
             light.linear = component.value("linear", light.linear);
             light.quadratic = component.value("quadratic", light.quadratic);
+            light.cast_shadow = component.value("cast_shadow", light.cast_shadow);
+            light.shadow_range = component.value("shadow_range", light.shadow_range);
+            light.shadow_strength = component.value("shadow_strength", light.shadow_strength);
         }
 
         void readPlayerComponent(const json& component, PlayerComponent& player) {

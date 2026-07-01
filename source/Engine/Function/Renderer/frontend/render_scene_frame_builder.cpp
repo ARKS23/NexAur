@@ -96,7 +96,9 @@ namespace NexAur {
 
         RenderFramePointLight buildPointLight(
             const RendererPointLightData& source,
-            const RenderLightingCalibrationSettings& lighting) {
+            const RenderLightingCalibrationSettings& lighting,
+            const RenderPointShadowSettings& point_shadow_settings,
+            uint32_t& assigned_shadow_slots) {
             RenderFramePointLight light;
             light.position = isFinite(source.position) ? source.position : glm::vec3{ 0.0f };
             light.color = sanitizeColor(source.color);
@@ -106,6 +108,20 @@ namespace NexAur {
             light.constant = sanitizeNonNegative(source.constant, 1.0f);
             light.linear = sanitizeNonNegative(source.linear, 0.09f);
             light.quadratic = sanitizeNonNegative(source.quadratic, 0.032f);
+            light.shadow_range = sanitizeMin(source.shadow_range, 8.0f, 0.1f);
+            light.shadow_strength = sanitizeUnit(source.shadow_strength, 0.85f);
+            light.shadow_requested = source.cast_shadow && light.intensity > 0.0001f;
+
+            const uint32_t shadow_budget = std::clamp(
+                point_shadow_settings.max_shadowed_lights,
+                0u,
+                kMaxRenderPointShadowLights);
+            const bool can_cast_shadow =
+                point_shadow_settings.enabled &&
+                light.shadow_requested &&
+                assigned_shadow_slots < shadow_budget;
+            light.cast_shadow = can_cast_shadow;
+            light.shadow_slot = can_cast_shadow ? static_cast<int32_t>(assigned_shadow_slots++) : -1;
             return light;
         }
 
@@ -192,8 +208,13 @@ namespace NexAur {
 
         const size_t point_light_count = std::min(render_data.point_lights_data.size(), kMaxPointLights);
         frame.point_lights.reserve(point_light_count);
+        uint32_t assigned_shadow_slots = 0;
         for (size_t index = 0; index < point_light_count; ++index) {
-            frame.point_lights.push_back(buildPointLight(render_data.point_lights_data[index], lighting));
+            frame.point_lights.push_back(buildPointLight(
+                render_data.point_lights_data[index],
+                lighting,
+                render_data.render_settings.point_shadow,
+                assigned_shadow_slots));
         }
 
         if (render_data.point_lights_data.size() > kMaxPointLights) {

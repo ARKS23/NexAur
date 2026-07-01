@@ -3,6 +3,9 @@
 #include <cstdint>
 
 namespace NexAur {
+    inline constexpr uint32_t kMaxRenderPointShadowLights = 4;
+    inline constexpr uint32_t kRenderPointShadowCubeFaceCount = 6;
+
     enum class RenderToneMappingMode : uint32_t {
         None = 0,
         ACES = 1
@@ -41,7 +44,8 @@ namespace NexAur {
         ShadowCascades = 6,
         SceneDepth = 7,
         AoRaw = 8,
-        AoBlurred = 9
+        AoBlurred = 9,
+        PointShadowMap = 10
     };
 
     enum class RenderLightingPreset : uint32_t {
@@ -104,6 +108,7 @@ namespace NexAur {
         RenderEffectDebugView view = RenderEffectDebugView::FinalLit;
         uint32_t bloom_mip = 0;
         uint32_t shadow_cascade = 0;
+        uint32_t point_shadow_layer = 0;
     };
 
     struct RenderShadowSettings {
@@ -127,6 +132,23 @@ namespace NexAur {
         bool cascade_debug_overlay = false;
     };
 
+    struct RenderPointShadowSettings {
+        bool enabled = true;
+        uint32_t max_shadowed_lights = 1;
+        uint32_t map_resolution = 512;
+        float strength = 0.85f;
+        float constant_bias = 0.015f;
+        float normal_bias = 0.02f;
+        float filter_radius = 1.0f;
+    };
+
+    struct RenderContactShadowSettings {
+        bool enabled = false;
+        float intensity = 0.35f;
+        float max_distance = 0.45f;
+        float thickness = 0.08f;
+    };
+
     struct RenderSettings {
         RenderLightingCalibrationSettings lighting;
         RenderPostProcessSettings post_process;
@@ -134,6 +156,8 @@ namespace NexAur {
         RenderIblDebugSettings ibl_debug;
         RenderEffectDebugSettings effects_debug;
         RenderShadowSettings shadow;
+        RenderPointShadowSettings point_shadow;
+        RenderContactShadowSettings contact_shadow;
     };
 
     inline void applyRenderLightingPreset(RenderSettings& settings, RenderLightingPreset preset) {

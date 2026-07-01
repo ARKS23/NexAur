@@ -24,6 +24,12 @@ Texture2D<float> g_ao_blurred_debug;
 [[vk::binding(7, 0)]]
 SamplerState g_ao_debug_sampler;
 
+[[vk::binding(8, 0)]]
+Texture2DArray<float> g_point_shadow_debug_map;
+
+[[vk::binding(9, 0)]]
+SamplerState g_point_shadow_debug_sampler;
+
 static const uint TONE_MAPPING_NONE = 0u;
 static const uint TONE_MAPPING_ACES = 1u;
 static const uint POST_PROCESS_FLAG_MANUAL_GAMMA = 1u << 0u;
@@ -37,6 +43,7 @@ static const uint EFFECT_DEBUG_SHADOW_CASCADES = 6u;
 static const uint EFFECT_DEBUG_SCENE_DEPTH = 7u;
 static const uint EFFECT_DEBUG_AO_RAW = 8u;
 static const uint EFFECT_DEBUG_AO_BLURRED = 9u;
+static const uint EFFECT_DEBUG_POINT_SHADOW_MAP = 10u;
 
 struct PostProcessPushConstants {
     float exposure;
@@ -97,6 +104,17 @@ float4 sampleShadowMapDebug(FullscreenVSOutput input) {
     return float4(encodeOutputColor(float3(visual_depth, visual_depth, visual_depth)), 1.0f);
 }
 
+float4 samplePointShadowMapDebug(FullscreenVSOutput input) {
+    const uint layer_count = max(g_post_process.shadow_layer_count, 1u);
+    const uint layer = min(g_post_process.effect_debug_index, layer_count - 1u);
+    const float depth = g_point_shadow_debug_map.SampleLevel(
+        g_point_shadow_debug_sampler,
+        float3(input.uv, (float)layer),
+        0.0f);
+    const float visual_depth = saturate(depth);
+    return float4(encodeOutputColor(float3(visual_depth, visual_depth, visual_depth)), 1.0f);
+}
+
 float4 sampleSceneDepthDebug(FullscreenVSOutput input) {
     const float depth = g_scene_depth_debug.SampleLevel(g_ao_debug_sampler, input.uv, 0.0f);
     const float visual_depth = saturate(depth);
@@ -131,6 +149,9 @@ float applyScreenSpaceAo(float2 uv) {
 float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     if (g_post_process.effect_debug_view == EFFECT_DEBUG_SHADOW_MAP) {
         return sampleShadowMapDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_POINT_SHADOW_MAP) {
+        return samplePointShadowMapDebug(input);
     }
     if (g_post_process.effect_debug_view == EFFECT_DEBUG_SCENE_DEPTH) {
         return sampleSceneDepthDebug(input);

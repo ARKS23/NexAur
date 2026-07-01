@@ -229,6 +229,9 @@ namespace NexAur {
         EditorPropertyDrawer::drawFloatProperty("Constant", light.constant, 0.01f, 0.0f, 10.0f, "%.3f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("Linear", light.linear, 0.001f, 0.0f, 10.0f, "%.4f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("Quadratic", light.quadratic, 0.001f, 0.0f, 10.0f, "%.4f", kFlags);
+        EditorPropertyDrawer::drawBoolProperty("Cast Shadow", light.cast_shadow);
+        EditorPropertyDrawer::drawFloatProperty("Shadow Range", light.shadow_range, 0.1f, 0.1f, 100.0f, "%.2f", kFlags);
+        EditorPropertyDrawer::drawFloatProperty("Shadow Strength", light.shadow_strength, 0.01f, 0.0f, 1.0f, "%.2f", kFlags);
     }
 
     void PropertiesPanel::drawEnvironmentComponent(Entity entity) {

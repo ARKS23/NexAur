@@ -32,9 +32,12 @@ namespace NexAur {
         bool update(
             const VulkanDrawList& draw_list,
             const RenderShadowCascadeFrame& shadow_frame,
+            const RenderPointShadowFrame& point_shadow_frame,
             float shadow_map_size,
+            float point_shadow_map_size,
             const RenderSettings& render_settings);
         bool updateShadowMap(VkImageView shadow_map_view, VkSampler shadow_sampler);
+        bool updatePointShadowMap(VkImageView shadow_map_view, VkSampler shadow_sampler);
 
         bool isReady() const { return m_ready; }
         VkDescriptorSet getDescriptorSet() const { return m_descriptor_set; }

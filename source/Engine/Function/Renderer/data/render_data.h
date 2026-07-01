@@ -36,6 +36,9 @@ namespace NexAur {
         float constant = 1.0f;
         float linear = 0.09f;
         float quadratic = 0.032f;
+        bool cast_shadow = false;
+        float shadow_range = 8.0f;
+        float shadow_strength = 0.85f;
     };
 
     struct RendererEnvironmentData {

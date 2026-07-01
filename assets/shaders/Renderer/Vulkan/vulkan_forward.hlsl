@@ -39,12 +39,17 @@ struct FrameGlobals {
     float4 shadow_cascade_colors[4];
     float4 ibl_debug_params; // x: debug mode, y: debug prefilter mip, z: prefilter max lod, w: reserved
     float4x4 view_matrix;
+    float4x4 point_shadow_view_projection[24];
+    float4 point_shadow_params; // x: enabled, y: map size, z: constant bias, w: normal bias
+    float4 point_shadow_quality_params; // x: filter radius, y: shadowed light count, zw: reserved
+    float4 contact_shadow_params; // x: enabled, y: intensity, z: max distance, w: thickness
 };
 
 struct PointLightData {
     float4 position_intensity;
     float4 color;
     float4 attenuation;
+    float4 shadow; // x: slot, y: range, z: strength, w: enabled
 };
 
 [[vk::binding(0, 0)]]
@@ -58,6 +63,12 @@ Texture2DArray<float> g_shadow_map;
 
 [[vk::binding(3, 0)]]
 SamplerState g_shadow_sampler;
+
+[[vk::binding(4, 0)]]
+Texture2DArray<float> g_point_shadow_map;
+
+[[vk::binding(5, 0)]]
+SamplerState g_point_shadow_sampler;
 
 struct MaterialConstants {
     float4 base_color_factor;
@@ -227,8 +238,13 @@ float4 PSMain(VSOutput input) : SV_Target0 {
             light.attenuation.z * distance_to_light * distance_to_light,
             0.0001f);
         float3 radiance = light.color.rgb * light.position_intensity.w * attenuation;
+        const float point_shadow = NxEvaluatePointShadowVisibility(
+            input.world_position,
+            material.normal,
+            light.position_intensity.xyz,
+            light.shadow);
 
-        lit_color += NxEvaluateDirectLight(
+        lit_color += point_shadow * NxEvaluateDirectLight(
             material.base_color.rgb,
             material.metallic,
             material.roughness,

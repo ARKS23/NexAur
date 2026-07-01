@@ -43,12 +43,17 @@ namespace NexAur {
             };
             glm::vec4 ibl_debug_params{ 0.0f, 0.0f, 0.0f, 0.0f };
             glm::mat4 view_matrix{ 1.0f };
+            std::array<glm::mat4, kMaxRenderPointShadowFaceCount> point_shadow_view_projections{};
+            glm::vec4 point_shadow_params{ 0.0f, 512.0f, 0.015f, 0.02f };
+            glm::vec4 point_shadow_quality_params{ 1.0f, 0.0f, 0.0f, 0.0f };
+            glm::vec4 contact_shadow_params{ 0.0f, 0.35f, 0.45f, 0.08f };
         };
 
         struct VulkanGpuPointLight {
             glm::vec4 position_intensity{ 0.0f };
             glm::vec4 color{ 1.0f };
             glm::vec4 attenuation{ 1.0f, 0.09f, 0.032f, 0.0f };
+            glm::vec4 shadow{ -1.0f, 8.0f, 0.85f, 0.0f };
         };
 
         static_assert(sizeof(VulkanGpuFrameGlobals) % 16 == 0, "Frame globals must stay 16-byte aligned.");
@@ -143,7 +148,9 @@ namespace NexAur {
     bool VulkanFrameLightingResource::update(
         const VulkanDrawList& draw_list,
         const RenderShadowCascadeFrame& shadow_frame,
+        const RenderPointShadowFrame& point_shadow_frame,
         float shadow_map_size,
+        float point_shadow_map_size,
         const RenderSettings& render_settings) {
         if (!m_ready) {
             return false;
@@ -158,6 +165,9 @@ namespace NexAur {
             frame_globals.shadow_light_view_projections[index] = shadow_frame.light_view_projections[index];
             frame_globals.shadow_cascade_splits[index] = shadow_frame.split_depths[index];
             frame_globals.shadow_cascade_colors[index] = shadow_frame.debug_colors[index];
+        }
+        for (uint32_t index = 0; index < kMaxRenderPointShadowFaceCount; ++index) {
+            frame_globals.point_shadow_view_projections[index] = point_shadow_frame.light_view_projections[index];
         }
         frame_globals.camera_position_environment_intensity = glm::vec4(
             draw_list.view.camera_position,
@@ -210,6 +220,27 @@ namespace NexAur {
             std::max(0.0f, render_settings.ibl_debug.prefilter_mip),
             static_cast<float>(prefilter_mip_count > 0u ? prefilter_mip_count - 1u : 0u),
             0.0f);
+        const RenderPointShadowSettings& point_shadow_settings = render_settings.point_shadow;
+        const bool point_shadow_enabled =
+            point_shadow_settings.enabled &&
+            point_shadow_frame.enabled &&
+            point_shadow_frame.shadowed_light_count > 0;
+        frame_globals.point_shadow_params = glm::vec4(
+            point_shadow_enabled ? 1.0f : 0.0f,
+            std::max(1.0f, point_shadow_map_size),
+            sanitizeMin(point_shadow_settings.constant_bias, 0.015f, 0.0f),
+            sanitizeMin(point_shadow_settings.normal_bias, 0.02f, 0.0f));
+        frame_globals.point_shadow_quality_params = glm::vec4(
+            sanitizeMin(point_shadow_settings.filter_radius, 1.0f, 0.0f),
+            static_cast<float>(std::min(point_shadow_frame.shadowed_light_count, kMaxRenderPointShadowLights)),
+            0.0f,
+            0.0f);
+        const RenderContactShadowSettings& contact_shadow_settings = render_settings.contact_shadow;
+        frame_globals.contact_shadow_params = glm::vec4(
+            contact_shadow_settings.enabled ? 1.0f : 0.0f,
+            sanitizeUnit(contact_shadow_settings.intensity, 0.35f),
+            sanitizeMin(contact_shadow_settings.max_distance, 0.45f, 0.0f),
+            sanitizeMin(contact_shadow_settings.thickness, 0.08f, 0.0f));
 
         std::array<VulkanGpuPointLight, kMaxPointLights> point_lights{};
         for (uint32_t index = 0; index < point_light_count; ++index) {
@@ -218,6 +249,12 @@ namespace NexAur {
             target.position_intensity = glm::vec4(source.position, source.intensity);
             target.color = glm::vec4(source.color, 1.0f);
             target.attenuation = glm::vec4(source.constant, source.linear, source.quadratic, 0.0f);
+            target.shadow = glm::vec4(
+                static_cast<float>(source.shadow_slot),
+                std::max(0.1f, source.shadow_range),
+                sanitizeUnit(source.shadow_strength, 0.85f) *
+                    sanitizeUnit(point_shadow_settings.strength, 0.85f),
+                source.cast_shadow ? 1.0f : 0.0f);
         }
 
         return writeBuffer(m_frame_buffer, &frame_globals, sizeof(frame_globals)) &&
@@ -239,6 +276,25 @@ namespace NexAur {
         VulkanDescriptorWriter()
             .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shadow_map_info)
             .writeImage(3, VK_DESCRIPTOR_TYPE_SAMPLER, shadow_sampler_info)
+            .update(m_device, m_descriptor_set);
+        return true;
+    }
+
+    bool VulkanFrameLightingResource::updatePointShadowMap(VkImageView shadow_map_view, VkSampler shadow_sampler) {
+        if (!m_ready || shadow_map_view == VK_NULL_HANDLE || shadow_sampler == VK_NULL_HANDLE) {
+            return false;
+        }
+
+        VkDescriptorImageInfo shadow_map_info{};
+        shadow_map_info.imageView = shadow_map_view;
+        shadow_map_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkDescriptorImageInfo shadow_sampler_info{};
+        shadow_sampler_info.sampler = shadow_sampler;
+
+        VulkanDescriptorWriter()
+            .writeImage(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shadow_map_info)
+            .writeImage(5, VK_DESCRIPTOR_TYPE_SAMPLER, shadow_sampler_info)
             .update(m_device, m_descriptor_set);
         return true;
     }

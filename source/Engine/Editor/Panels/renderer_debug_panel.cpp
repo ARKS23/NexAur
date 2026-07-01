@@ -113,6 +113,8 @@ namespace NexAur {
         drawKeyValue("Opaque Draw Items", snapshot.frame.opaque_draw_item_count);
         drawKeyValue("Transparent Draw Items", snapshot.frame.transparent_draw_item_count);
         drawKeyValue("Point Lights", snapshot.frame.point_light_count);
+        drawKeyValue("Point Shadow Requests", snapshot.frame.point_shadow_request_count);
+        drawKeyValue("Shadowed Point Lights", snapshot.frame.shadowed_point_light_count);
         drawKeyValue("Debug Lines", snapshot.frame.debug_line_count);
     }
 
@@ -176,6 +178,13 @@ namespace NexAur {
         drawKeyValue("  Depth Format", snapshot.shadow_target.depth_format.c_str());
 
         ImGui::Spacing();
+        ImGui::TextUnformatted("Point Shadow Target");
+        drawKeyValue("  Ready", boolToText(snapshot.point_shadow_target.ready));
+        drawExtent("  Size", snapshot.point_shadow_target.width, snapshot.point_shadow_target.height);
+        drawKeyValue("  Layers", snapshot.point_shadow_target.layer_count);
+        drawKeyValue("  Depth Format", snapshot.point_shadow_target.depth_format.c_str());
+
+        ImGui::Spacing();
         ImGui::TextUnformatted("Bloom Target");
         drawKeyValue("  Ready", boolToText(snapshot.bloom.ready));
         drawExtent("  Size", snapshot.bloom.width, snapshot.bloom.height);
@@ -199,9 +208,11 @@ namespace NexAur {
         drawKeyValue("Debug View", snapshot.effects.debug_view.c_str());
         drawKeyValue("Bloom Mip", snapshot.effects.bloom_mip);
         drawKeyValue("Shadow Cascade", snapshot.effects.shadow_cascade);
+        drawKeyValue("Point Shadow Layer", snapshot.effects.point_shadow_layer);
         drawKeyValue("Bloom Debug Ready", boolToText(snapshot.effects.bloom_debug_available));
         drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
+        drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));
     }
 
     void RendererDebugPanel::drawResourcesSection(const RendererDebugSnapshot& snapshot) {

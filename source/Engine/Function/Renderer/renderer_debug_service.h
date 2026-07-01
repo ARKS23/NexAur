@@ -30,6 +30,8 @@ namespace NexAur {
         size_t opaque_draw_item_count = 0;
         size_t transparent_draw_item_count = 0;
         size_t point_light_count = 0;
+        size_t point_shadow_request_count = 0;
+        size_t shadowed_point_light_count = 0;
         size_t debug_line_count = 0;
     };
 
@@ -93,9 +95,11 @@ namespace NexAur {
         std::string debug_view = "Final Lit";
         uint32_t bloom_mip = 0;
         uint32_t shadow_cascade = 0;
+        uint32_t point_shadow_layer = 0;
         bool bloom_debug_available = false;
         bool ao_debug_available = false;
         bool shadow_debug_available = false;
+        bool point_shadow_debug_available = false;
     };
 
     struct RendererDebugResourceStats {
@@ -126,6 +130,7 @@ namespace NexAur {
         RendererDebugRenderTargetStats hdr_scene_target;
         RendererDebugPickingTargetStats picking_target;
         RendererDebugShadowTargetStats shadow_target;
+        RendererDebugShadowTargetStats point_shadow_target;
         RendererDebugPostProcessStats post_process;
         RendererDebugBloomStats bloom;
         RendererDebugAoStats ao;
