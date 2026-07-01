@@ -891,6 +891,9 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_radius = 1.25f;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::BloomDownsampleMip;
+    settings.effects_debug.bloom_mip = 3u;
+    settings.effects_debug.shadow_cascade = 2u;
     settings.shadow.enabled = false;
     settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCSS;
     settings.shadow.strength = 0.45f;
@@ -917,6 +920,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.post_process;
     const NexAur::RenderIblDebugSettings& first_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
+    const NexAur::RenderEffectDebugSettings& first_effects_debug =
+        render_context.getReadData().render_settings.effects_debug;
     const NexAur::RenderShadowSettings& first_shadow =
         render_context.getReadData().render_settings.shadow;
     expect(
@@ -935,6 +940,11 @@ int runRenderSettingsSmoke() {
         first_ibl_debug.mode == NexAur::RenderIblDebugMode::SpecularIbl &&
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
+    expect(
+        first_effects_debug.view == NexAur::RenderEffectDebugView::BloomDownsampleMip &&
+        first_effects_debug.bloom_mip == 3u &&
+        first_effects_debug.shadow_cascade == 2u,
+        "RenderSettings smoke failed: effects debug settings did not reach the read packet.");
     expect(
         !first_shadow.enabled &&
         first_shadow.filter_mode == NexAur::RenderShadowFilterMode::PCSS &&
@@ -964,6 +974,9 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_radius = 1.0f;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
     settings.ibl_debug.prefilter_mip = 0.0f;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::ShadowMap;
+    settings.effects_debug.bloom_mip = 0u;
+    settings.effects_debug.shadow_cascade = 1u;
     settings.shadow.enabled = true;
     settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PoissonPCF;
     settings.shadow.strength = 0.7f;
@@ -990,6 +1003,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.post_process;
     const NexAur::RenderIblDebugSettings& second_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
+    const NexAur::RenderEffectDebugSettings& second_effects_debug =
+        render_context.getReadData().render_settings.effects_debug;
     const NexAur::RenderShadowSettings& second_shadow =
         render_context.getReadData().render_settings.shadow;
     expect(
@@ -1008,6 +1023,11 @@ int runRenderSettingsSmoke() {
         second_ibl_debug.mode == NexAur::RenderIblDebugMode::FinalLit &&
         nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),
         "RenderSettings smoke failed: updated IBL debug settings did not reach the read packet.");
+    expect(
+        second_effects_debug.view == NexAur::RenderEffectDebugView::ShadowMap &&
+        second_effects_debug.bloom_mip == 0u &&
+        second_effects_debug.shadow_cascade == 1u,
+        "RenderSettings smoke failed: updated effects debug settings did not reach the read packet.");
     expect(
         second_shadow.enabled &&
         second_shadow.filter_mode == NexAur::RenderShadowFilterMode::PoissonPCF &&

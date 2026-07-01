@@ -16,6 +16,10 @@ namespace NexAur {
             float output_gamma = 2.2f;
             uint32_t tone_mapping_mode = static_cast<uint32_t>(RenderToneMappingMode::ACES);
             uint32_t flags = 0;
+            uint32_t effect_debug_view = static_cast<uint32_t>(RenderEffectDebugView::FinalLit);
+            uint32_t effect_debug_index = 0;
+            uint32_t shadow_layer_count = 1;
+            uint32_t _padding0 = 0;
         };
 
         static_assert(
@@ -39,12 +43,17 @@ namespace NexAur {
 
         VulkanPostProcessPushConstants makePushConstants(
             const VulkanPostProcessRenderTarget& target,
-            const RenderPostProcessSettings& settings) {
+            const RenderPostProcessSettings& post_process_settings,
+            const RenderEffectDebugSettings& debug_settings,
+            uint32_t shadow_layer_count) {
             VulkanPostProcessPushConstants constants;
-            constants.exposure = std::max(0.0f, settings.exposure);
-            constants.tone_mapping_mode = static_cast<uint32_t>(settings.tone_mapping_mode);
+            constants.exposure = std::max(0.0f, post_process_settings.exposure);
+            constants.tone_mapping_mode = static_cast<uint32_t>(post_process_settings.tone_mapping_mode);
             constants.output_gamma = 2.2f;
             constants.flags = isSrgbColorFormat(target.color_format) ? 0u : kPostProcessFlagManualGamma;
+            constants.effect_debug_view = static_cast<uint32_t>(debug_settings.view);
+            constants.effect_debug_index = debug_settings.shadow_cascade;
+            constants.shadow_layer_count = std::max(1u, shadow_layer_count);
             return constants;
         }
     } // namespace
@@ -82,6 +91,7 @@ namespace NexAur {
         m_input_descriptor_set_layout = VK_NULL_HANDLE;
         m_descriptor_allocator = nullptr;
         m_pipeline_cache = nullptr;
+        m_current_input = {};
     }
 
     void VulkanPostProcessPass::shutdown() {
@@ -101,18 +111,29 @@ namespace NexAur {
         VkDescriptorImageInfo sampler_info{};
         sampler_info.sampler = input.sampler;
 
+        VkDescriptorImageInfo shadow_info{};
+        shadow_info.imageView = input.shadow_view;
+        shadow_info.imageLayout = input.shadow_layout;
+
+        VkDescriptorImageInfo shadow_sampler_info{};
+        shadow_sampler_info.sampler = input.shadow_sampler;
+
         VulkanDescriptorWriter writer;
         writer
             .writeImage(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, color_info)
             .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info)
+            .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shadow_info)
+            .writeImage(3, VK_DESCRIPTOR_TYPE_SAMPLER, shadow_sampler_info)
             .update(m_device, m_input_descriptor_set);
+        m_current_input = input;
         return true;
     }
 
     bool VulkanPostProcessPass::record(
         VkCommandBuffer command_buffer,
         const VulkanPostProcessRenderTarget& target,
-        const RenderPostProcessSettings& settings) {
+        const RenderPostProcessSettings& post_process_settings,
+        const RenderEffectDebugSettings& debug_settings) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
         }
@@ -168,7 +189,11 @@ namespace NexAur {
             &m_input_descriptor_set,
             0,
             nullptr);
-        const VulkanPostProcessPushConstants push_constants = makePushConstants(target, settings);
+        const VulkanPostProcessPushConstants push_constants = makePushConstants(
+            target,
+            post_process_settings,
+            debug_settings,
+            m_current_input.shadow_layer_count);
         vkCmdPushConstants(
             command_buffer,
             m_pipeline_layout,

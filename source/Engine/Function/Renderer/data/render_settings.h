@@ -31,6 +31,16 @@ namespace NexAur {
         PCSS = 4
     };
 
+    enum class RenderEffectDebugView : uint32_t {
+        FinalLit = 0,
+        HdrSceneColor = 1,
+        BloomComposite = 2,
+        BloomDownsampleMip = 3,
+        BloomUpsampleMip = 4,
+        ShadowMap = 5,
+        ShadowCascades = 6
+    };
+
     struct RenderPostProcessSettings {
         RenderToneMappingMode tone_mapping_mode = RenderToneMappingMode::ACES;
         float exposure = 0.85f;
@@ -43,6 +53,12 @@ namespace NexAur {
     struct RenderIblDebugSettings {
         RenderIblDebugMode mode = RenderIblDebugMode::FinalLit;
         float prefilter_mip = 0.0f;
+    };
+
+    struct RenderEffectDebugSettings {
+        RenderEffectDebugView view = RenderEffectDebugView::FinalLit;
+        uint32_t bloom_mip = 0;
+        uint32_t shadow_cascade = 0;
     };
 
     struct RenderShadowSettings {
@@ -69,6 +85,7 @@ namespace NexAur {
     struct RenderSettings {
         RenderPostProcessSettings post_process;
         RenderIblDebugSettings ibl_debug;
+        RenderEffectDebugSettings effects_debug;
         RenderShadowSettings shadow;
     };
 } // namespace NexAur

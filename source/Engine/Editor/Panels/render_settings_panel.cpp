@@ -115,6 +115,30 @@ namespace NexAur {
                 return 1024u;
             }
         }
+
+        int effectDebugViewToIndex(RenderEffectDebugView view) {
+            return static_cast<int>(view);
+        }
+
+        RenderEffectDebugView effectDebugViewFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return RenderEffectDebugView::HdrSceneColor;
+            case 2:
+                return RenderEffectDebugView::BloomComposite;
+            case 3:
+                return RenderEffectDebugView::BloomDownsampleMip;
+            case 4:
+                return RenderEffectDebugView::BloomUpsampleMip;
+            case 5:
+                return RenderEffectDebugView::ShadowMap;
+            case 6:
+                return RenderEffectDebugView::ShadowCascades;
+            case 0:
+            default:
+                return RenderEffectDebugView::FinalLit;
+            }
+        }
     } // namespace
 
     void RenderSettingsPanel::onUIRender() {
@@ -143,6 +167,7 @@ namespace NexAur {
         RenderSettings settings = m_context->render_context->getRenderSettings();
         bool changed = false;
 
+        drawEffectsDebugSection(settings, changed);
         drawPostProcessSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
@@ -152,6 +177,74 @@ namespace NexAur {
         }
 
         ImGui::End();
+    }
+
+    void RenderSettingsPanel::drawEffectsDebugSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Effects Debug")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("View", [&]() {
+            const char* items[] = {
+                "Final Lit",
+                "HDR Scene Color",
+                "Bloom Composite",
+                "Bloom Downsample Mip",
+                "Bloom Upsample Mip",
+                "Shadow Map",
+                "Shadow Cascades"
+            };
+
+            int index = effectDebugViewToIndex(settings.effects_debug.view);
+            setControlWidth();
+            if (ImGui::Combo("##EffectDebugView", &index, items, IM_ARRAYSIZE(items))) {
+                settings.effects_debug.view = effectDebugViewFromIndex(index);
+                changed = true;
+            }
+        });
+
+        const bool mip_debug =
+            settings.effects_debug.view == RenderEffectDebugView::BloomDownsampleMip ||
+            settings.effects_debug.view == RenderEffectDebugView::BloomUpsampleMip;
+        const bool shadow_debug =
+            settings.effects_debug.view == RenderEffectDebugView::ShadowMap ||
+            settings.effects_debug.view == RenderEffectDebugView::ShadowCascades;
+
+        if (!mip_debug) {
+            ImGui::BeginDisabled();
+        }
+        EditorWidgets::propertyRow("Bloom Mip", [&]() {
+            int mip = static_cast<int>(settings.effects_debug.bloom_mip);
+            setControlWidth();
+            if (ImGui::SliderInt("##EffectDebugBloomMip", &mip, 0, 5)) {
+                settings.effects_debug.bloom_mip = static_cast<uint32_t>(std::max(0, mip));
+                changed = true;
+            }
+        });
+        if (!mip_debug) {
+            ImGui::EndDisabled();
+        }
+
+        if (!shadow_debug) {
+            ImGui::BeginDisabled();
+        }
+        EditorWidgets::propertyRow("Shadow Cascade", [&]() {
+            int cascade = static_cast<int>(settings.effects_debug.shadow_cascade);
+            setControlWidth();
+            if (ImGui::SliderInt("##EffectDebugShadowCascade", &cascade, 0, 3)) {
+                settings.effects_debug.shadow_cascade = static_cast<uint32_t>(std::max(0, cascade));
+                changed = true;
+            }
+        });
+        if (!shadow_debug) {
+            ImGui::EndDisabled();
+        }
+
+        if (settings.effects_debug.view == RenderEffectDebugView::BloomComposite ||
+            settings.effects_debug.view == RenderEffectDebugView::BloomDownsampleMip ||
+            settings.effects_debug.view == RenderEffectDebugView::BloomUpsampleMip) {
+            ImGui::TextDisabled("Bloom debug can run the bloom graph without changing the Bloom toggle.");
+        }
     }
 
     void RenderSettingsPanel::drawDebugVisualizationSection() {

@@ -29,11 +29,18 @@ namespace NexAur {
         VkImageView color_view = VK_NULL_HANDLE;
         VkSampler sampler = VK_NULL_HANDLE;
         VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkImageView shadow_view = VK_NULL_HANDLE;
+        VkSampler shadow_sampler = VK_NULL_HANDLE;
+        VkImageLayout shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        uint32_t shadow_layer_count = 1;
 
         bool valid() const {
             return color_view != VK_NULL_HANDLE &&
                    sampler != VK_NULL_HANDLE &&
-                   layout != VK_IMAGE_LAYOUT_UNDEFINED;
+                   layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+                   shadow_view != VK_NULL_HANDLE &&
+                   shadow_sampler != VK_NULL_HANDLE &&
+                   shadow_layout != VK_IMAGE_LAYOUT_UNDEFINED;
         }
     };
 
@@ -66,7 +73,8 @@ namespace NexAur {
         bool record(
             VkCommandBuffer command_buffer,
             const VulkanPostProcessRenderTarget& target,
-            const RenderPostProcessSettings& settings);
+            const RenderPostProcessSettings& post_process_settings,
+            const RenderEffectDebugSettings& debug_settings);
 
         bool isReady() const {
             return m_pipeline != VK_NULL_HANDLE &&
@@ -91,5 +99,6 @@ namespace NexAur {
         VkDescriptorSet m_input_descriptor_set = VK_NULL_HANDLE;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;
+        VulkanPostProcessInput m_current_input;
     };
 } // namespace NexAur

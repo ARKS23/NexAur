@@ -21,6 +21,7 @@ namespace NexAur {
         void drawFrameSection(const RendererDebugSnapshot& snapshot);
         void drawViewSection(const RendererDebugSnapshot& snapshot);
         void drawTargetsSection(const RendererDebugSnapshot& snapshot);
+        void drawEffectsSection(const RendererDebugSnapshot& snapshot);
         void drawResourcesSection(const RendererDebugSnapshot& snapshot);
     };
 } // namespace NexAur

@@ -1507,7 +1507,7 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 
 ## 13. PR-R34：Renderer Effects Debug Views
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -1531,11 +1531,46 @@ bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
 - 不暴露 Vulkan handle。
 - Debug view 数据通过后端无关 snapshot 或 renderer debug service 暴露。
 
+实现记录：
+
+- 新增 backend-neutral `RenderEffectDebugView` / `RenderEffectDebugSettings`，随 `RenderSettings` 通过既有双缓冲 render data 链路传递。
+- `Render Settings` 面板增加 `Effects Debug` 分组：
+  - `Final Lit`。
+  - `HDR Scene Color`。
+  - `Bloom Composite`。
+  - `Bloom Downsample Mip`。
+  - `Bloom Upsample Mip`。
+  - `Shadow Map`。
+  - `Shadow Cascades`。
+  - Bloom mip index / shadow cascade index。
+- `VulkanPostProcessPass` 扩展为统一 debug view 输出入口：
+  - 常规 `Final Lit` 保持原 ACES / exposure / bloom 输出。
+  - HDR / Bloom 中间结果使用轻量 Reinhard preview 映射，便于查看 HDR 能量和 mip 内容。
+  - Shadow map viewer 采样 directional shadow depth array，并按 cascade index 选择 layer。
+- Bloom debug view 会在不改写用户 Bloom 开关的情况下强制执行 bloom graph，保证 downsample / upsample mip 来自当前帧。
+- `Shadow Cascades` debug view 通过 render settings 临时启用 cascade tint overlay，不修改 `shadow.cascade_debug_overlay` 原始配置。
+- `RendererDebugSnapshot` / `Renderer Debug` 面板增加当前 effects debug view、bloom mip、shadow cascade 和 debug resource ready 状态。
+- PostProcess descriptor layout 增加 shadow depth array / shadow sampler 绑定，仍封装在 Vulkan backend 内部，Editor 不 include `Renderer/Vulkan/*`。
+
 验收：
 
 - Debug view 不影响正常 render path。
 - Editor 不 include `Renderer/Vulkan/*`。
 - 构建和 smoke / CTest 通过。
+
+验证：
+
+```powershell
+cmake --build build\msvc-vcpkg --config Debug
+ctest --test-dir build\msvc-vcpkg -C Debug -R RenderSettingsSmoke --output-on-failure
+bin\msvc-vcpkg\Debug\Sandbox.exe  # hidden 3 秒启动 smoke
+```
+
+结果：
+
+- Debug 构建通过，Vulkan renderer HLSL 编译通过。
+- `NexAur.RenderSettingsSmoke` 通过，覆盖 Effects Debug settings 的双缓冲传递。
+- Sandbox 隐藏启动 3 秒 smoke 通过，未提前退出。
 
 ## 14. PR-R35：Color Grading / FXAA / Polish Pass
 

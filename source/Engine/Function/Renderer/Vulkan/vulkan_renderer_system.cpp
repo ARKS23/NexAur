@@ -128,6 +128,36 @@ namespace NexAur {
             return std::clamp(settings.cascade_count, 1u, kMaxRenderShadowCascadeCount);
         }
 
+        bool isBloomDebugView(RenderEffectDebugView view) {
+            return view == RenderEffectDebugView::BloomComposite ||
+                   view == RenderEffectDebugView::BloomDownsampleMip ||
+                   view == RenderEffectDebugView::BloomUpsampleMip;
+        }
+
+        bool isShadowCascadeDebugView(RenderEffectDebugView view) {
+            return view == RenderEffectDebugView::ShadowCascades;
+        }
+
+        const char* effectDebugViewToText(RenderEffectDebugView view) {
+            switch (view) {
+            case RenderEffectDebugView::HdrSceneColor:
+                return "HDR Scene Color";
+            case RenderEffectDebugView::BloomComposite:
+                return "Bloom Composite";
+            case RenderEffectDebugView::BloomDownsampleMip:
+                return "Bloom Downsample Mip";
+            case RenderEffectDebugView::BloomUpsampleMip:
+                return "Bloom Upsample Mip";
+            case RenderEffectDebugView::ShadowMap:
+                return "Shadow Map";
+            case RenderEffectDebugView::ShadowCascades:
+                return "Shadow Cascades";
+            case RenderEffectDebugView::FinalLit:
+            default:
+                return "Final Lit";
+            }
+        }
+
         float sanitizeUnit(float value, float fallback) {
             if (!std::isfinite(value)) {
                 return fallback;
@@ -449,8 +479,7 @@ namespace NexAur {
 
             if (!scene_color_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
                 !bloom_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
-                !recreateBloomPassResourcesIfReady() ||
-                !updatePostProcessInput()) {
+                !recreateBloomPassResourcesIfReady()) {
                 shutdown();
                 return false;
             }
@@ -461,7 +490,8 @@ namespace NexAur {
             }
 
             if (!shadow_target.init(createResourceContext(), kDefaultShadowMapResolution) ||
-                !frame_lighting_resource.updateShadowMap(shadow_target.getDepthImageView(), shadow_target.getSampler())) {
+                !frame_lighting_resource.updateShadowMap(shadow_target.getDepthImageView(), shadow_target.getSampler()) ||
+                !updatePostProcessInput()) {
                 shutdown();
                 return false;
             }
@@ -737,6 +767,7 @@ namespace NexAur {
             snapshot.shadow_target = buildShadowTargetDebugStats();
             snapshot.post_process = buildPostProcessDebugStats();
             snapshot.bloom = buildBloomDebugStats();
+            snapshot.effects = buildEffectsDebugStats(render_data.render_settings);
             snapshot.resources = buildResourceDebugStats(draw_list);
 
             debug_snapshot = std::move(snapshot);
@@ -885,6 +916,16 @@ namespace NexAur {
             return stats;
         }
 
+        RendererDebugEffectsStats buildEffectsDebugStats(const RenderSettings& render_settings) const {
+            RendererDebugEffectsStats stats;
+            stats.debug_view = effectDebugViewToText(render_settings.effects_debug.view);
+            stats.bloom_mip = render_settings.effects_debug.bloom_mip;
+            stats.shadow_cascade = render_settings.effects_debug.shadow_cascade;
+            stats.bloom_debug_available = bloom_target.isReady() && bloom_pass.isReady();
+            stats.shadow_debug_available = shadow_target.isReady();
+            return stats;
+        }
+
         RendererDebugResourceStats buildResourceDebugStats(const VulkanDrawList* draw_list) const {
             RendererDebugResourceStats stats;
             if (!resource_cache.isInitialized()) {
@@ -955,8 +996,9 @@ namespace NexAur {
             }
 
             return frame_lighting_resource.updateShadowMap(
-                shadow_target.getDepthImageView(),
-                shadow_target.getSampler());
+                       shadow_target.getDepthImageView(),
+                       shadow_target.getSampler()) &&
+                   updatePostProcessInputIfReady();
         }
 
         RenderShadowCascadeFrame buildDirectionalShadowFrame(
@@ -990,7 +1032,10 @@ namespace NexAur {
             const uint32_t cascade_count = sanitizeShadowCascadeCount(render_settings.shadow);
             frame.cascade_count = cascade_count;
             frame.cascades_enabled = cascade_count > 1;
-            frame.debug_overlay = frame.cascades_enabled && render_settings.shadow.cascade_debug_overlay;
+            frame.debug_overlay =
+                frame.cascades_enabled &&
+                (render_settings.shadow.cascade_debug_overlay ||
+                 isShadowCascadeDebugView(render_settings.effects_debug.view));
 
             if (cascade_count > 1) {
                 const float near_clip = std::max(0.001f, draw_list.view.near_clip);
@@ -1147,6 +1192,7 @@ namespace NexAur {
             input.color_view = scene_color_target.getColorImageView();
             input.sampler = scene_color_target.getSampler();
             input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            fillPostProcessShadowInput(input);
             return input;
         }
 
@@ -1155,12 +1201,49 @@ namespace NexAur {
             input.color_view = bloom_target.getCompositeImage().view;
             input.sampler = bloom_target.getSampler();
             input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            fillPostProcessShadowInput(input);
             return input;
         }
 
-        bool shouldRenderBloom(const RenderPostProcessSettings& settings) const {
-            return settings.bloom_enabled &&
-                   settings.bloom_intensity > 0.0f &&
+        VulkanPostProcessInput makeBloomDownsamplePostProcessInput(uint32_t mip_index) const {
+            const VulkanBloomImageView& image = bloom_target.getDownsampleImage(mip_index);
+            VulkanPostProcessInput input;
+            input.color_view = image.view;
+            input.sampler = bloom_target.getSampler();
+            input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            fillPostProcessShadowInput(input);
+            return input;
+        }
+
+        VulkanPostProcessInput makeBloomUpsamplePostProcessInput(uint32_t mip_index) const {
+            const VulkanBloomImageView& image = bloom_target.getUpsampleImage(mip_index);
+            VulkanPostProcessInput input;
+            input.color_view = image.view;
+            input.sampler = bloom_target.getSampler();
+            input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            fillPostProcessShadowInput(input);
+            return input;
+        }
+
+        void fillPostProcessShadowInput(VulkanPostProcessInput& input) const {
+            input.shadow_view = shadow_target.getDepthImageView();
+            input.shadow_sampler = shadow_target.getSampler();
+            input.shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            input.shadow_layer_count = shadow_target.getLayerCount();
+        }
+
+        bool shouldRenderBloom(
+            const RenderPostProcessSettings& post_process_settings,
+            const RenderEffectDebugSettings& debug_settings) const {
+            const bool final_output =
+                debug_settings.view == RenderEffectDebugView::FinalLit ||
+                debug_settings.view == RenderEffectDebugView::ShadowCascades;
+            const bool bloom_enabled =
+                (final_output &&
+                 post_process_settings.bloom_enabled &&
+                 post_process_settings.bloom_intensity > 0.0f) ||
+                isBloomDebugView(debug_settings.view);
+            return bloom_enabled &&
                    bloom_target.isReady() &&
                    bloom_pass.isReady();
         }
@@ -1676,6 +1759,7 @@ namespace NexAur {
                     graph,
                     scene_color,
                     render_settings.post_process,
+                    render_settings.effects_debug,
                     post_process_input_color,
                     post_process_input)) {
                 return false;
@@ -1687,7 +1771,8 @@ namespace NexAur {
                     viewport_color,
                     makeViewportPostProcessTarget(),
                     post_process_input,
-                    render_settings.post_process)) {
+                    render_settings.post_process,
+                    render_settings.effects_debug)) {
                 return false;
             }
 
@@ -1758,6 +1843,7 @@ namespace NexAur {
                     graph,
                     scene_color,
                     render_settings.post_process,
+                    render_settings.effects_debug,
                     post_process_input_color,
                     post_process_input)) {
                 return false;
@@ -1769,7 +1855,8 @@ namespace NexAur {
                     swapchain_color,
                     makeSwapchainPostProcessTarget(image_index),
                     post_process_input,
-                    render_settings.post_process)) {
+                    render_settings.post_process,
+                    render_settings.effects_debug)) {
                 return false;
             }
 
@@ -1884,7 +1971,8 @@ namespace NexAur {
         bool addBloomPass(
             VulkanPassGraph& graph,
             VulkanGraphImageHandle scene_color,
-            const RenderPostProcessSettings& settings,
+            const RenderPostProcessSettings& post_process_settings,
+            const RenderEffectDebugSettings& debug_settings,
             VulkanGraphImageHandle& composite_color,
             VulkanPostProcessInput& post_process_input) {
             composite_color = scene_color;
@@ -1893,7 +1981,7 @@ namespace NexAur {
                 return false;
             }
 
-            if (!shouldRenderBloom(settings)) {
+            if (!shouldRenderBloom(post_process_settings, debug_settings)) {
                 return true;
             }
 
@@ -1947,9 +2035,30 @@ namespace NexAur {
                     .readImage(high_color, VulkanGraphImageUsage::ShaderRead)
                     .readImage(low_color, VulkanGraphImageUsage::ShaderRead)
                     .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
-                    .execute([this, mip_index, target, settings](VkCommandBuffer target_command_buffer) {
-                        return bloom_pass.recordUpsample(target_command_buffer, mip_index, target, settings);
+                    .execute([this, mip_index, target, post_process_settings](VkCommandBuffer target_command_buffer) {
+                        return bloom_pass.recordUpsample(target_command_buffer, mip_index, target, post_process_settings);
                     });
+            }
+
+            if (debug_settings.view == RenderEffectDebugView::BloomDownsampleMip) {
+                const uint32_t selected_mip = std::min(debug_settings.bloom_mip, mip_count - 1u);
+                composite_color = downsample_images[selected_mip];
+                post_process_input = makeBloomDownsamplePostProcessInput(selected_mip);
+                return true;
+            }
+
+            if (debug_settings.view == RenderEffectDebugView::BloomUpsampleMip) {
+                if (upsample_images.empty()) {
+                    composite_color = downsample_images[0];
+                    post_process_input = makeBloomDownsamplePostProcessInput(0);
+                    return true;
+                }
+
+                const uint32_t selected_mip =
+                    std::min(debug_settings.bloom_mip, static_cast<uint32_t>(upsample_images.size() - 1u));
+                composite_color = upsample_images[selected_mip];
+                post_process_input = makeBloomUpsamplePostProcessInput(selected_mip);
+                return true;
             }
 
             const VulkanGraphImageHandle final_bloom_color =
@@ -1964,8 +2073,8 @@ namespace NexAur {
                 .readImage(scene_color, VulkanGraphImageUsage::ShaderRead)
                 .readImage(final_bloom_color, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(bloom_composite, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, composite_target, settings](VkCommandBuffer target_command_buffer) {
-                    return bloom_pass.recordComposite(target_command_buffer, composite_target, settings);
+                .execute([this, composite_target, post_process_settings](VkCommandBuffer target_command_buffer) {
+                    return bloom_pass.recordComposite(target_command_buffer, composite_target, post_process_settings);
                 });
 
             composite_color = bloom_composite;
@@ -1979,7 +2088,8 @@ namespace NexAur {
             VulkanGraphImageHandle output_color,
             VulkanPostProcessRenderTarget target,
             const VulkanPostProcessInput& input,
-            RenderPostProcessSettings settings) {
+            RenderPostProcessSettings post_process_settings,
+            RenderEffectDebugSettings debug_settings) {
             if (!input_color.valid() || !output_color.valid() || !target.valid() || !input.valid() || !post_process_pass.isReady()) {
                 return false;
             }
@@ -1991,8 +2101,12 @@ namespace NexAur {
             graph.addPass("PostProcess")
                 .readImage(input_color, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, target, settings](VkCommandBuffer target_command_buffer) {
-                    return post_process_pass.record(target_command_buffer, target, settings);
+                .execute([this, target, post_process_settings, debug_settings](VkCommandBuffer target_command_buffer) {
+                    return post_process_pass.record(
+                        target_command_buffer,
+                        target,
+                        post_process_settings,
+                        debug_settings);
                 });
             return true;
         }
