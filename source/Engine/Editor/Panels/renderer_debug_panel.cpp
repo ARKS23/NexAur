@@ -181,6 +181,13 @@ namespace NexAur {
         drawExtent("  Size", snapshot.bloom.width, snapshot.bloom.height);
         drawKeyValue("  Mip Count", snapshot.bloom.mip_count);
         drawKeyValue("  Color Format", snapshot.bloom.color_format.c_str());
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("AO Target");
+        drawKeyValue("  Ready", boolToText(snapshot.ao.ready));
+        drawExtent("  Size", snapshot.ao.width, snapshot.ao.height);
+        drawKeyValue("  Color Format", snapshot.ao.color_format.c_str());
+        drawKeyValue("  Half Resolution", boolToText(snapshot.ao.half_resolution));
     }
 
     void RendererDebugPanel::drawEffectsSection(const RendererDebugSnapshot& snapshot) {
@@ -192,6 +199,7 @@ namespace NexAur {
         drawKeyValue("Bloom Mip", snapshot.effects.bloom_mip);
         drawKeyValue("Shadow Cascade", snapshot.effects.shadow_cascade);
         drawKeyValue("Bloom Debug Ready", boolToText(snapshot.effects.bloom_debug_available));
+        drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
     }
 

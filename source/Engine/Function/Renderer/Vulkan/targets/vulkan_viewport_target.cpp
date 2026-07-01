@@ -34,6 +34,9 @@ namespace NexAur {
         }
 
         VkFormat findDepthFormat(VkPhysicalDevice physical_device) {
+            constexpr VkFormatFeatureFlags required_features =
+                VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
             const std::array<VkFormat, 3> candidates{
                 VK_FORMAT_D32_SFLOAT,
                 VK_FORMAT_D32_SFLOAT_S8_UINT,
@@ -43,7 +46,7 @@ namespace NexAur {
             for (VkFormat format : candidates) {
                 VkFormatProperties properties{};
                 vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
-                if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
+                if ((properties.optimalTilingFeatures & required_features) == required_features) {
                     return format;
                 }
             }
@@ -148,7 +151,7 @@ namespace NexAur {
                 width,
                 height,
                 m_depth_format,
-                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                 VK_IMAGE_ASPECT_DEPTH_BIT,
                 m_depth_image,
                 m_depth_memory,

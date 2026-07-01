@@ -134,6 +134,12 @@ namespace NexAur {
                 return RenderEffectDebugView::ShadowMap;
             case 6:
                 return RenderEffectDebugView::ShadowCascades;
+            case 7:
+                return RenderEffectDebugView::SceneDepth;
+            case 8:
+                return RenderEffectDebugView::AoRaw;
+            case 9:
+                return RenderEffectDebugView::AoBlurred;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -169,6 +175,7 @@ namespace NexAur {
 
         drawEffectsDebugSection(settings, changed);
         drawPostProcessSection(settings, changed);
+        drawAoSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
 
@@ -192,7 +199,10 @@ namespace NexAur {
                 "Bloom Downsample Mip",
                 "Bloom Upsample Mip",
                 "Shadow Map",
-                "Shadow Cascades"
+                "Shadow Cascades",
+                "Scene Depth",
+                "AO Raw",
+                "AO Blurred"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -244,6 +254,10 @@ namespace NexAur {
             settings.effects_debug.view == RenderEffectDebugView::BloomDownsampleMip ||
             settings.effects_debug.view == RenderEffectDebugView::BloomUpsampleMip) {
             ImGui::TextDisabled("Bloom debug can run the bloom graph without changing the Bloom toggle.");
+        }
+        if (settings.effects_debug.view == RenderEffectDebugView::AoRaw ||
+            settings.effects_debug.view == RenderEffectDebugView::AoBlurred) {
+            ImGui::TextDisabled("AO debug can run the AO graph without changing the AO toggle.");
         }
     }
 
@@ -322,6 +336,47 @@ namespace NexAur {
         });
 
         if (!settings.post_process.bloom_enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawAoSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Ambient Occlusion")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox("##AoEnabled", &settings.ao.enabled);
+        });
+
+        if (!settings.ao.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Radius", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##AoRadius", &settings.ao.radius, 0.05f, 5.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Intensity", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##AoIntensity", &settings.ao.intensity, 0.0f, 2.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##AoBias", &settings.ao.bias, 0.0f, 0.2f, "%.3f");
+        });
+        EditorWidgets::propertyRow("Power", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##AoPower", &settings.ao.power, 0.25f, 4.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Blur", [&]() {
+            changed |= ImGui::Checkbox("##AoBlur", &settings.ao.blur_enabled);
+        });
+        EditorWidgets::propertyRow("Half Resolution", [&]() {
+            changed |= ImGui::Checkbox("##AoHalfResolution", &settings.ao.half_resolution);
+        });
+
+        if (!settings.ao.enabled) {
             ImGui::EndDisabled();
         }
     }

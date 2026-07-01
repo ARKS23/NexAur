@@ -212,6 +212,8 @@ set(NEXAUR_ENGINE_VULKAN_SHADER_FILES
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_material.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/shadow_sampling.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/vulkan_fullscreen_triangle.hlsli"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/ao/vulkan_ssao.hlsl"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/ao/vulkan_ao_blur.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_downsample.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_upsample.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_composite.hlsl"
@@ -249,6 +251,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/graph/vulkan_pass_graph.cpp
     Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.h
     Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.cpp
+    Function/Renderer/Vulkan/passes/vulkan_ao_pass.h
+    Function/Renderer/Vulkan/passes/vulkan_ao_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_bloom_pass.h
     Function/Renderer/Vulkan/passes/vulkan_bloom_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_forward_pass.h
@@ -284,6 +288,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/resources/vulkan_texture_resource.cpp
     Function/Renderer/Vulkan/targets/vulkan_viewport_target.h
     Function/Renderer/Vulkan/targets/vulkan_viewport_target.cpp
+    Function/Renderer/Vulkan/targets/vulkan_ao_target.h
+    Function/Renderer/Vulkan/targets/vulkan_ao_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_bloom_target.h
     Function/Renderer/Vulkan/targets/vulkan_bloom_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_picking_target.h
@@ -424,6 +430,10 @@ nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_debu
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_debug_draw.hlsl ps_6_0 PSMain vulkan_debug_draw.frag.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_post_process.hlsl vs_6_0 VSMain vulkan_post_process.vert.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_post_process.hlsl ps_6_0 PSMain vulkan_post_process.frag.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ssao.hlsl vs_6_0 VSMain vulkan_ssao.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ssao.hlsl ps_6_0 PSMain vulkan_ssao.frag.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ao_blur.hlsl vs_6_0 VSMain vulkan_ao_blur.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ao_blur.hlsl ps_6_0 PSMain vulkan_ao_blur.frag.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_downsample.hlsl vs_6_0 VSMain vulkan_bloom_downsample.vert.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_downsample.hlsl ps_6_0 PSMain vulkan_bloom_downsample.frag.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_upsample.hlsl vs_6_0 VSMain vulkan_bloom_upsample.vert.spv)

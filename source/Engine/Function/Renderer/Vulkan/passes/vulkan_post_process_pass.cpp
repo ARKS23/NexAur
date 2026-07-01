@@ -20,6 +20,10 @@ namespace NexAur {
             uint32_t effect_debug_index = 0;
             uint32_t shadow_layer_count = 1;
             uint32_t _padding0 = 0;
+            float ao_intensity = 0.0f;
+            float ao_power = 1.0f;
+            uint32_t ao_enabled = 0;
+            uint32_t _padding1 = 0;
         };
 
         static_assert(
@@ -44,6 +48,7 @@ namespace NexAur {
         VulkanPostProcessPushConstants makePushConstants(
             const VulkanPostProcessRenderTarget& target,
             const RenderPostProcessSettings& post_process_settings,
+            const RenderAoSettings& ao_settings,
             const RenderEffectDebugSettings& debug_settings,
             uint32_t shadow_layer_count) {
             VulkanPostProcessPushConstants constants;
@@ -54,6 +59,9 @@ namespace NexAur {
             constants.effect_debug_view = static_cast<uint32_t>(debug_settings.view);
             constants.effect_debug_index = debug_settings.shadow_cascade;
             constants.shadow_layer_count = std::max(1u, shadow_layer_count);
+            constants.ao_intensity = std::clamp(ao_settings.intensity, 0.0f, 2.0f);
+            constants.ao_power = std::max(0.01f, ao_settings.power);
+            constants.ao_enabled = ao_settings.enabled ? 1u : 0u;
             return constants;
         }
     } // namespace
@@ -118,12 +126,31 @@ namespace NexAur {
         VkDescriptorImageInfo shadow_sampler_info{};
         shadow_sampler_info.sampler = input.shadow_sampler;
 
+        VkDescriptorImageInfo scene_depth_info{};
+        scene_depth_info.imageView = input.scene_depth_view;
+        scene_depth_info.imageLayout = input.scene_depth_layout;
+
+        VkDescriptorImageInfo ao_raw_info{};
+        ao_raw_info.imageView = input.ao_raw_view;
+        ao_raw_info.imageLayout = input.ao_layout;
+
+        VkDescriptorImageInfo ao_blurred_info{};
+        ao_blurred_info.imageView = input.ao_blurred_view;
+        ao_blurred_info.imageLayout = input.ao_layout;
+
+        VkDescriptorImageInfo ao_sampler_info{};
+        ao_sampler_info.sampler = input.ao_sampler;
+
         VulkanDescriptorWriter writer;
         writer
             .writeImage(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, color_info)
             .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info)
             .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shadow_info)
             .writeImage(3, VK_DESCRIPTOR_TYPE_SAMPLER, shadow_sampler_info)
+            .writeImage(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, scene_depth_info)
+            .writeImage(5, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ao_raw_info)
+            .writeImage(6, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ao_blurred_info)
+            .writeImage(7, VK_DESCRIPTOR_TYPE_SAMPLER, ao_sampler_info)
             .update(m_device, m_input_descriptor_set);
         m_current_input = input;
         return true;
@@ -133,6 +160,7 @@ namespace NexAur {
         VkCommandBuffer command_buffer,
         const VulkanPostProcessRenderTarget& target,
         const RenderPostProcessSettings& post_process_settings,
+        const RenderAoSettings& ao_settings,
         const RenderEffectDebugSettings& debug_settings) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
@@ -192,6 +220,7 @@ namespace NexAur {
         const VulkanPostProcessPushConstants push_constants = makePushConstants(
             target,
             post_process_settings,
+            ao_settings,
             debug_settings,
             m_current_input.shadow_layer_count);
         vkCmdPushConstants(

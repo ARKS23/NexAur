@@ -17,7 +17,9 @@ namespace NexAur {
         PostProcess,
         BloomDownsample,
         BloomUpsample,
-        BloomComposite
+        BloomComposite,
+        Ssao,
+        AoBlur
     };
 
     struct VulkanShaderProgram {

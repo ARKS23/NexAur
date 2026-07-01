@@ -57,6 +57,10 @@ namespace NexAur {
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_bloom_upsample.vert.spv" : "vulkan_bloom_upsample.frag.spv";
                 case VulkanShaderProgramId::BloomComposite:
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_bloom_composite.vert.spv" : "vulkan_bloom_composite.frag.spv";
+                case VulkanShaderProgramId::Ssao:
+                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ssao.vert.spv" : "vulkan_ssao.frag.spv";
+                case VulkanShaderProgramId::AoBlur:
+                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ao_blur.vert.spv" : "vulkan_ao_blur.frag.spv";
                 default:
                     return nullptr;
             }

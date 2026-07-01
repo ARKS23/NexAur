@@ -80,11 +80,20 @@ namespace NexAur {
         std::string color_format = "None";
     };
 
+    struct RendererDebugAoStats {
+        bool ready = false;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        std::string color_format = "None";
+        bool half_resolution = false;
+    };
+
     struct RendererDebugEffectsStats {
         std::string debug_view = "Final Lit";
         uint32_t bloom_mip = 0;
         uint32_t shadow_cascade = 0;
         bool bloom_debug_available = false;
+        bool ao_debug_available = false;
         bool shadow_debug_available = false;
     };
 
@@ -118,6 +127,7 @@ namespace NexAur {
         RendererDebugShadowTargetStats shadow_target;
         RendererDebugPostProcessStats post_process;
         RendererDebugBloomStats bloom;
+        RendererDebugAoStats ao;
         RendererDebugEffectsStats effects;
         RendererDebugResourceStats resources;
     };

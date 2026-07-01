@@ -57,6 +57,9 @@ namespace NexAur {
         }
 
         VkFormat findDepthFormat(VkPhysicalDevice physical_device) {
+            constexpr VkFormatFeatureFlags required_features =
+                VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
             const std::array<VkFormat, 3> candidates{
                 VK_FORMAT_D32_SFLOAT,
                 VK_FORMAT_D32_SFLOAT_S8_UINT,
@@ -66,7 +69,7 @@ namespace NexAur {
             for (VkFormat format : candidates) {
                 VkFormatProperties properties{};
                 vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
-                if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
+                if ((properties.optimalTilingFeatures & required_features) == required_features) {
                     return format;
                 }
             }
@@ -255,7 +258,7 @@ namespace NexAur {
         depth_attachment.imageView = target.depth_view;
         depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depth_attachment.loadOp = options.depth_load_op;
-        depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         depth_attachment.clearValue = options.depth_clear_value;
 
         VkRenderingInfo rendering_info{};
@@ -386,7 +389,7 @@ namespace NexAur {
         image_info.format = m_depth_format;
         image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
         image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         image_info.samples = VK_SAMPLE_COUNT_1_BIT;
         image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 

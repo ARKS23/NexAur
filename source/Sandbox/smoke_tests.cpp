@@ -891,6 +891,13 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_intensity = 0.25f;
     settings.post_process.bloom_scatter = 0.5f;
     settings.post_process.bloom_radius = 1.25f;
+    settings.ao.enabled = true;
+    settings.ao.radius = 1.4f;
+    settings.ao.intensity = 0.7f;
+    settings.ao.bias = 0.03f;
+    settings.ao.power = 1.35f;
+    settings.ao.blur_enabled = false;
+    settings.ao.half_resolution = false;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::BloomDownsampleMip;
@@ -920,6 +927,8 @@ int runRenderSettingsSmoke() {
 
     const NexAur::RenderPostProcessSettings& first_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderAoSettings& first_ao =
+        render_context.getReadData().render_settings.ao;
     const NexAur::RenderIblDebugSettings& first_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
     const NexAur::RenderEffectDebugSettings& first_effects_debug =
@@ -938,6 +947,15 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_post_process.bloom_scatter, 0.5f) &&
         nearlyEqual(first_post_process.bloom_radius, 1.25f),
         "RenderSettings smoke failed: bloom parameters did not reach the read packet.");
+    expect(
+        first_ao.enabled &&
+        nearlyEqual(first_ao.radius, 1.4f) &&
+        nearlyEqual(first_ao.intensity, 0.7f) &&
+        nearlyEqual(first_ao.bias, 0.03f) &&
+        nearlyEqual(first_ao.power, 1.35f) &&
+        !first_ao.blur_enabled &&
+        !first_ao.half_resolution,
+        "RenderSettings smoke failed: AO settings did not reach the read packet.");
     expect(
         first_ibl_debug.mode == NexAur::RenderIblDebugMode::SpecularIbl &&
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
@@ -974,6 +992,13 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_intensity = 0.08f;
     settings.post_process.bloom_scatter = 0.7f;
     settings.post_process.bloom_radius = 1.0f;
+    settings.ao.enabled = false;
+    settings.ao.radius = 0.8f;
+    settings.ao.intensity = 0.25f;
+    settings.ao.bias = 0.01f;
+    settings.ao.power = 2.0f;
+    settings.ao.blur_enabled = true;
+    settings.ao.half_resolution = true;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
     settings.ibl_debug.prefilter_mip = 0.0f;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::ShadowMap;
@@ -1003,6 +1028,8 @@ int runRenderSettingsSmoke() {
 
     const NexAur::RenderPostProcessSettings& second_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderAoSettings& second_ao =
+        render_context.getReadData().render_settings.ao;
     const NexAur::RenderIblDebugSettings& second_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
     const NexAur::RenderEffectDebugSettings& second_effects_debug =
@@ -1021,6 +1048,15 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_post_process.bloom_scatter, 0.7f) &&
         nearlyEqual(second_post_process.bloom_radius, 1.0f),
         "RenderSettings smoke failed: updated bloom parameters did not reach the read packet.");
+    expect(
+        !second_ao.enabled &&
+        nearlyEqual(second_ao.radius, 0.8f) &&
+        nearlyEqual(second_ao.intensity, 0.25f) &&
+        nearlyEqual(second_ao.bias, 0.01f) &&
+        nearlyEqual(second_ao.power, 2.0f) &&
+        second_ao.blur_enabled &&
+        second_ao.half_resolution,
+        "RenderSettings smoke failed: updated AO settings did not reach the read packet.");
     expect(
         second_ibl_debug.mode == NexAur::RenderIblDebugMode::FinalLit &&
         nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),

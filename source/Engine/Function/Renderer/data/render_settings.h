@@ -38,7 +38,20 @@ namespace NexAur {
         BloomDownsampleMip = 3,
         BloomUpsampleMip = 4,
         ShadowMap = 5,
-        ShadowCascades = 6
+        ShadowCascades = 6,
+        SceneDepth = 7,
+        AoRaw = 8,
+        AoBlurred = 9
+    };
+
+    struct RenderAoSettings {
+        bool enabled = true;
+        float radius = 1.2f;
+        float intensity = 0.6f;
+        float bias = 0.025f;
+        float power = 1.2f;
+        bool blur_enabled = true;
+        bool half_resolution = true;
     };
 
     struct RenderPostProcessSettings {
@@ -84,6 +97,7 @@ namespace NexAur {
 
     struct RenderSettings {
         RenderPostProcessSettings post_process;
+        RenderAoSettings ao;
         RenderIblDebugSettings ibl_debug;
         RenderEffectDebugSettings effects_debug;
         RenderShadowSettings shadow;

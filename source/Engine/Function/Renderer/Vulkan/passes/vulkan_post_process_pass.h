@@ -33,6 +33,12 @@ namespace NexAur {
         VkSampler shadow_sampler = VK_NULL_HANDLE;
         VkImageLayout shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         uint32_t shadow_layer_count = 1;
+        VkImageView scene_depth_view = VK_NULL_HANDLE;
+        VkImageLayout scene_depth_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkImageView ao_raw_view = VK_NULL_HANDLE;
+        VkImageView ao_blurred_view = VK_NULL_HANDLE;
+        VkSampler ao_sampler = VK_NULL_HANDLE;
+        VkImageLayout ao_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         bool valid() const {
             return color_view != VK_NULL_HANDLE &&
@@ -40,7 +46,13 @@ namespace NexAur {
                    layout != VK_IMAGE_LAYOUT_UNDEFINED &&
                    shadow_view != VK_NULL_HANDLE &&
                    shadow_sampler != VK_NULL_HANDLE &&
-                   shadow_layout != VK_IMAGE_LAYOUT_UNDEFINED;
+                   shadow_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+                   scene_depth_view != VK_NULL_HANDLE &&
+                   scene_depth_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+                   ao_raw_view != VK_NULL_HANDLE &&
+                   ao_blurred_view != VK_NULL_HANDLE &&
+                   ao_sampler != VK_NULL_HANDLE &&
+                   ao_layout != VK_IMAGE_LAYOUT_UNDEFINED;
         }
     };
 
@@ -74,6 +86,7 @@ namespace NexAur {
             VkCommandBuffer command_buffer,
             const VulkanPostProcessRenderTarget& target,
             const RenderPostProcessSettings& post_process_settings,
+            const RenderAoSettings& ao_settings,
             const RenderEffectDebugSettings& debug_settings);
 
         bool isReady() const {
