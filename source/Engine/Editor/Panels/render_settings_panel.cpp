@@ -28,6 +28,26 @@ namespace NexAur {
             return index == 1 ? RenderToneMappingMode::ACES : RenderToneMappingMode::None;
         }
 
+        int lightingPresetToIndex(RenderLightingPreset preset) {
+            return static_cast<int>(preset);
+        }
+
+        RenderLightingPreset lightingPresetFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return RenderLightingPreset::Studio;
+            case 2:
+                return RenderLightingPreset::Cornell;
+            case 3:
+                return RenderLightingPreset::AssetPreview;
+            case 4:
+                return RenderLightingPreset::Custom;
+            case 0:
+            default:
+                return RenderLightingPreset::Outdoor;
+            }
+        }
+
         int iblDebugModeToIndex(RenderIblDebugMode mode) {
             return static_cast<int>(mode);
         }
@@ -173,6 +193,7 @@ namespace NexAur {
         RenderSettings settings = m_context->render_context->getRenderSettings();
         bool changed = false;
 
+        drawLightingPresetSection(settings, changed);
         drawEffectsDebugSection(settings, changed);
         drawPostProcessSection(settings, changed);
         drawAoSection(settings, changed);
@@ -184,6 +205,44 @@ namespace NexAur {
         }
 
         ImGui::End();
+    }
+
+    void RenderSettingsPanel::drawLightingPresetSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Lighting Preset")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Preset", [&]() {
+            const char* items[] = {
+                "Outdoor",
+                "Studio",
+                "Cornell",
+                "Asset Preview",
+                "Custom"
+            };
+
+            int index = lightingPresetToIndex(settings.lighting.preset);
+            setControlWidth();
+            if (ImGui::Combo("##LightingPreset", &index, items, IM_ARRAYSIZE(items))) {
+                applyRenderLightingPreset(settings, lightingPresetFromIndex(index));
+                changed = true;
+            }
+        });
+
+        auto draw_scale = [&](const char* label, const char* id, float& value) {
+            EditorWidgets::propertyRow(label, [&]() {
+                setControlWidth();
+                if (ImGui::SliderFloat(id, &value, 0.0f, 2.0f, "%.2f")) {
+                    settings.lighting.preset = RenderLightingPreset::Custom;
+                    changed = true;
+                }
+            });
+        };
+
+        draw_scale("Directional", "##LightingDirectionalScale", settings.lighting.directional_light_intensity_scale);
+        draw_scale("Point Lights", "##LightingPointScale", settings.lighting.point_light_intensity_scale);
+        draw_scale("Skybox", "##LightingSkyboxScale", settings.lighting.skybox_intensity_scale);
+        draw_scale("IBL", "##LightingIblScale", settings.lighting.ibl_intensity_scale);
     }
 
     void RenderSettingsPanel::drawEffectsDebugSection(RenderSettings& settings, bool& changed) {

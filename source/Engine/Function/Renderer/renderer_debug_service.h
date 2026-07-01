@@ -89,6 +89,7 @@ namespace NexAur {
     };
 
     struct RendererDebugEffectsStats {
+        std::string lighting_preset = "Outdoor";
         std::string debug_view = "Final Lit";
         uint32_t bloom_mip = 0;
         uint32_t shadow_cascade = 0;

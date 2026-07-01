@@ -986,6 +986,7 @@ namespace NexAur {
 
         RendererDebugEffectsStats buildEffectsDebugStats(const RenderSettings& render_settings) const {
             RendererDebugEffectsStats stats;
+            stats.lighting_preset = renderLightingPresetName(render_settings.lighting.preset);
             stats.debug_view = effectDebugViewToText(render_settings.effects_debug.view);
             stats.bloom_mip = render_settings.effects_debug.bloom_mip;
             stats.shadow_cascade = render_settings.effects_debug.shadow_cascade;

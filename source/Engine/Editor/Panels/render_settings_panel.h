@@ -18,6 +18,7 @@ namespace NexAur {
 
     private:
         void drawDebugVisualizationSection();
+        void drawLightingPresetSection(RenderSettings& settings, bool& changed);
         void drawEffectsDebugSection(RenderSettings& settings, bool& changed);
         void drawPostProcessSection(RenderSettings& settings, bool& changed);
         void drawAoSection(RenderSettings& settings, bool& changed);

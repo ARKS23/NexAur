@@ -44,6 +44,38 @@ namespace NexAur {
         AoBlurred = 9
     };
 
+    enum class RenderLightingPreset : uint32_t {
+        Outdoor = 0,
+        Studio = 1,
+        Cornell = 2,
+        AssetPreview = 3,
+        Custom = 4
+    };
+
+    inline const char* renderLightingPresetName(RenderLightingPreset preset) {
+        switch (preset) {
+        case RenderLightingPreset::Outdoor:
+            return "Outdoor";
+        case RenderLightingPreset::Studio:
+            return "Studio";
+        case RenderLightingPreset::Cornell:
+            return "Cornell";
+        case RenderLightingPreset::AssetPreview:
+            return "Asset Preview";
+        case RenderLightingPreset::Custom:
+        default:
+            return "Custom";
+        }
+    }
+
+    struct RenderLightingCalibrationSettings {
+        RenderLightingPreset preset = RenderLightingPreset::Outdoor;
+        float directional_light_intensity_scale = 1.0f;
+        float point_light_intensity_scale = 1.0f;
+        float skybox_intensity_scale = 1.0f;
+        float ibl_intensity_scale = 1.0f;
+    };
+
     struct RenderAoSettings {
         bool enabled = true;
         float radius = 1.2f;
@@ -96,10 +128,62 @@ namespace NexAur {
     };
 
     struct RenderSettings {
+        RenderLightingCalibrationSettings lighting;
         RenderPostProcessSettings post_process;
         RenderAoSettings ao;
         RenderIblDebugSettings ibl_debug;
         RenderEffectDebugSettings effects_debug;
         RenderShadowSettings shadow;
     };
+
+    inline void applyRenderLightingPreset(RenderSettings& settings, RenderLightingPreset preset) {
+        settings.lighting.preset = preset;
+
+        if (preset == RenderLightingPreset::Custom) {
+            return;
+        }
+
+        settings.post_process.tone_mapping_mode = RenderToneMappingMode::ACES;
+        settings.post_process.bloom_enabled = true;
+        settings.post_process.bloom_scatter = 0.7f;
+        settings.post_process.bloom_radius = 1.0f;
+
+        switch (preset) {
+        case RenderLightingPreset::Outdoor:
+            settings.lighting.directional_light_intensity_scale = 1.0f;
+            settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.skybox_intensity_scale = 1.0f;
+            settings.lighting.ibl_intensity_scale = 1.0f;
+            settings.post_process.exposure = 0.85f;
+            settings.post_process.bloom_intensity = 0.05f;
+            break;
+        case RenderLightingPreset::Studio:
+            settings.lighting.directional_light_intensity_scale = 0.35f;
+            settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.skybox_intensity_scale = 0.45f;
+            settings.lighting.ibl_intensity_scale = 0.85f;
+            settings.post_process.exposure = 0.80f;
+            settings.post_process.bloom_intensity = 0.035f;
+            break;
+        case RenderLightingPreset::Cornell:
+            settings.lighting.directional_light_intensity_scale = 0.0f;
+            settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.skybox_intensity_scale = 0.0f;
+            settings.lighting.ibl_intensity_scale = 0.03f;
+            settings.post_process.exposure = 1.0f;
+            settings.post_process.bloom_intensity = 0.02f;
+            break;
+        case RenderLightingPreset::AssetPreview:
+            settings.lighting.directional_light_intensity_scale = 0.25f;
+            settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.skybox_intensity_scale = 0.65f;
+            settings.lighting.ibl_intensity_scale = 1.0f;
+            settings.post_process.exposure = 0.85f;
+            settings.post_process.bloom_intensity = 0.03f;
+            break;
+        case RenderLightingPreset::Custom:
+        default:
+            break;
+        }
+    }
 } // namespace NexAur

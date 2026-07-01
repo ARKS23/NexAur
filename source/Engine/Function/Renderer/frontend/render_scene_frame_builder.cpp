@@ -42,6 +42,10 @@ namespace NexAur {
             return isFinite(value) && value >= 0.0f ? value : fallback;
         }
 
+        float sanitizeScale(float value) {
+            return sanitizeNonNegative(value, 1.0f);
+        }
+
         float sanitizeUnit(float value, float fallback) {
             if (!isFinite(value)) {
                 return fallback;
@@ -71,23 +75,34 @@ namespace NexAur {
             return isFinite(transform) ? transform : glm::mat4{ 1.0f };
         }
 
-        RenderFrameDirectionalLight buildDirectionalLight(const RendererDirectionalLightData& source) {
+        RenderFrameDirectionalLight buildDirectionalLight(
+            const RendererDirectionalLightData& source,
+            const RenderLightingCalibrationSettings& lighting) {
             RenderFrameDirectionalLight light;
             light.direction = sanitizeDirection(source.direction);
             light.color = sanitizeColor(source.color);
-            light.intensity = sanitizeNonNegative(source.intensity, 1.0f);
+            light.intensity =
+                sanitizeNonNegative(source.intensity, 1.0f) *
+                sanitizeScale(lighting.directional_light_intensity_scale);
             light.cast_shadow = source.cast_shadow;
             light.shadow_strength = sanitizeUnit(source.shadow_strength, 0.65f);
             light.shadow_bias = sanitizeMin(source.shadow_bias, 0.002f, 0.0f);
             light.shadow_distance = sanitizeMin(source.shadow_distance, 30.0f, 1.0f);
+            if (light.intensity <= 0.0001f) {
+                light.cast_shadow = false;
+            }
             return light;
         }
 
-        RenderFramePointLight buildPointLight(const RendererPointLightData& source) {
+        RenderFramePointLight buildPointLight(
+            const RendererPointLightData& source,
+            const RenderLightingCalibrationSettings& lighting) {
             RenderFramePointLight light;
             light.position = isFinite(source.position) ? source.position : glm::vec3{ 0.0f };
             light.color = sanitizeColor(source.color);
-            light.intensity = sanitizeNonNegative(source.intensity, 1.0f);
+            light.intensity =
+                sanitizeNonNegative(source.intensity, 1.0f) *
+                sanitizeScale(lighting.point_light_intensity_scale);
             light.constant = sanitizeNonNegative(source.constant, 1.0f);
             light.linear = sanitizeNonNegative(source.linear, 0.09f);
             light.quadratic = sanitizeNonNegative(source.quadratic, 0.032f);
@@ -168,16 +183,17 @@ namespace NexAur {
         const RenderView& render_view) const {
         RenderSceneFrame frame;
         frame.view = render_view;
+        const RenderLightingCalibrationSettings& lighting = render_data.render_settings.lighting;
 
         appendObjects(render_data.opaque_objects, frame.opaque_objects, "opaque");
         appendObjects(render_data.transparent_objects, frame.transparent_objects, "transparent");
 
-        frame.directional_light = buildDirectionalLight(render_data.directional_light_data);
+        frame.directional_light = buildDirectionalLight(render_data.directional_light_data, lighting);
 
         const size_t point_light_count = std::min(render_data.point_lights_data.size(), kMaxPointLights);
         frame.point_lights.reserve(point_light_count);
         for (size_t index = 0; index < point_light_count; ++index) {
-            frame.point_lights.push_back(buildPointLight(render_data.point_lights_data[index]));
+            frame.point_lights.push_back(buildPointLight(render_data.point_lights_data[index], lighting));
         }
 
         if (render_data.point_lights_data.size() > kMaxPointLights) {
@@ -194,10 +210,12 @@ namespace NexAur {
             kDefaultEnvironmentIntensity);
         frame.skybox_intensity = sanitizeNonNegative(
             render_data.environment_data.skybox_intensity,
-            frame.environment_intensity > 0.0f ? frame.environment_intensity : kDefaultSkyboxIntensity);
+            frame.environment_intensity > 0.0f ? frame.environment_intensity : kDefaultSkyboxIntensity) *
+            sanitizeScale(lighting.skybox_intensity_scale);
         frame.ibl_intensity = sanitizeNonNegative(
             render_data.environment_data.ibl_intensity,
-            frame.environment_intensity > 0.0f ? frame.environment_intensity : kDefaultIblIntensity);
+            frame.environment_intensity > 0.0f ? frame.environment_intensity : kDefaultIblIntensity) *
+            sanitizeScale(lighting.ibl_intensity_scale);
         appendDebugLines(render_data.debug_draw, frame.debug_draw);
 
         return frame;

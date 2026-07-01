@@ -25,6 +25,7 @@
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
+#include "Function/Renderer/frontend/render_scene_frame_builder.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
@@ -885,6 +886,11 @@ int runRenderSettingsSmoke() {
     };
 
     NexAur::RenderSettings settings;
+    settings.lighting.preset = NexAur::RenderLightingPreset::Custom;
+    settings.lighting.directional_light_intensity_scale = 0.25f;
+    settings.lighting.point_light_intensity_scale = 1.5f;
+    settings.lighting.skybox_intensity_scale = 0.5f;
+    settings.lighting.ibl_intensity_scale = 0.75f;
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::None;
     settings.post_process.exposure = 1.75f;
     settings.post_process.bloom_enabled = false;
@@ -927,6 +933,8 @@ int runRenderSettingsSmoke() {
 
     const NexAur::RenderPostProcessSettings& first_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderLightingCalibrationSettings& first_lighting =
+        render_context.getReadData().render_settings.lighting;
     const NexAur::RenderAoSettings& first_ao =
         render_context.getReadData().render_settings.ao;
     const NexAur::RenderIblDebugSettings& first_ibl_debug =
@@ -947,6 +955,13 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_post_process.bloom_scatter, 0.5f) &&
         nearlyEqual(first_post_process.bloom_radius, 1.25f),
         "RenderSettings smoke failed: bloom parameters did not reach the read packet.");
+    expect(
+        first_lighting.preset == NexAur::RenderLightingPreset::Custom &&
+        nearlyEqual(first_lighting.directional_light_intensity_scale, 0.25f) &&
+        nearlyEqual(first_lighting.point_light_intensity_scale, 1.5f) &&
+        nearlyEqual(first_lighting.skybox_intensity_scale, 0.5f) &&
+        nearlyEqual(first_lighting.ibl_intensity_scale, 0.75f),
+        "RenderSettings smoke failed: lighting calibration settings did not reach the read packet.");
     expect(
         first_ao.enabled &&
         nearlyEqual(first_ao.radius, 1.4f) &&
@@ -986,12 +1001,7 @@ int runRenderSettingsSmoke() {
         first_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: shadow settings did not reach the read packet.");
 
-    settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::ACES;
-    settings.post_process.exposure = 0.5f;
-    settings.post_process.bloom_enabled = true;
-    settings.post_process.bloom_intensity = 0.08f;
-    settings.post_process.bloom_scatter = 0.7f;
-    settings.post_process.bloom_radius = 1.0f;
+    NexAur::applyRenderLightingPreset(settings, NexAur::RenderLightingPreset::Cornell);
     settings.ao.enabled = false;
     settings.ao.radius = 0.8f;
     settings.ao.intensity = 0.25f;
@@ -1028,6 +1038,8 @@ int runRenderSettingsSmoke() {
 
     const NexAur::RenderPostProcessSettings& second_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderLightingCalibrationSettings& second_lighting =
+        render_context.getReadData().render_settings.lighting;
     const NexAur::RenderAoSettings& second_ao =
         render_context.getReadData().render_settings.ao;
     const NexAur::RenderIblDebugSettings& second_ibl_debug =
@@ -1040,14 +1052,21 @@ int runRenderSettingsSmoke() {
         second_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::ACES,
         "RenderSettings smoke failed: ACES mode did not reach the read packet.");
     expect(
-        nearlyEqual(second_post_process.exposure, 0.5f),
-        "RenderSettings smoke failed: updated exposure did not reach the read packet.");
+        nearlyEqual(second_post_process.exposure, 1.0f),
+        "RenderSettings smoke failed: Cornell exposure did not reach the read packet.");
     expect(second_post_process.bloom_enabled, "RenderSettings smoke failed: updated bloom enabled did not reach the read packet.");
     expect(
-        nearlyEqual(second_post_process.bloom_intensity, 0.08f) &&
+        nearlyEqual(second_post_process.bloom_intensity, 0.02f) &&
         nearlyEqual(second_post_process.bloom_scatter, 0.7f) &&
         nearlyEqual(second_post_process.bloom_radius, 1.0f),
-        "RenderSettings smoke failed: updated bloom parameters did not reach the read packet.");
+        "RenderSettings smoke failed: Cornell bloom parameters did not reach the read packet.");
+    expect(
+        second_lighting.preset == NexAur::RenderLightingPreset::Cornell &&
+        nearlyEqual(second_lighting.directional_light_intensity_scale, 0.0f) &&
+        nearlyEqual(second_lighting.point_light_intensity_scale, 1.0f) &&
+        nearlyEqual(second_lighting.skybox_intensity_scale, 0.0f) &&
+        nearlyEqual(second_lighting.ibl_intensity_scale, 0.03f),
+        "RenderSettings smoke failed: Cornell lighting preset did not reach the read packet.");
     expect(
         !second_ao.enabled &&
         nearlyEqual(second_ao.radius, 0.8f) &&
@@ -1086,6 +1105,37 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_shadow.cascade_split_lambda, 0.65f) &&
         !second_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: updated shadow settings did not reach the read packet.");
+
+    NexAur::RenderDataPacket render_data;
+    render_data.render_settings = settings;
+    render_data.directional_light_data.intensity = 2.0f;
+    render_data.directional_light_data.cast_shadow = true;
+    render_data.environment_data.skybox_intensity = 0.75f;
+    render_data.environment_data.ibl_intensity = 0.65f;
+
+    NexAur::RendererPointLightData cornell_light;
+    cornell_light.intensity = 12.0f;
+    render_data.point_lights_data.push_back(cornell_light);
+
+    NexAur::RenderView render_view;
+    render_view.viewport_width = 1280u;
+    render_view.viewport_height = 720u;
+
+    NexAur::RenderSceneFrameBuilder frame_builder;
+    const NexAur::RenderSceneFrame cornell_frame =
+        frame_builder.buildRenderSceneFrame(render_data, render_view);
+    expect(
+        nearlyEqual(cornell_frame.directional_light.intensity, 0.0f) &&
+        !cornell_frame.directional_light.cast_shadow,
+        "RenderSettings smoke failed: Cornell preset did not suppress directional light.");
+    expect(
+        !cornell_frame.point_lights.empty() &&
+        nearlyEqual(cornell_frame.point_lights.front().intensity, 12.0f),
+        "RenderSettings smoke failed: Cornell preset should preserve local light intensity.");
+    expect(
+        nearlyEqual(cornell_frame.skybox_intensity, 0.0f) &&
+        nearlyEqual(cornell_frame.ibl_intensity, 0.65f * 0.03f),
+        "RenderSettings smoke failed: Cornell preset did not calibrate environment intensity.");
 
     if (!success) {
         std::cerr << failure << std::endl;

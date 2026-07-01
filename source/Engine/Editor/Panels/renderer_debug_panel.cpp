@@ -195,6 +195,7 @@ namespace NexAur {
             return;
         }
 
+        drawKeyValue("Lighting Preset", snapshot.effects.lighting_preset.c_str());
         drawKeyValue("Debug View", snapshot.effects.debug_view.c_str());
         drawKeyValue("Bloom Mip", snapshot.effects.bloom_mip);
         drawKeyValue("Shadow Cascade", snapshot.effects.shadow_cascade);
