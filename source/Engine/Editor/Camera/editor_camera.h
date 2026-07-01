@@ -39,6 +39,7 @@ namespace NexAur {
         float getYaw() const { return m_yaw; }
         float getNearClip() const { return m_near_clip; }
         float getFarClip() const { return m_far_clip; }
+        float getMoveSpeed() const { return m_move_speed; }
 
     private:
         void updateProjection();
@@ -69,6 +70,7 @@ namespace NexAur {
 
         float m_pitch = 0.0f;
         float m_yaw = 0.0f;
+        float m_move_speed = 5.0f;
 
         float m_viewport_width = 1920.0f;
         float m_viewport_height = 1080.0f;

@@ -63,7 +63,7 @@ namespace NexAur {
             m_init_mouse_position = mouse;
         }
 
-        float speed = 5.0f * static_cast<float>(deltaTime);
+        float speed = m_move_speed * static_cast<float>(deltaTime);
         if (input_state.isKeyPressed(KeyCode::W)) {
             m_position += getForwardDirection() * speed;
         }

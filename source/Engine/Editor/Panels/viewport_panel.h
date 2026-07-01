@@ -28,7 +28,6 @@ namespace NexAur {
 
     private:
         bool beginViewportWindow();
-        void drawViewportModeToolbar();
         void updateViewportWindowState();
         void syncViewportResize();
         void drawViewportOutput();
@@ -37,6 +36,12 @@ namespace NexAur {
         void drawNoViewportOutputNotice();
         void drawViewportPlaceholder(const char* message);
         void drawViewportPlaceholder(const std::vector<std::string>& lines);
+        void drawViewportChrome();
+        void drawViewportOverlay();
+        void drawViewportToolbarOverlay(const ViewportOutput& output);
+        void drawViewportInfoOverlay(const ViewportOutput& output);
+        void drawViewportStatusOverlay();
+        void drawViewportFrame() const;
         void handleGizmoHotkeys();
         void drawGizmo();
         void endViewportWindow();
@@ -57,6 +62,7 @@ namespace NexAur {
         glm::vec2 m_camera_viewport_size{ 0.0f, 0.0f };
         bool m_viewport_focused = false;
         bool m_viewport_hovered = false;
+        bool m_viewport_overlay_hovered = false;
         
         bool m_was_using_gizmo_last_frame = false;
     };

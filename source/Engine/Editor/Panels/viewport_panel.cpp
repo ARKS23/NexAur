@@ -3,8 +3,12 @@
 
 #include "Editor/editor_services.h"
 #include "Editor/Style/editor_style.h"
+#include "Editor/Style/editor_theme.h"
+#include "Editor/Widgets/editor_widgets.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Renderer/renderer_service.h"
+#include "Function/Renderer/data/render_context.h"
+#include "Function/Renderer/renderer_debug_service.h"
 #include "Editor/Camera/editor_camera.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/scene_v2.h"
@@ -43,6 +47,116 @@ namespace NexAur {
         ImGuizmo::MODE toGizmoMode(EditorToolSpace space) {
             return space == EditorToolSpace::Local ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
         }
+
+        const char* viewportModeToText(EditorViewportViewMode mode) {
+            switch (mode) {
+            case EditorViewportViewMode::GameView:
+                return "Game";
+            case EditorViewportViewMode::SceneView:
+            default:
+                return "Scene";
+            }
+        }
+
+        const char* viewportOutputKindToText(ViewportOutputKind kind) {
+            switch (kind) {
+            case ViewportOutputKind::VulkanImGuiTexture:
+                return "Vulkan";
+            case ViewportOutputKind::ExternalSwapchain:
+                return "Swapchain";
+            case ViewportOutputKind::None:
+            default:
+                return "No Output";
+            }
+        }
+
+        const char* toolOperationToText(EditorToolOperation operation) {
+            switch (operation) {
+            case EditorToolOperation::Select:
+                return "Select";
+            case EditorToolOperation::Rotate:
+                return "Rotate";
+            case EditorToolOperation::Scale:
+                return "Scale";
+            case EditorToolOperation::Translate:
+            default:
+                return "Move";
+            }
+        }
+
+        const char* toolSpaceToText(EditorToolSpace space) {
+            return space == EditorToolSpace::Local ? "Local" : "World";
+        }
+
+        std::string selectedEntityName(const Entity& entity) {
+            if (!entity) {
+                return "None";
+            }
+
+            if (entity.hasComponent<TagComponent>()) {
+                const std::string& name = entity.getComponent<TagComponent>().name;
+                if (!name.empty()) {
+                    return name;
+                }
+            }
+
+            return "Entity " + std::to_string(static_cast<uint32_t>(entity));
+        }
+
+        ImVec2 add(ImVec2 a, ImVec2 b) {
+            return ImVec2(a.x + b.x, a.y + b.y);
+        }
+
+        ImVec2 viewportMin(const glm::vec2 bounds[2]) {
+            return ImVec2(bounds[0].x, bounds[0].y);
+        }
+
+        ImVec2 viewportMax(const glm::vec2 bounds[2]) {
+            return ImVec2(bounds[1].x, bounds[1].y);
+        }
+
+        bool beginOverlayWindow(const char* id, ImVec2 position, ImVec2 pivot, bool accept_input = true) {
+            const EditorTheme& theme = EditorThemeTokens::getDefaultTheme();
+
+            ImGuiWindowFlags flags =
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_AlwaysAutoResize |
+                ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_NoNav |
+                ImGuiWindowFlags_NoFocusOnAppearing;
+
+            if (!accept_input) {
+                flags |= ImGuiWindowFlags_NoInputs;
+            }
+
+            ImGui::SetNextWindowPos(position, ImGuiCond_Always, pivot);
+            if (const ImGuiViewport* viewport = ImGui::GetMainViewport()) {
+                ImGui::SetNextWindowViewport(viewport->ID);
+            }
+
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, EditorThemeTokens::withAlpha(theme.colors.background_main, 0.84f));
+            ImGui::PushStyleColor(ImGuiCol_Border, EditorThemeTokens::withAlpha(theme.colors.border_subtle, 0.82f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(7.0f, 5.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+
+            return ImGui::Begin(id, nullptr, flags);
+        }
+
+        void endOverlayWindow() {
+            ImGui::End();
+            ImGui::PopStyleVar(3);
+            ImGui::PopStyleColor(2);
+        }
+
+        void drawOverlaySeparator() {
+            ImGui::SameLine();
+            ImGui::TextDisabled("|");
+            ImGui::SameLine();
+        }
     } // namespace
 
     void ViewportPanel::onUpdate(TimeStep delta_time) {
@@ -55,12 +169,13 @@ namespace NexAur {
             return;
         }
 
-        drawViewportModeToolbar();
         updateViewportWindowState();
         syncViewportResize();
         drawViewportOutput();
         handleGizmoHotkeys();
         drawGizmo();
+        drawViewportChrome();
+        drawViewportOverlay();
 
         endViewportWindow();
     }
@@ -80,27 +195,6 @@ namespace NexAur {
         return ImGui::Begin(getName().c_str(), &open_flag);
     }
 
-    void ViewportPanel::drawViewportModeToolbar() {
-        if (!m_context) {
-            return;
-        }
-
-        const bool scene_view = m_context->viewport_view_mode == EditorViewportViewMode::SceneView;
-        const bool game_view = m_context->viewport_view_mode == EditorViewportViewMode::GameView;
-
-        if (EditorStyle::segmentedButton("Scene", scene_view)) {
-            m_context->viewport_view_mode = EditorViewportViewMode::SceneView;
-        }
-
-        ImGui::SameLine();
-
-        if (EditorStyle::segmentedButton("Game", game_view)) {
-            m_context->viewport_view_mode = EditorViewportViewMode::GameView;
-        }
-
-        ImGui::Separator();
-    }
-
     void ViewportPanel::updateViewportWindowState() {
         m_viewport_focused = ImGui::IsWindowFocused();
         m_viewport_hovered = ImGui::IsWindowHovered();
@@ -115,6 +209,7 @@ namespace NexAur {
         m_viewport_bounds[0] = { viewport_min.x, viewport_min.y };
         m_viewport_bounds[1] = { viewport_min.x + available_size.x, viewport_min.y + available_size.y };
         m_viewport_size = { available_size.x, available_size.y };
+        m_viewport_overlay_hovered = false;
     }
 
     void ViewportPanel::syncViewportResize() {
@@ -239,6 +334,179 @@ namespace NexAur {
         }
 
         ImGui::InvisibleButton("##ViewportOutputPlaceholder", size);
+    }
+
+    void ViewportPanel::drawViewportChrome() {
+        drawViewportFrame();
+    }
+
+    void ViewportPanel::drawViewportOverlay() {
+        if (!m_context || !m_context->renderer_service) {
+            return;
+        }
+        if (m_viewport_size.x <= 96.0f || m_viewport_size.y <= 72.0f) {
+            return;
+        }
+
+        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+
+        drawViewportToolbarOverlay(output);
+        drawViewportInfoOverlay(output);
+        drawViewportStatusOverlay();
+    }
+
+    void ViewportPanel::drawViewportToolbarOverlay(const ViewportOutput& output) {
+        if (!m_context) {
+            return;
+        }
+
+        const ImVec2 position = add(viewportMin(m_viewport_bounds), ImVec2(10.0f, 10.0f));
+        if (!beginOverlayWindow("##ViewportToolbarOverlay", position, ImVec2(0.0f, 0.0f))) {
+            endOverlayWindow();
+            return;
+        }
+
+        const bool scene_view = m_context->viewport_view_mode == EditorViewportViewMode::SceneView;
+        const bool game_view = m_context->viewport_view_mode == EditorViewportViewMode::GameView;
+
+        if (EditorStyle::segmentedButton("Scene", scene_view)) {
+            m_context->viewport_view_mode = EditorViewportViewMode::SceneView;
+        }
+        ImGui::SameLine();
+        if (EditorStyle::segmentedButton("Game", game_view)) {
+            m_context->viewport_view_mode = EditorViewportViewMode::GameView;
+        }
+
+        drawOverlaySeparator();
+
+        EditorWidgets::toolbarButton("Shaded", "Viewport shading mode.", true);
+        ImGui::SameLine();
+        ImGui::BeginDisabled();
+        EditorWidgets::toolbarButton("Wire", "Wireframe view is reserved for a later renderer debug pass.");
+        ImGui::EndDisabled();
+
+        drawOverlaySeparator();
+
+        bool debug_draw_enabled = false;
+        if (m_context->render_context) {
+            RenderDebugVisualizationOptions options =
+                m_context->render_context->getDebugVisualizationOptions();
+            debug_draw_enabled = options.enabled;
+
+            if (EditorWidgets::toolbarButton("Debug", "Toggle renderer debug draw.", debug_draw_enabled)) {
+                options.enabled = !options.enabled;
+                m_context->render_context->setDebugVisualizationOptions(options);
+            }
+        } else {
+            ImGui::BeginDisabled();
+            EditorWidgets::toolbarButton("Debug", "Render context is unavailable.");
+            ImGui::EndDisabled();
+        }
+
+        drawOverlaySeparator();
+        ImGui::TextDisabled("%s", viewportOutputKindToText(output.kind));
+
+        m_viewport_overlay_hovered |= ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+        endOverlayWindow();
+    }
+
+    void ViewportPanel::drawViewportInfoOverlay(const ViewportOutput& output) {
+        if (!m_context) {
+            return;
+        }
+
+        const ImVec2 position = add(viewportMax(m_viewport_bounds), ImVec2(-10.0f, 10.0f - m_viewport_size.y));
+        if (!beginOverlayWindow("##ViewportInfoOverlay", position, ImVec2(1.0f, 0.0f), false)) {
+            endOverlayWindow();
+            return;
+        }
+
+        const EditorToolState& tool_state = m_context->tool_state;
+        ImGui::Text(
+            "%s | %u x %u",
+            viewportModeToText(m_context->viewport_view_mode),
+            output.width,
+            output.height);
+
+        ImGui::TextDisabled(
+            "%s | %s | Snap %s",
+            toolOperationToText(tool_state.operation),
+            toolSpaceToText(tool_state.space),
+            tool_state.snap_enabled ? "On" : "Off");
+
+        if (m_context->viewport_camera) {
+            ImGui::TextDisabled("Speed %.1f", m_context->viewport_camera->getMoveSpeed());
+        }
+
+        endOverlayWindow();
+    }
+
+    void ViewportPanel::drawViewportStatusOverlay() {
+        if (!m_context) {
+            return;
+        }
+
+        const ImVec2 bottom_left = add(viewportMax(m_viewport_bounds), ImVec2(10.0f - m_viewport_size.x, -10.0f));
+        if (beginOverlayWindow("##ViewportStatusLeftOverlay", bottom_left, ImVec2(0.0f, 1.0f), false)) {
+            const std::string entity_name = selectedEntityName(m_context->selected_entity);
+            ImGui::Text("Selected: %s", entity_name.c_str());
+        }
+        endOverlayWindow();
+
+        const ImVec2 bottom_right = add(viewportMax(m_viewport_bounds), ImVec2(-10.0f, -10.0f));
+        if (beginOverlayWindow("##ViewportStatusRightOverlay", bottom_right, ImVec2(1.0f, 1.0f), false)) {
+            const ImGuiIO& io = ImGui::GetIO();
+            double frame_ms = 0.0;
+            size_t draw_items = 0;
+
+            if (m_context->renderer_debug_service) {
+                const RendererDebugSnapshot snapshot =
+                    m_context->renderer_debug_service->getDebugSnapshot();
+                frame_ms = snapshot.frame.engine_delta_ms;
+                draw_items = snapshot.frame.opaque_draw_item_count + snapshot.frame.transparent_draw_item_count;
+            }
+
+            if (frame_ms > 0.0) {
+                ImGui::Text("FPS %.0f | %.2f ms", io.Framerate, frame_ms);
+            } else {
+                ImGui::Text("FPS %.0f", io.Framerate);
+            }
+
+            if (draw_items > 0) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("| Draws %zu", draw_items);
+            }
+        }
+        endOverlayWindow();
+    }
+
+    void ViewportPanel::drawViewportFrame() const {
+        if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) {
+            return;
+        }
+
+        const EditorTheme& theme = EditorThemeTokens::getDefaultTheme();
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        const ImVec2 min = viewportMin(m_viewport_bounds);
+        const ImVec2 max = viewportMax(m_viewport_bounds);
+
+        draw_list->AddRect(
+            min,
+            max,
+            ImGui::ColorConvertFloat4ToU32(EditorThemeTokens::withAlpha(theme.colors.border_subtle, 0.92f)),
+            0.0f,
+            0,
+            1.0f);
+
+        if (m_viewport_hovered) {
+            draw_list->AddRect(
+                ImVec2(min.x + 1.0f, min.y + 1.0f),
+                ImVec2(max.x - 1.0f, max.y - 1.0f),
+                ImGui::ColorConvertFloat4ToU32(EditorThemeTokens::withAlpha(theme.colors.accent_blue, 0.28f)),
+                0.0f,
+                0,
+                1.0f);
+        }
     }
 
     void ViewportPanel::handleGizmoHotkeys() {
@@ -438,7 +706,7 @@ namespace NexAur {
         if (!canUseSceneViewTools()) {
             return false;
         }
-        if (ImGuizmo::IsUsing() || ImGuizmo::IsOver()) {
+        if (m_viewport_overlay_hovered || m_was_using_gizmo_last_frame || ImGuizmo::IsUsing() || ImGuizmo::IsOver()) {
             return false;
         }
 

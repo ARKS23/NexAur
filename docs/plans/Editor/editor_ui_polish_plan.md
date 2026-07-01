@@ -936,7 +936,7 @@ SuccessGreen         ok 状态
 
 ## 12. PR-E7：Viewport Overlay + Gizmo Polish
 
-执行状态：计划中。
+执行状态：已完成。
 
 目标：
 
@@ -972,6 +972,14 @@ SuccessGreen         ok 状态
 - Gizmo 操作更清晰。
 - Scene / Game 切换入口更自然。
 - 构建和 Sandbox smoke 通过。
+
+完成记录：
+
+- `ViewportPanel` 移除普通内容区顶部 Scene / Game 控件，改为 viewport 内 overlay toolbar，让主画面成为面板第一视觉主体。
+- 左上角 overlay 提供 Scene / Game、Shaded / Wire placeholder、Debug Draw 快捷入口，其中 Debug Draw 复用 `RenderContext::RenderDebugVisualizationOptions`，不新增第二套状态。
+- 右上角 overlay 显示当前 view、viewport resolution、gizmo operation、Local / World、Snap 状态和 editor camera speed。
+- 底部 overlay 显示 selected entity、FPS、frame ms 和 draw item 计数。
+- Viewport 边框增加 subtle hover highlight，gizmo 操作和 overlay hover 时阻止 picking 抢输入。
 
 ## 13. PR-E8：Preferences / Render Settings Panel
 
@@ -1094,6 +1102,6 @@ Editor UI polish 阶段达到以下状态即可认为完成：
 | PR-E4 Inspector Property Drawer v1 | 已完成 | 新增 EditorPropertyDrawer，统一 Inspector 字段绘制，并补齐基础组件 drawer 与 Add Component 分类菜单。 |
 | PR-E5 Scene Hierarchy / Explorer Polish | 已完成 | 增加搜索过滤、轻量 icon row、空白/实体右键菜单、创建/复制/删除实体操作。 |
 | PR-E6 Project / Console Panels v1 | 已完成 | Project 支持 assets 浏览、搜索、类型/大小信息；Console 接入 recent log sink，支持 clear / filter / auto-scroll，并补 Timeline / Profiler placeholder。 |
-| PR-E7 Viewport Overlay + Gizmo Polish | 计划中 | 加强 viewport overlay、toolbar 和 gizmo 体验。 |
+| PR-E7 Viewport Overlay + Gizmo Polish | 已完成 | 增加 viewport 内 overlay toolbar / 状态信息 / Debug Draw 快捷开关，并改善 gizmo 与 picking 的输入边界。 |
 | PR-E8 Preferences / Render Settings Panel | 计划中 | 为渲染效果参数提供可写 UI 入口。 |
 | PR-E9 Layout / Shortcut Persistence | 计划中 | 固定布局、快捷键和 editor config 持久化。 |
