@@ -158,6 +158,9 @@ namespace NexAur {
             if (ImGui::MenuItem("Point Light")) {
                 selectEntity(createPointLightEntity(scene));
             }
+            if (ImGui::MenuItem("Rect Light")) {
+                selectEntity(createRectLightEntity(scene));
+            }
             ImGui::EndMenu();
         }
 
@@ -178,7 +181,9 @@ namespace NexAur {
         if (entity.hasComponent<CameraComponent>() || entity.hasComponent<ActiveCameraComponent>()) {
             return EditorIcons::Camera;
         }
-        if (entity.hasComponent<DirectionalLightComponent>() || entity.hasComponent<PointLightComponent>()) {
+        if (entity.hasComponent<DirectionalLightComponent>() ||
+            entity.hasComponent<PointLightComponent>() ||
+            entity.hasComponent<RectLightComponent>()) {
             return EditorIcons::Light;
         }
         if (entity.hasComponent<MeshRendererComponent>()) {
@@ -251,6 +256,18 @@ namespace NexAur {
         return entity;
     }
 
+    Entity SceneHierarchyPanel::createRectLightEntity(const std::shared_ptr<SceneV2>& scene) {
+        Entity entity = createEmptyEntity(scene, "RectLight");
+        if (entity) {
+            auto& light = entity.addComponent<RectLightComponent>();
+            light.intensity = 8.0f;
+            light.size = glm::vec2{ 2.0f, 1.0f };
+            light.range = 8.0f;
+            entity.getComponent<TransformComponent>().translation = glm::vec3(0.0f, 3.0f, 0.0f);
+        }
+        return entity;
+    }
+
     Entity SceneHierarchyPanel::duplicateEntity(const std::shared_ptr<SceneV2>& scene, Entity source) {
         if (!scene || !source || !source.hasComponent<TagComponent>()) {
             return Entity();
@@ -275,6 +292,9 @@ namespace NexAur {
         }
         if (source.hasComponent<PointLightComponent>()) {
             duplicate.addComponent<PointLightComponent>(source.getComponent<PointLightComponent>());
+        }
+        if (source.hasComponent<RectLightComponent>()) {
+            duplicate.addComponent<RectLightComponent>(source.getComponent<RectLightComponent>());
         }
         if (source.hasComponent<EnvironmentComponent>()) {
             duplicate.addComponent<EnvironmentComponent>(source.getComponent<EnvironmentComponent>());

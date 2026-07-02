@@ -225,6 +225,7 @@ namespace NexAur {
         drawShadowSection(settings, changed);
         drawPointShadowSection(settings, changed);
         drawContactShadowSection(settings, changed);
+        drawRectLightSection(settings, changed);
 
         if (changed) {
             m_context->render_context->setRenderSettings(settings);
@@ -267,6 +268,7 @@ namespace NexAur {
 
         draw_scale("Directional", "##LightingDirectionalScale", settings.lighting.directional_light_intensity_scale);
         draw_scale("Point Lights", "##LightingPointScale", settings.lighting.point_light_intensity_scale);
+        draw_scale("Rect Lights", "##LightingRectScale", settings.lighting.rect_light_intensity_scale);
         draw_scale("Skybox", "##LightingSkyboxScale", settings.lighting.skybox_intensity_scale);
         draw_scale("IBL", "##LightingIblScale", settings.lighting.ibl_intensity_scale);
     }
@@ -716,6 +718,33 @@ namespace NexAur {
         });
 
         if (!settings.contact_shadow.enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawRectLightSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Rect Lights")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox("##RectLightsEnabled", &settings.rect_light.enabled);
+        });
+
+        if (!settings.rect_light.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Max Lights", [&]() {
+            int max_lights = static_cast<int>(settings.rect_light.max_lights);
+            setControlWidth();
+            if (ImGui::SliderInt("##RectLightsMaxLights", &max_lights, 0, static_cast<int>(kMaxRenderRectLights))) {
+                settings.rect_light.max_lights = static_cast<uint32_t>(std::max(0, max_lights));
+                changed = true;
+            }
+        });
+
+        if (!settings.rect_light.enabled) {
             ImGui::EndDisabled();
         }
     }

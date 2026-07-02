@@ -43,6 +43,7 @@ struct FrameGlobals {
     float4 point_shadow_params; // x: enabled, y: map size, z: constant bias, w: normal bias
     float4 point_shadow_quality_params; // x: filter radius, y: shadowed light count, zw: reserved
     float4 contact_shadow_params; // x: enabled, y: intensity, z: max distance, w: thickness
+    float4 rect_light_params; // x: enabled, y: count, zw: reserved
 };
 
 struct PointLightData {
@@ -50,6 +51,14 @@ struct PointLightData {
     float4 color;
     float4 attenuation;
     float4 shadow; // x: slot, y: range, z: strength, w: enabled
+};
+
+struct RectLightData {
+    float4 position_intensity;
+    float4 right_width;
+    float4 up_height;
+    float4 normal_range;
+    float4 color_flags; // xyz: color, w: two sided
 };
 
 [[vk::binding(0, 0)]]
@@ -69,6 +78,9 @@ Texture2DArray<float> g_point_shadow_map;
 
 [[vk::binding(5, 0)]]
 SamplerState g_point_shadow_sampler;
+
+[[vk::binding(6, 0)]]
+StructuredBuffer<RectLightData> g_rect_lights;
 
 struct MaterialConstants {
     float4 base_color_factor;
@@ -185,6 +197,71 @@ float3 EvaluateIblDebugColor(
     }
 }
 
+float3 NxSafeNormalizeForward(float3 value, float3 fallback) {
+    const float length_sq = dot(value, value);
+    return length_sq > 0.000001f ? value * rsqrt(length_sq) : fallback;
+}
+
+float3 EvaluateRectLight(
+    NxMaterialSample material,
+    float3 world_position,
+    float3 view_dir,
+    RectLightData light) {
+    const float3 light_position = light.position_intensity.xyz;
+    const float intensity = max(light.position_intensity.w, 0.0f);
+    if (intensity <= 0.0001f) {
+        return 0.0f;
+    }
+
+    const float3 light_right = NxSafeNormalizeForward(light.right_width.xyz, float3(1.0f, 0.0f, 0.0f));
+    const float3 light_up = NxSafeNormalizeForward(light.up_height.xyz, float3(0.0f, 0.0f, 1.0f));
+    const float3 light_normal = NxSafeNormalizeForward(light.normal_range.xyz, float3(0.0f, -1.0f, 0.0f));
+    const float width = max(light.right_width.w, 0.01f);
+    const float height = max(light.up_height.w, 0.01f);
+    const float range = max(light.normal_range.w, 0.1f);
+
+    const float3 surface_to_light_center = world_position - light_position;
+    const float x = clamp(dot(surface_to_light_center, light_right), -width * 0.5f, width * 0.5f);
+    const float y = clamp(dot(surface_to_light_center, light_up), -height * 0.5f, height * 0.5f);
+    const float3 representative_point = light_position + light_right * x + light_up * y;
+
+    const float3 light_vector = representative_point - world_position;
+    const float distance2 = max(dot(light_vector, light_vector), 0.0001f);
+    const float distance_to_light = sqrt(distance2);
+    const float3 light_dir = light_vector / max(distance_to_light, 0.0001f);
+
+    const float light_facing = light.color_flags.w > 0.5f
+        ? abs(dot(light_normal, -light_dir))
+        : saturate(dot(light_normal, -light_dir));
+    if (light_facing <= 0.0001f) {
+        return 0.0f;
+    }
+
+    float attenuation = saturate(1.0f - distance_to_light / range);
+    attenuation *= attenuation;
+    if (attenuation <= 0.0001f) {
+        return 0.0f;
+    }
+
+    const float area = width * height;
+    const float solid_angle = min(area * light_facing / distance2, 2.0f * NX_PI);
+    const float apparent_radius = 0.5f * sqrt(area / NX_PI);
+    const float roughness_widen = apparent_radius / max(distance_to_light, 0.001f);
+    const float rect_roughness = saturate(sqrt(
+        material.roughness * material.roughness +
+        roughness_widen * roughness_widen));
+    const float3 radiance = light.color_flags.rgb * intensity * solid_angle * attenuation;
+
+    return NxEvaluateDirectLight(
+        material.base_color.rgb,
+        material.metallic,
+        rect_roughness,
+        material.normal,
+        view_dir,
+        light_dir,
+        radiance);
+}
+
 float4 PSMain(VSOutput input) : SV_Target0 {
     NxMaterialSample material = NxSampleMaterial(input);
     if (g_material.factors.w > 0.5f && g_material.factors.w < 1.5f) {
@@ -252,6 +329,18 @@ float4 PSMain(VSOutput input) : SV_Target0 {
             view_dir,
             point_light_dir,
             radiance);
+    }
+
+    if (g_frame.rect_light_params.x > 0.5f) {
+        const uint rect_light_count = (uint)g_frame.rect_light_params.y;
+        [loop]
+        for (uint index = 0; index < rect_light_count; ++index) {
+            lit_color += EvaluateRectLight(
+                material,
+                input.world_position,
+                view_dir,
+                g_rect_lights[index]);
+        }
     }
 
     lit_color = NxApplyCascadeDebugOverlay(lit_color, input.view_depth);

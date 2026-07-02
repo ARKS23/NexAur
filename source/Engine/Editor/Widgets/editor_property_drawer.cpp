@@ -125,6 +125,22 @@ namespace NexAur::EditorPropertyDrawer {
         return changed;
     }
 
+    bool drawVec2Property(
+        const char* label,
+        glm::vec2& value,
+        float speed,
+        float min,
+        float max,
+        const char* format,
+        ImGuiSliderFlags flags) {
+        bool changed = false;
+        EditorWidgets::propertyRow(label, [&]() {
+            ImGui::SetNextItemWidth(kValueWidth);
+            changed = ImGui::DragFloat2("##value", glm::value_ptr(value), speed, min, max, format, flags);
+        });
+        return changed;
+    }
+
     bool drawColor3Property(const char* label, glm::vec3& value) {
         bool changed = false;
         EditorWidgets::propertyRow(label, [&]() {

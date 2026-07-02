@@ -7,6 +7,10 @@
 
 namespace NexAur {
     namespace {
+        glm::vec3 safeNormalizeAxis(const glm::vec3& value, const glm::vec3& fallback) {
+            return glm::dot(value, value) > 0.000001f ? glm::normalize(value) : fallback;
+        }
+
         void writeCameraData(RenderDataPacket& render_packet, const CameraComponent& camera) {
             render_packet.camera_data.view_matrix = camera.viewMatrix;
             render_packet.camera_data.projection_matrix = camera.projectionMatrix;
@@ -14,6 +18,45 @@ namespace NexAur {
             render_packet.camera_data.position = camera.position;
             render_packet.camera_data.near_clip = camera.nearClip;
             render_packet.camera_data.far_clip = camera.farClip;
+        }
+
+        RendererRectLightData buildRectLightData(
+            const RectLightComponent& light,
+            const TransformComponent& transform) {
+            const glm::mat4 world = transform.getTransform();
+
+            RendererRectLightData light_data;
+            light_data.position = transform.translation;
+            light_data.right = safeNormalizeAxis(glm::vec3(world[0]), glm::vec3{ 1.0f, 0.0f, 0.0f });
+            light_data.up = safeNormalizeAxis(glm::vec3(world[2]), glm::vec3{ 0.0f, 0.0f, 1.0f });
+            light_data.normal = safeNormalizeAxis(-glm::vec3(world[1]), glm::vec3{ 0.0f, -1.0f, 0.0f });
+            light_data.size = glm::max(light.size, glm::vec2{ 0.01f });
+            light_data.color = light.color;
+            light_data.intensity = light.intensity;
+            light_data.range = light.range;
+            light_data.two_sided = light.two_sided;
+            return light_data;
+        }
+
+        void addRectLightGizmo(RenderDebugDrawData& debug_draw, const RendererRectLightData& light) {
+            const glm::vec3 half_right = light.right * (light.size.x * 0.5f);
+            const glm::vec3 half_up = light.up * (light.size.y * 0.5f);
+            const glm::vec3 corners[] = {
+                light.position - half_right - half_up,
+                light.position + half_right - half_up,
+                light.position + half_right + half_up,
+                light.position - half_right + half_up
+            };
+            const glm::vec4 color{ light.color, 1.0f };
+            RenderDebugDrawBuilder::addLine(debug_draw, corners[0], corners[1], color);
+            RenderDebugDrawBuilder::addLine(debug_draw, corners[1], corners[2], color);
+            RenderDebugDrawBuilder::addLine(debug_draw, corners[2], corners[3], color);
+            RenderDebugDrawBuilder::addLine(debug_draw, corners[3], corners[0], color);
+            RenderDebugDrawBuilder::addLine(
+                debug_draw,
+                light.position,
+                light.position + light.normal * 0.5f,
+                glm::vec4{ 1.0f, 0.86f, 0.35f, 1.0f });
         }
     } // namespace
 
@@ -131,6 +174,18 @@ namespace NexAur {
                     point_light_data.position,
                     0.35f,
                     glm::vec4{ point_light_data.color, 1.0f });
+            }
+        });
+
+        // 矩形面光源数据。本地 X/Z 表示灯面宽/高方向，本地 -Y 表示发光法线。
+        auto view_rect_light = m_Registry.view<RectLightComponent, TransformComponent>();
+        view_rect_light.each([&](auto entity, const auto& rect_light_comp, const auto& transform_comp) {
+            (void)entity;
+            RendererRectLightData rect_light_data = buildRectLightData(rect_light_comp, transform_comp);
+            render_packet->rect_lights_data.push_back(rect_light_data);
+
+            if (debug_options.enabled && debug_options.light_gizmos) {
+                addRectLightGizmo(render_packet->debug_draw, rect_light_data);
             }
         });
 

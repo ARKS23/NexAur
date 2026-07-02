@@ -924,6 +924,16 @@ namespace NexAur {
             stats.point_light_count = draw_list ?
                 draw_list->point_lights.size() :
                 render_data.point_lights_data.size();
+            stats.rect_light_count = draw_list ?
+                draw_list->rect_lights.size() :
+                render_data.rect_lights_data.size();
+            const size_t extracted_rect_light_count = scene_frame ?
+                scene_frame->rect_lights.size() :
+                render_data.rect_lights_data.size();
+            stats.rect_light_clipped_count =
+                render_data.rect_lights_data.size() > extracted_rect_light_count ?
+                    render_data.rect_lights_data.size() - extracted_rect_light_count :
+                    0u;
             if (draw_list) {
                 for (const RenderFramePointLight& light : draw_list->point_lights) {
                     if (light.shadow_requested) {

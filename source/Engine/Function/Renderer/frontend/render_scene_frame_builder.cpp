@@ -23,6 +23,10 @@ namespace NexAur {
             return isFinite(value.x) && isFinite(value.y) && isFinite(value.z);
         }
 
+        bool isFinite(const glm::vec2& value) {
+            return isFinite(value.x) && isFinite(value.y);
+        }
+
         bool isFinite(const glm::vec4& value) {
             return isFinite(value.x) && isFinite(value.y) && isFinite(value.z) && isFinite(value.w);
         }
@@ -69,6 +73,13 @@ namespace NexAur {
                 return glm::normalize(kDefaultLightDirection);
             }
             return glm::normalize(direction);
+        }
+
+        glm::vec3 sanitizeAxis(const glm::vec3& axis, const glm::vec3& fallback) {
+            if (!isFinite(axis) || glm::dot(axis, axis) <= 0.000001f) {
+                return fallback;
+            }
+            return glm::normalize(axis);
         }
 
         glm::mat4 sanitizeTransform(const glm::mat4& transform) {
@@ -122,6 +133,29 @@ namespace NexAur {
                 assigned_shadow_slots < shadow_budget;
             light.cast_shadow = can_cast_shadow;
             light.shadow_slot = can_cast_shadow ? static_cast<int32_t>(assigned_shadow_slots++) : -1;
+            return light;
+        }
+
+        RenderFrameRectLight buildRectLight(
+            const RendererRectLightData& source,
+            const RenderLightingCalibrationSettings& lighting) {
+            RenderFrameRectLight light;
+            light.position = isFinite(source.position) ? source.position : glm::vec3{ 0.0f };
+            light.right = sanitizeAxis(source.right, glm::vec3{ 1.0f, 0.0f, 0.0f });
+            light.up = sanitizeAxis(source.up, glm::vec3{ 0.0f, 0.0f, 1.0f });
+            light.normal = sanitizeAxis(source.normal, glm::vec3{ 0.0f, -1.0f, 0.0f });
+            if (std::abs(glm::dot(light.right, light.up)) > 0.98f) {
+                light.up = sanitizeAxis(glm::cross(light.normal, light.right), glm::vec3{ 0.0f, 0.0f, 1.0f });
+            }
+            light.size = isFinite(source.size)
+                ? glm::max(source.size, glm::vec2{ 0.01f })
+                : glm::vec2{ 1.0f };
+            light.color = sanitizeColor(source.color);
+            light.intensity =
+                sanitizeNonNegative(source.intensity, 8.0f) *
+                sanitizeScale(lighting.rect_light_intensity_scale);
+            light.range = sanitizeMin(source.range, 8.0f, 0.1f);
+            light.two_sided = source.two_sided;
             return light;
         }
 
@@ -222,6 +256,27 @@ namespace NexAur {
                 "RenderSceneFrameBuilder truncated point lights from {} to {}.",
                 render_data.point_lights_data.size(),
                 kMaxPointLights);
+        }
+
+        if (render_data.render_settings.rect_light.enabled) {
+            const size_t rect_light_budget = std::min<size_t>(
+                render_data.render_settings.rect_light.max_lights,
+                kMaxRenderRectLights);
+            const size_t rect_light_count = std::min(render_data.rect_lights_data.size(), rect_light_budget);
+            frame.rect_lights.reserve(rect_light_count);
+            for (size_t index = 0; index < rect_light_count; ++index) {
+                RenderFrameRectLight rect_light = buildRectLight(render_data.rect_lights_data[index], lighting);
+                if (rect_light.intensity > 0.0001f) {
+                    frame.rect_lights.push_back(rect_light);
+                }
+            }
+
+            if (render_data.rect_lights_data.size() > rect_light_budget) {
+                NX_CORE_WARN(
+                    "RenderSceneFrameBuilder truncated rect lights from {} to {}.",
+                    render_data.rect_lights_data.size(),
+                    rect_light_budget);
+            }
         }
 
         frame.environment_asset = render_data.environment_data.environment_asset;

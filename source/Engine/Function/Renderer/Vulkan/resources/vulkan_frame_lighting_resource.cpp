@@ -47,6 +47,7 @@ namespace NexAur {
             glm::vec4 point_shadow_params{ 0.0f, 512.0f, 0.015f, 0.02f };
             glm::vec4 point_shadow_quality_params{ 1.0f, 0.0f, 0.0f, 0.0f };
             glm::vec4 contact_shadow_params{ 0.0f, 0.35f, 0.45f, 0.08f };
+            glm::vec4 rect_light_params{ 1.0f, 0.0f, 0.0f, 0.0f };
         };
 
         struct VulkanGpuPointLight {
@@ -56,8 +57,17 @@ namespace NexAur {
             glm::vec4 shadow{ -1.0f, 8.0f, 0.85f, 0.0f };
         };
 
+        struct VulkanGpuRectLight {
+            glm::vec4 position_intensity{ 0.0f };
+            glm::vec4 right_width{ 1.0f, 0.0f, 0.0f, 1.0f };
+            glm::vec4 up_height{ 0.0f, 0.0f, 1.0f, 1.0f };
+            glm::vec4 normal_range{ 0.0f, -1.0f, 0.0f, 8.0f };
+            glm::vec4 color_flags{ 1.0f, 1.0f, 1.0f, 0.0f };
+        };
+
         static_assert(sizeof(VulkanGpuFrameGlobals) % 16 == 0, "Frame globals must stay 16-byte aligned.");
         static_assert(sizeof(VulkanGpuPointLight) % 16 == 0, "Point light data must stay 16-byte aligned.");
+        static_assert(sizeof(VulkanGpuRectLight) % 16 == 0, "Rect light data must stay 16-byte aligned.");
 
         bool checkVk(VkResult result, const char* operation) {
             if (result == VK_SUCCESS) {
@@ -120,6 +130,7 @@ namespace NexAur {
         if (layout == VK_NULL_HANDLE ||
             !createBuffer(sizeof(VulkanGpuFrameGlobals), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, m_frame_buffer) ||
             !createBuffer(sizeof(VulkanGpuPointLight) * kMaxPointLights, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_point_light_buffer) ||
+            !createBuffer(sizeof(VulkanGpuRectLight) * kMaxRenderRectLights, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_rect_light_buffer) ||
             !updateDescriptorSet(layout)) {
             shutdown();
             return false;
@@ -134,6 +145,7 @@ namespace NexAur {
             m_descriptor_allocator->free(m_descriptor_allocation);
         }
 
+        destroyBuffer(m_rect_light_buffer);
         destroyBuffer(m_point_light_buffer);
         destroyBuffer(m_frame_buffer);
 
@@ -157,6 +169,7 @@ namespace NexAur {
         }
 
         const uint32_t point_light_count = static_cast<uint32_t>(std::min<size_t>(draw_list.point_lights.size(), kMaxPointLights));
+        const uint32_t rect_light_count = static_cast<uint32_t>(std::min<size_t>(draw_list.rect_lights.size(), kMaxRenderRectLights));
 
         VulkanGpuFrameGlobals frame_globals;
         frame_globals.view_projection = draw_list.view.view_projection_matrix;
@@ -241,6 +254,11 @@ namespace NexAur {
             sanitizeUnit(contact_shadow_settings.intensity, 0.35f),
             sanitizeMin(contact_shadow_settings.max_distance, 0.45f, 0.0f),
             sanitizeMin(contact_shadow_settings.thickness, 0.08f, 0.0f));
+        frame_globals.rect_light_params = glm::vec4(
+            render_settings.rect_light.enabled ? 1.0f : 0.0f,
+            static_cast<float>(rect_light_count),
+            0.0f,
+            0.0f);
 
         std::array<VulkanGpuPointLight, kMaxPointLights> point_lights{};
         for (uint32_t index = 0; index < point_light_count; ++index) {
@@ -257,8 +275,26 @@ namespace NexAur {
                 source.cast_shadow ? 1.0f : 0.0f);
         }
 
+        std::array<VulkanGpuRectLight, kMaxRenderRectLights> rect_lights{};
+        for (uint32_t index = 0; index < rect_light_count; ++index) {
+            const RenderFrameRectLight& source = draw_list.rect_lights[index];
+            VulkanGpuRectLight& target = rect_lights[index];
+            target.position_intensity = glm::vec4(source.position, std::max(0.0f, source.intensity));
+            target.right_width = glm::vec4(
+                safeNormalize(source.right, glm::vec3{ 1.0f, 0.0f, 0.0f }),
+                std::max(0.01f, source.size.x));
+            target.up_height = glm::vec4(
+                safeNormalize(source.up, glm::vec3{ 0.0f, 0.0f, 1.0f }),
+                std::max(0.01f, source.size.y));
+            target.normal_range = glm::vec4(
+                safeNormalize(source.normal, glm::vec3{ 0.0f, -1.0f, 0.0f }),
+                std::max(0.1f, source.range));
+            target.color_flags = glm::vec4(glm::max(source.color, glm::vec3{ 0.0f }), source.two_sided ? 1.0f : 0.0f);
+        }
+
         return writeBuffer(m_frame_buffer, &frame_globals, sizeof(frame_globals)) &&
-               writeBuffer(m_point_light_buffer, point_lights.data(), sizeof(point_lights));
+               writeBuffer(m_point_light_buffer, point_lights.data(), sizeof(point_lights)) &&
+               writeBuffer(m_rect_light_buffer, rect_lights.data(), sizeof(rect_lights));
     }
 
     bool VulkanFrameLightingResource::updateShadowMap(VkImageView shadow_map_view, VkSampler shadow_sampler) {
@@ -387,9 +423,15 @@ namespace NexAur {
         point_light_buffer_info.offset = 0;
         point_light_buffer_info.range = m_point_light_buffer.size;
 
+        VkDescriptorBufferInfo rect_light_buffer_info{};
+        rect_light_buffer_info.buffer = m_rect_light_buffer.buffer;
+        rect_light_buffer_info.offset = 0;
+        rect_light_buffer_info.range = m_rect_light_buffer.size;
+
         VulkanDescriptorWriter()
             .writeBuffer(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_buffer_info)
             .writeBuffer(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, point_light_buffer_info)
+            .writeBuffer(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, rect_light_buffer_info)
             .update(m_device, m_descriptor_set);
         return true;
     }

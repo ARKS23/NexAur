@@ -27,6 +27,7 @@ namespace NexAur {
 
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;
+        std::vector<RenderFrameRectLight> rect_lights;
         AssetHandle environment_asset;
         const VulkanEnvironmentResource* environment = nullptr;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };

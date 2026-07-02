@@ -49,6 +49,21 @@ namespace NexAur {
             return json::array({ value.x, value.y, value.z });
         }
 
+        json writeVec2(const glm::vec2& value) {
+            return json::array({ value.x, value.y });
+        }
+
+        glm::vec2 readVec2(const json& value, const glm::vec2& fallback = glm::vec2{ 0.0f }) {
+            if (!value.is_array() || value.size() != 2) {
+                return fallback;
+            }
+
+            return {
+                value[0].get<float>(),
+                value[1].get<float>(),
+            };
+        }
+
         glm::vec3 readVec3(const json& value, const glm::vec3& fallback = glm::vec3{ 0.0f }) {
             if (!value.is_array() || value.size() != 3) {
                 return fallback;
@@ -239,6 +254,16 @@ namespace NexAur {
             };
         }
 
+        json writeRectLightComponent(const RectLightComponent& light) {
+            return json{
+                { "color", writeVec3(light.color) },
+                { "intensity", light.intensity },
+                { "size", writeVec2(light.size) },
+                { "range", light.range },
+                { "two_sided", light.two_sided },
+            };
+        }
+
         json writePlayerComponent(const PlayerComponent& player) {
             return json{ { "move_speed", player.move_speed } };
         }
@@ -363,6 +388,14 @@ namespace NexAur {
             light.shadow_strength = component.value("shadow_strength", light.shadow_strength);
         }
 
+        void readRectLightComponent(const json& component, RectLightComponent& light) {
+            light.color = readVec3(component.value("color", json::array()), light.color);
+            light.intensity = component.value("intensity", light.intensity);
+            light.size = readVec2(component.value("size", json::array()), light.size);
+            light.range = component.value("range", light.range);
+            light.two_sided = component.value("two_sided", light.two_sided);
+        }
+
         void readPlayerComponent(const json& component, PlayerComponent& player) {
             player.move_speed = component.value("move_speed", player.move_speed);
         }
@@ -447,6 +480,10 @@ namespace NexAur {
 
             if (const auto* point_light = registry.try_get<PointLightComponent>(entity)) {
                 components["PointLight"] = writePointLightComponent(*point_light);
+            }
+
+            if (const auto* rect_light = registry.try_get<RectLightComponent>(entity)) {
+                components["RectLight"] = writeRectLightComponent(*rect_light);
             }
 
             if (const auto* environment = registry.try_get<EnvironmentComponent>(entity)) {
@@ -668,6 +705,11 @@ namespace NexAur {
                 if (components.contains("PointLight") && components["PointLight"].is_object()) {
                     PointLightComponent& light = entity.addOrReplaceComponent<PointLightComponent>();
                     readPointLightComponent(components["PointLight"], light);
+                }
+
+                if (components.contains("RectLight") && components["RectLight"].is_object()) {
+                    RectLightComponent& light = entity.addOrReplaceComponent<RectLightComponent>();
+                    readRectLightComponent(components["RectLight"], light);
                 }
 
                 if (components.contains("Environment") && components["Environment"].is_object()) {

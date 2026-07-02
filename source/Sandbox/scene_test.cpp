@@ -133,6 +133,24 @@ namespace NexAur {
             zero_rotation,
             { size.x * 0.35f, kWallThickness, size.z * 0.26f });
 
+        const glm::vec3 light_position{
+            center.x,
+            ceiling_y - kWallThickness - 0.02f,
+            center.z - half_depth * 0.15f
+        };
+        const glm::vec2 light_size{ size.x * 0.35f, size.z * 0.26f };
+
+        Entity rect_light_entity = m_scene->createEntity("CornellBox RectLight");
+        auto& rect_light = rect_light_entity.addComponent<RectLightComponent>();
+        rect_light.color = glm::vec3{ 1.0f, 0.92f, 0.78f };
+        rect_light.intensity = 9.0f;
+        rect_light.size = light_size;
+        rect_light.range = std::max(size.x, std::max(size.y, size.z)) * 1.25f;
+        rect_light.two_sided = false;
+
+        TransformComponent& rect_light_transform = rect_light_entity.getComponent<TransformComponent>();
+        rect_light_transform.translation = light_position;
+
         addSolidCubeEntity(
             "CornellBox ShortBlock",
             white_wall,
@@ -149,7 +167,7 @@ namespace NexAur {
         Entity light_entity = m_scene->createEntity("CornellBox PointLight");
         auto& point_light = light_entity.addComponent<PointLightComponent>();
         point_light.color = glm::vec3{ 1.0f, 0.92f, 0.78f };
-        point_light.intensity = 12.0f;
+        point_light.intensity = 2.0f;
         point_light.constant = 1.0f;
         point_light.linear = 0.18f;
         point_light.quadratic = 0.04f;
@@ -158,7 +176,7 @@ namespace NexAur {
         point_light.shadow_strength = 0.9f;
 
         TransformComponent& light_transform = light_entity.getComponent<TransformComponent>();
-        light_transform.translation = { center.x, ceiling_y - 0.35f, center.z - half_depth * 0.12f };
+        light_transform.translation = light_position;
     }
 
     Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {

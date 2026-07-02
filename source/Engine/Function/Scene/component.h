@@ -64,6 +64,15 @@ namespace NexAur {
         float shadow_strength = 0.85f;
     };
 
+    // 矩形面光源组件。本地 X/Z 表示灯面宽/高方向，本地 -Y 表示默认发光法线。
+    struct RectLightComponent {
+        glm::vec3 color{ 1.0f, 1.0f, 1.0f };
+        float intensity = 8.0f;
+        glm::vec2 size{ 1.0f, 1.0f };
+        float range = 8.0f;
+        bool two_sided = false;
+    };
+
     // 定向光组件
     struct DirectionalLightComponent {
         glm::vec3 direction{ -0.2f, -1.0f, -0.3f };

@@ -60,6 +60,7 @@ namespace NexAur {
         drawMeshRendererComponent(selected);
         drawDirectionalLightComponent(selected);
         drawPointLightComponent(selected);
+        drawRectLightComponent(selected);
         drawEnvironmentComponent(selected);
 
         ImGui::End();
@@ -106,6 +107,7 @@ namespace NexAur {
         if (ImGui::BeginMenu("Light")) {
             drawAddComponentItem<DirectionalLightComponent>(entity, "Directional Light");
             drawAddComponentItem<PointLightComponent>(entity, "Point Light");
+            drawAddComponentItem<RectLightComponent>(entity, "Rect Light");
             ImGui::EndMenu();
         }
 
@@ -232,6 +234,20 @@ namespace NexAur {
         EditorPropertyDrawer::drawBoolProperty("Cast Shadow", light.cast_shadow);
         EditorPropertyDrawer::drawFloatProperty("Shadow Range", light.shadow_range, 0.1f, 0.1f, 100.0f, "%.2f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("Shadow Strength", light.shadow_strength, 0.01f, 0.0f, 1.0f, "%.2f", kFlags);
+    }
+
+    void PropertiesPanel::drawRectLightComponent(Entity entity) {
+        if (!entity.hasComponent<RectLightComponent>()) return;
+        if (!EditorPropertyDrawer::drawComponentHeader("Rect Light")) return;
+
+        RectLightComponent& light = entity.getComponent<RectLightComponent>();
+        constexpr ImGuiSliderFlags kFlags = ImGuiSliderFlags_AlwaysClamp;
+
+        EditorPropertyDrawer::drawColor3Property("Color", light.color);
+        EditorPropertyDrawer::drawFloatProperty("Intensity", light.intensity, 0.05f, 0.0f, 200.0f, "%.2f", kFlags);
+        EditorPropertyDrawer::drawVec2Property("Size", light.size, 0.05f, 0.01f, 100.0f, "%.2f", kFlags);
+        EditorPropertyDrawer::drawFloatProperty("Range", light.range, 0.1f, 0.1f, 100.0f, "%.2f", kFlags);
+        EditorPropertyDrawer::drawBoolProperty("Two Sided", light.two_sided);
     }
 
     void PropertiesPanel::drawEnvironmentComponent(Entity entity) {

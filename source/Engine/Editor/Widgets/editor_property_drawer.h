@@ -53,6 +53,15 @@ namespace NexAur::EditorPropertyDrawer {
         const char* format = "%.3f",
         ImGuiSliderFlags flags = 0);
 
+    NEXAUR_API bool drawVec2Property(
+        const char* label,
+        glm::vec2& value,
+        float speed = 0.05f,
+        float min = 0.0f,
+        float max = 0.0f,
+        const char* format = "%.3f",
+        ImGuiSliderFlags flags = 0);
+
     NEXAUR_API bool drawColor3Property(
         const char* label,
         glm::vec3& value);

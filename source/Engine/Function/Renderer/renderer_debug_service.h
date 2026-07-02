@@ -32,6 +32,8 @@ namespace NexAur {
         size_t point_light_count = 0;
         size_t point_shadow_request_count = 0;
         size_t shadowed_point_light_count = 0;
+        size_t rect_light_count = 0;
+        size_t rect_light_clipped_count = 0;
         size_t debug_line_count = 0;
     };
 

@@ -23,6 +23,7 @@ namespace NexAur {
         void drawMeshRendererComponent(Entity entity);
         void drawDirectionalLightComponent(Entity entity);
         void drawPointLightComponent(Entity entity);
+        void drawRectLightComponent(Entity entity);
         void drawEnvironmentComponent(Entity entity);
     };
 } // namespace NexAur

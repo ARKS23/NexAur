@@ -35,6 +35,18 @@ namespace NexAur {
         float shadow_strength = 0.85f;
     };
 
+    struct RenderFrameRectLight {
+        glm::vec3 position{ 0.0f };
+        glm::vec3 right{ 1.0f, 0.0f, 0.0f };
+        glm::vec3 up{ 0.0f, 0.0f, 1.0f };
+        glm::vec3 normal{ 0.0f, -1.0f, 0.0f };
+        glm::vec2 size{ 1.0f, 1.0f };
+        glm::vec3 color{ 1.0f };
+        float intensity = 8.0f;
+        float range = 8.0f;
+        bool two_sided = false;
+    };
+
     struct RenderSceneFrameObject {
         AssetHandle model_asset;
         glm::mat4 transform{ 1.0f };
@@ -49,6 +61,7 @@ namespace NexAur {
 
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;
+        std::vector<RenderFrameRectLight> rect_lights;
 
         AssetHandle environment_asset;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };

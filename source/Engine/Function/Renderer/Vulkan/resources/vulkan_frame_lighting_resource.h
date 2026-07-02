@@ -67,6 +67,7 @@ namespace NexAur {
         VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
         Buffer m_frame_buffer;
         Buffer m_point_light_buffer;
+        Buffer m_rect_light_buffer;
         bool m_ready = false;
     };
 } // namespace NexAur

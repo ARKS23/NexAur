@@ -115,6 +115,8 @@ namespace NexAur {
         drawKeyValue("Point Lights", snapshot.frame.point_light_count);
         drawKeyValue("Point Shadow Requests", snapshot.frame.point_shadow_request_count);
         drawKeyValue("Shadowed Point Lights", snapshot.frame.shadowed_point_light_count);
+        drawKeyValue("Rect Lights", snapshot.frame.rect_light_count);
+        drawKeyValue("Rect Lights Clipped", snapshot.frame.rect_light_clipped_count);
         drawKeyValue("Debug Lines", snapshot.frame.debug_line_count);
     }
 

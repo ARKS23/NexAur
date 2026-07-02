@@ -5,6 +5,7 @@
 namespace NexAur {
     inline constexpr uint32_t kMaxRenderPointShadowLights = 4;
     inline constexpr uint32_t kRenderPointShadowCubeFaceCount = 6;
+    inline constexpr uint32_t kMaxRenderRectLights = 16;
 
     enum class RenderToneMappingMode : uint32_t {
         None = 0,
@@ -76,6 +77,7 @@ namespace NexAur {
         RenderLightingPreset preset = RenderLightingPreset::Outdoor;
         float directional_light_intensity_scale = 1.0f;
         float point_light_intensity_scale = 1.0f;
+        float rect_light_intensity_scale = 1.0f;
         float skybox_intensity_scale = 1.0f;
         float ibl_intensity_scale = 1.0f;
     };
@@ -149,6 +151,11 @@ namespace NexAur {
         float thickness = 0.08f;
     };
 
+    struct RenderRectLightSettings {
+        bool enabled = true;
+        uint32_t max_lights = kMaxRenderRectLights;
+    };
+
     struct RenderSettings {
         RenderLightingCalibrationSettings lighting;
         RenderPostProcessSettings post_process;
@@ -158,6 +165,7 @@ namespace NexAur {
         RenderShadowSettings shadow;
         RenderPointShadowSettings point_shadow;
         RenderContactShadowSettings contact_shadow;
+        RenderRectLightSettings rect_light;
     };
 
     inline void applyRenderLightingPreset(RenderSettings& settings, RenderLightingPreset preset) {
@@ -176,6 +184,7 @@ namespace NexAur {
         case RenderLightingPreset::Outdoor:
             settings.lighting.directional_light_intensity_scale = 1.0f;
             settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.rect_light_intensity_scale = 1.0f;
             settings.lighting.skybox_intensity_scale = 1.0f;
             settings.lighting.ibl_intensity_scale = 1.0f;
             settings.post_process.exposure = 0.85f;
@@ -184,6 +193,7 @@ namespace NexAur {
         case RenderLightingPreset::Studio:
             settings.lighting.directional_light_intensity_scale = 0.35f;
             settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.rect_light_intensity_scale = 1.0f;
             settings.lighting.skybox_intensity_scale = 0.45f;
             settings.lighting.ibl_intensity_scale = 0.85f;
             settings.post_process.exposure = 0.80f;
@@ -192,6 +202,7 @@ namespace NexAur {
         case RenderLightingPreset::Cornell:
             settings.lighting.directional_light_intensity_scale = 0.0f;
             settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.rect_light_intensity_scale = 1.0f;
             settings.lighting.skybox_intensity_scale = 0.0f;
             settings.lighting.ibl_intensity_scale = 0.03f;
             settings.post_process.exposure = 1.0f;
@@ -200,6 +211,7 @@ namespace NexAur {
         case RenderLightingPreset::AssetPreview:
             settings.lighting.directional_light_intensity_scale = 0.25f;
             settings.lighting.point_light_intensity_scale = 1.0f;
+            settings.lighting.rect_light_intensity_scale = 1.0f;
             settings.lighting.skybox_intensity_scale = 0.65f;
             settings.lighting.ibl_intensity_scale = 1.0f;
             settings.post_process.exposure = 0.85f;

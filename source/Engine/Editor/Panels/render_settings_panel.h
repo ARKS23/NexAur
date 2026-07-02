@@ -26,5 +26,6 @@ namespace NexAur {
         void drawShadowSection(RenderSettings& settings, bool& changed);
         void drawPointShadowSection(RenderSettings& settings, bool& changed);
         void drawContactShadowSection(RenderSettings& settings, bool& changed);
+        void drawRectLightSection(RenderSettings& settings, bool& changed);
     };
 } // namespace NexAur

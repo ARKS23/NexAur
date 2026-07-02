@@ -737,6 +737,52 @@ bool defaultPointLightShadowMatches(const std::shared_ptr<NexAur::SceneV2>& scen
     return false;
 }
 
+bool configureDefaultRectLight(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    NexAur::Entity entity = scene->createEntity("RectLight");
+    auto& light = entity.addComponent<NexAur::RectLightComponent>();
+    light.color = glm::vec3{ 1.0f, 0.85f, 0.65f };
+    light.intensity = 6.5f;
+    light.size = glm::vec2{ 2.25f, 1.15f };
+    light.range = 9.0f;
+    light.two_sided = true;
+
+    auto& transform = entity.getComponent<NexAur::TransformComponent>();
+    transform.translation = glm::vec3{ 0.0f, 3.25f, 0.0f };
+    transform.rotation = glm::vec3{ 0.0f };
+    return true;
+}
+
+bool defaultRectLightMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    const entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<NexAur::TagComponent, NexAur::RectLightComponent>();
+    for (entt::entity entity : view) {
+        const auto& tag = view.get<NexAur::TagComponent>(entity);
+        if (tag.name != "RectLight") {
+            continue;
+        }
+
+        const auto& light = view.get<NexAur::RectLightComponent>(entity);
+        return nearlyEqual(light.color.r, 1.0f) &&
+               nearlyEqual(light.color.g, 0.85f) &&
+               nearlyEqual(light.color.b, 0.65f) &&
+               nearlyEqual(light.intensity, 6.5f) &&
+               nearlyEqual(light.size.x, 2.25f) &&
+               nearlyEqual(light.size.y, 1.15f) &&
+               nearlyEqual(light.range, 9.0f) &&
+               light.two_sided;
+    }
+
+    return false;
+}
+
 int runSceneSerializerSmoke() {
     NexAur::Engine engine;
     engine.startEngine();
@@ -762,6 +808,9 @@ int runSceneSerializerSmoke() {
     } else if (!configureDefaultPointLightShadow(scene_service->getActiveScene())) {
         success = false;
         failure = "SceneSerializer smoke failed: could not configure point light shadow settings.";
+    } else if (!configureDefaultRectLight(scene_service->getActiveScene())) {
+        success = false;
+        failure = "SceneSerializer smoke failed: could not configure rect light settings.";
     } else {
         NexAur::SceneSerializer serializer(*asset_manager);
         const NexAur::SceneSerializationResult save_result =
@@ -778,7 +827,8 @@ int runSceneSerializerSmoke() {
                 !hasEntityNamed(load_result.scene, "MainCamera") ||
                 !hasEntityNamed(load_result.scene, "Environment") ||
                 !hasEntityNamed(load_result.scene, "DirectionalLight") ||
-                !hasEntityNamed(load_result.scene, "PointLight")) {
+                !hasEntityNamed(load_result.scene, "PointLight") ||
+                !hasEntityNamed(load_result.scene, "RectLight")) {
                 success = false;
                 failure = "SceneSerializer smoke failed: loaded scene is missing default entities.";
             } else if (!defaultEnvironmentCalibrationMatches(load_result.scene)) {
@@ -787,6 +837,9 @@ int runSceneSerializerSmoke() {
             } else if (!defaultPointLightShadowMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: point light shadow settings were not preserved.";
+            } else if (!defaultRectLightMatches(load_result.scene)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: rect light settings were not preserved.";
             } else {
                 NX_CORE_INFO(
                     "SceneSerializer smoke passed. Saved {} entities and loaded {} entities.",
@@ -940,6 +993,7 @@ int runRenderSettingsSmoke() {
     settings.lighting.preset = NexAur::RenderLightingPreset::Custom;
     settings.lighting.directional_light_intensity_scale = 0.25f;
     settings.lighting.point_light_intensity_scale = 1.5f;
+    settings.lighting.rect_light_intensity_scale = 1.25f;
     settings.lighting.skybox_intensity_scale = 0.5f;
     settings.lighting.ibl_intensity_scale = 0.75f;
     settings.post_process.tone_mapping_mode = NexAur::RenderToneMappingMode::None;
@@ -990,6 +1044,8 @@ int runRenderSettingsSmoke() {
     settings.contact_shadow.intensity = 0.4f;
     settings.contact_shadow.max_distance = 0.55f;
     settings.contact_shadow.thickness = 0.07f;
+    settings.rect_light.enabled = false;
+    settings.rect_light.max_lights = 7u;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -1010,6 +1066,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.point_shadow;
     const NexAur::RenderContactShadowSettings& first_contact_shadow =
         render_context.getReadData().render_settings.contact_shadow;
+    const NexAur::RenderRectLightSettings& first_rect_light =
+        render_context.getReadData().render_settings.rect_light;
     expect(
         first_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::None,
         "RenderSettings smoke failed: tone mapping mode did not reach the read packet.");
@@ -1026,6 +1084,7 @@ int runRenderSettingsSmoke() {
         first_lighting.preset == NexAur::RenderLightingPreset::Custom &&
         nearlyEqual(first_lighting.directional_light_intensity_scale, 0.25f) &&
         nearlyEqual(first_lighting.point_light_intensity_scale, 1.5f) &&
+        nearlyEqual(first_lighting.rect_light_intensity_scale, 1.25f) &&
         nearlyEqual(first_lighting.skybox_intensity_scale, 0.5f) &&
         nearlyEqual(first_lighting.ibl_intensity_scale, 0.75f),
         "RenderSettings smoke failed: lighting calibration settings did not reach the read packet.");
@@ -1083,6 +1142,10 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_contact_shadow.max_distance, 0.55f) &&
         nearlyEqual(first_contact_shadow.thickness, 0.07f),
         "RenderSettings smoke failed: contact shadow settings did not reach the read packet.");
+    expect(
+        !first_rect_light.enabled &&
+        first_rect_light.max_lights == 7u,
+        "RenderSettings smoke failed: rect light settings did not reach the read packet.");
 
     NexAur::applyRenderLightingPreset(settings, NexAur::RenderLightingPreset::Cornell);
     settings.ao.enabled = false;
@@ -1127,6 +1190,8 @@ int runRenderSettingsSmoke() {
     settings.contact_shadow.intensity = 0.35f;
     settings.contact_shadow.max_distance = 0.45f;
     settings.contact_shadow.thickness = 0.08f;
+    settings.rect_light.enabled = true;
+    settings.rect_light.max_lights = 1u;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -1147,6 +1212,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.point_shadow;
     const NexAur::RenderContactShadowSettings& second_contact_shadow =
         render_context.getReadData().render_settings.contact_shadow;
+    const NexAur::RenderRectLightSettings& second_rect_light =
+        render_context.getReadData().render_settings.rect_light;
     expect(
         second_post_process.tone_mapping_mode == NexAur::RenderToneMappingMode::ACES,
         "RenderSettings smoke failed: ACES mode did not reach the read packet.");
@@ -1163,6 +1230,7 @@ int runRenderSettingsSmoke() {
         second_lighting.preset == NexAur::RenderLightingPreset::Cornell &&
         nearlyEqual(second_lighting.directional_light_intensity_scale, 0.0f) &&
         nearlyEqual(second_lighting.point_light_intensity_scale, 1.0f) &&
+        nearlyEqual(second_lighting.rect_light_intensity_scale, 1.0f) &&
         nearlyEqual(second_lighting.skybox_intensity_scale, 0.0f) &&
         nearlyEqual(second_lighting.ibl_intensity_scale, 0.03f),
         "RenderSettings smoke failed: Cornell lighting preset did not reach the read packet.");
@@ -1220,6 +1288,10 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_contact_shadow.max_distance, 0.45f) &&
         nearlyEqual(second_contact_shadow.thickness, 0.08f),
         "RenderSettings smoke failed: updated contact shadow settings did not reach the read packet.");
+    expect(
+        second_rect_light.enabled &&
+        second_rect_light.max_lights == 1u,
+        "RenderSettings smoke failed: updated rect light settings did not reach the read packet.");
 
     NexAur::RenderDataPacket render_data;
     render_data.render_settings = settings;
@@ -1237,6 +1309,12 @@ int runRenderSettingsSmoke() {
     NexAur::RendererPointLightData budget_clipped_light = cornell_light;
     budget_clipped_light.position = glm::vec3{ 1.0f, 0.0f, 0.0f };
     render_data.point_lights_data.push_back(budget_clipped_light);
+    NexAur::RendererRectLightData cornell_rect_light;
+    cornell_rect_light.position = glm::vec3{ 0.0f, 2.8f, 0.0f };
+    cornell_rect_light.size = glm::vec2{ 1.4f, 1.0f };
+    cornell_rect_light.intensity = 8.0f;
+    cornell_rect_light.range = 6.5f;
+    render_data.rect_lights_data.push_back(cornell_rect_light);
 
     NexAur::RenderView render_view;
     render_view.viewport_width = 1280u;
@@ -1264,6 +1342,13 @@ int runRenderSettingsSmoke() {
         !cornell_frame.point_lights[1].cast_shadow &&
         cornell_frame.point_lights[1].shadow_slot == -1,
         "RenderSettings smoke failed: point shadow budget or slot assignment was incorrect.");
+    expect(
+        cornell_frame.rect_lights.size() == 1u &&
+        nearlyEqual(cornell_frame.rect_lights.front().intensity, 8.0f) &&
+        nearlyEqual(cornell_frame.rect_lights.front().size.x, 1.4f) &&
+        nearlyEqual(cornell_frame.rect_lights.front().size.y, 1.0f) &&
+        nearlyEqual(cornell_frame.rect_lights.front().range, 6.5f),
+        "RenderSettings smoke failed: rect light budget or calibration was incorrect.");
     expect(
         nearlyEqual(cornell_frame.skybox_intensity, 0.0f) &&
         nearlyEqual(cornell_frame.ibl_intensity, 0.65f * 0.03f),

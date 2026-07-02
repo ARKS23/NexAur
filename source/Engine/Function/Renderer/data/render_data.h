@@ -41,6 +41,18 @@ namespace NexAur {
         float shadow_strength = 0.85f;
     };
 
+    struct RendererRectLightData {
+        glm::vec3 position{ 0.0f };
+        glm::vec3 right{ 1.0f, 0.0f, 0.0f };
+        glm::vec3 up{ 0.0f, 0.0f, 1.0f };
+        glm::vec3 normal{ 0.0f, -1.0f, 0.0f };
+        glm::vec2 size{ 1.0f, 1.0f };
+        glm::vec3 color{ 1.0f, 1.0f, 1.0f };
+        float intensity = 8.0f;
+        float range = 8.0f;
+        bool two_sided = false;
+    };
+
     struct RendererEnvironmentData {
         AssetHandle environment_asset;
         glm::vec3 background_color{ 0.08f, 0.10f, 0.14f };
@@ -62,6 +74,7 @@ namespace NexAur {
 
         RendererDirectionalLightData directional_light_data;
         std::vector<RendererPointLightData> point_lights_data;
+        std::vector<RendererRectLightData> rect_lights_data;
 
         RendererEnvironmentData environment_data;
 
@@ -79,6 +92,7 @@ namespace NexAur {
             directional_light_data = RendererDirectionalLightData();
             environment_data = RendererEnvironmentData();
             point_lights_data.clear();
+            rect_lights_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
             render_settings = current_render_settings;
