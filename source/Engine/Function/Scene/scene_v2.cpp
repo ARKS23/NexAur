@@ -35,6 +35,8 @@ namespace NexAur {
             light_data.intensity = light.intensity;
             light_data.range = light.range;
             light_data.two_sided = light.two_sided;
+            light_data.cast_shadow = light.cast_shadow;
+            light_data.shadow_strength = light.shadow_strength;
             return light_data;
         }
 

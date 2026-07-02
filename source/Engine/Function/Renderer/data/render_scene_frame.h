@@ -45,6 +45,10 @@ namespace NexAur {
         float intensity = 8.0f;
         float range = 8.0f;
         bool two_sided = false;
+        bool shadow_requested = false;
+        bool cast_shadow = false;
+        int32_t shadow_slot = -1;
+        float shadow_strength = 0.85f;
     };
 
     struct RenderSceneFrameObject {

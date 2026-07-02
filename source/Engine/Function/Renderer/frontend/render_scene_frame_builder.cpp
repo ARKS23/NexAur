@@ -138,7 +138,9 @@ namespace NexAur {
 
         RenderFrameRectLight buildRectLight(
             const RendererRectLightData& source,
-            const RenderLightingCalibrationSettings& lighting) {
+            const RenderLightingCalibrationSettings& lighting,
+            const RenderRectShadowSettings& rect_shadow_settings,
+            uint32_t& assigned_shadow_slots) {
             RenderFrameRectLight light;
             light.position = isFinite(source.position) ? source.position : glm::vec3{ 0.0f };
             light.right = sanitizeAxis(source.right, glm::vec3{ 1.0f, 0.0f, 0.0f });
@@ -156,6 +158,19 @@ namespace NexAur {
                 sanitizeScale(lighting.rect_light_intensity_scale);
             light.range = sanitizeMin(source.range, 8.0f, 0.1f);
             light.two_sided = source.two_sided;
+            light.shadow_strength = sanitizeUnit(source.shadow_strength, 0.85f);
+            light.shadow_requested = source.cast_shadow && light.intensity > 0.0001f;
+
+            const uint32_t shadow_budget = std::clamp(
+                rect_shadow_settings.max_shadowed_lights,
+                0u,
+                kMaxRenderRectShadowLights);
+            const bool can_cast_shadow =
+                rect_shadow_settings.enabled &&
+                light.shadow_requested &&
+                assigned_shadow_slots < shadow_budget;
+            light.cast_shadow = can_cast_shadow;
+            light.shadow_slot = can_cast_shadow ? static_cast<int32_t>(assigned_shadow_slots++) : -1;
             return light;
         }
 
@@ -264,8 +279,13 @@ namespace NexAur {
                 kMaxRenderRectLights);
             const size_t rect_light_count = std::min(render_data.rect_lights_data.size(), rect_light_budget);
             frame.rect_lights.reserve(rect_light_count);
+            uint32_t assigned_rect_shadow_slots = 0;
             for (size_t index = 0; index < rect_light_count; ++index) {
-                RenderFrameRectLight rect_light = buildRectLight(render_data.rect_lights_data[index], lighting);
+                RenderFrameRectLight rect_light = buildRectLight(
+                    render_data.rect_lights_data[index],
+                    lighting,
+                    render_data.render_settings.rect_shadow,
+                    assigned_rect_shadow_slots);
                 if (rect_light.intensity > 0.0001f) {
                     frame.rect_lights.push_back(rect_light);
                 }

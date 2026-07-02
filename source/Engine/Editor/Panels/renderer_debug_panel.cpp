@@ -117,6 +117,8 @@ namespace NexAur {
         drawKeyValue("Shadowed Point Lights", snapshot.frame.shadowed_point_light_count);
         drawKeyValue("Rect Lights", snapshot.frame.rect_light_count);
         drawKeyValue("Rect Lights Clipped", snapshot.frame.rect_light_clipped_count);
+        drawKeyValue("Rect Shadow Requests", snapshot.frame.rect_shadow_request_count);
+        drawKeyValue("Shadowed Rect Lights", snapshot.frame.shadowed_rect_light_count);
         drawKeyValue("Debug Lines", snapshot.frame.debug_line_count);
     }
 
@@ -187,6 +189,13 @@ namespace NexAur {
         drawKeyValue("  Depth Format", snapshot.point_shadow_target.depth_format.c_str());
 
         ImGui::Spacing();
+        ImGui::TextUnformatted("Rect Shadow Target");
+        drawKeyValue("  Ready", boolToText(snapshot.rect_shadow_target.ready));
+        drawExtent("  Size", snapshot.rect_shadow_target.width, snapshot.rect_shadow_target.height);
+        drawKeyValue("  Layers", snapshot.rect_shadow_target.layer_count);
+        drawKeyValue("  Depth Format", snapshot.rect_shadow_target.depth_format.c_str());
+
+        ImGui::Spacing();
         ImGui::TextUnformatted("Bloom Target");
         drawKeyValue("  Ready", boolToText(snapshot.bloom.ready));
         drawExtent("  Size", snapshot.bloom.width, snapshot.bloom.height);
@@ -211,10 +220,12 @@ namespace NexAur {
         drawKeyValue("Bloom Mip", snapshot.effects.bloom_mip);
         drawKeyValue("Shadow Cascade", snapshot.effects.shadow_cascade);
         drawKeyValue("Point Shadow Layer", snapshot.effects.point_shadow_layer);
+        drawKeyValue("Rect Shadow Layer", snapshot.effects.rect_shadow_layer);
         drawKeyValue("Bloom Debug Ready", boolToText(snapshot.effects.bloom_debug_available));
         drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));
+        drawKeyValue("Rect Shadow Debug Ready", boolToText(snapshot.effects.rect_shadow_debug_available));
         drawKeyValue("Rect LTC Specular", boolToText(snapshot.effects.rect_ltc_specular_enabled));
         drawKeyValue("Rect LTC Only", boolToText(snapshot.effects.rect_ltc_debug_only));
         ImGui::Text("Rect LTC Scale: %.2f", snapshot.effects.rect_ltc_specular_scale);

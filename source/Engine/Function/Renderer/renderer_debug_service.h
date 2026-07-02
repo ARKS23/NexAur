@@ -34,6 +34,8 @@ namespace NexAur {
         size_t shadowed_point_light_count = 0;
         size_t rect_light_count = 0;
         size_t rect_light_clipped_count = 0;
+        size_t rect_shadow_request_count = 0;
+        size_t shadowed_rect_light_count = 0;
         size_t debug_line_count = 0;
     };
 
@@ -98,10 +100,12 @@ namespace NexAur {
         uint32_t bloom_mip = 0;
         uint32_t shadow_cascade = 0;
         uint32_t point_shadow_layer = 0;
+        uint32_t rect_shadow_layer = 0;
         bool bloom_debug_available = false;
         bool ao_debug_available = false;
         bool shadow_debug_available = false;
         bool point_shadow_debug_available = false;
+        bool rect_shadow_debug_available = false;
         bool rect_ltc_specular_enabled = false;
         bool rect_ltc_debug_only = false;
         float rect_ltc_specular_scale = 1.0f;
@@ -136,6 +140,7 @@ namespace NexAur {
         RendererDebugPickingTargetStats picking_target;
         RendererDebugShadowTargetStats shadow_target;
         RendererDebugShadowTargetStats point_shadow_target;
+        RendererDebugShadowTargetStats rect_shadow_target;
         RendererDebugPostProcessStats post_process;
         RendererDebugBloomStats bloom;
         RendererDebugAoStats ao;

@@ -248,6 +248,8 @@ namespace NexAur {
         EditorPropertyDrawer::drawVec2Property("Size", light.size, 0.05f, 0.01f, 100.0f, "%.2f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("Range", light.range, 0.1f, 0.1f, 100.0f, "%.2f", kFlags);
         EditorPropertyDrawer::drawBoolProperty("Two Sided", light.two_sided);
+        EditorPropertyDrawer::drawBoolProperty("Cast Shadow", light.cast_shadow);
+        EditorPropertyDrawer::drawFloatProperty("Shadow Strength", light.shadow_strength, 0.01f, 0.0f, 1.0f, "%.2f", kFlags);
     }
 
     void PropertiesPanel::drawEnvironmentComponent(Entity entity) {

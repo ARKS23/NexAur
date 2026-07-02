@@ -749,6 +749,8 @@ bool configureDefaultRectLight(const std::shared_ptr<NexAur::SceneV2>& scene) {
     light.size = glm::vec2{ 2.25f, 1.15f };
     light.range = 9.0f;
     light.two_sided = true;
+    light.cast_shadow = true;
+    light.shadow_strength = 0.74f;
 
     auto& transform = entity.getComponent<NexAur::TransformComponent>();
     transform.translation = glm::vec3{ 0.0f, 3.25f, 0.0f };
@@ -777,7 +779,9 @@ bool defaultRectLightMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
                nearlyEqual(light.size.x, 2.25f) &&
                nearlyEqual(light.size.y, 1.15f) &&
                nearlyEqual(light.range, 9.0f) &&
-               light.two_sided;
+               light.two_sided &&
+               light.cast_shadow &&
+               nearlyEqual(light.shadow_strength, 0.74f);
     }
 
     return false;
@@ -1015,6 +1019,7 @@ int runRenderSettingsSmoke() {
     settings.effects_debug.bloom_mip = 3u;
     settings.effects_debug.shadow_cascade = 2u;
     settings.effects_debug.point_shadow_layer = 5u;
+    settings.effects_debug.rect_shadow_layer = 2u;
     settings.shadow.enabled = false;
     settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PCSS;
     settings.shadow.strength = 0.45f;
@@ -1044,6 +1049,14 @@ int runRenderSettingsSmoke() {
     settings.contact_shadow.intensity = 0.4f;
     settings.contact_shadow.max_distance = 0.55f;
     settings.contact_shadow.thickness = 0.07f;
+    settings.rect_shadow.enabled = false;
+    settings.rect_shadow.max_shadowed_lights = 3u;
+    settings.rect_shadow.map_resolution = 2048u;
+    settings.rect_shadow.strength = 0.58f;
+    settings.rect_shadow.constant_bias = 0.018f;
+    settings.rect_shadow.normal_bias = 0.035f;
+    settings.rect_shadow.filter_radius = 2.25f;
+    settings.rect_shadow.projection_margin = 0.55f;
     settings.rect_light.enabled = false;
     settings.rect_light.max_lights = 7u;
     settings.rect_light.ltc_specular_enabled = false;
@@ -1069,6 +1082,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.point_shadow;
     const NexAur::RenderContactShadowSettings& first_contact_shadow =
         render_context.getReadData().render_settings.contact_shadow;
+    const NexAur::RenderRectShadowSettings& first_rect_shadow =
+        render_context.getReadData().render_settings.rect_shadow;
     const NexAur::RenderRectLightSettings& first_rect_light =
         render_context.getReadData().render_settings.rect_light;
     expect(
@@ -1108,7 +1123,8 @@ int runRenderSettingsSmoke() {
         first_effects_debug.view == NexAur::RenderEffectDebugView::BloomDownsampleMip &&
         first_effects_debug.bloom_mip == 3u &&
         first_effects_debug.shadow_cascade == 2u &&
-        first_effects_debug.point_shadow_layer == 5u,
+        first_effects_debug.point_shadow_layer == 5u &&
+        first_effects_debug.rect_shadow_layer == 2u,
         "RenderSettings smoke failed: effects debug settings did not reach the read packet.");
     expect(
         !first_shadow.enabled &&
@@ -1146,6 +1162,16 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_contact_shadow.thickness, 0.07f),
         "RenderSettings smoke failed: contact shadow settings did not reach the read packet.");
     expect(
+        !first_rect_shadow.enabled &&
+        first_rect_shadow.max_shadowed_lights == 3u &&
+        first_rect_shadow.map_resolution == 2048u &&
+        nearlyEqual(first_rect_shadow.strength, 0.58f) &&
+        nearlyEqual(first_rect_shadow.constant_bias, 0.018f) &&
+        nearlyEqual(first_rect_shadow.normal_bias, 0.035f) &&
+        nearlyEqual(first_rect_shadow.filter_radius, 2.25f) &&
+        nearlyEqual(first_rect_shadow.projection_margin, 0.55f),
+        "RenderSettings smoke failed: rect shadow settings did not reach the read packet.");
+    expect(
         !first_rect_light.enabled &&
         first_rect_light.max_lights == 7u &&
         !first_rect_light.ltc_specular_enabled &&
@@ -1167,6 +1193,7 @@ int runRenderSettingsSmoke() {
     settings.effects_debug.bloom_mip = 0u;
     settings.effects_debug.shadow_cascade = 1u;
     settings.effects_debug.point_shadow_layer = 2u;
+    settings.effects_debug.rect_shadow_layer = 0u;
     settings.shadow.enabled = true;
     settings.shadow.filter_mode = NexAur::RenderShadowFilterMode::PoissonPCF;
     settings.shadow.strength = 0.7f;
@@ -1196,6 +1223,14 @@ int runRenderSettingsSmoke() {
     settings.contact_shadow.intensity = 0.35f;
     settings.contact_shadow.max_distance = 0.45f;
     settings.contact_shadow.thickness = 0.08f;
+    settings.rect_shadow.enabled = true;
+    settings.rect_shadow.max_shadowed_lights = 1u;
+    settings.rect_shadow.map_resolution = 1024u;
+    settings.rect_shadow.strength = 0.85f;
+    settings.rect_shadow.constant_bias = 0.01f;
+    settings.rect_shadow.normal_bias = 0.02f;
+    settings.rect_shadow.filter_radius = 1.0f;
+    settings.rect_shadow.projection_margin = 0.35f;
     settings.rect_light.enabled = true;
     settings.rect_light.max_lights = 1u;
     settings.rect_light.ltc_specular_enabled = true;
@@ -1221,6 +1256,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.point_shadow;
     const NexAur::RenderContactShadowSettings& second_contact_shadow =
         render_context.getReadData().render_settings.contact_shadow;
+    const NexAur::RenderRectShadowSettings& second_rect_shadow =
+        render_context.getReadData().render_settings.rect_shadow;
     const NexAur::RenderRectLightSettings& second_rect_light =
         render_context.getReadData().render_settings.rect_light;
     expect(
@@ -1260,7 +1297,8 @@ int runRenderSettingsSmoke() {
         second_effects_debug.view == NexAur::RenderEffectDebugView::ShadowMap &&
         second_effects_debug.bloom_mip == 0u &&
         second_effects_debug.shadow_cascade == 1u &&
-        second_effects_debug.point_shadow_layer == 2u,
+        second_effects_debug.point_shadow_layer == 2u &&
+        second_effects_debug.rect_shadow_layer == 0u,
         "RenderSettings smoke failed: updated effects debug settings did not reach the read packet.");
     expect(
         second_shadow.enabled &&
@@ -1298,6 +1336,16 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_contact_shadow.thickness, 0.08f),
         "RenderSettings smoke failed: updated contact shadow settings did not reach the read packet.");
     expect(
+        second_rect_shadow.enabled &&
+        second_rect_shadow.max_shadowed_lights == 1u &&
+        second_rect_shadow.map_resolution == 1024u &&
+        nearlyEqual(second_rect_shadow.strength, 0.85f) &&
+        nearlyEqual(second_rect_shadow.constant_bias, 0.01f) &&
+        nearlyEqual(second_rect_shadow.normal_bias, 0.02f) &&
+        nearlyEqual(second_rect_shadow.filter_radius, 1.0f) &&
+        nearlyEqual(second_rect_shadow.projection_margin, 0.35f),
+        "RenderSettings smoke failed: updated rect shadow settings did not reach the read packet.");
+    expect(
         second_rect_light.enabled &&
         second_rect_light.max_lights == 1u &&
         second_rect_light.ltc_specular_enabled &&
@@ -1326,6 +1374,8 @@ int runRenderSettingsSmoke() {
     cornell_rect_light.size = glm::vec2{ 1.4f, 1.0f };
     cornell_rect_light.intensity = 8.0f;
     cornell_rect_light.range = 6.5f;
+    cornell_rect_light.cast_shadow = true;
+    cornell_rect_light.shadow_strength = 0.88f;
     render_data.rect_lights_data.push_back(cornell_rect_light);
 
     NexAur::RenderView render_view;
@@ -1359,8 +1409,12 @@ int runRenderSettingsSmoke() {
         nearlyEqual(cornell_frame.rect_lights.front().intensity, 8.0f) &&
         nearlyEqual(cornell_frame.rect_lights.front().size.x, 1.4f) &&
         nearlyEqual(cornell_frame.rect_lights.front().size.y, 1.0f) &&
-        nearlyEqual(cornell_frame.rect_lights.front().range, 6.5f),
-        "RenderSettings smoke failed: rect light budget or calibration was incorrect.");
+        nearlyEqual(cornell_frame.rect_lights.front().range, 6.5f) &&
+        cornell_frame.rect_lights.front().shadow_requested &&
+        cornell_frame.rect_lights.front().cast_shadow &&
+        cornell_frame.rect_lights.front().shadow_slot == 0 &&
+        nearlyEqual(cornell_frame.rect_lights.front().shadow_strength, 0.88f),
+        "RenderSettings smoke failed: rect light budget, calibration, or shadow slot was incorrect.");
     expect(
         nearlyEqual(cornell_frame.skybox_intensity, 0.0f) &&
         nearlyEqual(cornell_frame.ibl_intensity, 0.65f * 0.03f),

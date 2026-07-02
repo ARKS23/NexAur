@@ -37,6 +37,10 @@ namespace NexAur {
         VkSampler point_shadow_sampler = VK_NULL_HANDLE;
         VkImageLayout point_shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         uint32_t point_shadow_layer_count = 1;
+        VkImageView rect_shadow_view = VK_NULL_HANDLE;
+        VkSampler rect_shadow_sampler = VK_NULL_HANDLE;
+        VkImageLayout rect_shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        uint32_t rect_shadow_layer_count = 1;
         VkImageView scene_depth_view = VK_NULL_HANDLE;
         VkImageLayout scene_depth_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkImageView ao_raw_view = VK_NULL_HANDLE;
@@ -54,6 +58,9 @@ namespace NexAur {
                    point_shadow_view != VK_NULL_HANDLE &&
                    point_shadow_sampler != VK_NULL_HANDLE &&
                    point_shadow_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+                   rect_shadow_view != VK_NULL_HANDLE &&
+                   rect_shadow_sampler != VK_NULL_HANDLE &&
+                   rect_shadow_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
                    scene_depth_view != VK_NULL_HANDLE &&
                    scene_depth_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
                    ao_raw_view != VK_NULL_HANDLE &&

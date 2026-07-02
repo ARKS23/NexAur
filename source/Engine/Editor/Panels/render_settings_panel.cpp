@@ -158,6 +158,28 @@ namespace NexAur {
             }
         }
 
+        int rectShadowMapResolutionToIndex(uint32_t resolution) {
+            if (resolution >= 2048u) {
+                return 2;
+            }
+            if (resolution >= 1024u) {
+                return 1;
+            }
+            return 0;
+        }
+
+        uint32_t rectShadowMapResolutionFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return 1024u;
+            case 2:
+                return 2048u;
+            case 0:
+            default:
+                return 512u;
+            }
+        }
+
         int effectDebugViewToIndex(RenderEffectDebugView view) {
             return static_cast<int>(view);
         }
@@ -184,6 +206,8 @@ namespace NexAur {
                 return RenderEffectDebugView::AoBlurred;
             case 10:
                 return RenderEffectDebugView::PointShadowMap;
+            case 11:
+                return RenderEffectDebugView::RectShadowMap;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -226,6 +250,7 @@ namespace NexAur {
         drawPointShadowSection(settings, changed);
         drawContactShadowSection(settings, changed);
         drawRectLightSection(settings, changed);
+        drawRectShadowSection(settings, changed);
 
         if (changed) {
             m_context->render_context->setRenderSettings(settings);
@@ -290,7 +315,8 @@ namespace NexAur {
                 "Scene Depth",
                 "AO Raw",
                 "AO Blurred",
-                "Point Shadow Map"
+                "Point Shadow Map",
+                "Rect Shadow Map"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -309,6 +335,8 @@ namespace NexAur {
             settings.effects_debug.view == RenderEffectDebugView::ShadowCascades;
         const bool point_shadow_debug =
             settings.effects_debug.view == RenderEffectDebugView::PointShadowMap;
+        const bool rect_shadow_debug =
+            settings.effects_debug.view == RenderEffectDebugView::RectShadowMap;
 
         if (!mip_debug) {
             ImGui::BeginDisabled();
@@ -352,6 +380,21 @@ namespace NexAur {
             }
         });
         if (!point_shadow_debug) {
+            ImGui::EndDisabled();
+        }
+
+        if (!rect_shadow_debug) {
+            ImGui::BeginDisabled();
+        }
+        EditorWidgets::propertyRow("Rect Shadow Layer", [&]() {
+            int layer = static_cast<int>(settings.effects_debug.rect_shadow_layer);
+            setControlWidth();
+            if (ImGui::SliderInt("##EffectDebugRectShadowLayer", &layer, 0, static_cast<int>(kMaxRenderRectShadowLights - 1u))) {
+                settings.effects_debug.rect_shadow_layer = static_cast<uint32_t>(std::max(0, layer));
+                changed = true;
+            }
+        });
+        if (!rect_shadow_debug) {
             ImGui::EndDisabled();
         }
 
@@ -769,6 +812,62 @@ namespace NexAur {
         }
 
         if (!settings.rect_light.enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawRectShadowSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Rect Shadows", false)) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox("##RectShadowEnabled", &settings.rect_shadow.enabled);
+        });
+
+        if (!settings.rect_shadow.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Max Lights", [&]() {
+            int max_lights = static_cast<int>(settings.rect_shadow.max_shadowed_lights);
+            setControlWidth();
+            if (ImGui::SliderInt("##RectShadowMaxLights", &max_lights, 0, static_cast<int>(kMaxRenderRectShadowLights))) {
+                settings.rect_shadow.max_shadowed_lights = static_cast<uint32_t>(std::max(0, max_lights));
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Map", [&]() {
+            const char* items[] = { "512", "1024", "2048" };
+            int index = rectShadowMapResolutionToIndex(settings.rect_shadow.map_resolution);
+            setControlWidth();
+            if (ImGui::Combo("##RectShadowMap", &index, items, IM_ARRAYSIZE(items))) {
+                settings.rect_shadow.map_resolution = rectShadowMapResolutionFromIndex(index);
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Strength", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowStrength", &settings.rect_shadow.strength, 0.0f, 1.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowBias", &settings.rect_shadow.constant_bias, 0.0f, 0.08f, "%.4f");
+        });
+        EditorWidgets::propertyRow("Normal Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowNormalBias", &settings.rect_shadow.normal_bias, 0.0f, 0.2f, "%.4f");
+        });
+        EditorWidgets::propertyRow("Filter Radius", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowFilterRadius", &settings.rect_shadow.filter_radius, 0.0f, 4.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Projection Margin", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowProjectionMargin", &settings.rect_shadow.projection_margin, 0.0f, 1.0f, "%.2f");
+        });
+
+        if (!settings.rect_shadow.enabled) {
             ImGui::EndDisabled();
         }
     }

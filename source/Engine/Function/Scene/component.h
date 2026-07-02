@@ -71,6 +71,8 @@ namespace NexAur {
         glm::vec2 size{ 1.0f, 1.0f };
         float range = 8.0f;
         bool two_sided = false;
+        bool cast_shadow = false;
+        float shadow_strength = 0.85f;
     };
 
     // 定向光组件

@@ -266,6 +266,79 @@ float NxEvaluatePointShadowVisibility(
     return lerp(1.0f, 1.0f - strength, occlusion);
 }
 
+float NxSampleRectShadowOcclusion(float2 uv, uint layer_index, float current_depth, float bias) {
+    const float closest_depth = g_rect_shadow_map.SampleLevel(
+        g_rect_shadow_sampler,
+        float3(uv, (float)layer_index),
+        0.0f);
+    return current_depth - bias > closest_depth ? 1.0f : 0.0f;
+}
+
+float NxEvaluateRectPcfShadow(float2 uv, uint layer_index, float current_depth, float bias) {
+    const float sample_stride =
+        max(g_frame.rect_shadow_quality_params.x, 0.0f) /
+        max(g_frame.rect_shadow_params.y, 1.0f);
+
+    float occlusion = 0.0f;
+    float sample_count = 0.0f;
+
+    [loop]
+    for (int y = -1; y <= 1; ++y) {
+        [loop]
+        for (int x = -1; x <= 1; ++x) {
+            const float2 sample_uv = uv + float2((float)x, (float)y) * sample_stride;
+            occlusion += NxSampleRectShadowOcclusion(sample_uv, layer_index, current_depth, bias);
+            sample_count += 1.0f;
+        }
+    }
+
+    return occlusion / max(sample_count, 1.0f);
+}
+
+float NxEvaluateRectShadowVisibility(
+    float3 world_position,
+    float3 world_normal,
+    RectLightData light) {
+    if (g_frame.rect_shadow_params.x < 0.5f || light.shadow.z < 0.5f || light.shadow.x < 0.0f) {
+        return 1.0f;
+    }
+
+    const uint shadow_slot = (uint)round(light.shadow.x);
+    if (shadow_slot >= 4u || shadow_slot >= (uint)round(g_frame.rect_shadow_quality_params.y)) {
+        return 1.0f;
+    }
+
+    const float3 safe_normal = NxSafeNormalizeShadowVector(world_normal, float3(0.0f, 1.0f, 0.0f));
+    const float3 biased_world_position =
+        world_position + safe_normal * max(g_frame.rect_shadow_params.w, 0.0f);
+    const float4 shadow_position =
+        mul(g_frame.rect_shadow_view_projection[shadow_slot], float4(biased_world_position, 1.0f));
+    if (shadow_position.w <= 0.0f) {
+        return 1.0f;
+    }
+
+    const float3 projected = shadow_position.xyz / shadow_position.w;
+    const float2 uv = projected.xy * 0.5f + 0.5f;
+    const float current_depth = projected.z;
+
+    if (uv.x < 0.0f || uv.x > 1.0f ||
+        uv.y < 0.0f || uv.y > 1.0f ||
+        current_depth < 0.0f || current_depth > 1.0f) {
+        return 1.0f;
+    }
+
+    const float3 fragment_to_light = NxSafeNormalizeShadowVector(
+        -light.normal_range.xyz,
+        float3(0.0f, 1.0f, 0.0f));
+    const float normal_dot_light = saturate(dot(safe_normal, fragment_to_light));
+    const float bias = max(g_frame.rect_shadow_params.z, 0.0f) * (1.0f + 0.5f * (1.0f - normal_dot_light));
+    const float occlusion = g_frame.rect_shadow_quality_params.x > 0.0f ?
+        NxEvaluateRectPcfShadow(uv, shadow_slot, current_depth, bias) :
+        NxSampleRectShadowOcclusion(uv, shadow_slot, current_depth, bias);
+    const float strength = saturate(light.shadow.y);
+    return lerp(1.0f, 1.0f - strength, occlusion);
+}
+
 float NxEvaluateShadowVisibility(float3 world_position, float3 world_normal, float3 light_dir, float view_depth) {
     if (g_frame.shadow_params.x < 0.5f) {
         return 1.0f;

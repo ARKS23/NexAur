@@ -6,6 +6,7 @@ namespace NexAur {
     inline constexpr uint32_t kMaxRenderPointShadowLights = 4;
     inline constexpr uint32_t kRenderPointShadowCubeFaceCount = 6;
     inline constexpr uint32_t kMaxRenderRectLights = 16;
+    inline constexpr uint32_t kMaxRenderRectShadowLights = 4;
 
     enum class RenderToneMappingMode : uint32_t {
         None = 0,
@@ -46,7 +47,8 @@ namespace NexAur {
         SceneDepth = 7,
         AoRaw = 8,
         AoBlurred = 9,
-        PointShadowMap = 10
+        PointShadowMap = 10,
+        RectShadowMap = 11
     };
 
     enum class RenderLightingPreset : uint32_t {
@@ -111,6 +113,7 @@ namespace NexAur {
         uint32_t bloom_mip = 0;
         uint32_t shadow_cascade = 0;
         uint32_t point_shadow_layer = 0;
+        uint32_t rect_shadow_layer = 0;
     };
 
     struct RenderShadowSettings {
@@ -151,6 +154,17 @@ namespace NexAur {
         float thickness = 0.08f;
     };
 
+    struct RenderRectShadowSettings {
+        bool enabled = true;
+        uint32_t max_shadowed_lights = 1;
+        uint32_t map_resolution = 1024;
+        float strength = 0.85f;
+        float constant_bias = 0.01f;
+        float normal_bias = 0.02f;
+        float filter_radius = 1.0f;
+        float projection_margin = 0.35f;
+    };
+
     struct RenderRectLightSettings {
         bool enabled = true;
         uint32_t max_lights = kMaxRenderRectLights;
@@ -168,6 +182,7 @@ namespace NexAur {
         RenderShadowSettings shadow;
         RenderPointShadowSettings point_shadow;
         RenderContactShadowSettings contact_shadow;
+        RenderRectShadowSettings rect_shadow;
         RenderRectLightSettings rect_light;
     };
 

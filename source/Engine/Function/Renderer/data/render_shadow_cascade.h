@@ -38,4 +38,10 @@ namespace NexAur {
         uint32_t face_count = 0;
         bool enabled = false;
     };
+
+    struct RenderRectShadowFrame {
+        std::array<glm::mat4, kMaxRenderRectShadowLights> light_view_projections{};
+        uint32_t shadowed_light_count = 0;
+        bool enabled = false;
+    };
 } // namespace NexAur

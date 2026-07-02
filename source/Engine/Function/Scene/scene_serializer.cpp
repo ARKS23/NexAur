@@ -261,6 +261,8 @@ namespace NexAur {
                 { "size", writeVec2(light.size) },
                 { "range", light.range },
                 { "two_sided", light.two_sided },
+                { "cast_shadow", light.cast_shadow },
+                { "shadow_strength", light.shadow_strength },
             };
         }
 
@@ -394,6 +396,8 @@ namespace NexAur {
             light.size = readVec2(component.value("size", json::array()), light.size);
             light.range = component.value("range", light.range);
             light.two_sided = component.value("two_sided", light.two_sided);
+            light.cast_shadow = component.value("cast_shadow", light.cast_shadow);
+            light.shadow_strength = component.value("shadow_strength", light.shadow_strength);
         }
 
         void readPlayerComponent(const json& component, PlayerComponent& player) {

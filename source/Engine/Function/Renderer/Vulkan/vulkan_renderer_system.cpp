@@ -133,6 +133,16 @@ namespace NexAur {
             return 256u;
         }
 
+        uint32_t sanitizeRectShadowMapResolution(uint32_t resolution) {
+            if (resolution >= 2048u) {
+                return 2048u;
+            }
+            if (resolution >= 1024u) {
+                return 1024u;
+            }
+            return 512u;
+        }
+
         uint32_t sanitizeShadowCascadeCount(const RenderShadowSettings& settings) {
             if (!settings.cascades_enabled) {
                 return 1u;
@@ -182,6 +192,8 @@ namespace NexAur {
                 return "AO Blurred";
             case RenderEffectDebugView::PointShadowMap:
                 return "Point Shadow Map";
+            case RenderEffectDebugView::RectShadowMap:
+                return "Rect Shadow Map";
             case RenderEffectDebugView::FinalLit:
             default:
                 return "Final Lit";
@@ -225,6 +237,34 @@ namespace NexAur {
                 1.0f,
                 std::max(0.01f, near_plane),
                 safe_range);
+            return toVulkanProjection(light_projection) * light_view;
+        }
+
+        glm::mat4 buildRectShadowViewProjection(
+            const RenderFrameRectLight& light,
+            const RenderRectShadowSettings& settings) {
+            const glm::vec3 fallback_normal{ 0.0f, -1.0f, 0.0f };
+            const glm::vec3 forward = safeNormalize(light.normal, fallback_normal);
+            glm::vec3 up = safeNormalize(light.up, glm::vec3{ 0.0f, 0.0f, 1.0f });
+            if (std::abs(glm::dot(forward, up)) > 0.98f) {
+                up = safeNormalize(light.right, glm::vec3{ 1.0f, 0.0f, 0.0f });
+            }
+
+            const glm::mat4 light_view = glm::lookAt(light.position, light.position + forward, up);
+            const float width = std::max(0.01f, light.size.x);
+            const float height = std::max(0.01f, light.size.y);
+            const float margin =
+                std::max(width, height) * sanitizeMin(settings.projection_margin, 0.35f, 0.0f);
+            const float half_width = width * 0.5f + margin;
+            const float half_height = height * 0.5f + margin;
+            const float far_plane = sanitizeMin(light.range, 8.0f, 0.1f);
+            const glm::mat4 light_projection = glm::ortho(
+                -half_width,
+                half_width,
+                -half_height,
+                half_height,
+                0.01f,
+                far_plane);
             return toVulkanProjection(light_projection) * light_view;
         }
 
@@ -594,8 +634,10 @@ namespace NexAur {
 
             if (!shadow_target.init(createResourceContext(), kDefaultShadowMapResolution) ||
                 !point_shadow_target.init(createResourceContext(), RenderSettings().point_shadow.map_resolution, 1u) ||
+                !rect_shadow_target.init(createResourceContext(), RenderSettings().rect_shadow.map_resolution, 1u) ||
                 !frame_lighting_resource.updateShadowMap(shadow_target.getDepthImageView(), shadow_target.getSampler()) ||
                 !frame_lighting_resource.updatePointShadowMap(point_shadow_target.getDepthImageView(), point_shadow_target.getSampler()) ||
+                !frame_lighting_resource.updateRectShadowMap(rect_shadow_target.getDepthImageView(), rect_shadow_target.getSampler()) ||
                 !updatePostProcessInput()) {
                 shutdown();
                 return false;
@@ -645,6 +687,7 @@ namespace NexAur {
             skybox_pass.shutdown();
             shadow_pass.shutdown();
             object_id_pass.shutdown();
+            rect_shadow_target.shutdown();
             point_shadow_target.shutdown();
             shadow_target.shutdown();
             picking_target.shutdown();
@@ -878,6 +921,7 @@ namespace NexAur {
             snapshot.picking_target = buildPickingTargetDebugStats();
             snapshot.shadow_target = buildShadowTargetDebugStats();
             snapshot.point_shadow_target = buildPointShadowTargetDebugStats();
+            snapshot.rect_shadow_target = buildRectShadowTargetDebugStats();
             snapshot.post_process = buildPostProcessDebugStats();
             snapshot.bloom = buildBloomDebugStats();
             snapshot.ao = buildAoDebugStats();
@@ -947,6 +991,22 @@ namespace NexAur {
                 for (const RendererPointLightData& light : render_data.point_lights_data) {
                     if (light.cast_shadow) {
                         ++stats.point_shadow_request_count;
+                    }
+                }
+            }
+            if (draw_list) {
+                for (const RenderFrameRectLight& light : draw_list->rect_lights) {
+                    if (light.shadow_requested) {
+                        ++stats.rect_shadow_request_count;
+                    }
+                    if (light.cast_shadow && light.shadow_slot >= 0) {
+                        ++stats.shadowed_rect_light_count;
+                    }
+                }
+            } else {
+                for (const RendererRectLightData& light : render_data.rect_lights_data) {
+                    if (light.cast_shadow) {
+                        ++stats.rect_shadow_request_count;
                     }
                 }
             }
@@ -1046,6 +1106,21 @@ namespace NexAur {
             return stats;
         }
 
+        RendererDebugShadowTargetStats buildRectShadowTargetDebugStats() const {
+            RendererDebugShadowTargetStats stats;
+            stats.ready = rect_shadow_target.isReady();
+            if (!stats.ready) {
+                return stats;
+            }
+
+            const VkExtent2D extent = rect_shadow_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.layer_count = rect_shadow_target.getLayerCount();
+            stats.depth_format = vkFormatToString(rect_shadow_target.getDepthFormat());
+            return stats;
+        }
+
         RendererDebugPostProcessStats buildPostProcessDebugStats() const {
             RendererDebugPostProcessStats stats;
             stats.enabled = true;
@@ -1093,10 +1168,12 @@ namespace NexAur {
             stats.bloom_mip = render_settings.effects_debug.bloom_mip;
             stats.shadow_cascade = render_settings.effects_debug.shadow_cascade;
             stats.point_shadow_layer = render_settings.effects_debug.point_shadow_layer;
+            stats.rect_shadow_layer = render_settings.effects_debug.rect_shadow_layer;
             stats.bloom_debug_available = bloom_target.isReady() && bloom_pass.isReady();
             stats.ao_debug_available = ao_target.isReady() && ao_pass.isReady();
             stats.shadow_debug_available = shadow_target.isReady();
             stats.point_shadow_debug_available = point_shadow_target.isReady();
+            stats.rect_shadow_debug_available = rect_shadow_target.isReady();
             stats.rect_ltc_specular_enabled = render_settings.rect_light.ltc_specular_enabled;
             stats.rect_ltc_debug_only = render_settings.rect_light.debug_ltc_only;
             stats.rect_ltc_specular_scale = render_settings.rect_light.specular_intensity_scale;
@@ -1203,6 +1280,34 @@ namespace NexAur {
             return frame_lighting_resource.updatePointShadowMap(
                        point_shadow_target.getDepthImageView(),
                        point_shadow_target.getSampler()) &&
+                   updatePostProcessInputIfReady();
+        }
+
+        bool ensureRectShadowTarget(const RenderRectShadowSettings& rect_shadow_settings) {
+            const uint32_t resolution = sanitizeRectShadowMapResolution(rect_shadow_settings.map_resolution);
+            const uint32_t light_capacity = std::clamp(
+                std::max(1u, rect_shadow_settings.max_shadowed_lights),
+                1u,
+                kMaxRenderRectShadowLights);
+            if (rect_shadow_target.isReady() &&
+                rect_shadow_target.getExtent().width == resolution &&
+                rect_shadow_target.getLayerCount() == light_capacity) {
+                return true;
+            }
+
+            if (device.device == VK_NULL_HANDLE) {
+                return false;
+            }
+
+            vkDeviceWaitIdle(device.device);
+            rect_shadow_target.shutdown();
+            if (!rect_shadow_target.init(createResourceContext(), resolution, light_capacity)) {
+                return false;
+            }
+
+            return frame_lighting_resource.updateRectShadowMap(
+                       rect_shadow_target.getDepthImageView(),
+                       rect_shadow_target.getSampler()) &&
                    updatePostProcessInputIfReady();
         }
 
@@ -1358,6 +1463,36 @@ namespace NexAur {
             return frame;
         }
 
+        RenderRectShadowFrame buildRectShadowFrame(
+            const VulkanDrawList& draw_list,
+            const RenderSettings& render_settings) const {
+            RenderRectShadowFrame frame;
+            if (!render_settings.rect_shadow.enabled || !rect_shadow_target.isReady()) {
+                return frame;
+            }
+
+            const uint32_t light_capacity = std::min(
+                rect_shadow_target.getLayerCount(),
+                kMaxRenderRectShadowLights);
+            for (const RenderFrameRectLight& light : draw_list.rect_lights) {
+                if (!light.cast_shadow || light.shadow_slot < 0) {
+                    continue;
+                }
+
+                const uint32_t shadow_slot = static_cast<uint32_t>(light.shadow_slot);
+                if (shadow_slot >= light_capacity) {
+                    continue;
+                }
+
+                frame.light_view_projections[shadow_slot] =
+                    buildRectShadowViewProjection(light, render_settings.rect_shadow);
+                frame.shadowed_light_count = std::max(frame.shadowed_light_count, shadow_slot + 1u);
+            }
+
+            frame.enabled = frame.shadowed_light_count > 0;
+            return frame;
+        }
+
         float getShadowMapSize() const {
             if (!shadow_target.isReady()) {
                 return 1.0f;
@@ -1372,6 +1507,14 @@ namespace NexAur {
             }
 
             return static_cast<float>(point_shadow_target.getExtent().width);
+        }
+
+        float getRectShadowMapSize() const {
+            if (!rect_shadow_target.isReady()) {
+                return 1.0f;
+            }
+
+            return static_cast<float>(rect_shadow_target.getExtent().width);
         }
 
         VulkanImGuiRendererContext createImGuiRendererContext() const {
@@ -1533,6 +1676,10 @@ namespace NexAur {
             input.point_shadow_sampler = point_shadow_target.getSampler();
             input.point_shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             input.point_shadow_layer_count = point_shadow_target.getLayerCount();
+            input.rect_shadow_view = rect_shadow_target.getDepthImageView();
+            input.rect_shadow_sampler = rect_shadow_target.getSampler();
+            input.rect_shadow_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            input.rect_shadow_layer_count = rect_shadow_target.getLayerCount();
             input.scene_depth_view = scene_depth_view;
             input.scene_depth_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             input.ao_raw_view = ao_target.getRawImage().view;
@@ -1897,6 +2044,9 @@ namespace NexAur {
             if (!ensurePointShadowTarget(render_settings.point_shadow)) {
                 return;
             }
+            if (!ensureRectShadowTarget(render_settings.rect_shadow)) {
+                return;
+            }
             if (!ensureAoTarget(
                     render_settings.ao,
                     draw_list.view.viewport_width,
@@ -1906,12 +2056,15 @@ namespace NexAur {
 
             const RenderShadowCascadeFrame shadow_frame = buildDirectionalShadowFrame(draw_list, render_settings);
             const RenderPointShadowFrame point_shadow_frame = buildPointShadowFrame(draw_list, render_settings);
+            const RenderRectShadowFrame rect_shadow_frame = buildRectShadowFrame(draw_list, render_settings);
             if (!frame_lighting_resource.update(
                     draw_list,
                     shadow_frame,
                     point_shadow_frame,
+                    rect_shadow_frame,
                     getShadowMapSize(),
                     getPointShadowMapSize(),
+                    getRectShadowMapSize(),
                     render_settings)) {
                 return;
             }
@@ -1938,7 +2091,7 @@ namespace NexAur {
                 return;
             }
 
-            if (!recordDrawCommands(image_index, draw_list, shadow_frame, point_shadow_frame, render_settings)) {
+            if (!recordDrawCommands(image_index, draw_list, shadow_frame, point_shadow_frame, rect_shadow_frame, render_settings)) {
                 return;
             }
 
@@ -1995,6 +2148,7 @@ namespace NexAur {
             const VulkanDrawList& draw_list,
             const RenderShadowCascadeFrame& shadow_frame,
             const RenderPointShadowFrame& point_shadow_frame,
+            const RenderRectShadowFrame& rect_shadow_frame,
             const RenderSettings& render_settings) {
             if (image_index >= swapchain_images.size()) {
                 return false;
@@ -2015,8 +2169,8 @@ namespace NexAur {
             VulkanPassGraph graph;
             const bool render_to_viewport_image = imgui_renderer.isInitialized() && viewport_target.isReady();
             const bool graph_built = render_to_viewport_image ?
-                buildViewportRenderGraph(graph, image_index, draw_list, shadow_frame, point_shadow_frame, render_settings) :
-                buildSwapchainRenderGraph(graph, image_index, draw_list, shadow_frame, point_shadow_frame, render_settings);
+                buildViewportRenderGraph(graph, image_index, draw_list, shadow_frame, point_shadow_frame, rect_shadow_frame, render_settings) :
+                buildSwapchainRenderGraph(graph, image_index, draw_list, shadow_frame, point_shadow_frame, rect_shadow_frame, render_settings);
             if (!graph_built) {
                 return false;
             }
@@ -2039,9 +2193,11 @@ namespace NexAur {
             const VulkanDrawList& draw_list,
             const RenderShadowCascadeFrame& shadow_frame,
             const RenderPointShadowFrame& point_shadow_frame,
+            const RenderRectShadowFrame& rect_shadow_frame,
             const RenderSettings& render_settings) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
             const VulkanGraphImageHandle point_shadow_depth = addPointShadowDepthImage(graph);
+            const VulkanGraphImageHandle rect_shadow_depth = addRectShadowDepthImage(graph);
             const VulkanGraphImageHandle scene_color = addSceneColorImage(graph);
             const VulkanGraphImageHandle viewport_color = addViewportColorImage(graph);
             const VulkanGraphImageHandle viewport_depth = addViewportDepthImage(graph);
@@ -2050,6 +2206,7 @@ namespace NexAur {
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
             if (!shadow_depth.valid() ||
                 !point_shadow_depth.valid() ||
+                !rect_shadow_depth.valid() ||
                 !scene_color.valid() ||
                 !viewport_color.valid() ||
                 !viewport_depth.valid() ||
@@ -2065,6 +2222,9 @@ namespace NexAur {
             if (!addPointShadowPass(graph, point_shadow_depth, draw_list, point_shadow_frame)) {
                 return false;
             }
+            if (!addRectShadowPass(graph, rect_shadow_depth, draw_list, rect_shadow_frame)) {
+                return false;
+            }
 
             if (!addSkyboxPass(graph, scene_color, makeSceneSkyboxTarget(), draw_list)) {
                 return false;
@@ -2073,6 +2233,7 @@ namespace NexAur {
             graph.addPass("ForwardScene")
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(point_shadow_depth, VulkanGraphImageUsage::ShaderRead)
+                .readImage(rect_shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(viewport_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
@@ -2154,9 +2315,11 @@ namespace NexAur {
             const VulkanDrawList& draw_list,
             const RenderShadowCascadeFrame& shadow_frame,
             const RenderPointShadowFrame& point_shadow_frame,
+            const RenderRectShadowFrame& rect_shadow_frame,
             const RenderSettings& render_settings) {
             const VulkanGraphImageHandle shadow_depth = addShadowDepthImage(graph);
             const VulkanGraphImageHandle point_shadow_depth = addPointShadowDepthImage(graph);
+            const VulkanGraphImageHandle rect_shadow_depth = addRectShadowDepthImage(graph);
             const VulkanGraphImageHandle scene_color = addSceneColorImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
             const VulkanGraphImageHandle swapchain_depth = addSwapchainDepthImage(graph);
@@ -2164,6 +2327,7 @@ namespace NexAur {
             const VulkanGraphImageHandle ao_blurred = addAoBlurredImage(graph);
             if (!shadow_depth.valid() ||
                 !point_shadow_depth.valid() ||
+                !rect_shadow_depth.valid() ||
                 !scene_color.valid() ||
                 !swapchain_color.valid() ||
                 !swapchain_depth.valid() ||
@@ -2178,6 +2342,9 @@ namespace NexAur {
             if (!addPointShadowPass(graph, point_shadow_depth, draw_list, point_shadow_frame)) {
                 return false;
             }
+            if (!addRectShadowPass(graph, rect_shadow_depth, draw_list, rect_shadow_frame)) {
+                return false;
+            }
 
             if (!addSkyboxPass(graph, scene_color, makeSceneSkyboxTarget(), draw_list)) {
                 return false;
@@ -2186,6 +2353,7 @@ namespace NexAur {
             graph.addPass("ForwardScene")
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(point_shadow_depth, VulkanGraphImageUsage::ShaderRead)
+                .readImage(rect_shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(swapchain_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
@@ -2381,6 +2549,39 @@ namespace NexAur {
                                 point_shadow_target.getRenderTarget(layer_index),
                                 draw_list,
                                 point_shadow_frame.light_view_projections[layer_index])) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            return true;
+        }
+
+        bool addRectShadowPass(
+            VulkanPassGraph& graph,
+            VulkanGraphImageHandle rect_shadow_depth,
+            const VulkanDrawList& draw_list,
+            const RenderRectShadowFrame& rect_shadow_frame) {
+            if (!rect_shadow_depth.valid() || !rect_shadow_target.isReady()) {
+                return false;
+            }
+
+            graph.addPass("RectShadowMap")
+                .writeImage(rect_shadow_depth, VulkanGraphImageUsage::DepthStencilAttachment)
+                .execute([this, &draw_list, rect_shadow_frame](VkCommandBuffer target_command_buffer) {
+                    if (!rect_shadow_frame.enabled || rect_shadow_frame.shadowed_light_count == 0) {
+                        return true;
+                    }
+
+                    const uint32_t layer_count = std::min(
+                        rect_shadow_frame.shadowed_light_count,
+                        rect_shadow_target.getLayerCount());
+                    for (uint32_t layer_index = 0; layer_index < layer_count; ++layer_index) {
+                        if (!shadow_pass.record(
+                                target_command_buffer,
+                                rect_shadow_target.getRenderTarget(layer_index),
+                                draw_list,
+                                rect_shadow_frame.light_view_projections[layer_index])) {
                             return false;
                         }
                     }
@@ -2799,6 +3000,19 @@ namespace NexAur {
             return graph.addImage(std::move(desc));
         }
 
+        VulkanGraphImageHandle addRectShadowDepthImage(VulkanPassGraph& graph) {
+            VulkanGraphImageDesc desc;
+            desc.name = "RectShadowDepth";
+            desc.image = rect_shadow_target.getDepthImage();
+            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.layer_count = rect_shadow_target.getLayerCount();
+            desc.initial_layout = rect_shadow_target.getDepthLayout();
+            desc.commit_layout = [this](VkImageLayout layout) {
+                rect_shadow_target.setDepthLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
         VulkanSkyboxRenderTarget makeSceneSkyboxTarget() const {
             VulkanSkyboxRenderTarget target;
             target.color_view = scene_color_target.getColorImageView();
@@ -3109,6 +3323,7 @@ namespace NexAur {
         VulkanPickingTarget picking_target;
         VulkanShadowMapTarget shadow_target;
         VulkanPointShadowTarget point_shadow_target;
+        VulkanShadowMapTarget rect_shadow_target;
         VulkanImGuiRenderer imgui_renderer;
         RendererDebugSnapshot debug_snapshot;
     };

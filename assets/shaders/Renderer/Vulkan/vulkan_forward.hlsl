@@ -43,6 +43,9 @@ struct FrameGlobals {
     float4 point_shadow_params; // x: enabled, y: map size, z: constant bias, w: normal bias
     float4 point_shadow_quality_params; // x: filter radius, y: shadowed light count, zw: reserved
     float4 contact_shadow_params; // x: enabled, y: intensity, z: max distance, w: thickness
+    float4x4 rect_shadow_view_projection[4];
+    float4 rect_shadow_params; // x: enabled, y: map size, z: constant bias, w: normal bias
+    float4 rect_shadow_quality_params; // x: filter radius, y: shadowed light count, z: strength, w: reserved
     float4 rect_light_params; // x: enabled, y: count, z: ltc specular enabled, w: reserved
     float4 rect_light_ltc_params; // x: specular scale, y: debug ltc only, zw: reserved
 };
@@ -60,6 +63,7 @@ struct RectLightData {
     float4 up_height;
     float4 normal_range;
     float4 color_flags; // xyz: color, w: two sided
+    float4 shadow; // x: slot, y: strength, z: enabled, w: reserved
 };
 
 [[vk::binding(0, 0)]]
@@ -82,6 +86,12 @@ SamplerState g_point_shadow_sampler;
 
 [[vk::binding(6, 0)]]
 StructuredBuffer<RectLightData> g_rect_lights;
+
+[[vk::binding(7, 0)]]
+Texture2DArray<float> g_rect_shadow_map;
+
+[[vk::binding(8, 0)]]
+SamplerState g_rect_shadow_sampler;
 
 struct MaterialConstants {
     float4 base_color_factor;
@@ -204,8 +214,13 @@ float3 EvaluateRectLight(
     float3 world_position,
     float3 view_dir,
     RectLightData light) {
+    const float shadow_visibility = NxEvaluateRectShadowVisibility(
+        world_position,
+        material.normal,
+        light);
+
     if (g_frame.rect_light_params.z < 0.5f) {
-        return NxEvaluateRectLightFallbackDirect(material, world_position, view_dir, light);
+        return shadow_visibility * NxEvaluateRectLightFallbackDirect(material, world_position, view_dir, light);
     }
 
     const float3 diffuse = NxEvaluateRectLightDiffuseApprox(material, world_position, view_dir, light);
@@ -216,9 +231,9 @@ float3 EvaluateRectLight(
         light,
         g_frame.rect_light_ltc_params.x);
     if (g_frame.rect_light_ltc_params.y > 0.5f) {
-        return specular;
+        return shadow_visibility * specular;
     }
-    return diffuse + specular;
+    return shadow_visibility * (diffuse + specular);
 }
 
 float4 PSMain(VSOutput input) : SV_Target0 {
