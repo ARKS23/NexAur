@@ -239,6 +239,24 @@ float3 EvaluateIblDebugColor(
     }
 }
 
+float Luminance(float3 color) {
+    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+}
+
+float EvaluateSsrSurfaceMask(NxMaterialSample material, float3 view_dir) {
+    const float smoothness = 1.0f - material.roughness;
+    const float smoothness_weight = smoothstep(0.30f, 0.80f, smoothness);
+    if (smoothness_weight <= 0.0001f) {
+        return 0.0f;
+    }
+
+    const float n_dot_v = saturate(dot(material.normal, view_dir));
+    const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), material.base_color.rgb, material.metallic);
+    const float3 fresnel = f0 + (1.0f - f0) * pow(1.0f - n_dot_v, 5.0f);
+    const float dielectric_boost = lerp(4.0f, 1.25f, material.metallic);
+    return saturate(smoothness_weight * Luminance(fresnel) * dielectric_boost);
+}
+
 float3 EvaluateRectLight(
     NxMaterialSample material,
     float3 world_position,
@@ -314,7 +332,7 @@ float4 PSMain(VSOutput input) : SV_Target0 {
                 view_dir,
                 reflection_probe_influence,
                 reflection_probe_specular),
-            material.base_color.a);
+            EvaluateSsrSurfaceMask(material, view_dir));
     }
 
     float3 lit_color = ibl.diffuse + ibl.specular;
@@ -378,5 +396,5 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     lit_color = NxApplyCascadeDebugOverlay(lit_color, input.view_depth);
 
-    return float4(lit_color + material.emissive, material.base_color.a);
+    return float4(lit_color + material.emissive, EvaluateSsrSurfaceMask(material, view_dir));
 }

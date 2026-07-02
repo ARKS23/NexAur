@@ -207,6 +207,10 @@ float3 mapHdrDebugColor(float3 color) {
     return color / (color + float3(1.0f, 1.0f, 1.0f));
 }
 
+float luminance(float3 color) {
+    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+}
+
 float applyScreenSpaceAo(float2 uv) {
     if (g_post_process.ao_enabled == 0u || g_post_process.ao_intensity <= 0.0f) {
         return 1.0f;
@@ -222,31 +226,42 @@ float applyScreenSpaceAo(float2 uv) {
     return lerp(1.0f, powered_ao, saturate(g_post_process.ao_intensity));
 }
 
-float3 applyScreenSpaceReflection(float2 uv, float3 color) {
+float3 applyScreenSpaceReflection(float2 uv, float3 color, float surface_reflection_mask) {
     if (g_post_process.ssr_enabled == 0u || g_post_process.ssr_intensity <= 0.0f) {
         return color;
     }
 
-    const float hit_confidence = saturate(g_ssr_hit_mask_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f));
+    const float hit_confidence =
+        saturate(g_ssr_hit_mask_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f)) *
+        saturate(surface_reflection_mask);
     if (hit_confidence <= 0.0001f) {
         return color;
     }
 
     const float4 raw_reflection = g_ssr_raw_reflection_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f);
     const float3 reflection_color = max(raw_reflection.rgb, 0.0f);
-    const float roughness_weight = saturate(1.0f - g_post_process.ssr_roughness_fade * 0.5f);
+    if (!all(isfinite(reflection_color))) {
+        return color;
+    }
+
+    const float roughness_weight = saturate(1.0f - g_post_process.ssr_roughness_fade * 0.35f);
     float blend = saturate(hit_confidence * saturate(g_post_process.ssr_intensity) * roughness_weight);
     blend = blend * blend * (3.0f - 2.0f * blend);
-    return lerp(color, reflection_color, blend);
+    blend = min(blend, 0.45f);
+
+    const float3 reflected = lerp(color, reflection_color, blend);
+    const float darken_limit = lerp(0.08f, 0.28f, saturate(luminance(reflection_color)));
+    return max(reflected, color * (1.0f - darken_limit * blend));
 }
 
 float3 evaluateToneMappedColor(float2 uv, out float alpha) {
     const float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, uv, 0.0f);
     float3 color = max(hdr_color.rgb, 0.0f);
-    alpha = saturate(hdr_color.a);
+    const float surface_reflection_mask = saturate(hdr_color.a);
+    alpha = 1.0f;
 
     color *= applyScreenSpaceAo(uv);
-    color = applyScreenSpaceReflection(uv, color);
+    color = applyScreenSpaceReflection(uv, color, surface_reflection_mask);
     color = applyExposure(color);
     if (g_post_process.tone_mapping_mode == TONE_MAPPING_ACES) {
         color = acesFitted(color);
@@ -334,7 +349,7 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
         g_post_process.effect_debug_view != EFFECT_DEBUG_SHADOW_CASCADES &&
         g_post_process.effect_debug_view != EFFECT_DEBUG_POST_TONE_MAP &&
         g_post_process.effect_debug_view != EFFECT_DEBUG_COLOR_GRADED) {
-        return float4(encodeOutputColor(mapHdrDebugColor(color)), saturate(hdr_color.a));
+        return float4(encodeOutputColor(mapHdrDebugColor(color)), 1.0f);
     }
 
     float alpha = saturate(hdr_color.a);

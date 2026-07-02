@@ -91,6 +91,11 @@ float computeEdgeFade(float2 uv) {
     return saturate(edge_distance / edge_fade);
 }
 
+float computeGrazingFade(float3 view_normal, float3 view_ray) {
+    const float n_dot_v = saturate(dot(view_normal, -view_ray));
+    return lerp(0.35f, 1.0f, pow(1.0f - n_dot_v, 2.0f));
+}
+
 float4 encodeDebugColor(float3 color, float normalized_steps) {
     return float4(max(color, 0.0f), saturate(normalized_steps));
 }
@@ -136,6 +141,12 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
         return 0.0f;
     }
 
+    const float surface_reflection_mask =
+        saturate(g_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f).a);
+    if (surface_reflection_mask <= 0.0001f) {
+        return 0.0f;
+    }
+
     const float3 view_position = reconstructViewPosition(input.uv, depth);
     const float3 view_normal = reconstructViewNormal(input.uv, depth, view_position);
     const float3 view_ray = normalize(view_position);
@@ -152,6 +163,7 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     const float step_distance = max_distance / (float)max_steps;
     const float min_trace_distance = max(thickness * 2.0f, step_distance * 0.5f);
     const float edge_weight = computeEdgeFade(input.uv);
+    const float grazing_weight = computeGrazingFade(view_normal, view_ray);
 
     float2 hit_uv = input.uv;
     float hit_confidence = 0.0f;
@@ -198,11 +210,13 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
             const float facing_weight = saturate(-reflection_ray.z);
             const float thickness_weight = 1.0f - saturate(abs(depth_delta) / max(adaptive_thickness, thickness));
             hit_confidence =
+                surface_reflection_mask *
                 edge_weight *
                 hit_edge_weight *
                 distance_weight *
                 thickness_weight *
-                facing_weight;
+                facing_weight *
+                grazing_weight;
             break;
         }
 
