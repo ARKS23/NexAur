@@ -93,6 +93,10 @@ struct PostProcessPushConstants {
     float vignette_intensity;
     float vignette_radius;
     float vignette_softness;
+    uint ssr_enabled;
+    float ssr_intensity;
+    float ssr_roughness_fade;
+    float _padding1;
 };
 
 [[vk::push_constant]]
@@ -218,12 +222,31 @@ float applyScreenSpaceAo(float2 uv) {
     return lerp(1.0f, powered_ao, saturate(g_post_process.ao_intensity));
 }
 
+float3 applyScreenSpaceReflection(float2 uv, float3 color) {
+    if (g_post_process.ssr_enabled == 0u || g_post_process.ssr_intensity <= 0.0f) {
+        return color;
+    }
+
+    const float hit_confidence = saturate(g_ssr_hit_mask_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f));
+    if (hit_confidence <= 0.0001f) {
+        return color;
+    }
+
+    const float4 raw_reflection = g_ssr_raw_reflection_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f);
+    const float3 reflection_color = max(raw_reflection.rgb, 0.0f);
+    const float roughness_weight = saturate(1.0f - g_post_process.ssr_roughness_fade * 0.5f);
+    float blend = saturate(hit_confidence * saturate(g_post_process.ssr_intensity) * roughness_weight);
+    blend = blend * blend * (3.0f - 2.0f * blend);
+    return lerp(color, reflection_color, blend);
+}
+
 float3 evaluateToneMappedColor(float2 uv, out float alpha) {
     const float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, uv, 0.0f);
     float3 color = max(hdr_color.rgb, 0.0f);
     alpha = saturate(hdr_color.a);
 
     color *= applyScreenSpaceAo(uv);
+    color = applyScreenSpaceReflection(uv, color);
     color = applyExposure(color);
     if (g_post_process.tone_mapping_mode == TONE_MAPPING_ACES) {
         color = acesFitted(color);

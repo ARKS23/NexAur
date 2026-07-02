@@ -36,6 +36,10 @@ namespace NexAur {
             float vignette_intensity = 0.0f;
             float vignette_radius = 0.75f;
             float vignette_softness = 0.35f;
+            uint32_t ssr_enabled = 0;
+            float ssr_intensity = 1.0f;
+            float ssr_roughness_fade = 0.65f;
+            float _padding1 = 0.0f;
         };
 
         static_assert(
@@ -68,6 +72,7 @@ namespace NexAur {
             const VulkanPostProcessRenderTarget& target,
             const RenderPostProcessSettings& post_process_settings,
             const RenderAoSettings& ao_settings,
+            const RenderSsrSettings& ssr_settings,
             const RenderEffectDebugSettings& debug_settings,
             uint32_t shadow_layer_count,
             uint32_t point_shadow_layer_count,
@@ -114,6 +119,10 @@ namespace NexAur {
                 sanitizeRange(post_process_settings.vignette_radius, 0.75f, 0.0f, 1.0f);
             constants.vignette_softness =
                 sanitizeRange(post_process_settings.vignette_softness, 0.35f, 0.001f, 1.0f);
+            constants.ssr_enabled = ssr_settings.enabled ? 1u : 0u;
+            constants.ssr_intensity = sanitizeRange(ssr_settings.intensity, 1.0f, 0.0f, 4.0f);
+            constants.ssr_roughness_fade =
+                sanitizeRange(ssr_settings.roughness_fade, 0.65f, 0.0f, 1.0f);
             return constants;
         }
     } // namespace
@@ -245,6 +254,7 @@ namespace NexAur {
         const VulkanPostProcessRenderTarget& target,
         const RenderPostProcessSettings& post_process_settings,
         const RenderAoSettings& ao_settings,
+        const RenderSsrSettings& ssr_settings,
         const RenderEffectDebugSettings& debug_settings) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
@@ -305,6 +315,7 @@ namespace NexAur {
             target,
             post_process_settings,
             ao_settings,
+            ssr_settings,
             debug_settings,
             m_current_input.shadow_layer_count,
             m_current_input.point_shadow_layer_count,

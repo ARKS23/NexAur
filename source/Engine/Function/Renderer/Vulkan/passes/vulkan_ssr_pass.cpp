@@ -130,7 +130,7 @@ namespace NexAur {
             sanitizeRange(settings.max_distance, 18.0f, 0.25f, 120.0f),
             sanitizeRange(settings.thickness, 0.18f, 0.001f, 2.0f),
             sanitizeRange(settings.stride, 1.0f, 0.1f, 8.0f),
-            sanitizeRange(settings.intensity, 1.0f, 0.0f, 4.0f));
+            0.0f);
         constants.texture_params = glm::vec4(
             safeTexelSize(m_input_extent.width),
             safeTexelSize(m_input_extent.height),
@@ -139,8 +139,8 @@ namespace NexAur {
         constants.output_params = glm::vec4(
             write_hit_mask ? 1.0f : 0.0f,
             sanitizeRange(settings.roughness_fade, 0.65f, 0.0f, 1.0f),
-            0.0f,
-            0.0f);
+            view.projection_matrix[0][0],
+            view.projection_matrix[1][1]);
 
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         vkCmdBindDescriptorSets(

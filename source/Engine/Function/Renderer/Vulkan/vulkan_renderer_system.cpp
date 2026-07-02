@@ -2626,6 +2626,7 @@ namespace NexAur {
                     post_process_input,
                     render_settings.post_process,
                     render_settings.ao,
+                    render_settings.ssr,
                     postProcessDebugSettingsForSmaa(render_settings.effects_debug))) {
                 return false;
             }
@@ -2789,6 +2790,7 @@ namespace NexAur {
                     post_process_input,
                     render_settings.post_process,
                     render_settings.ao,
+                    render_settings.ssr,
                     postProcessDebugSettingsForSmaa(render_settings.effects_debug))) {
                 return false;
             }
@@ -3336,6 +3338,7 @@ namespace NexAur {
             const VulkanPostProcessInput& input,
             RenderPostProcessSettings post_process_settings,
             RenderAoSettings ao_settings,
+            RenderSsrSettings ssr_settings,
             RenderEffectDebugSettings debug_settings) {
             if (!input_color.valid() ||
                 !output_color.valid() ||
@@ -3362,12 +3365,13 @@ namespace NexAur {
                 .readImage(ssr_raw_reflection, VulkanGraphImageUsage::ShaderRead)
                 .readImage(ssr_hit_mask, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, target, post_process_settings, ao_settings, debug_settings](VkCommandBuffer target_command_buffer) {
+                .execute([this, target, post_process_settings, ao_settings, ssr_settings, debug_settings](VkCommandBuffer target_command_buffer) {
                     return post_process_pass.record(
                         target_command_buffer,
                         target,
                         post_process_settings,
                         ao_settings,
+                        ssr_settings,
                         debug_settings);
                 });
             return true;

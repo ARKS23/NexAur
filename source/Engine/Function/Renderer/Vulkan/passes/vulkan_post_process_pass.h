@@ -109,6 +109,7 @@ namespace NexAur {
             const VulkanPostProcessRenderTarget& target,
             const RenderPostProcessSettings& post_process_settings,
             const RenderAoSettings& ao_settings,
+            const RenderSsrSettings& ssr_settings,
             const RenderEffectDebugSettings& debug_settings);
 
         bool isReady() const {
