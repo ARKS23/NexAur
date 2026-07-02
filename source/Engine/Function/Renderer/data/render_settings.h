@@ -61,7 +61,10 @@ namespace NexAur {
         ColorGraded = 13,
         SmaaEdgeMask = 14,
         SmaaBlendWeight = 15,
-        SmaaOutput = 16
+        SmaaOutput = 16,
+        SsrHitMask = 17,
+        SsrRaySteps = 18,
+        SsrRawReflection = 19
     };
 
     enum class RenderLightingPreset : uint32_t {
@@ -105,6 +108,17 @@ namespace NexAur {
         float power = 1.2f;
         bool blur_enabled = true;
         bool half_resolution = true;
+    };
+
+    struct RenderSsrSettings {
+        bool enabled = false;
+        float max_distance = 18.0f;
+        uint32_t max_steps = 32;
+        float thickness = 0.18f;
+        float stride = 1.0f;
+        float roughness_fade = 0.65f;
+        float edge_fade = 0.12f;
+        float intensity = 1.0f;
     };
 
     struct RenderPostProcessSettings {
@@ -218,6 +232,7 @@ namespace NexAur {
         RenderPostProcessSettings post_process;
         RenderAntiAliasingSettings anti_aliasing;
         RenderAoSettings ao;
+        RenderSsrSettings ssr;
         RenderIblDebugSettings ibl_debug;
         RenderEffectDebugSettings effects_debug;
         RenderShadowSettings shadow;

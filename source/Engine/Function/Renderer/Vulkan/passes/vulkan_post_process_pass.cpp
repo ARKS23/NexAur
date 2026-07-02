@@ -207,6 +207,17 @@ namespace NexAur {
         VkDescriptorImageInfo ao_sampler_info{};
         ao_sampler_info.sampler = input.ao_sampler;
 
+        VkDescriptorImageInfo ssr_raw_reflection_info{};
+        ssr_raw_reflection_info.imageView = input.ssr_raw_reflection_view;
+        ssr_raw_reflection_info.imageLayout = input.ssr_layout;
+
+        VkDescriptorImageInfo ssr_hit_mask_info{};
+        ssr_hit_mask_info.imageView = input.ssr_hit_mask_view;
+        ssr_hit_mask_info.imageLayout = input.ssr_layout;
+
+        VkDescriptorImageInfo ssr_sampler_info{};
+        ssr_sampler_info.sampler = input.ssr_sampler;
+
         VulkanDescriptorWriter writer;
         writer
             .writeImage(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, color_info)
@@ -221,6 +232,9 @@ namespace NexAur {
             .writeImage(9, VK_DESCRIPTOR_TYPE_SAMPLER, point_shadow_sampler_info)
             .writeImage(10, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, rect_shadow_info)
             .writeImage(11, VK_DESCRIPTOR_TYPE_SAMPLER, rect_shadow_sampler_info)
+            .writeImage(12, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ssr_raw_reflection_info)
+            .writeImage(13, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, ssr_hit_mask_info)
+            .writeImage(14, VK_DESCRIPTOR_TYPE_SAMPLER, ssr_sampler_info)
             .update(m_device, m_input_descriptor_set);
         m_current_input = input;
         return true;

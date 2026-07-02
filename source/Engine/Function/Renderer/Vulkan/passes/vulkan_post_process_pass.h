@@ -47,6 +47,10 @@ namespace NexAur {
         VkImageView ao_blurred_view = VK_NULL_HANDLE;
         VkSampler ao_sampler = VK_NULL_HANDLE;
         VkImageLayout ao_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkImageView ssr_raw_reflection_view = VK_NULL_HANDLE;
+        VkImageView ssr_hit_mask_view = VK_NULL_HANDLE;
+        VkSampler ssr_sampler = VK_NULL_HANDLE;
+        VkImageLayout ssr_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         bool valid() const {
             return color_view != VK_NULL_HANDLE &&
@@ -66,7 +70,11 @@ namespace NexAur {
                    ao_raw_view != VK_NULL_HANDLE &&
                    ao_blurred_view != VK_NULL_HANDLE &&
                    ao_sampler != VK_NULL_HANDLE &&
-                   ao_layout != VK_IMAGE_LAYOUT_UNDEFINED;
+                   ao_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+                   ssr_raw_reflection_view != VK_NULL_HANDLE &&
+                   ssr_hit_mask_view != VK_NULL_HANDLE &&
+                   ssr_sampler != VK_NULL_HANDLE &&
+                   ssr_layout != VK_IMAGE_LAYOUT_UNDEFINED;
         }
     };
 

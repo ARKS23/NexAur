@@ -20,6 +20,7 @@ namespace NexAur {
         BloomComposite,
         Ssao,
         AoBlur,
+        SsrTrace,
         SmaaEdge,
         SmaaBlend,
         SmaaNeighborhood

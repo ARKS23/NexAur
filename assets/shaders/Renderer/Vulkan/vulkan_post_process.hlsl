@@ -36,6 +36,15 @@ Texture2DArray<float> g_rect_shadow_debug_map;
 [[vk::binding(11, 0)]]
 SamplerState g_rect_shadow_debug_sampler;
 
+[[vk::binding(12, 0)]]
+Texture2D<float4> g_ssr_raw_reflection_debug;
+
+[[vk::binding(13, 0)]]
+Texture2D<float> g_ssr_hit_mask_debug;
+
+[[vk::binding(14, 0)]]
+SamplerState g_ssr_debug_sampler;
+
 static const uint TONE_MAPPING_NONE = 0u;
 static const uint TONE_MAPPING_ACES = 1u;
 static const uint POST_PROCESS_FLAG_MANUAL_GAMMA = 1u << 0u;
@@ -53,6 +62,12 @@ static const uint EFFECT_DEBUG_POINT_SHADOW_MAP = 10u;
 static const uint EFFECT_DEBUG_RECT_SHADOW_MAP = 11u;
 static const uint EFFECT_DEBUG_POST_TONE_MAP = 12u;
 static const uint EFFECT_DEBUG_COLOR_GRADED = 13u;
+static const uint EFFECT_DEBUG_SMAA_EDGE_MASK = 14u;
+static const uint EFFECT_DEBUG_SMAA_BLEND_WEIGHT = 15u;
+static const uint EFFECT_DEBUG_SMAA_OUTPUT = 16u;
+static const uint EFFECT_DEBUG_SSR_HIT_MASK = 17u;
+static const uint EFFECT_DEBUG_SSR_RAY_STEPS = 18u;
+static const uint EFFECT_DEBUG_SSR_RAW_REFLECTION = 19u;
 
 struct PostProcessPushConstants {
     float exposure;
@@ -167,6 +182,22 @@ float4 sampleAoDebugValue(float ao) {
     return float4(encodeOutputColor(float3(ao, ao, ao)), 1.0f);
 }
 
+float4 sampleSsrHitMaskDebug(FullscreenVSOutput input) {
+    const float hit_mask = saturate(g_ssr_hit_mask_debug.SampleLevel(g_ssr_debug_sampler, input.uv, 0.0f));
+    return float4(encodeOutputColor(float3(hit_mask, hit_mask, hit_mask)), 1.0f);
+}
+
+float4 sampleSsrRayStepsDebug(FullscreenVSOutput input) {
+    const float steps = saturate(g_ssr_raw_reflection_debug.SampleLevel(g_ssr_debug_sampler, input.uv, 0.0f).a);
+    return float4(encodeOutputColor(float3(steps, steps, steps)), 1.0f);
+}
+
+float4 sampleSsrRawReflectionDebug(FullscreenVSOutput input) {
+    const float4 reflection = g_ssr_raw_reflection_debug.SampleLevel(g_ssr_debug_sampler, input.uv, 0.0f);
+    const float3 mapped_reflection = max(reflection.rgb, 0.0f) / (max(reflection.rgb, 0.0f) + float3(1.0f, 1.0f, 1.0f));
+    return float4(encodeOutputColor(mapped_reflection), saturate(reflection.a));
+}
+
 float3 mapHdrDebugColor(float3 color) {
     color = applyExposure(max(color, 0.0f));
     return color / (color + float3(1.0f, 1.0f, 1.0f));
@@ -262,6 +293,15 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     }
     if (g_post_process.effect_debug_view == EFFECT_DEBUG_AO_BLURRED) {
         return sampleAoDebugValue(g_ao_blurred_debug.SampleLevel(g_ao_debug_sampler, input.uv, 0.0f));
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_SSR_HIT_MASK) {
+        return sampleSsrHitMaskDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_SSR_RAY_STEPS) {
+        return sampleSsrRayStepsDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_SSR_RAW_REFLECTION) {
+        return sampleSsrRawReflectionDebug(input);
     }
 
     float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f);

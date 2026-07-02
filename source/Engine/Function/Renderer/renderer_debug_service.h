@@ -110,6 +110,22 @@ namespace NexAur {
         bool half_resolution = false;
     };
 
+    struct RendererDebugSsrStats {
+        bool enabled = false;
+        bool ready = false;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        std::string reflection_format = "None";
+        std::string hit_mask_format = "None";
+        float max_distance = 18.0f;
+        uint32_t max_steps = 32;
+        float thickness = 0.18f;
+        float stride = 1.0f;
+        float roughness_fade = 0.65f;
+        float edge_fade = 0.12f;
+        float intensity = 1.0f;
+    };
+
     struct RendererDebugSmaaStats {
         bool ready = false;
         uint32_t width = 0;
@@ -133,6 +149,7 @@ namespace NexAur {
         uint32_t rect_shadow_layer = 0;
         bool bloom_debug_available = false;
         bool ao_debug_available = false;
+        bool ssr_debug_available = false;
         bool smaa_debug_available = false;
         bool shadow_debug_available = false;
         bool point_shadow_debug_available = false;
@@ -202,6 +219,7 @@ namespace NexAur {
         RendererDebugPostProcessStats post_process;
         RendererDebugBloomStats bloom;
         RendererDebugAoStats ao;
+        RendererDebugSsrStats ssr;
         RendererDebugSmaaStats smaa;
         RendererDebugEffectsStats effects;
         RendererDebugResourceStats resources;

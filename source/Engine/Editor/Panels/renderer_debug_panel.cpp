@@ -235,6 +235,21 @@ namespace NexAur {
         drawKeyValue("  Half Resolution", boolToText(snapshot.ao.half_resolution));
 
         ImGui::Spacing();
+        ImGui::TextUnformatted("SSR Target");
+        drawKeyValue("  Enabled", boolToText(snapshot.ssr.enabled));
+        drawKeyValue("  Ready", boolToText(snapshot.ssr.ready));
+        drawExtent("  Size", snapshot.ssr.width, snapshot.ssr.height);
+        drawKeyValue("  Reflection Format", snapshot.ssr.reflection_format.c_str());
+        drawKeyValue("  Hit Mask Format", snapshot.ssr.hit_mask_format.c_str());
+        ImGui::Text("  Max Distance: %.1f", snapshot.ssr.max_distance);
+        drawKeyValue("  Max Steps", snapshot.ssr.max_steps);
+        ImGui::Text("  Thickness: %.3f", snapshot.ssr.thickness);
+        ImGui::Text("  Stride: %.2f", snapshot.ssr.stride);
+        ImGui::Text("  Roughness Fade: %.2f", snapshot.ssr.roughness_fade);
+        ImGui::Text("  Edge Fade: %.2f", snapshot.ssr.edge_fade);
+        ImGui::Text("  Intensity: %.2f", snapshot.ssr.intensity);
+
+        ImGui::Spacing();
         ImGui::TextUnformatted("SMAA Target");
         drawKeyValue("  Ready", boolToText(snapshot.smaa.ready));
         drawExtent("  Size", snapshot.smaa.width, snapshot.smaa.height);
@@ -261,6 +276,7 @@ namespace NexAur {
         drawKeyValue("Rect Shadow Layer", snapshot.effects.rect_shadow_layer);
         drawKeyValue("Bloom Debug Ready", boolToText(snapshot.effects.bloom_debug_available));
         drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
+        drawKeyValue("SSR Debug Ready", boolToText(snapshot.effects.ssr_debug_available));
         drawKeyValue("SMAA Debug Ready", boolToText(snapshot.effects.smaa_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));

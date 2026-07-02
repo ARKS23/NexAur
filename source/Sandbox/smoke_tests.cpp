@@ -1100,6 +1100,14 @@ int runRenderSettingsSmoke() {
     settings.ao.power = 1.35f;
     settings.ao.blur_enabled = false;
     settings.ao.half_resolution = false;
+    settings.ssr.enabled = true;
+    settings.ssr.max_distance = 24.0f;
+    settings.ssr.max_steps = 40u;
+    settings.ssr.thickness = 0.22f;
+    settings.ssr.stride = 1.5f;
+    settings.ssr.roughness_fade = 0.55f;
+    settings.ssr.edge_fade = 0.18f;
+    settings.ssr.intensity = 0.8f;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::SmaaEdgeMask;
@@ -1168,6 +1176,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.lighting;
     const NexAur::RenderAoSettings& first_ao =
         render_context.getReadData().render_settings.ao;
+    const NexAur::RenderSsrSettings& first_ssr =
+        render_context.getReadData().render_settings.ssr;
     const NexAur::RenderIblDebugSettings& first_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
     const NexAur::RenderEffectDebugSettings& first_effects_debug =
@@ -1232,6 +1242,16 @@ int runRenderSettingsSmoke() {
         !first_ao.blur_enabled &&
         !first_ao.half_resolution,
         "RenderSettings smoke failed: AO settings did not reach the read packet.");
+    expect(
+        first_ssr.enabled &&
+        nearlyEqual(first_ssr.max_distance, 24.0f) &&
+        first_ssr.max_steps == 40u &&
+        nearlyEqual(first_ssr.thickness, 0.22f) &&
+        nearlyEqual(first_ssr.stride, 1.5f) &&
+        nearlyEqual(first_ssr.roughness_fade, 0.55f) &&
+        nearlyEqual(first_ssr.edge_fade, 0.18f) &&
+        nearlyEqual(first_ssr.intensity, 0.8f),
+        "RenderSettings smoke failed: SSR settings did not reach the read packet.");
     expect(
         first_ibl_debug.mode == NexAur::RenderIblDebugMode::SpecularIbl &&
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
@@ -1311,6 +1331,14 @@ int runRenderSettingsSmoke() {
     settings.ao.power = 2.0f;
     settings.ao.blur_enabled = true;
     settings.ao.half_resolution = true;
+    settings.ssr.enabled = false;
+    settings.ssr.max_distance = 18.0f;
+    settings.ssr.max_steps = 32u;
+    settings.ssr.thickness = 0.18f;
+    settings.ssr.stride = 1.0f;
+    settings.ssr.roughness_fade = 0.65f;
+    settings.ssr.edge_fade = 0.12f;
+    settings.ssr.intensity = 1.0f;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
     settings.ibl_debug.prefilter_mip = 0.0f;
     settings.post_process.color_grading_enabled = true;
@@ -1396,6 +1424,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.lighting;
     const NexAur::RenderAoSettings& second_ao =
         render_context.getReadData().render_settings.ao;
+    const NexAur::RenderSsrSettings& second_ssr =
+        render_context.getReadData().render_settings.ssr;
     const NexAur::RenderIblDebugSettings& second_ibl_debug =
         render_context.getReadData().render_settings.ibl_debug;
     const NexAur::RenderEffectDebugSettings& second_effects_debug =
@@ -1460,6 +1490,16 @@ int runRenderSettingsSmoke() {
         second_ao.blur_enabled &&
         second_ao.half_resolution,
         "RenderSettings smoke failed: updated AO settings did not reach the read packet.");
+    expect(
+        !second_ssr.enabled &&
+        nearlyEqual(second_ssr.max_distance, 18.0f) &&
+        second_ssr.max_steps == 32u &&
+        nearlyEqual(second_ssr.thickness, 0.18f) &&
+        nearlyEqual(second_ssr.stride, 1.0f) &&
+        nearlyEqual(second_ssr.roughness_fade, 0.65f) &&
+        nearlyEqual(second_ssr.edge_fade, 0.12f) &&
+        nearlyEqual(second_ssr.intensity, 1.0f),
+        "RenderSettings smoke failed: updated SSR settings did not reach the read packet.");
     expect(
         second_ibl_debug.mode == NexAur::RenderIblDebugMode::FinalLit &&
         nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),

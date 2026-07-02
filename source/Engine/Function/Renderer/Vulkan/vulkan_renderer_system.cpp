@@ -25,6 +25,7 @@
 #include "Function/Renderer/Vulkan/passes/vulkan_smaa_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_shadow_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h"
+#include "Function/Renderer/Vulkan/passes/vulkan_ssr_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
@@ -36,6 +37,7 @@
 #include "Function/Renderer/Vulkan/targets/vulkan_scene_color_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_smaa_target.h"
+#include "Function/Renderer/Vulkan/targets/vulkan_ssr_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_viewport_target.h"
 #include "Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h"
 #include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
@@ -178,6 +180,12 @@ namespace NexAur {
                    view == RenderEffectDebugView::SmaaOutput;
         }
 
+        bool isSsrDebugView(RenderEffectDebugView view) {
+            return view == RenderEffectDebugView::SsrHitMask ||
+                   view == RenderEffectDebugView::SsrRaySteps ||
+                   view == RenderEffectDebugView::SsrRawReflection;
+        }
+
         const char* antiAliasingModeToText(RenderAntiAliasingMode mode) {
             switch (mode) {
             case RenderAntiAliasingMode::None:
@@ -232,6 +240,12 @@ namespace NexAur {
                 return "SMAA Blend Weight";
             case RenderEffectDebugView::SmaaOutput:
                 return "SMAA Output";
+            case RenderEffectDebugView::SsrHitMask:
+                return "SSR Hit Mask";
+            case RenderEffectDebugView::SsrRaySteps:
+                return "SSR Ray Steps";
+            case RenderEffectDebugView::SsrRawReflection:
+                return "SSR Raw Reflection";
             case RenderEffectDebugView::FinalLit:
             default:
                 return "Final Lit";
@@ -671,6 +685,7 @@ namespace NexAur {
                 shutdown();
                 return false;
             }
+            ssr_hit_mask_format = ao_format;
             smaa_mask_format = findSmaaMaskFormat(physical_device.physical_device);
             if (smaa_mask_format == VK_FORMAT_UNDEFINED) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to find a supported SMAA mask target format.");
@@ -686,9 +701,11 @@ namespace NexAur {
             if (!scene_color_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
                 !ao_target.init(createResourceContext(), ao_format, surface_width, surface_height, RenderSettings().ao.half_resolution) ||
                 !bloom_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
+                !ssr_target.init(createResourceContext(), scene_color_format, ssr_hit_mask_format, surface_width, surface_height) ||
                 !smaa_target.init(createResourceContext(), swapchain.image_format, smaa_mask_format, surface_width, surface_height) ||
                 !recreateAoPassResourcesIfReady() ||
                 !recreateBloomPassResourcesIfReady() ||
+                !recreateSsrPassResourcesIfReady() ||
                 !recreateSmaaPassResourcesIfReady()) {
                 shutdown();
                 return false;
@@ -750,6 +767,7 @@ namespace NexAur {
             smaa_pass.shutdown();
             post_process_pass.shutdown();
             bloom_pass.shutdown();
+            ssr_pass.shutdown();
             ao_pass.shutdown();
             debug_draw_pass.shutdown();
             skybox_pass.shutdown();
@@ -760,6 +778,7 @@ namespace NexAur {
             shadow_target.shutdown();
             picking_target.shutdown();
             smaa_target.shutdown();
+            ssr_target.shutdown();
             bloom_target.shutdown();
             ao_target.shutdown();
             scene_color_target.shutdown();
@@ -797,6 +816,7 @@ namespace NexAur {
             device_api_version = kRequiredVulkanApiVersion;
             scene_color_format = VK_FORMAT_UNDEFINED;
             ao_format = VK_FORMAT_UNDEFINED;
+            ssr_hit_mask_format = VK_FORMAT_UNDEFINED;
             smaa_mask_format = VK_FORMAT_UNDEFINED;
             initialized = false;
         }
@@ -851,19 +871,22 @@ namespace NexAur {
             const bool scene_color_resized = scene_color_target.resize(width, height);
             const bool ao_resized = ao_target.resize(width, height, RenderSettings().ao.half_resolution);
             const bool bloom_resized = bloom_target.resize(width, height);
+            const bool ssr_resized = ssr_target.resize(width, height);
             const bool smaa_resized = smaa_target.resize(width, height);
             const bool picking_resized = picking_target.resize(width, height);
             if (!viewport_resized ||
                 !scene_color_resized ||
                 !ao_resized ||
                 !bloom_resized ||
+                !ssr_resized ||
                 !smaa_resized ||
                 !picking_resized ||
                 !recreateAoPassResourcesIfReady() ||
                 !recreateBloomPassResourcesIfReady() ||
+                !recreateSsrPassResourcesIfReady() ||
                 !recreateSmaaPassResourcesIfReady() ||
                 !updatePostProcessInput()) {
-                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, AO, bloom, SMAA, or picking target.");
+                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, AO, bloom, SSR, SMAA, or picking target.");
                 return;
             }
             picking_frame_ready = false;
@@ -998,6 +1021,7 @@ namespace NexAur {
             snapshot.post_process = buildPostProcessDebugStats(render_data.render_settings);
             snapshot.bloom = buildBloomDebugStats();
             snapshot.ao = buildAoDebugStats();
+            snapshot.ssr = buildSsrDebugStats(render_data.render_settings);
             snapshot.smaa = buildSmaaDebugStats(render_data.render_settings);
             snapshot.effects = buildEffectsDebugStats(render_data.render_settings);
             snapshot.resources = buildResourceDebugStats(draw_list);
@@ -1254,6 +1278,29 @@ namespace NexAur {
             return stats;
         }
 
+        RendererDebugSsrStats buildSsrDebugStats(const RenderSettings& render_settings) const {
+            RendererDebugSsrStats stats;
+            stats.enabled = render_settings.ssr.enabled;
+            stats.ready = ssr_target.isReady() && ssr_pass.isReady();
+            stats.max_distance = render_settings.ssr.max_distance;
+            stats.max_steps = render_settings.ssr.max_steps;
+            stats.thickness = render_settings.ssr.thickness;
+            stats.stride = render_settings.ssr.stride;
+            stats.roughness_fade = render_settings.ssr.roughness_fade;
+            stats.edge_fade = render_settings.ssr.edge_fade;
+            stats.intensity = render_settings.ssr.intensity;
+            if (!ssr_target.isReady()) {
+                return stats;
+            }
+
+            const VkExtent2D extent = ssr_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.reflection_format = vkFormatToString(ssr_target.getReflectionFormat());
+            stats.hit_mask_format = vkFormatToString(ssr_target.getHitMaskFormat());
+            return stats;
+        }
+
         RendererDebugSmaaStats buildSmaaDebugStats(const RenderSettings& render_settings) const {
             RendererDebugSmaaStats stats;
             stats.ready = smaa_target.isReady() && smaa_pass.isReady();
@@ -1285,6 +1332,7 @@ namespace NexAur {
             stats.rect_shadow_layer = render_settings.effects_debug.rect_shadow_layer;
             stats.bloom_debug_available = bloom_target.isReady() && bloom_pass.isReady();
             stats.ao_debug_available = ao_target.isReady() && ao_pass.isReady();
+            stats.ssr_debug_available = ssr_target.isReady() && ssr_pass.isReady();
             stats.smaa_debug_available = smaa_target.isReady() && smaa_pass.isReady();
             stats.shadow_debug_available = shadow_target.isReady();
             stats.point_shadow_debug_available = point_shadow_target.isReady();
@@ -1716,7 +1764,7 @@ namespace NexAur {
         }
 
         bool updatePostProcessInput() {
-            if (!post_process_pass.isReady() || !scene_color_target.isReady()) {
+            if (!post_process_pass.isReady() || !scene_color_target.isReady() || !ssr_target.isReady()) {
                 return false;
             }
 
@@ -1728,7 +1776,7 @@ namespace NexAur {
         }
 
         bool updatePostProcessInputIfReady() {
-            if (!post_process_pass.isReady() || !scene_color_target.isReady()) {
+            if (!post_process_pass.isReady() || !scene_color_target.isReady() || !ssr_target.isReady()) {
                 return true;
             }
 
@@ -1768,6 +1816,23 @@ namespace NexAur {
 
             return bloom_pass.recreateResources(bloom_context, bloom_target.getMipCount()) &&
                    updateBloomInputsIfReady();
+        }
+
+        bool recreateSsrPassResourcesIfReady() {
+            if (!ssr_target.isReady()) {
+                return true;
+            }
+
+            VulkanSsrPassContext ssr_context;
+            ssr_context.device = device.device;
+            ssr_context.reflection_color_format = ssr_target.getReflectionFormat();
+            ssr_context.hit_mask_format = ssr_target.getHitMaskFormat();
+            ssr_context.input_descriptor_set_layout =
+                descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::BloomDualInput);
+            ssr_context.descriptor_allocator = &descriptor_allocator;
+            ssr_context.pipeline_cache = &pipeline_cache;
+
+            return ssr_pass.recreateResources(ssr_context);
         }
 
         bool recreateSmaaPassResourcesIfReady() {
@@ -1868,6 +1933,10 @@ namespace NexAur {
             input.ao_blurred_view = ao_target.getBlurredImage().view;
             input.ao_sampler = ao_target.getSampler();
             input.ao_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            input.ssr_raw_reflection_view = ssr_target.getRawReflectionImage().view;
+            input.ssr_hit_mask_view = ssr_target.getHitMaskImage().view;
+            input.ssr_sampler = ssr_target.getSampler();
+            input.ssr_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
 
         bool shouldRenderBloom(
@@ -1895,6 +1964,14 @@ namespace NexAur {
             return (ao_settings.enabled || isAoDebugView(debug_settings.view)) &&
                    ao_target.isReady() &&
                    ao_pass.isReady();
+        }
+
+        bool shouldRenderSsr(
+            const RenderSsrSettings& ssr_settings,
+            const RenderEffectDebugSettings& debug_settings) const {
+            return (ssr_settings.enabled || isSsrDebugView(debug_settings.view)) &&
+                   ssr_target.isReady() &&
+                   ssr_pass.isReady();
         }
 
         bool shouldRenderSmaa(
@@ -2132,6 +2209,9 @@ namespace NexAur {
             if (!recreateBloomPassResourcesIfReady()) {
                 return false;
             }
+            if (!recreateSsrPassResourcesIfReady()) {
+                return false;
+            }
             if (!recreateSmaaPassResourcesIfReady()) {
                 return false;
             }
@@ -2168,6 +2248,7 @@ namespace NexAur {
             smaa_pass.cleanupResources();
             post_process_pass.cleanupResources();
             bloom_pass.cleanupResources();
+            ssr_pass.cleanupResources();
             debug_draw_pass.cleanupResources();
             skybox_pass.cleanupResources();
             forward_pass.cleanupSwapchainResources();
@@ -2424,6 +2505,8 @@ namespace NexAur {
             const VulkanGraphImageHandle viewport_depth = addViewportDepthImage(graph);
             const VulkanGraphImageHandle ao_raw = addAoRawImage(graph);
             const VulkanGraphImageHandle ao_blurred = addAoBlurredImage(graph);
+            const VulkanGraphImageHandle ssr_raw_reflection = addSsrRawReflectionImage(graph);
+            const VulkanGraphImageHandle ssr_hit_mask = addSsrHitMaskImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
             if (!shadow_depth.valid() ||
                 !point_shadow_depth.valid() ||
@@ -2433,6 +2516,8 @@ namespace NexAur {
                 !viewport_depth.valid() ||
                 !ao_raw.valid() ||
                 !ao_blurred.valid() ||
+                !ssr_raw_reflection.valid() ||
+                !ssr_hit_mask.valid() ||
                 !swapchain_color.valid()) {
                 return false;
             }
@@ -2481,6 +2566,19 @@ namespace NexAur {
                 return false;
             }
 
+            if (!addSsrPass(
+                    graph,
+                    scene_color,
+                    viewport_depth,
+                    ssr_raw_reflection,
+                    ssr_hit_mask,
+                    viewport_target.getRenderTarget().depth_view,
+                    draw_list.view,
+                    render_settings.ssr,
+                    render_settings.effects_debug)) {
+                return false;
+            }
+
             if (!addDebugDrawPass(graph, scene_color, viewport_depth, makeViewportSceneRenderTarget())) {
                 return false;
             }
@@ -2522,6 +2620,8 @@ namespace NexAur {
                     viewport_depth,
                     ao_raw,
                     ao_blurred,
+                    ssr_raw_reflection,
+                    ssr_hit_mask,
                     post_process_target,
                     post_process_input,
                     render_settings.post_process,
@@ -2570,6 +2670,8 @@ namespace NexAur {
             const VulkanGraphImageHandle swapchain_depth = addSwapchainDepthImage(graph);
             const VulkanGraphImageHandle ao_raw = addAoRawImage(graph);
             const VulkanGraphImageHandle ao_blurred = addAoBlurredImage(graph);
+            const VulkanGraphImageHandle ssr_raw_reflection = addSsrRawReflectionImage(graph);
+            const VulkanGraphImageHandle ssr_hit_mask = addSsrHitMaskImage(graph);
             if (!shadow_depth.valid() ||
                 !point_shadow_depth.valid() ||
                 !rect_shadow_depth.valid() ||
@@ -2577,7 +2679,9 @@ namespace NexAur {
                 !swapchain_color.valid() ||
                 !swapchain_depth.valid() ||
                 !ao_raw.valid() ||
-                !ao_blurred.valid()) {
+                !ao_blurred.valid() ||
+                !ssr_raw_reflection.valid() ||
+                !ssr_hit_mask.valid()) {
                 return false;
             }
 
@@ -2625,6 +2729,19 @@ namespace NexAur {
                 return false;
             }
 
+            if (!addSsrPass(
+                    graph,
+                    scene_color,
+                    swapchain_depth,
+                    ssr_raw_reflection,
+                    ssr_hit_mask,
+                    forward_pass.getSwapchainRenderTarget(image_index).depth_view,
+                    draw_list.view,
+                    render_settings.ssr,
+                    render_settings.effects_debug)) {
+                return false;
+            }
+
             if (!addDebugDrawPass(graph, scene_color, swapchain_depth, makeSwapchainSceneRenderTarget(image_index))) {
                 return false;
             }
@@ -2666,6 +2783,8 @@ namespace NexAur {
                     swapchain_depth,
                     ao_raw,
                     ao_blurred,
+                    ssr_raw_reflection,
+                    ssr_hit_mask,
                     post_process_target,
                     post_process_input,
                     render_settings.post_process,
@@ -2929,6 +3048,74 @@ namespace NexAur {
             return true;
         }
 
+        bool addSsrPass(
+            VulkanPassGraph& graph,
+            VulkanGraphImageHandle scene_color,
+            VulkanGraphImageHandle scene_depth,
+            VulkanGraphImageHandle ssr_raw_reflection,
+            VulkanGraphImageHandle ssr_hit_mask,
+            VkImageView scene_depth_view,
+            const RenderView& view,
+            const RenderSsrSettings& ssr_settings,
+            const RenderEffectDebugSettings& debug_settings) {
+            if (!scene_color.valid() ||
+                !scene_depth.valid() ||
+                !ssr_raw_reflection.valid() ||
+                !ssr_hit_mask.valid()) {
+                return false;
+            }
+
+            if (!shouldRenderSsr(ssr_settings, debug_settings)) {
+                return true;
+            }
+
+            VulkanSsrInput input;
+            input.scene_color_view = scene_color_target.getColorImageView();
+            input.scene_depth_view = scene_depth_view;
+            input.sampler = scene_color_target.getSampler();
+            input.extent = view.viewport_width > 0 && view.viewport_height > 0 ?
+                VkExtent2D{ view.viewport_width, view.viewport_height } :
+                scene_color_target.getExtent();
+            input.scene_color_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            input.scene_depth_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            const VulkanSsrRenderTarget reflection_target = ssr_target.getRawReflectionRenderTarget();
+            graph.addPass("SSRRawReflection")
+                .readImage(scene_color, VulkanGraphImageUsage::ShaderRead)
+                .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(ssr_raw_reflection, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, input, reflection_target, view, ssr_settings](VkCommandBuffer target_command_buffer) {
+                    if (!ssr_pass.updateInput(input)) {
+                        return false;
+                    }
+                    return ssr_pass.recordTrace(
+                        target_command_buffer,
+                        reflection_target,
+                        view,
+                        ssr_settings,
+                        VulkanSsrOutputMode::RawReflection);
+                });
+
+            const VulkanSsrRenderTarget hit_mask_target = ssr_target.getHitMaskRenderTarget();
+            graph.addPass("SSRHitMask")
+                .readImage(scene_color, VulkanGraphImageUsage::ShaderRead)
+                .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(ssr_hit_mask, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, input, hit_mask_target, view, ssr_settings](VkCommandBuffer target_command_buffer) {
+                    if (!ssr_pass.updateInput(input)) {
+                        return false;
+                    }
+                    return ssr_pass.recordTrace(
+                        target_command_buffer,
+                        hit_mask_target,
+                        view,
+                        ssr_settings,
+                        VulkanSsrOutputMode::HitMask);
+                });
+
+            return true;
+        }
+
         bool addBloomPass(
             VulkanPassGraph& graph,
             VulkanGraphImageHandle scene_color,
@@ -3143,6 +3330,8 @@ namespace NexAur {
             VulkanGraphImageHandle scene_depth,
             VulkanGraphImageHandle ao_raw,
             VulkanGraphImageHandle ao_blurred,
+            VulkanGraphImageHandle ssr_raw_reflection,
+            VulkanGraphImageHandle ssr_hit_mask,
             VulkanPostProcessRenderTarget target,
             const VulkanPostProcessInput& input,
             RenderPostProcessSettings post_process_settings,
@@ -3153,6 +3342,8 @@ namespace NexAur {
                 !scene_depth.valid() ||
                 !ao_raw.valid() ||
                 !ao_blurred.valid() ||
+                !ssr_raw_reflection.valid() ||
+                !ssr_hit_mask.valid() ||
                 !target.valid() ||
                 !input.valid() ||
                 !post_process_pass.isReady()) {
@@ -3168,6 +3359,8 @@ namespace NexAur {
                 .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(ao_raw, VulkanGraphImageUsage::ShaderRead)
                 .readImage(ao_blurred, VulkanGraphImageUsage::ShaderRead)
+                .readImage(ssr_raw_reflection, VulkanGraphImageUsage::ShaderRead)
+                .readImage(ssr_hit_mask, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
                 .execute([this, target, post_process_settings, ao_settings, debug_settings](VkCommandBuffer target_command_buffer) {
                     return post_process_pass.record(
@@ -3271,6 +3464,32 @@ namespace NexAur {
             desc.initial_layout = bloom_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 bloom_target.setCompositeLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addSsrRawReflectionImage(VulkanPassGraph& graph) {
+            const VulkanSsrImageView& ssr_image = ssr_target.getRawReflectionImage();
+            VulkanGraphImageDesc desc;
+            desc.name = "SSRRawReflection";
+            desc.image = ssr_image.image;
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = ssr_image.layout;
+            desc.commit_layout = [this](VkImageLayout layout) {
+                ssr_target.setRawReflectionLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addSsrHitMaskImage(VulkanPassGraph& graph) {
+            const VulkanSsrImageView& ssr_image = ssr_target.getHitMaskImage();
+            VulkanGraphImageDesc desc;
+            desc.name = "SSRHitMask";
+            desc.image = ssr_image.image;
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = ssr_image.layout;
+            desc.commit_layout = [this](VkImageLayout layout) {
+                ssr_target.setHitMaskLayout(layout);
             };
             return graph.addImage(std::move(desc));
         }
@@ -3715,6 +3934,7 @@ namespace NexAur {
         uint32_t device_api_version = kRequiredVulkanApiVersion;
         VkFormat scene_color_format = VK_FORMAT_UNDEFINED;
         VkFormat ao_format = VK_FORMAT_UNDEFINED;
+        VkFormat ssr_hit_mask_format = VK_FORMAT_UNDEFINED;
         VkFormat smaa_mask_format = VK_FORMAT_UNDEFINED;
 
         VkCommandPool command_pool = VK_NULL_HANDLE;
@@ -3736,6 +3956,7 @@ namespace NexAur {
         VulkanDebugDrawBuffer debug_draw_buffer;
         VulkanAoPass ao_pass;
         VulkanBloomPass bloom_pass;
+        VulkanSsrPass ssr_pass;
         VulkanSmaaPass smaa_pass;
         VulkanDebugDrawPass debug_draw_pass;
         VulkanShadowPass shadow_pass;
@@ -3747,6 +3968,7 @@ namespace NexAur {
         VulkanSceneColorTarget scene_color_target;
         VulkanAoTarget ao_target;
         VulkanBloomTarget bloom_target;
+        VulkanSsrTarget ssr_target;
         VulkanSmaaTarget smaa_target;
         VulkanPickingTarget picking_target;
         VulkanShadowMapTarget shadow_target;

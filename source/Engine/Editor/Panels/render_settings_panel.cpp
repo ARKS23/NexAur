@@ -236,6 +236,12 @@ namespace NexAur {
                 return RenderEffectDebugView::SmaaBlendWeight;
             case 16:
                 return RenderEffectDebugView::SmaaOutput;
+            case 17:
+                return RenderEffectDebugView::SsrHitMask;
+            case 18:
+                return RenderEffectDebugView::SsrRaySteps;
+            case 19:
+                return RenderEffectDebugView::SsrRawReflection;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -274,6 +280,7 @@ namespace NexAur {
         drawPostProcessSection(settings, changed);
         drawAntiAliasingSection(settings, changed);
         drawAoSection(settings, changed);
+        drawSsrSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
         drawPointShadowSection(settings, changed);
@@ -350,7 +357,10 @@ namespace NexAur {
                 "Color Graded",
                 "SMAA Edge Mask",
                 "SMAA Blend Weight",
-                "SMAA Output"
+                "SMAA Output",
+                "SSR Hit Mask",
+                "SSR Ray Steps",
+                "SSR Raw Reflection"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -449,6 +459,11 @@ namespace NexAur {
             settings.effects_debug.view == RenderEffectDebugView::SmaaBlendWeight ||
             settings.effects_debug.view == RenderEffectDebugView::SmaaOutput) {
             ImGui::TextDisabled("SMAA debug can run the SMAA graph without changing the AA mode.");
+        }
+        if (settings.effects_debug.view == RenderEffectDebugView::SsrHitMask ||
+            settings.effects_debug.view == RenderEffectDebugView::SsrRaySteps ||
+            settings.effects_debug.view == RenderEffectDebugView::SsrRawReflection) {
+            ImGui::TextDisabled("SSR debug can run the SSR graph without changing the SSR toggle.");
         }
     }
 
@@ -740,6 +755,57 @@ namespace NexAur {
         });
 
         if (!settings.ao.enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawSsrSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Screen Space Reflection")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox("##SsrEnabled", &settings.ssr.enabled);
+        });
+
+        if (!settings.ssr.enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Max Distance", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##SsrMaxDistance", &settings.ssr.max_distance, 1.0f, 80.0f, "%.1f");
+        });
+        EditorWidgets::propertyRow("Max Steps", [&]() {
+            int steps = static_cast<int>(settings.ssr.max_steps);
+            setControlWidth();
+            if (ImGui::SliderInt("##SsrMaxSteps", &steps, 4, 96)) {
+                settings.ssr.max_steps = static_cast<uint32_t>(std::max(4, steps));
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Thickness", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##SsrThickness", &settings.ssr.thickness, 0.01f, 1.0f, "%.3f");
+        });
+        EditorWidgets::propertyRow("Stride", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##SsrStride", &settings.ssr.stride, 0.25f, 4.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Roughness Fade", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##SsrRoughnessFade", &settings.ssr.roughness_fade, 0.0f, 1.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Edge Fade", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##SsrEdgeFade", &settings.ssr.edge_fade, 0.0f, 0.5f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Intensity", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##SsrIntensity", &settings.ssr.intensity, 0.0f, 2.0f, "%.2f");
+        });
+
+        if (!settings.ssr.enabled) {
             ImGui::EndDisabled();
         }
     }

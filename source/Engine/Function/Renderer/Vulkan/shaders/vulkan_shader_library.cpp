@@ -61,6 +61,8 @@ namespace NexAur {
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ssao.vert.spv" : "vulkan_ssao.frag.spv";
                 case VulkanShaderProgramId::AoBlur:
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ao_blur.vert.spv" : "vulkan_ao_blur.frag.spv";
+                case VulkanShaderProgramId::SsrTrace:
+                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ssr_trace.vert.spv" : "vulkan_ssr_trace.frag.spv";
                 case VulkanShaderProgramId::SmaaEdge:
                     return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_smaa_edge.vert.spv" : "vulkan_smaa_edge.frag.spv";
                 case VulkanShaderProgramId::SmaaBlend:
