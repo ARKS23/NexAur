@@ -48,7 +48,9 @@ namespace NexAur {
         AoRaw = 8,
         AoBlurred = 9,
         PointShadowMap = 10,
-        RectShadowMap = 11
+        RectShadowMap = 11,
+        PostToneMap = 12,
+        ColorGraded = 13
     };
 
     enum class RenderLightingPreset : uint32_t {
@@ -101,6 +103,18 @@ namespace NexAur {
         float bloom_intensity = 0.05f;
         float bloom_scatter = 0.7f;
         float bloom_radius = 1.0f;
+        bool color_grading_enabled = true;
+        float color_grading_exposure_offset = 0.0f;
+        float color_grading_contrast = 1.0f;
+        float color_grading_saturation = 1.0f;
+        float color_grading_temperature = 0.0f;
+        float color_grading_tint = 0.0f;
+        float color_grading_black_point = 0.0f;
+        float color_grading_white_point = 1.0f;
+        float vignette_intensity = 0.0f;
+        float vignette_radius = 0.75f;
+        float vignette_softness = 0.35f;
+        float sharpen_intensity = 0.0f;
     };
 
     struct RenderIblDebugSettings {

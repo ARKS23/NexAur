@@ -76,6 +76,20 @@ namespace NexAur {
         bool enabled = false;
         bool ready = false;
         std::string output_format = "None";
+        std::string tone_mapping = "ACES";
+        float exposure = 1.0f;
+        bool bloom_enabled = false;
+        float bloom_intensity = 0.0f;
+        bool color_grading_enabled = false;
+        float color_grading_exposure_offset = 0.0f;
+        float color_grading_contrast = 1.0f;
+        float color_grading_saturation = 1.0f;
+        float color_grading_temperature = 0.0f;
+        float color_grading_tint = 0.0f;
+        float color_grading_black_point = 0.0f;
+        float color_grading_white_point = 1.0f;
+        float vignette_intensity = 0.0f;
+        float sharpen_intensity = 0.0f;
     };
 
     struct RendererDebugBloomStats {

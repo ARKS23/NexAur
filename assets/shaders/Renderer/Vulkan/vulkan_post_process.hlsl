@@ -51,6 +51,8 @@ static const uint EFFECT_DEBUG_AO_RAW = 8u;
 static const uint EFFECT_DEBUG_AO_BLURRED = 9u;
 static const uint EFFECT_DEBUG_POINT_SHADOW_MAP = 10u;
 static const uint EFFECT_DEBUG_RECT_SHADOW_MAP = 11u;
+static const uint EFFECT_DEBUG_POST_TONE_MAP = 12u;
+static const uint EFFECT_DEBUG_COLOR_GRADED = 13u;
 
 struct PostProcessPushConstants {
     float exposure;
@@ -64,11 +66,24 @@ struct PostProcessPushConstants {
     float ao_intensity;
     float ao_power;
     uint ao_enabled;
-    uint _padding1;
+    uint color_grading_enabled;
+    float color_grading_exposure_offset;
+    float color_grading_contrast;
+    float color_grading_saturation;
+    float color_grading_temperature;
+    float color_grading_tint;
+    float color_grading_black_point;
+    float color_grading_white_point;
+    float sharpen_intensity;
+    float vignette_intensity;
+    float vignette_radius;
+    float vignette_softness;
 };
 
 [[vk::push_constant]]
 PostProcessPushConstants g_post_process;
+
+#include "common/color_grading.hlsli"
 
 FullscreenVSOutput VSMain(uint vertex_id : SV_VertexID) {
     return FullscreenTriangleVS(vertex_id);
@@ -76,6 +91,14 @@ FullscreenVSOutput VSMain(uint vertex_id : SV_VertexID) {
 
 float3 applyExposure(float3 color) {
     return color * max(g_post_process.exposure, 0.0f);
+}
+
+float3 applyColorGradingExposureOffset(float3 color) {
+    if (g_post_process.color_grading_enabled == 0u) {
+        return color;
+    }
+
+    return color * exp2(g_post_process.color_grading_exposure_offset);
 }
 
 float3 acesFitted(float3 color) {
@@ -164,6 +187,63 @@ float applyScreenSpaceAo(float2 uv) {
     return lerp(1.0f, powered_ao, saturate(g_post_process.ao_intensity));
 }
 
+float3 evaluateToneMappedColor(float2 uv, out float alpha) {
+    const float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, uv, 0.0f);
+    float3 color = max(hdr_color.rgb, 0.0f);
+    alpha = saturate(hdr_color.a);
+
+    color *= applyScreenSpaceAo(uv);
+    color = applyExposure(color);
+    if (g_post_process.tone_mapping_mode == TONE_MAPPING_ACES) {
+        color = acesFitted(color);
+    } else {
+        color = saturate(color);
+    }
+
+    return saturate(color);
+}
+
+float3 evaluateColorGradedColor(float2 uv, out float alpha) {
+    float3 color = evaluateToneMappedColor(uv, alpha);
+    color = applyColorGradingExposureOffset(color);
+    return NxApplyColorGrading(
+        color,
+        uv,
+        g_post_process.color_grading_enabled,
+        g_post_process.color_grading_contrast,
+        g_post_process.color_grading_saturation,
+        g_post_process.color_grading_temperature,
+        g_post_process.color_grading_tint,
+        g_post_process.color_grading_black_point,
+        g_post_process.color_grading_white_point,
+        g_post_process.vignette_intensity,
+        g_post_process.vignette_radius,
+        g_post_process.vignette_softness);
+}
+
+float2 getSceneTexelSize() {
+    uint width = 1u;
+    uint height = 1u;
+    g_hdr_scene_color.GetDimensions(width, height);
+    return 1.0f / max(float2((float)width, (float)height), float2(1.0f, 1.0f));
+}
+
+float3 applySharpen(float2 uv, float3 center_color) {
+    if (g_post_process.color_grading_enabled == 0u || g_post_process.sharpen_intensity <= 0.0f) {
+        return center_color;
+    }
+
+    const float2 texel_size = getSceneTexelSize();
+    float alpha_unused = 1.0f;
+    const float3 blur_color =
+        evaluateColorGradedColor(uv + float2(texel_size.x, 0.0f), alpha_unused) +
+        evaluateColorGradedColor(uv - float2(texel_size.x, 0.0f), alpha_unused) +
+        evaluateColorGradedColor(uv + float2(0.0f, texel_size.y), alpha_unused) +
+        evaluateColorGradedColor(uv - float2(0.0f, texel_size.y), alpha_unused);
+    const float3 average_color = blur_color * 0.25f;
+    return saturate(center_color + (center_color - average_color) * saturate(g_post_process.sharpen_intensity));
+}
+
 float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     if (g_post_process.effect_debug_view == EFFECT_DEBUG_SHADOW_MAP) {
         return sampleShadowMapDebug(input);
@@ -188,17 +268,19 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     float3 color = max(hdr_color.rgb, 0.0f);
 
     if (g_post_process.effect_debug_view != EFFECT_DEBUG_FINAL_LIT &&
-        g_post_process.effect_debug_view != EFFECT_DEBUG_SHADOW_CASCADES) {
+        g_post_process.effect_debug_view != EFFECT_DEBUG_SHADOW_CASCADES &&
+        g_post_process.effect_debug_view != EFFECT_DEBUG_POST_TONE_MAP &&
+        g_post_process.effect_debug_view != EFFECT_DEBUG_COLOR_GRADED) {
         return float4(encodeOutputColor(mapHdrDebugColor(color)), saturate(hdr_color.a));
     }
 
-    color *= applyScreenSpaceAo(input.uv);
-    color = applyExposure(color);
-    if (g_post_process.tone_mapping_mode == TONE_MAPPING_ACES) {
-        color = acesFitted(color);
-    } else {
-        color = saturate(color);
+    float alpha = saturate(hdr_color.a);
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_POST_TONE_MAP) {
+        color = evaluateToneMappedColor(input.uv, alpha);
+        return float4(encodeOutputColor(color), alpha);
     }
 
-    return float4(encodeOutputColor(color), saturate(hdr_color.a));
+    color = evaluateColorGradedColor(input.uv, alpha);
+    color = applySharpen(input.uv, color);
+    return float4(encodeOutputColor(color), alpha);
 }

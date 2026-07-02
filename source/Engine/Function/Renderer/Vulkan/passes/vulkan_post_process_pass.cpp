@@ -5,6 +5,7 @@
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 namespace NexAur {
@@ -23,7 +24,18 @@ namespace NexAur {
             float ao_intensity = 0.0f;
             float ao_power = 1.0f;
             uint32_t ao_enabled = 0;
-            uint32_t _padding1 = 0;
+            uint32_t color_grading_enabled = 0;
+            float color_grading_exposure_offset = 0.0f;
+            float color_grading_contrast = 1.0f;
+            float color_grading_saturation = 1.0f;
+            float color_grading_temperature = 0.0f;
+            float color_grading_tint = 0.0f;
+            float color_grading_black_point = 0.0f;
+            float color_grading_white_point = 1.0f;
+            float sharpen_intensity = 0.0f;
+            float vignette_intensity = 0.0f;
+            float vignette_radius = 0.75f;
+            float vignette_softness = 0.35f;
         };
 
         static_assert(
@@ -43,6 +55,13 @@ namespace NexAur {
             default:
                 return false;
             }
+        }
+
+        float sanitizeRange(float value, float fallback, float minimum, float maximum) {
+            if (!std::isfinite(value)) {
+                return fallback;
+            }
+            return std::clamp(value, minimum, maximum);
         }
 
         VulkanPostProcessPushConstants makePushConstants(
@@ -72,6 +91,29 @@ namespace NexAur {
             constants.ao_intensity = std::clamp(ao_settings.intensity, 0.0f, 2.0f);
             constants.ao_power = std::max(0.01f, ao_settings.power);
             constants.ao_enabled = ao_settings.enabled ? 1u : 0u;
+            constants.color_grading_enabled = post_process_settings.color_grading_enabled ? 1u : 0u;
+            constants.color_grading_exposure_offset =
+                sanitizeRange(post_process_settings.color_grading_exposure_offset, 0.0f, -4.0f, 4.0f);
+            constants.color_grading_contrast =
+                sanitizeRange(post_process_settings.color_grading_contrast, 1.0f, 0.0f, 4.0f);
+            constants.color_grading_saturation =
+                sanitizeRange(post_process_settings.color_grading_saturation, 1.0f, 0.0f, 4.0f);
+            constants.color_grading_temperature =
+                sanitizeRange(post_process_settings.color_grading_temperature, 0.0f, -1.0f, 1.0f);
+            constants.color_grading_tint =
+                sanitizeRange(post_process_settings.color_grading_tint, 0.0f, -1.0f, 1.0f);
+            constants.color_grading_black_point =
+                sanitizeRange(post_process_settings.color_grading_black_point, 0.0f, 0.0f, 0.95f);
+            constants.color_grading_white_point =
+                sanitizeRange(post_process_settings.color_grading_white_point, 1.0f, 0.001f, 4.0f);
+            constants.sharpen_intensity =
+                sanitizeRange(post_process_settings.sharpen_intensity, 0.0f, 0.0f, 1.0f);
+            constants.vignette_intensity =
+                sanitizeRange(post_process_settings.vignette_intensity, 0.0f, 0.0f, 1.0f);
+            constants.vignette_radius =
+                sanitizeRange(post_process_settings.vignette_radius, 0.75f, 0.0f, 1.0f);
+            constants.vignette_softness =
+                sanitizeRange(post_process_settings.vignette_softness, 0.35f, 0.001f, 1.0f);
             return constants;
         }
     } // namespace

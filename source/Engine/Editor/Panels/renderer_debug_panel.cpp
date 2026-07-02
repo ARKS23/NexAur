@@ -175,6 +175,19 @@ namespace NexAur {
         drawKeyValue("  Enabled", boolToText(snapshot.post_process.enabled));
         drawKeyValue("  Ready", boolToText(snapshot.post_process.ready));
         drawKeyValue("  Output Format", snapshot.post_process.output_format.c_str());
+        drawKeyValue("  Tone Mapping", snapshot.post_process.tone_mapping.c_str());
+        ImGui::Text("  Exposure: %.2f", snapshot.post_process.exposure);
+        drawKeyValue("  Bloom", boolToText(snapshot.post_process.bloom_enabled));
+        ImGui::Text("  Bloom Intensity: %.3f", snapshot.post_process.bloom_intensity);
+        drawKeyValue("  Color Grading", boolToText(snapshot.post_process.color_grading_enabled));
+        ImGui::Text("  Grade Exposure: %.2f", snapshot.post_process.color_grading_exposure_offset);
+        ImGui::Text("  Contrast: %.2f", snapshot.post_process.color_grading_contrast);
+        ImGui::Text("  Saturation: %.2f", snapshot.post_process.color_grading_saturation);
+        ImGui::Text("  Temperature: %.2f", snapshot.post_process.color_grading_temperature);
+        ImGui::Text("  Tint: %.2f", snapshot.post_process.color_grading_tint);
+        ImGui::Text("  Black / White: %.3f / %.2f", snapshot.post_process.color_grading_black_point, snapshot.post_process.color_grading_white_point);
+        ImGui::Text("  Vignette: %.2f", snapshot.post_process.vignette_intensity);
+        ImGui::Text("  Sharpen: %.2f", snapshot.post_process.sharpen_intensity);
 
         ImGui::Spacing();
         ImGui::TextUnformatted("Picking Target");

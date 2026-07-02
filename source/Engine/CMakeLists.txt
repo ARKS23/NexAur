@@ -207,6 +207,7 @@ set(NEXAUR_ENGINE_VULKAN_SHADER_FILES
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_shadow_depth.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_debug_draw.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_post_process.hlsl"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/color_grading.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_brdf.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_ibl.hlsli"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_material.hlsli"

@@ -170,6 +170,16 @@ namespace NexAur {
             return view == RenderEffectDebugView::PointShadowMap;
         }
 
+        const char* toneMappingModeToText(RenderToneMappingMode mode) {
+            switch (mode) {
+            case RenderToneMappingMode::None:
+                return "None";
+            case RenderToneMappingMode::ACES:
+            default:
+                return "ACES";
+            }
+        }
+
         const char* effectDebugViewToText(RenderEffectDebugView view) {
             switch (view) {
             case RenderEffectDebugView::HdrSceneColor:
@@ -194,6 +204,10 @@ namespace NexAur {
                 return "Point Shadow Map";
             case RenderEffectDebugView::RectShadowMap:
                 return "Rect Shadow Map";
+            case RenderEffectDebugView::PostToneMap:
+                return "Post Tone Map";
+            case RenderEffectDebugView::ColorGraded:
+                return "Color Graded";
             case RenderEffectDebugView::FinalLit:
             default:
                 return "Final Lit";
@@ -922,7 +936,7 @@ namespace NexAur {
             snapshot.shadow_target = buildShadowTargetDebugStats();
             snapshot.point_shadow_target = buildPointShadowTargetDebugStats();
             snapshot.rect_shadow_target = buildRectShadowTargetDebugStats();
-            snapshot.post_process = buildPostProcessDebugStats();
+            snapshot.post_process = buildPostProcessDebugStats(render_data.render_settings);
             snapshot.bloom = buildBloomDebugStats();
             snapshot.ao = buildAoDebugStats();
             snapshot.effects = buildEffectsDebugStats(render_data.render_settings);
@@ -1121,13 +1135,27 @@ namespace NexAur {
             return stats;
         }
 
-        RendererDebugPostProcessStats buildPostProcessDebugStats() const {
+        RendererDebugPostProcessStats buildPostProcessDebugStats(const RenderSettings& render_settings) const {
             RendererDebugPostProcessStats stats;
             stats.enabled = true;
             stats.ready = post_process_pass.isReady();
             if (post_process_pass.getOutputColorFormat() != VK_FORMAT_UNDEFINED) {
                 stats.output_format = vkFormatToString(post_process_pass.getOutputColorFormat());
             }
+            stats.tone_mapping = toneMappingModeToText(render_settings.post_process.tone_mapping_mode);
+            stats.exposure = render_settings.post_process.exposure;
+            stats.bloom_enabled = render_settings.post_process.bloom_enabled;
+            stats.bloom_intensity = render_settings.post_process.bloom_intensity;
+            stats.color_grading_enabled = render_settings.post_process.color_grading_enabled;
+            stats.color_grading_exposure_offset = render_settings.post_process.color_grading_exposure_offset;
+            stats.color_grading_contrast = render_settings.post_process.color_grading_contrast;
+            stats.color_grading_saturation = render_settings.post_process.color_grading_saturation;
+            stats.color_grading_temperature = render_settings.post_process.color_grading_temperature;
+            stats.color_grading_tint = render_settings.post_process.color_grading_tint;
+            stats.color_grading_black_point = render_settings.post_process.color_grading_black_point;
+            stats.color_grading_white_point = render_settings.post_process.color_grading_white_point;
+            stats.vignette_intensity = render_settings.post_process.vignette_intensity;
+            stats.sharpen_intensity = render_settings.post_process.sharpen_intensity;
             return stats;
         }
 
@@ -1728,7 +1756,9 @@ namespace NexAur {
             const RenderEffectDebugSettings& debug_settings) const {
             const bool final_output =
                 debug_settings.view == RenderEffectDebugView::FinalLit ||
-                debug_settings.view == RenderEffectDebugView::ShadowCascades;
+                debug_settings.view == RenderEffectDebugView::ShadowCascades ||
+                debug_settings.view == RenderEffectDebugView::PostToneMap ||
+                debug_settings.view == RenderEffectDebugView::ColorGraded;
             const bool bloom_enabled =
                 (final_output &&
                  post_process_settings.bloom_enabled &&

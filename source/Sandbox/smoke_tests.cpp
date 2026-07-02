@@ -1006,6 +1006,18 @@ int runRenderSettingsSmoke() {
     settings.post_process.bloom_intensity = 0.25f;
     settings.post_process.bloom_scatter = 0.5f;
     settings.post_process.bloom_radius = 1.25f;
+    settings.post_process.color_grading_enabled = false;
+    settings.post_process.color_grading_exposure_offset = 0.35f;
+    settings.post_process.color_grading_contrast = 1.2f;
+    settings.post_process.color_grading_saturation = 0.8f;
+    settings.post_process.color_grading_temperature = 0.25f;
+    settings.post_process.color_grading_tint = -0.15f;
+    settings.post_process.color_grading_black_point = 0.02f;
+    settings.post_process.color_grading_white_point = 1.1f;
+    settings.post_process.vignette_intensity = 0.3f;
+    settings.post_process.vignette_radius = 0.65f;
+    settings.post_process.vignette_softness = 0.4f;
+    settings.post_process.sharpen_intensity = 0.2f;
     settings.ao.enabled = true;
     settings.ao.radius = 1.4f;
     settings.ao.intensity = 0.7f;
@@ -1015,7 +1027,7 @@ int runRenderSettingsSmoke() {
     settings.ao.half_resolution = false;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
-    settings.effects_debug.view = NexAur::RenderEffectDebugView::BloomDownsampleMip;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::PostToneMap;
     settings.effects_debug.bloom_mip = 3u;
     settings.effects_debug.shadow_cascade = 2u;
     settings.effects_debug.point_shadow_layer = 5u;
@@ -1106,6 +1118,20 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_post_process.bloom_radius, 1.25f),
         "RenderSettings smoke failed: bloom parameters did not reach the read packet.");
     expect(
+        !first_post_process.color_grading_enabled &&
+        nearlyEqual(first_post_process.color_grading_exposure_offset, 0.35f) &&
+        nearlyEqual(first_post_process.color_grading_contrast, 1.2f) &&
+        nearlyEqual(first_post_process.color_grading_saturation, 0.8f) &&
+        nearlyEqual(first_post_process.color_grading_temperature, 0.25f) &&
+        nearlyEqual(first_post_process.color_grading_tint, -0.15f) &&
+        nearlyEqual(first_post_process.color_grading_black_point, 0.02f) &&
+        nearlyEqual(first_post_process.color_grading_white_point, 1.1f) &&
+        nearlyEqual(first_post_process.vignette_intensity, 0.3f) &&
+        nearlyEqual(first_post_process.vignette_radius, 0.65f) &&
+        nearlyEqual(first_post_process.vignette_softness, 0.4f) &&
+        nearlyEqual(first_post_process.sharpen_intensity, 0.2f),
+        "RenderSettings smoke failed: color grading parameters did not reach the read packet.");
+    expect(
         first_lighting.preset == NexAur::RenderLightingPreset::Custom &&
         nearlyEqual(first_lighting.directional_light_intensity_scale, 0.25f) &&
         nearlyEqual(first_lighting.point_light_intensity_scale, 1.5f) &&
@@ -1127,7 +1153,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
     expect(
-        first_effects_debug.view == NexAur::RenderEffectDebugView::BloomDownsampleMip &&
+        first_effects_debug.view == NexAur::RenderEffectDebugView::PostToneMap &&
         first_effects_debug.bloom_mip == 3u &&
         first_effects_debug.shadow_cascade == 2u &&
         first_effects_debug.point_shadow_layer == 5u &&
@@ -1203,7 +1229,19 @@ int runRenderSettingsSmoke() {
     settings.ao.half_resolution = true;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
     settings.ibl_debug.prefilter_mip = 0.0f;
-    settings.effects_debug.view = NexAur::RenderEffectDebugView::ShadowMap;
+    settings.post_process.color_grading_enabled = true;
+    settings.post_process.color_grading_exposure_offset = 0.0f;
+    settings.post_process.color_grading_contrast = 1.0f;
+    settings.post_process.color_grading_saturation = 1.0f;
+    settings.post_process.color_grading_temperature = 0.0f;
+    settings.post_process.color_grading_tint = 0.0f;
+    settings.post_process.color_grading_black_point = 0.0f;
+    settings.post_process.color_grading_white_point = 1.0f;
+    settings.post_process.vignette_intensity = 0.0f;
+    settings.post_process.vignette_radius = 0.75f;
+    settings.post_process.vignette_softness = 0.35f;
+    settings.post_process.sharpen_intensity = 0.0f;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::ColorGraded;
     settings.effects_debug.bloom_mip = 0u;
     settings.effects_debug.shadow_cascade = 1u;
     settings.effects_debug.point_shadow_layer = 2u;
@@ -1294,6 +1332,20 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_post_process.bloom_radius, 1.0f),
         "RenderSettings smoke failed: Cornell bloom parameters did not reach the read packet.");
     expect(
+        second_post_process.color_grading_enabled &&
+        nearlyEqual(second_post_process.color_grading_exposure_offset, 0.0f) &&
+        nearlyEqual(second_post_process.color_grading_contrast, 1.0f) &&
+        nearlyEqual(second_post_process.color_grading_saturation, 1.0f) &&
+        nearlyEqual(second_post_process.color_grading_temperature, 0.0f) &&
+        nearlyEqual(second_post_process.color_grading_tint, 0.0f) &&
+        nearlyEqual(second_post_process.color_grading_black_point, 0.0f) &&
+        nearlyEqual(second_post_process.color_grading_white_point, 1.0f) &&
+        nearlyEqual(second_post_process.vignette_intensity, 0.0f) &&
+        nearlyEqual(second_post_process.vignette_radius, 0.75f) &&
+        nearlyEqual(second_post_process.vignette_softness, 0.35f) &&
+        nearlyEqual(second_post_process.sharpen_intensity, 0.0f),
+        "RenderSettings smoke failed: updated color grading parameters did not reach the read packet.");
+    expect(
         second_lighting.preset == NexAur::RenderLightingPreset::Cornell &&
         nearlyEqual(second_lighting.directional_light_intensity_scale, 0.0f) &&
         nearlyEqual(second_lighting.point_light_intensity_scale, 1.0f) &&
@@ -1315,7 +1367,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),
         "RenderSettings smoke failed: updated IBL debug settings did not reach the read packet.");
     expect(
-        second_effects_debug.view == NexAur::RenderEffectDebugView::ShadowMap &&
+        second_effects_debug.view == NexAur::RenderEffectDebugView::ColorGraded &&
         second_effects_debug.bloom_mip == 0u &&
         second_effects_debug.shadow_cascade == 1u &&
         second_effects_debug.point_shadow_layer == 2u &&

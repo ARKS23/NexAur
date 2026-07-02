@@ -208,6 +208,10 @@ namespace NexAur {
                 return RenderEffectDebugView::PointShadowMap;
             case 11:
                 return RenderEffectDebugView::RectShadowMap;
+            case 12:
+                return RenderEffectDebugView::PostToneMap;
+            case 13:
+                return RenderEffectDebugView::ColorGraded;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -316,7 +320,9 @@ namespace NexAur {
                 "AO Raw",
                 "AO Blurred",
                 "Point Shadow Map",
-                "Rect Shadow Map"
+                "Rect Shadow Map",
+                "Post Tone Map",
+                "Color Graded"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -407,6 +413,10 @@ namespace NexAur {
             settings.effects_debug.view == RenderEffectDebugView::AoBlurred) {
             ImGui::TextDisabled("AO debug can run the AO graph without changing the AO toggle.");
         }
+        if (settings.effects_debug.view == RenderEffectDebugView::PostToneMap ||
+            settings.effects_debug.view == RenderEffectDebugView::ColorGraded) {
+            ImGui::TextDisabled("Post debug uses the current HDR, Bloom, AO and tone mapping inputs.");
+        }
     }
 
     void RenderSettingsPanel::drawDebugVisualizationSection() {
@@ -484,6 +494,118 @@ namespace NexAur {
         });
 
         if (!settings.post_process.bloom_enabled) {
+            ImGui::EndDisabled();
+        }
+
+        EditorWidgets::propertyRow("Color Grading", [&]() {
+            changed |= ImGui::Checkbox("##ColorGradingEnabled", &settings.post_process.color_grading_enabled);
+        });
+
+        if (!settings.post_process.color_grading_enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Grade Exposure", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingExposureOffset",
+                &settings.post_process.color_grading_exposure_offset,
+                -2.0f,
+                2.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Contrast", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingContrast",
+                &settings.post_process.color_grading_contrast,
+                0.5f,
+                1.75f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Saturation", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingSaturation",
+                &settings.post_process.color_grading_saturation,
+                0.0f,
+                2.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Temperature", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingTemperature",
+                &settings.post_process.color_grading_temperature,
+                -1.0f,
+                1.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Tint", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingTint",
+                &settings.post_process.color_grading_tint,
+                -1.0f,
+                1.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Black Point", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingBlackPoint",
+                &settings.post_process.color_grading_black_point,
+                0.0f,
+                0.25f,
+                "%.3f");
+        });
+        EditorWidgets::propertyRow("White Point", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingWhitePoint",
+                &settings.post_process.color_grading_white_point,
+                0.5f,
+                1.5f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Vignette", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingVignette",
+                &settings.post_process.vignette_intensity,
+                0.0f,
+                1.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Vignette Radius", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingVignetteRadius",
+                &settings.post_process.vignette_radius,
+                0.0f,
+                1.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Vignette Softness", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingVignetteSoftness",
+                &settings.post_process.vignette_softness,
+                0.01f,
+                1.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Sharpen", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##ColorGradingSharpen",
+                &settings.post_process.sharpen_intensity,
+                0.0f,
+                1.0f,
+                "%.2f");
+        });
+
+        if (!settings.post_process.color_grading_enabled) {
             ImGui::EndDisabled();
         }
     }
