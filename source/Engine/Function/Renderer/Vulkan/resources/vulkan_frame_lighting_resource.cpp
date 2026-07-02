@@ -48,6 +48,7 @@ namespace NexAur {
             glm::vec4 point_shadow_quality_params{ 1.0f, 0.0f, 0.0f, 0.0f };
             glm::vec4 contact_shadow_params{ 0.0f, 0.35f, 0.45f, 0.08f };
             glm::vec4 rect_light_params{ 1.0f, 0.0f, 0.0f, 0.0f };
+            glm::vec4 rect_light_ltc_params{ 1.0f, 0.0f, 0.0f, 0.0f };
         };
 
         struct VulkanGpuPointLight {
@@ -257,6 +258,11 @@ namespace NexAur {
         frame_globals.rect_light_params = glm::vec4(
             render_settings.rect_light.enabled ? 1.0f : 0.0f,
             static_cast<float>(rect_light_count),
+            render_settings.rect_light.ltc_specular_enabled ? 1.0f : 0.0f,
+            0.0f);
+        frame_globals.rect_light_ltc_params = glm::vec4(
+            sanitizeMin(render_settings.rect_light.specular_intensity_scale, 1.0f, 0.0f),
+            render_settings.rect_light.debug_ltc_only ? 1.0f : 0.0f,
             0.0f,
             0.0f);
 

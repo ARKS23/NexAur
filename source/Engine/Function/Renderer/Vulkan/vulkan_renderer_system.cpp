@@ -1097,6 +1097,9 @@ namespace NexAur {
             stats.ao_debug_available = ao_target.isReady() && ao_pass.isReady();
             stats.shadow_debug_available = shadow_target.isReady();
             stats.point_shadow_debug_available = point_shadow_target.isReady();
+            stats.rect_ltc_specular_enabled = render_settings.rect_light.ltc_specular_enabled;
+            stats.rect_ltc_debug_only = render_settings.rect_light.debug_ltc_only;
+            stats.rect_ltc_specular_scale = render_settings.rect_light.specular_intensity_scale;
             return stats;
         }
 

@@ -1046,6 +1046,9 @@ int runRenderSettingsSmoke() {
     settings.contact_shadow.thickness = 0.07f;
     settings.rect_light.enabled = false;
     settings.rect_light.max_lights = 7u;
+    settings.rect_light.ltc_specular_enabled = false;
+    settings.rect_light.specular_intensity_scale = 1.75f;
+    settings.rect_light.debug_ltc_only = true;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -1144,7 +1147,10 @@ int runRenderSettingsSmoke() {
         "RenderSettings smoke failed: contact shadow settings did not reach the read packet.");
     expect(
         !first_rect_light.enabled &&
-        first_rect_light.max_lights == 7u,
+        first_rect_light.max_lights == 7u &&
+        !first_rect_light.ltc_specular_enabled &&
+        nearlyEqual(first_rect_light.specular_intensity_scale, 1.75f) &&
+        first_rect_light.debug_ltc_only,
         "RenderSettings smoke failed: rect light settings did not reach the read packet.");
 
     NexAur::applyRenderLightingPreset(settings, NexAur::RenderLightingPreset::Cornell);
@@ -1192,6 +1198,9 @@ int runRenderSettingsSmoke() {
     settings.contact_shadow.thickness = 0.08f;
     settings.rect_light.enabled = true;
     settings.rect_light.max_lights = 1u;
+    settings.rect_light.ltc_specular_enabled = true;
+    settings.rect_light.specular_intensity_scale = 1.0f;
+    settings.rect_light.debug_ltc_only = false;
     render_context.setRenderSettings(settings);
     render_context.getWriteData().render_settings = render_context.getRenderSettings();
     render_context.swapBuffers();
@@ -1290,7 +1299,10 @@ int runRenderSettingsSmoke() {
         "RenderSettings smoke failed: updated contact shadow settings did not reach the read packet.");
     expect(
         second_rect_light.enabled &&
-        second_rect_light.max_lights == 1u,
+        second_rect_light.max_lights == 1u &&
+        second_rect_light.ltc_specular_enabled &&
+        nearlyEqual(second_rect_light.specular_intensity_scale, 1.0f) &&
+        !second_rect_light.debug_ltc_only,
         "RenderSettings smoke failed: updated rect light settings did not reach the read packet.");
 
     NexAur::RenderDataPacket render_data;

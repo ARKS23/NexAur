@@ -215,6 +215,9 @@ namespace NexAur {
         drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));
+        drawKeyValue("Rect LTC Specular", boolToText(snapshot.effects.rect_ltc_specular_enabled));
+        drawKeyValue("Rect LTC Only", boolToText(snapshot.effects.rect_ltc_debug_only));
+        ImGui::Text("Rect LTC Scale: %.2f", snapshot.effects.rect_ltc_specular_scale);
     }
 
     void RendererDebugPanel::drawResourcesSection(const RendererDebugSnapshot& snapshot) {

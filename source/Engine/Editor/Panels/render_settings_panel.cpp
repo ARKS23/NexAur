@@ -743,6 +743,30 @@ namespace NexAur {
                 changed = true;
             }
         });
+        EditorWidgets::propertyRow("LTC Specular", [&]() {
+            changed |= ImGui::Checkbox("##RectLightsLtcSpecular", &settings.rect_light.ltc_specular_enabled);
+        });
+
+        if (!settings.rect_light.ltc_specular_enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Specular Scale", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RectLightsSpecularScale",
+                &settings.rect_light.specular_intensity_scale,
+                0.0f,
+                4.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("LTC Only", [&]() {
+            changed |= ImGui::Checkbox("##RectLightsLtcOnly", &settings.rect_light.debug_ltc_only);
+        });
+
+        if (!settings.rect_light.ltc_specular_enabled) {
+            ImGui::EndDisabled();
+        }
 
         if (!settings.rect_light.enabled) {
             ImGui::EndDisabled();

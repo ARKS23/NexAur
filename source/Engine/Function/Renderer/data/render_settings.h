@@ -154,6 +154,9 @@ namespace NexAur {
     struct RenderRectLightSettings {
         bool enabled = true;
         uint32_t max_lights = kMaxRenderRectLights;
+        bool ltc_specular_enabled = true;
+        float specular_intensity_scale = 1.0f;
+        bool debug_ltc_only = false;
     };
 
     struct RenderSettings {

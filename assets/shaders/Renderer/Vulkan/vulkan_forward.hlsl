@@ -43,7 +43,8 @@ struct FrameGlobals {
     float4 point_shadow_params; // x: enabled, y: map size, z: constant bias, w: normal bias
     float4 point_shadow_quality_params; // x: filter radius, y: shadowed light count, zw: reserved
     float4 contact_shadow_params; // x: enabled, y: intensity, z: max distance, w: thickness
-    float4 rect_light_params; // x: enabled, y: count, zw: reserved
+    float4 rect_light_params; // x: enabled, y: count, z: ltc specular enabled, w: reserved
+    float4 rect_light_ltc_params; // x: specular scale, y: debug ltc only, zw: reserved
 };
 
 struct PointLightData {
@@ -136,6 +137,7 @@ SamplerState g_environment_sampler;
 #include "common/pbr_material.hlsli"
 #include "common/pbr_ibl.hlsli"
 #include "common/shadow_sampling.hlsli"
+#include "common/area_light_ltc.hlsli"
 
 VSOutput VSMain(VSInput input) {
     VSOutput output;
@@ -197,69 +199,26 @@ float3 EvaluateIblDebugColor(
     }
 }
 
-float3 NxSafeNormalizeForward(float3 value, float3 fallback) {
-    const float length_sq = dot(value, value);
-    return length_sq > 0.000001f ? value * rsqrt(length_sq) : fallback;
-}
-
 float3 EvaluateRectLight(
     NxMaterialSample material,
     float3 world_position,
     float3 view_dir,
     RectLightData light) {
-    const float3 light_position = light.position_intensity.xyz;
-    const float intensity = max(light.position_intensity.w, 0.0f);
-    if (intensity <= 0.0001f) {
-        return 0.0f;
+    if (g_frame.rect_light_params.z < 0.5f) {
+        return NxEvaluateRectLightFallbackDirect(material, world_position, view_dir, light);
     }
 
-    const float3 light_right = NxSafeNormalizeForward(light.right_width.xyz, float3(1.0f, 0.0f, 0.0f));
-    const float3 light_up = NxSafeNormalizeForward(light.up_height.xyz, float3(0.0f, 0.0f, 1.0f));
-    const float3 light_normal = NxSafeNormalizeForward(light.normal_range.xyz, float3(0.0f, -1.0f, 0.0f));
-    const float width = max(light.right_width.w, 0.01f);
-    const float height = max(light.up_height.w, 0.01f);
-    const float range = max(light.normal_range.w, 0.1f);
-
-    const float3 surface_to_light_center = world_position - light_position;
-    const float x = clamp(dot(surface_to_light_center, light_right), -width * 0.5f, width * 0.5f);
-    const float y = clamp(dot(surface_to_light_center, light_up), -height * 0.5f, height * 0.5f);
-    const float3 representative_point = light_position + light_right * x + light_up * y;
-
-    const float3 light_vector = representative_point - world_position;
-    const float distance2 = max(dot(light_vector, light_vector), 0.0001f);
-    const float distance_to_light = sqrt(distance2);
-    const float3 light_dir = light_vector / max(distance_to_light, 0.0001f);
-
-    const float light_facing = light.color_flags.w > 0.5f
-        ? abs(dot(light_normal, -light_dir))
-        : saturate(dot(light_normal, -light_dir));
-    if (light_facing <= 0.0001f) {
-        return 0.0f;
-    }
-
-    float attenuation = saturate(1.0f - distance_to_light / range);
-    attenuation *= attenuation;
-    if (attenuation <= 0.0001f) {
-        return 0.0f;
-    }
-
-    const float area = width * height;
-    const float solid_angle = min(area * light_facing / distance2, 2.0f * NX_PI);
-    const float apparent_radius = 0.5f * sqrt(area / NX_PI);
-    const float roughness_widen = apparent_radius / max(distance_to_light, 0.001f);
-    const float rect_roughness = saturate(sqrt(
-        material.roughness * material.roughness +
-        roughness_widen * roughness_widen));
-    const float3 radiance = light.color_flags.rgb * intensity * solid_angle * attenuation;
-
-    return NxEvaluateDirectLight(
-        material.base_color.rgb,
-        material.metallic,
-        rect_roughness,
-        material.normal,
+    const float3 diffuse = NxEvaluateRectLightDiffuseApprox(material, world_position, view_dir, light);
+    const float3 specular = NxEvaluateRectLightSpecularLtc(
+        material,
+        world_position,
         view_dir,
-        light_dir,
-        radiance);
+        light,
+        g_frame.rect_light_ltc_params.x);
+    if (g_frame.rect_light_ltc_params.y > 0.5f) {
+        return specular;
+    }
+    return diffuse + specular;
 }
 
 float4 PSMain(VSOutput input) : SV_Target0 {

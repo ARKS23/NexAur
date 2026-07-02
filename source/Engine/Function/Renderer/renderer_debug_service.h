@@ -102,6 +102,9 @@ namespace NexAur {
         bool ao_debug_available = false;
         bool shadow_debug_available = false;
         bool point_shadow_debug_available = false;
+        bool rect_ltc_specular_enabled = false;
+        bool rect_ltc_debug_only = false;
+        float rect_ltc_specular_scale = 1.0f;
     };
 
     struct RendererDebugResourceStats {
