@@ -22,6 +22,14 @@ namespace NexAur {
         virtual std::pair<uint32_t, uint32_t> getViewportSize() const = 0;
         virtual ViewportOutput getViewportOutput() const = 0;
         virtual ViewportPickResult pickViewport(const ViewportPickRequest& request) = 0;
+        virtual bool requestReflectionProbeCapture(const ReflectionProbeCaptureRequest& request) {
+            (void)request;
+            return false;
+        }
+        virtual ReflectionProbeCaptureState getReflectionProbeCaptureState(int entity_id) const {
+            (void)entity_id;
+            return {};
+        }
 
         virtual void onUIContextInitialized() {}
         virtual void beginUIFrame() {}

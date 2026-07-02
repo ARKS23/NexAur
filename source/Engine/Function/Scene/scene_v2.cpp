@@ -5,6 +5,8 @@
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/data/render_debug_draw_builder.h"
 
+#include <algorithm>
+
 namespace NexAur {
     namespace {
         glm::vec3 safeNormalizeAxis(const glm::vec3& value, const glm::vec3& fallback) {
@@ -63,15 +65,22 @@ namespace NexAur {
 
         RendererReflectionProbeData buildReflectionProbeData(
             const ReflectionProbeComponent& probe,
-            const TransformComponent& transform) {
+            const TransformComponent& transform,
+            entt::entity entity) {
             RendererReflectionProbeData probe_data;
             probe_data.environment_asset = probe.getEnvironmentHandle();
             probe_data.position = transform.translation;
             probe_data.box_extents = glm::max(probe.box_extents, glm::vec3{ 0.05f });
             probe_data.intensity = std::max(0.0f, probe.intensity);
             probe_data.blend_distance = std::max(0.0f, probe.blend_distance);
+            probe_data.capture_resolution = std::clamp(probe.capture_resolution, 32u, 1024u);
+            probe_data.capture_near_clip = std::max(0.001f, probe.capture_near_clip);
+            probe_data.capture_far_clip = std::max(probe.capture_far_clip, probe_data.capture_near_clip + 0.001f);
+            probe_data.entity_id = static_cast<int>(entity);
             probe_data.enabled = probe.enabled;
             probe_data.box_projection = probe.box_projection;
+            probe_data.capture_include_skybox = probe.capture_include_skybox;
+            probe_data.capture_dirty = probe.capture_dirty;
             return probe_data;
         }
 
@@ -238,7 +247,7 @@ namespace NexAur {
         auto view_reflection_probe = m_Registry.view<ReflectionProbeComponent, TransformComponent>();
         view_reflection_probe.each([&](auto entity, const auto& probe_comp, const auto& transform_comp) {
             (void)entity;
-            RendererReflectionProbeData probe_data = buildReflectionProbeData(probe_comp, transform_comp);
+            RendererReflectionProbeData probe_data = buildReflectionProbeData(probe_comp, transform_comp, entity);
             render_packet->reflection_probes_data.push_back(probe_data);
 
             if (debug_options.enabled) {

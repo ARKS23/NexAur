@@ -119,6 +119,7 @@ namespace NexAur {
             active_probe.box_extents = glm::max(selected_probe->box_extents, glm::vec3{ 0.05f });
             active_probe.intensity = std::max(0.0f, selected_probe->intensity);
             active_probe.blend_distance = std::max(0.0f, selected_probe->blend_distance);
+            active_probe.entity_id = selected_probe->entity_id;
             active_probe.box_projection = selected_probe->box_projection;
             if (active_probe.environment && active_probe.environment->isReady()) {
                 active_probe.prefilter_mip_count = active_probe.environment->getPrefilterMipCount();

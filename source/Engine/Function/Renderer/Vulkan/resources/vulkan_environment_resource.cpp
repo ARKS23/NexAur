@@ -44,6 +44,28 @@ namespace NexAur {
             return mip_count;
         }
 
+        uint32_t sanitizeCubeSize(uint32_t size, uint32_t fallback, uint32_t minimum, uint32_t maximum) {
+            if (size == 0) {
+                return fallback;
+            }
+
+            return std::clamp(size, minimum, maximum);
+        }
+
+        VulkanEnvironmentResourceBuildSettings sanitizeBuildSettings(
+            const VulkanEnvironmentResourceBuildSettings& settings) {
+            VulkanEnvironmentResourceBuildSettings sanitized = settings;
+            sanitized.environment_size =
+                sanitizeCubeSize(settings.environment_size, kEnvironmentCubeSize, 32u, 1024u);
+            sanitized.irradiance_size =
+                sanitizeCubeSize(settings.irradiance_size, kIrradianceCubeSize, 16u, 128u);
+            sanitized.prefilter_size =
+                sanitizeCubeSize(settings.prefilter_size, kPrefilterCubeSize, 32u, 1024u);
+            sanitized.brdf_lut_size =
+                sanitizeCubeSize(settings.brdf_lut_size, kBrdfLutSize, 64u, 512u);
+            return sanitized;
+        }
+
         glm::vec3 sanitizeColor(const glm::vec3& color) {
             return glm::max(color, glm::vec3{ 0.0f });
         }
@@ -816,7 +838,7 @@ namespace NexAur {
             return true;
         }
 
-        EnvironmentMapAsset createSolidEnvironment(const glm::vec3& color) {
+        EnvironmentMapAsset createSolidEnvironment(const glm::vec3& color, std::string source_path) {
             constexpr uint32_t width = 16;
             constexpr uint32_t height = 8;
             std::vector<float> pixels(static_cast<size_t>(width) * height * 4u);
@@ -828,7 +850,7 @@ namespace NexAur {
                 pixels[base + 2] = sanitized.b;
                 pixels[base + 3] = 1.0f;
             }
-            return EnvironmentMapAsset(width, height, std::move(pixels), "FallbackEnvironment");
+            return EnvironmentMapAsset(width, height, std::move(pixels), std::move(source_path));
         }
     } // namespace
 
@@ -839,6 +861,13 @@ namespace NexAur {
     bool VulkanEnvironmentResource::create(
         const VulkanEnvironmentResourceCreateContext& context,
         const EnvironmentMapAsset& environment_asset) {
+        return create(context, environment_asset, VulkanEnvironmentResourceBuildSettings{});
+    }
+
+    bool VulkanEnvironmentResource::create(
+        const VulkanEnvironmentResourceCreateContext& context,
+        const EnvironmentMapAsset& environment_asset,
+        const VulkanEnvironmentResourceBuildSettings& settings) {
         reset();
 
         if (!context.valid() || !environment_asset.isLoaded()) {
@@ -850,22 +879,30 @@ namespace NexAur {
         m_device = context.upload_context.device;
         m_descriptor_allocator = context.descriptor_allocator;
         m_descriptor_set_layout = context.descriptor_set_layout;
-        m_debug_name = environment_asset.getSourcePath().empty() ? "Environment" : environment_asset.getSourcePath();
+        const VulkanEnvironmentResourceBuildSettings build_settings = sanitizeBuildSettings(settings);
+        m_debug_name = build_settings.debug_name_override.empty() ?
+            (environment_asset.getSourcePath().empty() ? "Environment" : environment_asset.getSourcePath()) :
+            build_settings.debug_name_override;
         m_source_width = environment_asset.getWidth();
         m_source_height = environment_asset.getHeight();
 
         std::vector<CubeMipPixels> environment_mips;
-        environment_mips.push_back(generateEnvironmentCubeMip(environment_asset, kEnvironmentCubeSize));
+        environment_mips.push_back(generateEnvironmentCubeMip(environment_asset, build_settings.environment_size));
         std::vector<CubeMipPixels> irradiance_mips;
-        irradiance_mips.push_back(generateIrradianceMip(environment_asset, kIrradianceCubeSize));
+        irradiance_mips.push_back(generateIrradianceMip(environment_asset, build_settings.irradiance_size));
         std::vector<CubeMipPixels> prefilter_mips =
-            generatePrefilterMips(environment_asset, kPrefilterCubeSize);
-        const std::vector<float>& brdf_lut = generateBrdfLut(kBrdfLutSize);
+            generatePrefilterMips(environment_asset, build_settings.prefilter_size);
+        const std::vector<float>& brdf_lut = generateBrdfLut(build_settings.brdf_lut_size);
 
         if (!uploadCubeImage(context.upload_context, environment_mips, m_environment) ||
             !uploadCubeImage(context.upload_context, irradiance_mips, m_irradiance) ||
             !uploadCubeImage(context.upload_context, prefilter_mips, m_prefiltered) ||
-            !uploadImage2D(context.upload_context, kBrdfLutSize, kBrdfLutSize, brdf_lut, m_brdf_lut) ||
+            !uploadImage2D(
+                context.upload_context,
+                build_settings.brdf_lut_size,
+                build_settings.brdf_lut_size,
+                brdf_lut,
+                m_brdf_lut) ||
             !updateDescriptorSet()) {
             reset();
             return false;
@@ -877,8 +914,18 @@ namespace NexAur {
     bool VulkanEnvironmentResource::createFallback(
         const VulkanEnvironmentResourceCreateContext& context,
         const glm::vec3& color) {
-        EnvironmentMapAsset fallback = createSolidEnvironment(color);
-        return create(context, fallback);
+        return createFallback(context, color, VulkanEnvironmentResourceBuildSettings{});
+    }
+
+    bool VulkanEnvironmentResource::createFallback(
+        const VulkanEnvironmentResourceCreateContext& context,
+        const glm::vec3& color,
+        const VulkanEnvironmentResourceBuildSettings& settings) {
+        const std::string source_path = settings.debug_name_override.empty() ?
+            "FallbackEnvironment" :
+            settings.debug_name_override;
+        EnvironmentMapAsset fallback = createSolidEnvironment(color, source_path);
+        return create(context, fallback, settings);
     }
 
     void VulkanEnvironmentResource::reset() {

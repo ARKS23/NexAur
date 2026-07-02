@@ -4,6 +4,7 @@
 #include "Editor/Widgets/editor_property_drawer.h"
 #include "Editor/Widgets/editor_widgets.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Renderer/renderer_service.h"
 #include "Function/Scene/component.h"
 
 #include <imgui.h>
@@ -33,6 +34,23 @@ namespace NexAur {
             const size_t copy_size = std::min(value.size(), buffer_size - 1);
             std::memcpy(buffer, value.data(), copy_size);
             buffer[copy_size] = '\0';
+        }
+
+        const char* reflectionProbeCaptureStatusText(ReflectionProbeCaptureStatus status) {
+            switch (status) {
+            case ReflectionProbeCaptureStatus::Idle:
+                return "Idle";
+            case ReflectionProbeCaptureStatus::Pending:
+                return "Pending";
+            case ReflectionProbeCaptureStatus::Capturing:
+                return "Capturing";
+            case ReflectionProbeCaptureStatus::Ready:
+                return "Ready";
+            case ReflectionProbeCaptureStatus::Failed:
+                return "Failed";
+            default:
+                return "Unknown";
+            }
         }
     } // namespace
 
@@ -371,5 +389,83 @@ namespace NexAur {
         }
         EditorPropertyDrawer::drawFloatProperty("Intensity", probe.intensity, 0.02f, 0.0f, 10.0f, "%.2f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("Blend Distance", probe.blend_distance, 0.02f, 0.0f, 20.0f, "%.2f", kFlags);
+
+        int capture_resolution = static_cast<int>(probe.capture_resolution);
+        if (EditorPropertyDrawer::drawIntProperty(
+                "Capture Resolution",
+                capture_resolution,
+                16,
+                32,
+                1024,
+                kFlags)) {
+            probe.capture_resolution = static_cast<uint32_t>(std::clamp(capture_resolution, 32, 1024));
+            probe.capture_dirty = true;
+        }
+        if (EditorPropertyDrawer::drawFloatProperty(
+                "Capture Near",
+                probe.capture_near_clip,
+                0.01f,
+                0.001f,
+                10.0f,
+                "%.3f",
+                kFlags)) {
+            probe.capture_near_clip = std::max(0.001f, probe.capture_near_clip);
+            probe.capture_far_clip = std::max(probe.capture_far_clip, probe.capture_near_clip + 0.001f);
+            probe.capture_dirty = true;
+        }
+        if (EditorPropertyDrawer::drawFloatProperty(
+                "Capture Far",
+                probe.capture_far_clip,
+                0.25f,
+                1.0f,
+                500.0f,
+                "%.2f",
+                kFlags)) {
+            probe.capture_far_clip = std::max(probe.capture_far_clip, probe.capture_near_clip + 0.001f);
+            probe.capture_dirty = true;
+        }
+        if (EditorPropertyDrawer::drawBoolProperty("Capture Skybox", probe.capture_include_skybox)) {
+            probe.capture_dirty = true;
+        }
+        EditorPropertyDrawer::drawBoolProperty("Capture Dirty", probe.capture_dirty);
+
+        const int probe_entity_id = static_cast<int>(static_cast<uint32_t>(entity));
+        const ReflectionProbeCaptureState capture_state =
+            m_context && m_context->renderer_service ?
+                m_context->renderer_service->getReflectionProbeCaptureState(probe_entity_id) :
+                ReflectionProbeCaptureState{};
+        EditorPropertyDrawer::drawReadOnlyText(
+            "Capture Status",
+            std::string(reflectionProbeCaptureStatusText(capture_state.status)) + " - " + capture_state.message);
+
+        EditorWidgets::propertyRow("Capture", [&]() {
+            auto request_capture = [&](ReflectionProbeCaptureKind kind) {
+                if (!m_context || !m_context->renderer_service) {
+                    return;
+                }
+
+                ReflectionProbeCaptureRequest request;
+                request.entity_id = probe_entity_id;
+                request.resolution = std::clamp(probe.capture_resolution, 32u, 1024u);
+                request.near_clip = std::max(0.001f, probe.capture_near_clip);
+                request.far_clip = std::max(probe.capture_far_clip, request.near_clip + 0.001f);
+                request.include_skybox = probe.capture_include_skybox;
+                request.kind = kind;
+                if (m_context->renderer_service->requestReflectionProbeCapture(request)) {
+                    probe.capture_dirty = false;
+                }
+            };
+
+            const bool can_capture = probe.enabled && m_context && m_context->renderer_service;
+            ImGui::BeginDisabled(!can_capture);
+            if (ImGui::Button("Capture Probe")) {
+                request_capture(ReflectionProbeCaptureKind::Capture);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Bake Probe")) {
+                request_capture(ReflectionProbeCaptureKind::Bake);
+            }
+            ImGui::EndDisabled();
+        });
     }
 } // namespace NexAur

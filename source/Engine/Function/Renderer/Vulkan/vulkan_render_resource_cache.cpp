@@ -259,6 +259,40 @@ namespace NexAur {
         return cached_it != m_environment_cache.end() ? cached_it->second.get() : nullptr;
     }
 
+    std::unique_ptr<VulkanEnvironmentResource> VulkanRenderResourceCache::createRuntimeEnvironment(
+        AssetHandle environment_asset,
+        AssetManager& asset_manager,
+        const glm::vec3& fallback_color,
+        const VulkanEnvironmentResourceBuildSettings& settings) {
+        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+            NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
+            return nullptr;
+        }
+
+        auto environment_resource = std::make_unique<VulkanEnvironmentResource>();
+        if (environment_asset && asset_manager.getAssetType(environment_asset) == AssetType::EnvironmentMap) {
+            std::shared_ptr<EnvironmentMapAsset> cpu_environment =
+                asset_manager.loadEnvironmentMapCPU(environment_asset);
+            if (cpu_environment &&
+                cpu_environment->isLoaded() &&
+                environment_resource->create(createEnvironmentContext(), *cpu_environment, settings)) {
+                return environment_resource;
+            }
+
+            NX_CORE_WARN(
+                "Runtime reflection probe could not create environment from asset {}; using fallback color.",
+                static_cast<uint64_t>(environment_asset.id));
+            environment_resource = std::make_unique<VulkanEnvironmentResource>();
+        }
+
+        if (!environment_resource->createFallback(createEnvironmentContext(), fallback_color, settings)) {
+            NX_CORE_ERROR("Failed to create runtime reflection probe fallback environment.");
+            return nullptr;
+        }
+
+        return environment_resource;
+    }
+
     size_t VulkanRenderResourceCache::getMeshCount() const {
         size_t mesh_count = 0;
         for (const auto& [asset_handle, model_resource] : m_model_cache) {

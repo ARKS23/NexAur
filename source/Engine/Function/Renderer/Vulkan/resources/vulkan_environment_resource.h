@@ -27,6 +27,14 @@ namespace NexAur {
         }
     };
 
+    struct VulkanEnvironmentResourceBuildSettings {
+        uint32_t environment_size = 512;
+        uint32_t irradiance_size = 32;
+        uint32_t prefilter_size = 256;
+        uint32_t brdf_lut_size = 256;
+        std::string debug_name_override;
+    };
+
     class NEXAUR_API VulkanEnvironmentResource {
     public:
         VulkanEnvironmentResource() = default;
@@ -38,9 +46,17 @@ namespace NexAur {
         bool create(
             const VulkanEnvironmentResourceCreateContext& context,
             const EnvironmentMapAsset& environment_asset);
+        bool create(
+            const VulkanEnvironmentResourceCreateContext& context,
+            const EnvironmentMapAsset& environment_asset,
+            const VulkanEnvironmentResourceBuildSettings& settings);
         bool createFallback(
             const VulkanEnvironmentResourceCreateContext& context,
             const glm::vec3& color);
+        bool createFallback(
+            const VulkanEnvironmentResourceCreateContext& context,
+            const glm::vec3& color,
+            const VulkanEnvironmentResourceBuildSettings& settings);
         void reset();
 
         bool isReady() const {

@@ -42,6 +42,11 @@ namespace NexAur {
         VulkanTextureResource* getTexture(AssetHandle texture_asset) const;
         VulkanEnvironmentResource* getOrCreateEnvironment(AssetHandle environment_asset, AssetManager& asset_manager);
         VulkanEnvironmentResource* getEnvironment(AssetHandle environment_asset) const;
+        std::unique_ptr<VulkanEnvironmentResource> createRuntimeEnvironment(
+            AssetHandle environment_asset,
+            AssetManager& asset_manager,
+            const glm::vec3& fallback_color,
+            const VulkanEnvironmentResourceBuildSettings& settings);
         VulkanTextureResource* getFallbackWhiteTexture() const { return m_fallback_white_texture.get(); }
         VulkanMaterialResource* getFallbackMaterial() const { return m_fallback_material.get(); }
         VulkanEnvironmentResource* getFallbackEnvironment() const { return m_fallback_environment.get(); }

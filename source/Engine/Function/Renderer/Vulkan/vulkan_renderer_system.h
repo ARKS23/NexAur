@@ -31,6 +31,8 @@ namespace NexAur {
         std::pair<uint32_t, uint32_t> getViewportSize() const override;
         ViewportOutput getViewportOutput() const override;
         ViewportPickResult pickViewport(const ViewportPickRequest& request) override;
+        bool requestReflectionProbeCapture(const ReflectionProbeCaptureRequest& request) override;
+        ReflectionProbeCaptureState getReflectionProbeCaptureState(int entity_id) const override;
         void onUIContextInitialized() override;
         void beginUIFrame() override;
         void onUIContextShutdown() override;

@@ -30,7 +30,9 @@ namespace NexAur {
         glm::vec3 box_extents{ 4.0f, 3.0f, 4.0f };
         float intensity = 0.0f;
         float blend_distance = 0.75f;
+        int entity_id = -1;
         bool box_projection = true;
+        bool using_runtime_capture = false;
         uint32_t prefilter_mip_count = 1;
     };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -57,7 +58,13 @@ namespace NexAur {
         glm::vec3 box_extents{ 4.0f, 3.0f, 4.0f };
         float intensity = 1.0f;
         float blend_distance = 0.75f;
+        uint32_t capture_resolution = 128;
+        float capture_near_clip = 0.1f;
+        float capture_far_clip = 40.0f;
+        int entity_id = -1;
         bool box_projection = true;
+        bool capture_include_skybox = true;
+        bool capture_dirty = true;
     };
 
     struct RenderSceneFrameObject {

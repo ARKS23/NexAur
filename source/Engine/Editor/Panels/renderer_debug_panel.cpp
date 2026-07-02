@@ -339,5 +339,8 @@ namespace NexAur {
         drawKeyValue("Probe Source", snapshot.resources.active_reflection_probe_name.c_str());
         ImGui::Text("Probe Intensity: %.2f", snapshot.resources.active_reflection_probe_intensity);
         ImGui::Text("Probe Blend Distance: %.2f", snapshot.resources.active_reflection_probe_blend_distance);
+        drawKeyValue("Probe Runtime", boolToText(snapshot.resources.active_reflection_probe_runtime));
+        drawKeyValue("Probe Capture Size", snapshot.resources.active_reflection_probe_capture_resolution);
+        drawKeyValue("Probe Capture Status", snapshot.resources.active_reflection_probe_capture_status.c_str());
     }
 } // namespace NexAur
