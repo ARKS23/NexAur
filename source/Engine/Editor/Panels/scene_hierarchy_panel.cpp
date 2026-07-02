@@ -164,6 +164,10 @@ namespace NexAur {
             ImGui::EndMenu();
         }
 
+        if (ImGui::MenuItem("Reflection Probe")) {
+            selectEntity(createReflectionProbeEntity(scene));
+        }
+
         ImGui::EndMenu();
     }
 
@@ -183,7 +187,8 @@ namespace NexAur {
         }
         if (entity.hasComponent<DirectionalLightComponent>() ||
             entity.hasComponent<PointLightComponent>() ||
-            entity.hasComponent<RectLightComponent>()) {
+            entity.hasComponent<RectLightComponent>() ||
+            entity.hasComponent<ReflectionProbeComponent>()) {
             return EditorIcons::Light;
         }
         if (entity.hasComponent<MeshRendererComponent>()) {
@@ -268,6 +273,18 @@ namespace NexAur {
         return entity;
     }
 
+    Entity SceneHierarchyPanel::createReflectionProbeEntity(const std::shared_ptr<SceneV2>& scene) {
+        Entity entity = createEmptyEntity(scene, "ReflectionProbe");
+        if (entity) {
+            auto& probe = entity.addComponent<ReflectionProbeComponent>();
+            probe.box_extents = glm::vec3{ 4.0f, 3.0f, 4.0f };
+            probe.blend_distance = 0.75f;
+            probe.intensity = 1.0f;
+            entity.getComponent<TransformComponent>().translation = glm::vec3(0.0f, 1.5f, 0.0f);
+        }
+        return entity;
+    }
+
     Entity SceneHierarchyPanel::duplicateEntity(const std::shared_ptr<SceneV2>& scene, Entity source) {
         if (!scene || !source || !source.hasComponent<TagComponent>()) {
             return Entity();
@@ -298,6 +315,9 @@ namespace NexAur {
         }
         if (source.hasComponent<EnvironmentComponent>()) {
             duplicate.addComponent<EnvironmentComponent>(source.getComponent<EnvironmentComponent>());
+        }
+        if (source.hasComponent<ReflectionProbeComponent>()) {
+            duplicate.addComponent<ReflectionProbeComponent>(source.getComponent<ReflectionProbeComponent>());
         }
 
         return duplicate;

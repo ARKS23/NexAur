@@ -62,26 +62,30 @@ namespace NexAur {
             uint32_t image_index,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set,
-            VkDescriptorSet environment_descriptor_set);
+            VkDescriptorSet environment_descriptor_set,
+            VkDescriptorSet reflection_probe_descriptor_set);
         bool record(
             VkCommandBuffer command_buffer,
             uint32_t image_index,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set,
             VkDescriptorSet environment_descriptor_set,
+            VkDescriptorSet reflection_probe_descriptor_set,
             const VulkanForwardPassRenderOptions& options);
         bool record(
             VkCommandBuffer command_buffer,
             const VulkanRenderTarget& target,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set,
-            VkDescriptorSet environment_descriptor_set);
+            VkDescriptorSet environment_descriptor_set,
+            VkDescriptorSet reflection_probe_descriptor_set);
         bool record(
             VkCommandBuffer command_buffer,
             const VulkanRenderTarget& target,
             const VulkanDrawList& draw_list,
             VkDescriptorSet frame_descriptor_set,
             VkDescriptorSet environment_descriptor_set,
+            VkDescriptorSet reflection_probe_descriptor_set,
             const VulkanForwardPassRenderOptions& options);
         VkImageView getSwapchainColorImageView(uint32_t image_index) const;
         VulkanRenderTarget getSwapchainRenderTarget(uint32_t image_index) const;

@@ -63,6 +63,16 @@ namespace NexAur {
         float ibl_intensity = 0.65f;
     };
 
+    struct RendererReflectionProbeData {
+        AssetHandle environment_asset;
+        glm::vec3 position{ 0.0f };
+        glm::vec3 box_extents{ 4.0f, 3.0f, 4.0f };
+        float intensity = 1.0f;
+        float blend_distance = 0.75f;
+        bool enabled = true;
+        bool box_projection = true;
+    };
+
     // 场景提取阶段的物体引用：只保存可序列化资产身份，不直接保存 GPU 指针。
     struct RenderObjectData {
         AssetHandle model_asset;
@@ -79,6 +89,7 @@ namespace NexAur {
         std::vector<RendererRectLightData> rect_lights_data;
 
         RendererEnvironmentData environment_data;
+        std::vector<RendererReflectionProbeData> reflection_probes_data;
 
         std::vector<RenderObjectData> opaque_objects;   // 不透明物体
         std::vector<RenderObjectData> transparent_objects; // 透明物体
@@ -95,6 +106,7 @@ namespace NexAur {
             environment_data = RendererEnvironmentData();
             point_lights_data.clear();
             rect_lights_data.clear();
+            reflection_probes_data.clear();
             opaque_objects.clear();
             transparent_objects.clear();
             render_settings = current_render_settings;

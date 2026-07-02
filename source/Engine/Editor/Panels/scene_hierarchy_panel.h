@@ -29,6 +29,7 @@ namespace NexAur {
         Entity createDirectionalLightEntity(const std::shared_ptr<SceneV2>& scene);
         Entity createPointLightEntity(const std::shared_ptr<SceneV2>& scene);
         Entity createRectLightEntity(const std::shared_ptr<SceneV2>& scene);
+        Entity createReflectionProbeEntity(const std::shared_ptr<SceneV2>& scene);
         Entity duplicateEntity(const std::shared_ptr<SceneV2>& scene, Entity source);
         void deleteEntity(const std::shared_ptr<SceneV2>& scene, Entity entity);
 

@@ -129,6 +129,8 @@ namespace NexAur {
             snapshot.frame.rect_shadow_request_count > snapshot.frame.shadowed_rect_light_count ?
                 snapshot.frame.rect_shadow_request_count - snapshot.frame.shadowed_rect_light_count :
                 0u);
+        drawKeyValue("Reflection Probes", snapshot.frame.reflection_probe_count);
+        drawKeyValue("Active Reflection Probe", boolToText(snapshot.frame.active_reflection_probe));
         drawKeyValue("Debug Lines", snapshot.frame.debug_line_count);
     }
 
@@ -317,5 +319,9 @@ namespace NexAur {
         drawKeyValue("Prefilter Size", snapshot.resources.prefilter_size);
         drawKeyValue("Prefilter Mips", snapshot.resources.prefilter_mip_count);
         drawKeyValue("BRDF LUT", boolToText(snapshot.resources.brdf_lut_ready));
+        drawKeyValue("Probe Ready", boolToText(snapshot.resources.active_reflection_probe_ready));
+        drawKeyValue("Probe Source", snapshot.resources.active_reflection_probe_name.c_str());
+        ImGui::Text("Probe Intensity: %.2f", snapshot.resources.active_reflection_probe_intensity);
+        ImGui::Text("Probe Blend Distance: %.2f", snapshot.resources.active_reflection_probe_blend_distance);
     }
 } // namespace NexAur

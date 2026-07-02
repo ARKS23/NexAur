@@ -54,6 +54,9 @@ namespace NexAur {
             glm::vec4 rect_shadow_pcss_quality_params{ 5.0f, 8.0f, 16.0f, 0.0f };
             glm::vec4 rect_light_params{ 1.0f, 0.0f, 0.0f, 0.0f };
             glm::vec4 rect_light_ltc_params{ 1.0f, 0.0f, 0.0f, 0.0f };
+            glm::vec4 reflection_probe_center_intensity{ 0.0f, 0.0f, 0.0f, 0.0f };
+            glm::vec4 reflection_probe_extents_blend{ 4.0f, 3.0f, 4.0f, 0.75f };
+            glm::vec4 reflection_probe_params{ 0.0f, 1.0f, 0.0f, 0.0f };
         };
 
         struct VulkanGpuPointLight {
@@ -300,6 +303,26 @@ namespace NexAur {
             sanitizeMin(render_settings.rect_light.specular_intensity_scale, 1.0f, 0.0f),
             render_settings.rect_light.debug_ltc_only ? 1.0f : 0.0f,
             0.0f,
+            0.0f);
+        const VulkanActiveReflectionProbe& reflection_probe = draw_list.active_reflection_probe;
+        const bool reflection_probe_enabled =
+            reflection_probe.enabled &&
+            reflection_probe.environment &&
+            reflection_probe.environment->isReady() &&
+            reflection_probe.intensity > 0.0001f;
+        const uint32_t probe_prefilter_mip_count = reflection_probe_enabled ?
+            reflection_probe.environment->getPrefilterMipCount() :
+            1u;
+        frame_globals.reflection_probe_center_intensity = glm::vec4(
+            reflection_probe.position,
+            reflection_probe_enabled ? std::max(0.0f, reflection_probe.intensity) : 0.0f);
+        frame_globals.reflection_probe_extents_blend = glm::vec4(
+            glm::max(reflection_probe.box_extents, glm::vec3{ 0.05f }),
+            std::max(0.0f, reflection_probe.blend_distance));
+        frame_globals.reflection_probe_params = glm::vec4(
+            reflection_probe_enabled ? 1.0f : 0.0f,
+            reflection_probe.box_projection ? 1.0f : 0.0f,
+            static_cast<float>(probe_prefilter_mip_count > 0u ? probe_prefilter_mip_count - 1u : 0u),
             0.0f);
 
         std::array<VulkanGpuPointLight, kMaxPointLights> point_lights{};

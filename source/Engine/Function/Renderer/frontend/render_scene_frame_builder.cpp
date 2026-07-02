@@ -174,6 +174,19 @@ namespace NexAur {
             return light;
         }
 
+        RenderFrameReflectionProbe buildReflectionProbe(const RendererReflectionProbeData& source) {
+            RenderFrameReflectionProbe probe;
+            probe.environment_asset = source.environment_asset;
+            probe.position = isFinite(source.position) ? source.position : glm::vec3{ 0.0f };
+            probe.box_extents = isFinite(source.box_extents)
+                ? glm::max(source.box_extents, glm::vec3{ 0.05f })
+                : glm::vec3{ 4.0f, 3.0f, 4.0f };
+            probe.intensity = sanitizeNonNegative(source.intensity, 1.0f);
+            probe.blend_distance = sanitizeMin(source.blend_distance, 0.75f, 0.0f);
+            probe.box_projection = source.box_projection;
+            return probe;
+        }
+
         void appendObjects(
             const std::vector<RenderObjectData>& source_objects,
             std::vector<RenderSceneFrameObject>& target_objects,
@@ -297,6 +310,29 @@ namespace NexAur {
                     render_data.rect_lights_data.size(),
                     rect_light_budget);
             }
+        }
+
+        const size_t probe_count = std::min<size_t>(
+            render_data.reflection_probes_data.size(),
+            kMaxRenderReflectionProbes);
+        frame.reflection_probes.reserve(probe_count);
+        for (size_t index = 0; index < probe_count; ++index) {
+            const RendererReflectionProbeData& source = render_data.reflection_probes_data[index];
+            if (!source.enabled) {
+                continue;
+            }
+
+            RenderFrameReflectionProbe probe = buildReflectionProbe(source);
+            if (probe.intensity > 0.0001f) {
+                frame.reflection_probes.push_back(probe);
+            }
+        }
+
+        if (render_data.reflection_probes_data.size() > kMaxRenderReflectionProbes) {
+            NX_CORE_WARN(
+                "RenderSceneFrameBuilder truncated reflection probes from {} to {}.",
+                render_data.reflection_probes_data.size(),
+                kMaxRenderReflectionProbes);
         }
 
         frame.environment_asset = render_data.environment_data.environment_asset;

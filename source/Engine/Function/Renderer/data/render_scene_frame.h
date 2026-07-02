@@ -51,6 +51,15 @@ namespace NexAur {
         float shadow_strength = 0.85f;
     };
 
+    struct RenderFrameReflectionProbe {
+        AssetHandle environment_asset;
+        glm::vec3 position{ 0.0f };
+        glm::vec3 box_extents{ 4.0f, 3.0f, 4.0f };
+        float intensity = 1.0f;
+        float blend_distance = 0.75f;
+        bool box_projection = true;
+    };
+
     struct RenderSceneFrameObject {
         AssetHandle model_asset;
         glm::mat4 transform{ 1.0f };
@@ -66,6 +75,7 @@ namespace NexAur {
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;
         std::vector<RenderFrameRectLight> rect_lights;
+        std::vector<RenderFrameReflectionProbe> reflection_probes;
 
         AssetHandle environment_asset;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };

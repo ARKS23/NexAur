@@ -7,6 +7,7 @@ namespace NexAur {
     inline constexpr uint32_t kRenderPointShadowCubeFaceCount = 6;
     inline constexpr uint32_t kMaxRenderRectLights = 16;
     inline constexpr uint32_t kMaxRenderRectShadowLights = 4;
+    inline constexpr uint32_t kMaxRenderReflectionProbes = 16;
 
     enum class RenderToneMappingMode : uint32_t {
         None = 0,
@@ -25,7 +26,9 @@ namespace NexAur {
         Emissive = 8,
         Irradiance = 9,
         PrefilteredEnvironment = 10,
-        BrdfLut = 11
+        BrdfLut = 11,
+        ReflectionProbeInfluence = 12,
+        ReflectionProbeSpecular = 13
     };
 
     enum class RenderShadowFilterMode : uint32_t {

@@ -266,6 +266,19 @@ namespace NexAur {
             };
         }
 
+        json writeReflectionProbeComponent(
+            const ReflectionProbeComponent& probe,
+            const AssetManager& asset_manager) {
+            return json{
+                { "environment", writeAssetReference(probe.getEnvironmentHandle(), asset_manager) },
+                { "box_extents", writeVec3(probe.box_extents) },
+                { "intensity", probe.intensity },
+                { "blend_distance", probe.blend_distance },
+                { "enabled", probe.enabled },
+                { "box_projection", probe.box_projection },
+            };
+        }
+
         json writePlayerComponent(const PlayerComponent& player) {
             return json{ { "move_speed", player.move_speed } };
         }
@@ -400,6 +413,23 @@ namespace NexAur {
             light.shadow_strength = component.value("shadow_strength", light.shadow_strength);
         }
 
+        void readReflectionProbeComponent(
+            const json& component,
+            ReflectionProbeComponent& probe,
+            AssetManager& asset_manager) {
+            probe.environment_asset = importAssetReference(
+                component.value("environment", json::object()),
+                AssetType::EnvironmentMap,
+                asset_manager);
+            probe.box_extents = glm::max(
+                readVec3(component.value("box_extents", json::array()), probe.box_extents),
+                glm::vec3{ 0.05f });
+            probe.intensity = component.value("intensity", probe.intensity);
+            probe.blend_distance = component.value("blend_distance", probe.blend_distance);
+            probe.enabled = component.value("enabled", probe.enabled);
+            probe.box_projection = component.value("box_projection", probe.box_projection);
+        }
+
         void readPlayerComponent(const json& component, PlayerComponent& player) {
             player.move_speed = component.value("move_speed", player.move_speed);
         }
@@ -498,6 +528,11 @@ namespace NexAur {
                     { "skybox_intensity", environment->skybox_intensity },
                     { "ibl_intensity", environment->ibl_intensity },
                 };
+            }
+
+            if (const auto* reflection_probe = registry.try_get<ReflectionProbeComponent>(entity)) {
+                components["ReflectionProbe"] =
+                    writeReflectionProbeComponent(*reflection_probe, asset_manager);
             }
 
             if (const auto* player = registry.try_get<PlayerComponent>(entity)) {
@@ -734,6 +769,12 @@ namespace NexAur {
                     environment.ibl_intensity = environment_json.value(
                         "ibl_intensity",
                         environment_json.value("intensity", environment.ibl_intensity));
+                }
+
+                if (components.contains("ReflectionProbe") && components["ReflectionProbe"].is_object()) {
+                    ReflectionProbeComponent& probe =
+                        entity.addOrReplaceComponent<ReflectionProbeComponent>();
+                    readReflectionProbeComponent(components["ReflectionProbe"], probe, m_asset_manager);
                 }
 
                 if (components.contains("Player") && components["Player"].is_object()) {

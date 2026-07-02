@@ -60,6 +60,36 @@ namespace NexAur {
                 light.position + light.normal * 0.5f,
                 glm::vec4{ 1.0f, 0.86f, 0.35f, 1.0f });
         }
+
+        RendererReflectionProbeData buildReflectionProbeData(
+            const ReflectionProbeComponent& probe,
+            const TransformComponent& transform) {
+            RendererReflectionProbeData probe_data;
+            probe_data.environment_asset = probe.getEnvironmentHandle();
+            probe_data.position = transform.translation;
+            probe_data.box_extents = glm::max(probe.box_extents, glm::vec3{ 0.05f });
+            probe_data.intensity = std::max(0.0f, probe.intensity);
+            probe_data.blend_distance = std::max(0.0f, probe.blend_distance);
+            probe_data.enabled = probe.enabled;
+            probe_data.box_projection = probe.box_projection;
+            return probe_data;
+        }
+
+        void addReflectionProbeGizmo(
+            RenderDebugDrawData& debug_draw,
+            const RendererReflectionProbeData& probe) {
+            const glm::vec4 bounds_color{ 0.25f, 0.75f, 1.0f, probe.enabled ? 1.0f : 0.35f };
+            RenderDebugDrawBuilder::addAABB(
+                debug_draw,
+                probe.position - probe.box_extents,
+                probe.position + probe.box_extents,
+                bounds_color);
+            RenderDebugDrawBuilder::addPointLightGizmo(
+                debug_draw,
+                probe.position,
+                0.18f,
+                glm::vec4{ 0.55f, 0.90f, 1.0f, probe.enabled ? 1.0f : 0.35f });
+        }
     } // namespace
 
     SceneV2::SceneV2() {
@@ -204,6 +234,17 @@ namespace NexAur {
             render_packet->environment_data.ibl_intensity = env_comp.ibl_intensity;
             break;
         }
+
+        auto view_reflection_probe = m_Registry.view<ReflectionProbeComponent, TransformComponent>();
+        view_reflection_probe.each([&](auto entity, const auto& probe_comp, const auto& transform_comp) {
+            (void)entity;
+            RendererReflectionProbeData probe_data = buildReflectionProbeData(probe_comp, transform_comp);
+            render_packet->reflection_probes_data.push_back(probe_data);
+
+            if (debug_options.enabled) {
+                addReflectionProbeGizmo(render_packet->debug_draw, probe_data);
+            }
+        });
 
         // 网格体数据处理
         auto view_meshes = m_Registry.view<MeshRendererComponent, TransformComponent>();

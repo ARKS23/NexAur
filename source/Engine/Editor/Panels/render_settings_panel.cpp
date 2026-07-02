@@ -90,6 +90,10 @@ namespace NexAur {
                 return RenderIblDebugMode::PrefilteredEnvironment;
             case 11:
                 return RenderIblDebugMode::BrdfLut;
+            case 12:
+                return RenderIblDebugMode::ReflectionProbeInfluence;
+            case 13:
+                return RenderIblDebugMode::ReflectionProbeSpecular;
             case 0:
             default:
                 return RenderIblDebugMode::FinalLit;
@@ -758,7 +762,9 @@ namespace NexAur {
                 "Emissive",
                 "Irradiance",
                 "Prefiltered Environment",
-                "BRDF LUT"
+                "BRDF LUT",
+                "Reflection Probe Influence",
+                "Reflection Probe Specular"
             };
 
             int index = iblDebugModeToIndex(settings.ibl_debug.mode);

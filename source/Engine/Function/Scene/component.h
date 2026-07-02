@@ -131,4 +131,29 @@ namespace NexAur {
             return environment_asset.id;
         }
     };
+
+    struct ReflectionProbeComponent {
+        AssetHandle environment_asset;
+        glm::vec3 box_extents{ 4.0f, 3.0f, 4.0f };
+        float intensity = 1.0f;
+        float blend_distance = 0.75f;
+        bool enabled = true;
+        bool box_projection = true;
+
+        ReflectionProbeComponent() = default;
+        ReflectionProbeComponent(const ReflectionProbeComponent&) = default;
+        ReflectionProbeComponent(AssetHandle env_handle) { setEnvironmentMap(env_handle); }
+
+        void setEnvironmentMap(AssetHandle env_handle) {
+            environment_asset = env_handle;
+        }
+
+        AssetHandle getEnvironmentHandle() const {
+            return environment_asset;
+        }
+
+        UUID getEnvironmentUUID() const {
+            return environment_asset.id;
+        }
+    };
 } // namespace NexAur

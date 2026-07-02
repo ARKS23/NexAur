@@ -25,5 +25,6 @@ namespace NexAur {
         void drawPointLightComponent(Entity entity);
         void drawRectLightComponent(Entity entity);
         void drawEnvironmentComponent(Entity entity);
+        void drawReflectionProbeComponent(Entity entity);
     };
 } // namespace NexAur

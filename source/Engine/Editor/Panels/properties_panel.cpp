@@ -8,6 +8,9 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <array>
+#include <cstring>
 #include <utility>
 
 namespace NexAur {
@@ -20,6 +23,16 @@ namespace NexAur {
                 entity.addComponent<Component>(std::forward<Args>(args)...);
             }
             ImGui::EndDisabled();
+        }
+
+        void copyStringToBuffer(const std::string& value, char* buffer, size_t buffer_size) {
+            if (!buffer || buffer_size == 0) {
+                return;
+            }
+
+            const size_t copy_size = std::min(value.size(), buffer_size - 1);
+            std::memcpy(buffer, value.data(), copy_size);
+            buffer[copy_size] = '\0';
         }
     } // namespace
 
@@ -62,6 +75,7 @@ namespace NexAur {
         drawPointLightComponent(selected);
         drawRectLightComponent(selected);
         drawEnvironmentComponent(selected);
+        drawReflectionProbeComponent(selected);
 
         ImGui::End();
     }
@@ -95,6 +109,7 @@ namespace NexAur {
         if (ImGui::BeginMenu("Rendering")) {
             drawAddComponentItem<MeshRendererComponent>(entity, "Mesh Renderer");
             drawAddComponentItem<EnvironmentComponent>(entity, "Environment");
+            drawAddComponentItem<ReflectionProbeComponent>(entity, "Reflection Probe");
             ImGui::EndMenu();
         }
 
@@ -267,5 +282,94 @@ namespace NexAur {
         EditorPropertyDrawer::drawFloatProperty("Intensity", environment.intensity, 0.02f, 0.0f, 10.0f, "%.2f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("Skybox Intensity", environment.skybox_intensity, 0.02f, 0.0f, 10.0f, "%.2f", kFlags);
         EditorPropertyDrawer::drawFloatProperty("IBL Intensity", environment.ibl_intensity, 0.02f, 0.0f, 10.0f, "%.2f", kFlags);
+    }
+
+    void PropertiesPanel::drawReflectionProbeComponent(Entity entity) {
+        if (!entity.hasComponent<ReflectionProbeComponent>()) return;
+        if (!EditorPropertyDrawer::drawComponentHeader("Reflection Probe")) return;
+
+        ReflectionProbeComponent& probe = entity.getComponent<ReflectionProbeComponent>();
+        AssetManager* asset_manager =
+            m_context && m_context->asset_manager ? m_context->asset_manager.get() : nullptr;
+        constexpr ImGuiSliderFlags kFlags = ImGuiSliderFlags_AlwaysClamp;
+
+        EditorPropertyDrawer::drawAssetField("Environment", probe.environment_asset, asset_manager);
+
+        static std::array<char, 260> s_environment_path_buffer{};
+        static uint32_t s_last_entity_id = 0;
+        static uint64_t s_last_asset_id = 0;
+        const uint32_t entity_id = static_cast<uint32_t>(entity);
+        const uint64_t asset_id = static_cast<uint64_t>(probe.environment_asset.id);
+        if (s_last_entity_id != entity_id || s_last_asset_id != asset_id) {
+            s_environment_path_buffer.fill('\0');
+            if (asset_manager && probe.environment_asset) {
+                copyStringToBuffer(
+                    asset_manager->getPath(probe.environment_asset),
+                    s_environment_path_buffer.data(),
+                    s_environment_path_buffer.size());
+            }
+            s_last_entity_id = entity_id;
+            s_last_asset_id = asset_id;
+        }
+
+        EditorWidgets::propertyRow("Environment Path", [&]() {
+            ImGui::SetNextItemWidth(220.0f);
+            ImGui::InputText(
+                "##ReflectionProbeEnvironmentPath",
+                s_environment_path_buffer.data(),
+                s_environment_path_buffer.size());
+        });
+
+        EditorWidgets::propertyRow("Actions", [&]() {
+            const bool can_import = asset_manager != nullptr && s_environment_path_buffer[0] != '\0';
+            ImGui::BeginDisabled(!can_import);
+            if (ImGui::Button("Import")) {
+                AssetHandle imported =
+                    asset_manager->importEnvironmentMapAsset(s_environment_path_buffer.data());
+                if (imported) {
+                    probe.environment_asset = imported;
+                    s_last_asset_id = static_cast<uint64_t>(probe.environment_asset.id);
+                }
+            }
+            ImGui::EndDisabled();
+
+            ImGui::SameLine();
+            if (ImGui::Button("Scene Env")) {
+                AssetHandle scene_environment;
+                if (m_context && m_context->active_scene) {
+                    auto view = m_context->active_scene->getRegistry().view<EnvironmentComponent>();
+                    for (auto env_entity : view) {
+                        scene_environment = view.get<EnvironmentComponent>(env_entity).getEnvironmentHandle();
+                        break;
+                    }
+                }
+
+                if (scene_environment) {
+                    probe.environment_asset = scene_environment;
+                    if (asset_manager) {
+                        copyStringToBuffer(
+                            asset_manager->getPath(probe.environment_asset),
+                            s_environment_path_buffer.data(),
+                            s_environment_path_buffer.size());
+                    }
+                    s_last_asset_id = static_cast<uint64_t>(probe.environment_asset.id);
+                }
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Clear")) {
+                probe.environment_asset = AssetHandle();
+                s_environment_path_buffer.fill('\0');
+                s_last_asset_id = 0;
+            }
+        });
+
+        EditorPropertyDrawer::drawBoolProperty("Enabled", probe.enabled);
+        EditorPropertyDrawer::drawBoolProperty("Box Projection", probe.box_projection);
+        if (EditorPropertyDrawer::drawVec3Property("Box Extents", probe.box_extents, 0.05f, 0.05f, 100.0f, "%.2f", kFlags)) {
+            probe.box_extents = glm::max(probe.box_extents, glm::vec3{ 0.05f });
+        }
+        EditorPropertyDrawer::drawFloatProperty("Intensity", probe.intensity, 0.02f, 0.0f, 10.0f, "%.2f", kFlags);
+        EditorPropertyDrawer::drawFloatProperty("Blend Distance", probe.blend_distance, 0.02f, 0.0f, 20.0f, "%.2f", kFlags);
     }
 } // namespace NexAur

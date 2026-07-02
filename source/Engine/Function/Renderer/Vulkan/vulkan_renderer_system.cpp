@@ -1045,6 +1045,11 @@ namespace NexAur {
             stats.rect_light_count = draw_list ?
                 draw_list->rect_lights.size() :
                 render_data.rect_lights_data.size();
+            stats.reflection_probe_count = draw_list ?
+                draw_list->reflection_probes.size() :
+                render_data.reflection_probes_data.size();
+            stats.active_reflection_probe =
+                draw_list && draw_list->active_reflection_probe.enabled;
             const size_t extracted_rect_light_count = scene_frame ?
                 scene_frame->rect_lights.size() :
                 render_data.rect_lights_data.size();
@@ -1354,6 +1359,18 @@ namespace NexAur {
                 stats.prefilter_size = active_environment->getPrefilterSize();
                 stats.prefilter_mip_count = active_environment->getPrefilterMipCount();
                 stats.brdf_lut_ready = active_environment->hasBrdfLut();
+            }
+            const VulkanActiveReflectionProbe* active_probe =
+                draw_list && draw_list->active_reflection_probe.enabled ?
+                    &draw_list->active_reflection_probe :
+                    nullptr;
+            const VulkanEnvironmentResource* active_probe_environment =
+                active_probe ? active_probe->environment : nullptr;
+            if (active_probe_environment && active_probe_environment->isReady()) {
+                stats.active_reflection_probe_ready = true;
+                stats.active_reflection_probe_name = active_probe_environment->getDebugName();
+                stats.active_reflection_probe_intensity = active_probe->intensity;
+                stats.active_reflection_probe_blend_distance = active_probe->blend_distance;
             }
             return stats;
         }
@@ -2333,6 +2350,20 @@ namespace NexAur {
                 VK_NULL_HANDLE;
         }
 
+        VkDescriptorSet resolveReflectionProbeDescriptorSet(const VulkanDrawList& draw_list) const {
+            const VulkanEnvironmentResource* environment = draw_list.active_reflection_probe.environment;
+            if (!environment || !environment->isReady()) {
+                environment = draw_list.environment;
+            }
+            if (!environment || !environment->isReady()) {
+                environment = resource_cache.getFallbackEnvironment();
+            }
+
+            return environment && environment->isReady() ?
+                environment->getDescriptorSet() :
+                VK_NULL_HANDLE;
+        }
+
         bool recordDrawCommands(
             uint32_t image_index,
             const VulkanDrawList& draw_list,
@@ -2434,6 +2465,7 @@ namespace NexAur {
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
                         resolveEnvironmentDescriptorSet(draw_list),
+                        resolveReflectionProbeDescriptorSet(draw_list),
                         options);
                 });
 
@@ -2577,6 +2609,7 @@ namespace NexAur {
                         draw_list,
                         frame_lighting_resource.getDescriptorSet(),
                         resolveEnvironmentDescriptorSet(draw_list),
+                        resolveReflectionProbeDescriptorSet(draw_list),
                         options);
                 });
 

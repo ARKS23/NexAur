@@ -787,6 +787,69 @@ bool defaultRectLightMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
     return false;
 }
 
+NexAur::AssetHandle findDefaultEnvironmentHandle(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return NexAur::AssetHandle();
+    }
+
+    const entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<NexAur::EnvironmentComponent>();
+    for (entt::entity entity : view) {
+        return view.get<NexAur::EnvironmentComponent>(entity).getEnvironmentHandle();
+    }
+
+    return NexAur::AssetHandle();
+}
+
+bool configureDefaultReflectionProbe(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    NexAur::Entity entity = scene->createEntity("ReflectionProbe");
+    auto& probe = entity.addComponent<NexAur::ReflectionProbeComponent>();
+    probe.environment_asset = findDefaultEnvironmentHandle(scene);
+    probe.box_extents = glm::vec3{ 3.5f, 2.25f, 4.25f };
+    probe.intensity = 1.35f;
+    probe.blend_distance = 0.55f;
+    probe.enabled = true;
+    probe.box_projection = true;
+    entity.getComponent<NexAur::TransformComponent>().translation =
+        glm::vec3{ 0.5f, 1.25f, -0.75f };
+    return true;
+}
+
+bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    const entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<NexAur::TagComponent, NexAur::ReflectionProbeComponent, NexAur::TransformComponent>();
+    for (entt::entity entity : view) {
+        const auto& tag = view.get<NexAur::TagComponent>(entity);
+        if (tag.name != "ReflectionProbe") {
+            continue;
+        }
+
+        const auto& probe = view.get<NexAur::ReflectionProbeComponent>(entity);
+        const auto& transform = view.get<NexAur::TransformComponent>(entity);
+        return probe.environment_asset &&
+               nearlyEqual(probe.box_extents.x, 3.5f) &&
+               nearlyEqual(probe.box_extents.y, 2.25f) &&
+               nearlyEqual(probe.box_extents.z, 4.25f) &&
+               nearlyEqual(probe.intensity, 1.35f) &&
+               nearlyEqual(probe.blend_distance, 0.55f) &&
+               probe.enabled &&
+               probe.box_projection &&
+               nearlyEqual(transform.translation.x, 0.5f) &&
+               nearlyEqual(transform.translation.y, 1.25f) &&
+               nearlyEqual(transform.translation.z, -0.75f);
+    }
+
+    return false;
+}
+
 int runSceneSerializerSmoke() {
     NexAur::Engine engine;
     engine.startEngine();
@@ -815,6 +878,9 @@ int runSceneSerializerSmoke() {
     } else if (!configureDefaultRectLight(scene_service->getActiveScene())) {
         success = false;
         failure = "SceneSerializer smoke failed: could not configure rect light settings.";
+    } else if (!configureDefaultReflectionProbe(scene_service->getActiveScene())) {
+        success = false;
+        failure = "SceneSerializer smoke failed: could not configure reflection probe settings.";
     } else {
         NexAur::SceneSerializer serializer(*asset_manager);
         const NexAur::SceneSerializationResult save_result =
@@ -832,7 +898,8 @@ int runSceneSerializerSmoke() {
                 !hasEntityNamed(load_result.scene, "Environment") ||
                 !hasEntityNamed(load_result.scene, "DirectionalLight") ||
                 !hasEntityNamed(load_result.scene, "PointLight") ||
-                !hasEntityNamed(load_result.scene, "RectLight")) {
+                !hasEntityNamed(load_result.scene, "RectLight") ||
+                !hasEntityNamed(load_result.scene, "ReflectionProbe")) {
                 success = false;
                 failure = "SceneSerializer smoke failed: loaded scene is missing default entities.";
             } else if (!defaultEnvironmentCalibrationMatches(load_result.scene)) {
@@ -844,6 +911,9 @@ int runSceneSerializerSmoke() {
             } else if (!defaultRectLightMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: rect light settings were not preserved.";
+            } else if (!defaultReflectionProbeMatches(load_result.scene)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: reflection probe settings were not preserved.";
             } else {
                 NX_CORE_INFO(
                     "SceneSerializer smoke passed. Saved {} entities and loaded {} entities.",
@@ -1485,6 +1555,18 @@ int runRenderSettingsSmoke() {
     cornell_rect_light.cast_shadow = true;
     cornell_rect_light.shadow_strength = 0.88f;
     render_data.rect_lights_data.push_back(cornell_rect_light);
+    NexAur::RendererReflectionProbeData active_probe;
+    active_probe.position = glm::vec3{ 0.0f, 1.0f, 0.0f };
+    active_probe.box_extents = glm::vec3{ 3.0f, 2.0f, 4.0f };
+    active_probe.intensity = 1.4f;
+    active_probe.blend_distance = 0.6f;
+    active_probe.enabled = true;
+    active_probe.box_projection = true;
+    render_data.reflection_probes_data.push_back(active_probe);
+    NexAur::RendererReflectionProbeData disabled_probe = active_probe;
+    disabled_probe.enabled = false;
+    disabled_probe.position = glm::vec3{ 8.0f, 0.0f, 0.0f };
+    render_data.reflection_probes_data.push_back(disabled_probe);
 
     NexAur::RenderView render_view;
     render_view.viewport_width = 1280u;
@@ -1523,6 +1605,16 @@ int runRenderSettingsSmoke() {
         cornell_frame.rect_lights.front().shadow_slot == 0 &&
         nearlyEqual(cornell_frame.rect_lights.front().shadow_strength, 0.88f),
         "RenderSettings smoke failed: rect light budget, calibration, or shadow slot was incorrect.");
+    expect(
+        cornell_frame.reflection_probes.size() == 1u &&
+        nearlyEqual(cornell_frame.reflection_probes.front().position.y, 1.0f) &&
+        nearlyEqual(cornell_frame.reflection_probes.front().box_extents.x, 3.0f) &&
+        nearlyEqual(cornell_frame.reflection_probes.front().box_extents.y, 2.0f) &&
+        nearlyEqual(cornell_frame.reflection_probes.front().box_extents.z, 4.0f) &&
+        nearlyEqual(cornell_frame.reflection_probes.front().intensity, 1.4f) &&
+        nearlyEqual(cornell_frame.reflection_probes.front().blend_distance, 0.6f) &&
+        cornell_frame.reflection_probes.front().box_projection,
+        "RenderSettings smoke failed: reflection probe extraction or sanitization was incorrect.");
     expect(
         nearlyEqual(cornell_frame.skybox_intensity, 0.0f) &&
         nearlyEqual(cornell_frame.ibl_intensity, 0.65f * 0.03f),

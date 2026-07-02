@@ -3,9 +3,13 @@
 
 #include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_environment_resource.h"
 #include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
+#include <glm/geometric.hpp>
 
 namespace NexAur {
     namespace {
@@ -61,6 +65,66 @@ namespace NexAur {
                 return lhs.sort_key < rhs.sort_key;
             });
         }
+
+        float distanceToProbeBox(const RenderFrameReflectionProbe& probe, const glm::vec3& position) {
+            const glm::vec3 local_delta = glm::abs(position - probe.position);
+            const glm::vec3 outside_delta = glm::max(local_delta - probe.box_extents, glm::vec3{ 0.0f });
+            return glm::length(outside_delta);
+        }
+
+        const RenderFrameReflectionProbe* selectActiveReflectionProbe(
+            const std::vector<RenderFrameReflectionProbe>& probes,
+            const glm::vec3& camera_position) {
+            const RenderFrameReflectionProbe* best_probe = nullptr;
+            float best_distance = std::numeric_limits<float>::max();
+            float best_intensity = -1.0f;
+
+            for (const RenderFrameReflectionProbe& probe : probes) {
+                if (probe.intensity <= 0.0001f) {
+                    continue;
+                }
+
+                const float distance = distanceToProbeBox(probe, camera_position);
+                const bool better_distance = distance + 0.0001f < best_distance;
+                const bool same_distance = std::abs(distance - best_distance) <= 0.0001f;
+                if (better_distance || (same_distance && probe.intensity > best_intensity)) {
+                    best_probe = &probe;
+                    best_distance = distance;
+                    best_intensity = probe.intensity;
+                }
+            }
+
+            return best_probe;
+        }
+
+        VulkanActiveReflectionProbe buildActiveReflectionProbe(
+            const RenderSceneFrame& scene_frame,
+            VulkanRenderResourceCache& resource_cache,
+            AssetManager& asset_manager) {
+            VulkanActiveReflectionProbe active_probe;
+
+            const RenderFrameReflectionProbe* selected_probe =
+                selectActiveReflectionProbe(scene_frame.reflection_probes, scene_frame.view.camera_position);
+            if (!selected_probe) {
+                return active_probe;
+            }
+
+            active_probe.enabled = true;
+            active_probe.environment_asset = selected_probe->environment_asset ?
+                selected_probe->environment_asset :
+                scene_frame.environment_asset;
+            active_probe.environment =
+                resource_cache.getOrCreateEnvironment(active_probe.environment_asset, asset_manager);
+            active_probe.position = selected_probe->position;
+            active_probe.box_extents = glm::max(selected_probe->box_extents, glm::vec3{ 0.05f });
+            active_probe.intensity = std::max(0.0f, selected_probe->intensity);
+            active_probe.blend_distance = std::max(0.0f, selected_probe->blend_distance);
+            active_probe.box_projection = selected_probe->box_projection;
+            if (active_probe.environment && active_probe.environment->isReady()) {
+                active_probe.prefilter_mip_count = active_probe.environment->getPrefilterMipCount();
+            }
+            return active_probe;
+        }
     } // namespace
 
     VulkanDrawList VulkanDrawListBuilder::buildDrawList(
@@ -72,8 +136,11 @@ namespace NexAur {
         draw_list.directional_light = scene_frame.directional_light;
         draw_list.point_lights = scene_frame.point_lights;
         draw_list.rect_lights = scene_frame.rect_lights;
+        draw_list.reflection_probes = scene_frame.reflection_probes;
         draw_list.environment_asset = scene_frame.environment_asset;
         draw_list.environment = resource_cache.getOrCreateEnvironment(scene_frame.environment_asset, asset_manager);
+        draw_list.active_reflection_probe =
+            buildActiveReflectionProbe(scene_frame, resource_cache, asset_manager);
         draw_list.environment_color = scene_frame.environment_color;
         draw_list.skybox_intensity = scene_frame.skybox_intensity;
         draw_list.ibl_intensity = scene_frame.ibl_intensity;

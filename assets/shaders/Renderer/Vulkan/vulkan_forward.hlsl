@@ -50,6 +50,9 @@ struct FrameGlobals {
     float4 rect_shadow_pcss_quality_params; // x: max filter radius, y: blocker taps, z: filter taps, w: reserved
     float4 rect_light_params; // x: enabled, y: count, z: ltc specular enabled, w: reserved
     float4 rect_light_ltc_params; // x: specular scale, y: debug ltc only, zw: reserved
+    float4 reflection_probe_center_intensity; // xyz: center, w: intensity
+    float4 reflection_probe_extents_blend; // xyz: box extents, w: blend distance
+    float4 reflection_probe_params; // x: enabled, y: box projection, z: probe prefilter max lod, w: reserved
 };
 
 struct PointLightData {
@@ -145,9 +148,25 @@ Texture2D<float4> g_brdf_lut;
 [[vk::binding(4, 2)]]
 SamplerState g_environment_sampler;
 
+[[vk::binding(0, 3)]]
+TextureCube<float4> g_reflection_probe_environment_map;
+
+[[vk::binding(1, 3)]]
+TextureCube<float4> g_reflection_probe_irradiance_map;
+
+[[vk::binding(2, 3)]]
+TextureCube<float4> g_reflection_probe_prefiltered_environment_map;
+
+[[vk::binding(3, 3)]]
+Texture2D<float4> g_reflection_probe_brdf_lut;
+
+[[vk::binding(4, 3)]]
+SamplerState g_reflection_probe_sampler;
+
 #include "common/pbr_brdf.hlsli"
 #include "common/pbr_material.hlsli"
 #include "common/pbr_ibl.hlsli"
+#include "common/pbr_reflection_probe.hlsli"
 #include "common/shadow_sampling.hlsli"
 #include "common/area_light_ltc.hlsli"
 
@@ -178,7 +197,9 @@ float3 EvaluateIblDebugColor(
     uint mode,
     NxMaterialSample material,
     NxIblSample ibl,
-    float3 view_dir) {
+    float3 view_dir,
+    float reflection_probe_influence,
+    float3 reflection_probe_specular) {
     switch (mode) {
         case 1:
             return ibl.diffuse;
@@ -206,6 +227,13 @@ float3 EvaluateIblDebugColor(
                 max(g_frame.camera_position_environment_intensity.w, 0.0f);
         case 11:
             return float3(ibl.brdf.r, ibl.brdf.g, 0.0f);
+        case 12:
+            return float3(
+                reflection_probe_influence,
+                reflection_probe_influence,
+                reflection_probe_influence);
+        case 13:
+            return reflection_probe_specular * reflection_probe_influence;
         default:
             return 0.0f;
     }
@@ -255,9 +283,38 @@ float4 PSMain(VSOutput input) : SV_Target0 {
         g_frame.camera_position_environment_intensity.w,
         g_frame.ibl_debug_params.z);
 
+    float reflection_probe_influence = 0.0f;
+    float3 reflection_probe_specular = 0.0f;
+    if (g_frame.reflection_probe_params.x > 0.5f) {
+        const NxReflectionProbeSample reflection_probe = NxEvaluateReflectionProbeSpecular(
+            material.base_color.rgb,
+            material.metallic,
+            material.roughness,
+            material.normal,
+            view_dir,
+            input.world_position,
+            g_frame.reflection_probe_center_intensity.xyz,
+            max(g_frame.reflection_probe_extents_blend.xyz, float3(0.05f, 0.05f, 0.05f)),
+            g_frame.reflection_probe_extents_blend.w,
+            g_frame.reflection_probe_center_intensity.w,
+            g_frame.reflection_probe_params.y > 0.5f,
+            g_frame.reflection_probe_params.z);
+        reflection_probe_influence = reflection_probe.influence;
+        reflection_probe_specular = reflection_probe.specular;
+        ibl.specular = lerp(ibl.specular, reflection_probe_specular, reflection_probe_influence);
+    }
+
     const uint ibl_debug_mode = ResolveIblDebugMode();
     if (ibl_debug_mode != 0u) {
-        return float4(EvaluateIblDebugColor(ibl_debug_mode, material, ibl, view_dir), material.base_color.a);
+        return float4(
+            EvaluateIblDebugColor(
+                ibl_debug_mode,
+                material,
+                ibl,
+                view_dir,
+                reflection_probe_influence,
+                reflection_probe_specular),
+            material.base_color.a);
     }
 
     float3 lit_color = ibl.diffuse + ibl.specular;

@@ -36,6 +36,8 @@ namespace NexAur {
         size_t rect_light_clipped_count = 0;
         size_t rect_shadow_request_count = 0;
         size_t shadowed_rect_light_count = 0;
+        size_t reflection_probe_count = 0;
+        bool active_reflection_probe = false;
         size_t debug_line_count = 0;
     };
 
@@ -181,6 +183,10 @@ namespace NexAur {
         uint32_t prefilter_size = 0;
         uint32_t prefilter_mip_count = 0;
         bool brdf_lut_ready = false;
+        bool active_reflection_probe_ready = false;
+        std::string active_reflection_probe_name = "None";
+        float active_reflection_probe_intensity = 0.0f;
+        float active_reflection_probe_blend_distance = 0.0f;
     };
 
     struct RendererDebugSnapshot {
