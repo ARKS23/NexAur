@@ -233,7 +233,7 @@ namespace NexAur {
                 light_position + kFaceDirections[safe_face],
                 kFaceUps[safe_face]);
             const glm::mat4 light_projection = glm::perspective(
-                glm::radians(90.0f),
+                glm::radians(90.5f),
                 1.0f,
                 std::max(0.01f, near_plane),
                 safe_range);
@@ -1174,6 +1174,28 @@ namespace NexAur {
             stats.shadow_debug_available = shadow_target.isReady();
             stats.point_shadow_debug_available = point_shadow_target.isReady();
             stats.rect_shadow_debug_available = rect_shadow_target.isReady();
+            stats.point_shadow_enabled = render_settings.point_shadow.enabled;
+            stats.rect_shadow_enabled = render_settings.rect_shadow.enabled;
+            stats.contact_shadow_enabled = render_settings.contact_shadow.enabled;
+            stats.point_shadow_budget = std::clamp(
+                render_settings.point_shadow.max_shadowed_lights,
+                0u,
+                kMaxRenderPointShadowLights);
+            stats.rect_shadow_budget = std::clamp(
+                render_settings.rect_shadow.max_shadowed_lights,
+                0u,
+                kMaxRenderRectShadowLights);
+            stats.point_shadow_map_resolution = render_settings.point_shadow.map_resolution;
+            stats.rect_shadow_map_resolution = render_settings.rect_shadow.map_resolution;
+            stats.point_shadow_strength = render_settings.point_shadow.strength;
+            stats.point_shadow_bias = render_settings.point_shadow.constant_bias;
+            stats.point_shadow_normal_bias = render_settings.point_shadow.normal_bias;
+            stats.point_shadow_filter_radius = render_settings.point_shadow.filter_radius;
+            stats.rect_shadow_strength = render_settings.rect_shadow.strength;
+            stats.rect_shadow_bias = render_settings.rect_shadow.constant_bias;
+            stats.rect_shadow_normal_bias = render_settings.rect_shadow.normal_bias;
+            stats.rect_shadow_filter_radius = render_settings.rect_shadow.filter_radius;
+            stats.rect_shadow_projection_margin = render_settings.rect_shadow.projection_margin;
             stats.rect_ltc_specular_enabled = render_settings.rect_light.ltc_specular_enabled;
             stats.rect_ltc_debug_only = render_settings.rect_light.debug_ltc_only;
             stats.rect_ltc_specular_scale = render_settings.rect_light.specular_intensity_scale;

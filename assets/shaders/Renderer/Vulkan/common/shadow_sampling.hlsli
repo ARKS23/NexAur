@@ -172,18 +172,116 @@ uint NxSelectPointShadowFace(float3 light_to_fragment) {
     return light_to_fragment.z >= 0.0f ? 4u : 5u;
 }
 
-float NxSamplePointShadowOcclusion(float2 uv, uint layer_index, float current_depth, float bias) {
-    const float closest_depth = g_point_shadow_map.SampleLevel(
+float NxComputeLocalShadowBias(float constant_bias, float3 normal, float3 light_dir) {
+    const float3 safe_normal = NxSafeNormalizeShadowVector(normal, float3(0.0f, 1.0f, 0.0f));
+    const float3 safe_light_dir = NxSafeNormalizeShadowVector(light_dir, float3(0.0f, 1.0f, 0.0f));
+    const float normal_dot_light = saturate(dot(safe_normal, safe_light_dir));
+    return max(constant_bias, 0.0f) * (1.0f + 0.5f * (1.0f - normal_dot_light));
+}
+
+float NxApplyLocalShadowVisibility(float strength, float occlusion) {
+    return lerp(1.0f, 1.0f - saturate(strength), saturate(occlusion));
+}
+
+bool NxProjectPointShadowSample(
+    float3 sample_world_position,
+    float3 light_position,
+    float range,
+    uint shadow_slot,
+    out uint layer_index,
+    out float2 uv,
+    out float current_depth) {
+    const float3 light_to_sample = sample_world_position - light_position;
+    if (dot(light_to_sample, light_to_sample) > range * range) {
+        layer_index = 0u;
+        uv = 0.0f;
+        current_depth = 1.0f;
+        return false;
+    }
+
+    const uint face_index = NxSelectPointShadowFace(light_to_sample);
+    layer_index = shadow_slot * 6u + face_index;
+    const float4 shadow_position =
+        mul(g_frame.point_shadow_view_projection[layer_index], float4(sample_world_position, 1.0f));
+    if (shadow_position.w <= 0.0f) {
+        uv = 0.0f;
+        current_depth = 1.0f;
+        return false;
+    }
+
+    const float3 projected = shadow_position.xyz / shadow_position.w;
+    uv = projected.xy * 0.5f + 0.5f;
+    current_depth = projected.z;
+    if (uv.x < 0.0f || uv.x > 1.0f ||
+        uv.y < 0.0f || uv.y > 1.0f ||
+        current_depth < 0.0f || current_depth > 1.0f) {
+        return false;
+    }
+
+    return true;
+}
+
+float NxSamplePointShadowDepth(float2 uv, uint layer_index) {
+    return g_point_shadow_map.SampleLevel(
         g_point_shadow_sampler,
         float3(uv, (float)layer_index),
         0.0f);
+}
+
+float NxSamplePointShadowOcclusionAtProjected(float2 uv, uint layer_index, float current_depth, float bias) {
+    const float closest_depth = NxSamplePointShadowDepth(uv, layer_index);
     return current_depth - bias > closest_depth ? 1.0f : 0.0f;
 }
 
-float NxEvaluatePointPcfShadow(float2 uv, uint layer_index, float current_depth, float bias) {
-    const float sample_stride =
-        max(g_frame.point_shadow_quality_params.x, 0.0f) /
-        max(g_frame.point_shadow_params.y, 1.0f);
+float NxSamplePointShadowOcclusion(
+    float3 sample_world_position,
+    float3 light_position,
+    float range,
+    uint shadow_slot,
+    float bias) {
+    uint layer_index = 0u;
+    float2 uv = 0.0f;
+    float current_depth = 1.0f;
+    if (!NxProjectPointShadowSample(
+            sample_world_position,
+            light_position,
+            range,
+            shadow_slot,
+            layer_index,
+            uv,
+            current_depth)) {
+        return 0.0f;
+    }
+
+    return NxSamplePointShadowOcclusionAtProjected(uv, layer_index, current_depth, bias);
+}
+
+float NxEvaluatePointPcfShadow(
+    float3 biased_world_position,
+    float3 light_position,
+    float range,
+    uint shadow_slot,
+    float bias) {
+    const float filter_radius = max(g_frame.point_shadow_quality_params.x, 0.0f);
+    if (filter_radius <= 0.0f) {
+        return NxSamplePointShadowOcclusion(
+            biased_world_position,
+            light_position,
+            range,
+            shadow_slot,
+            bias);
+    }
+
+    const float3 light_to_fragment = biased_world_position - light_position;
+    const float distance_to_light = max(length(light_to_fragment), 0.001f);
+    const float3 ray_dir = light_to_fragment / distance_to_light;
+    const float3 reference_axis = abs(ray_dir.y) < 0.95f ?
+        float3(0.0f, 1.0f, 0.0f) :
+        float3(1.0f, 0.0f, 0.0f);
+    const float3 tangent = NxSafeNormalizeShadowVector(cross(reference_axis, ray_dir), float3(1.0f, 0.0f, 0.0f));
+    const float3 bitangent = NxSafeNormalizeShadowVector(cross(ray_dir, tangent), float3(0.0f, 1.0f, 0.0f));
+    const float world_texel = (2.0f * distance_to_light) / max(g_frame.point_shadow_params.y, 1.0f);
+    const float sample_stride = world_texel * filter_radius;
 
     float occlusion = 0.0f;
     float sample_count = 0.0f;
@@ -192,8 +290,15 @@ float NxEvaluatePointPcfShadow(float2 uv, uint layer_index, float current_depth,
     for (int y = -1; y <= 1; ++y) {
         [loop]
         for (int x = -1; x <= 1; ++x) {
-            const float2 sample_uv = uv + float2((float)x, (float)y) * sample_stride;
-            occlusion += NxSamplePointShadowOcclusion(sample_uv, layer_index, current_depth, bias);
+            const float3 sample_position =
+                biased_world_position +
+                (tangent * (float)x + bitangent * (float)y) * sample_stride;
+            occlusion += NxSamplePointShadowOcclusion(
+                sample_position,
+                light_position,
+                range,
+                shadow_slot,
+                bias);
             sample_count += 1.0f;
         }
     }
@@ -218,52 +323,42 @@ float NxEvaluatePointShadowVisibility(
     const float3 safe_normal = NxSafeNormalizeShadowVector(world_normal, float3(0.0f, 1.0f, 0.0f));
     const float3 biased_world_position =
         world_position + safe_normal * max(g_frame.point_shadow_params.w, 0.0f);
-    const float3 light_to_fragment = biased_world_position - light_position;
     const float range = max(shadow_data.y, 0.1f);
-    if (dot(light_to_fragment, light_to_fragment) > range * range) {
-        return 1.0f;
-    }
-
-    const uint face_index = NxSelectPointShadowFace(light_to_fragment);
-    const uint layer_index = shadow_slot * 6u + face_index;
-    const float4 shadow_position =
-        mul(g_frame.point_shadow_view_projection[layer_index], float4(biased_world_position, 1.0f));
-    if (shadow_position.w <= 0.0f) {
-        return 1.0f;
-    }
-
-    const float3 projected = shadow_position.xyz / shadow_position.w;
-    const float2 uv = projected.xy * 0.5f + 0.5f;
-    const float current_depth = projected.z;
-
-    if (uv.x < 0.0f || uv.x > 1.0f ||
-        uv.y < 0.0f || uv.y > 1.0f ||
-        current_depth < 0.0f || current_depth > 1.0f) {
+    uint center_layer_index = 0u;
+    float2 center_uv = 0.0f;
+    float center_depth = 1.0f;
+    if (!NxProjectPointShadowSample(
+            biased_world_position,
+            light_position,
+            range,
+            shadow_slot,
+            center_layer_index,
+            center_uv,
+            center_depth)) {
         return 1.0f;
     }
 
     const float3 fragment_to_light = NxSafeNormalizeShadowVector(
         light_position - world_position,
         float3(0.0f, 1.0f, 0.0f));
-    const float normal_dot_light = saturate(dot(safe_normal, fragment_to_light));
-    const float bias = max(g_frame.point_shadow_params.z, 0.0f) * (1.0f + 0.5f * (1.0f - normal_dot_light));
-    const float closest_depth = g_point_shadow_map.SampleLevel(
-        g_point_shadow_sampler,
-        float3(uv, (float)layer_index),
-        0.0f);
-    const float occlusion = g_frame.point_shadow_quality_params.x > 0.0f ?
-        NxEvaluatePointPcfShadow(uv, layer_index, current_depth, bias) :
-        NxSamplePointShadowOcclusion(uv, layer_index, current_depth, bias);
+    const float bias = NxComputeLocalShadowBias(g_frame.point_shadow_params.z, safe_normal, fragment_to_light);
+    const float closest_depth = NxSamplePointShadowDepth(center_uv, center_layer_index);
+    const float occlusion = NxEvaluatePointPcfShadow(
+        biased_world_position,
+        light_position,
+        range,
+        shadow_slot,
+        bias);
     float strength = saturate(shadow_data.z);
-    if (g_frame.contact_shadow_params.x > 0.5f && current_depth - bias > closest_depth) {
-        const float depth_gap = max(current_depth - bias - closest_depth, 0.0f);
+    if (g_frame.contact_shadow_params.x > 0.5f && center_depth - bias > closest_depth) {
+        const float depth_gap = max(center_depth - bias - closest_depth, 0.0f);
         const float contact_window = max(
             g_frame.contact_shadow_params.w,
             g_frame.contact_shadow_params.z * 0.25f) / range;
         const float contact_weight = 1.0f - saturate(depth_gap / max(contact_window, 0.0001f));
         strength = saturate(strength + contact_weight * saturate(g_frame.contact_shadow_params.y));
     }
-    return lerp(1.0f, 1.0f - strength, occlusion);
+    return NxApplyLocalShadowVisibility(strength, occlusion);
 }
 
 float NxSampleRectShadowOcclusion(float2 uv, uint layer_index, float current_depth, float bias) {
@@ -330,13 +425,12 @@ float NxEvaluateRectShadowVisibility(
     const float3 fragment_to_light = NxSafeNormalizeShadowVector(
         -light.normal_range.xyz,
         float3(0.0f, 1.0f, 0.0f));
-    const float normal_dot_light = saturate(dot(safe_normal, fragment_to_light));
-    const float bias = max(g_frame.rect_shadow_params.z, 0.0f) * (1.0f + 0.5f * (1.0f - normal_dot_light));
+    const float bias = NxComputeLocalShadowBias(g_frame.rect_shadow_params.z, safe_normal, fragment_to_light);
     const float occlusion = g_frame.rect_shadow_quality_params.x > 0.0f ?
         NxEvaluateRectPcfShadow(uv, shadow_slot, current_depth, bias) :
         NxSampleRectShadowOcclusion(uv, shadow_slot, current_depth, bias);
     const float strength = saturate(light.shadow.y);
-    return lerp(1.0f, 1.0f - strength, occlusion);
+    return NxApplyLocalShadowVisibility(strength, occlusion);
 }
 
 float NxEvaluateShadowVisibility(float3 world_position, float3 world_normal, float3 light_dir, float view_depth) {

@@ -115,10 +115,20 @@ namespace NexAur {
         drawKeyValue("Point Lights", snapshot.frame.point_light_count);
         drawKeyValue("Point Shadow Requests", snapshot.frame.point_shadow_request_count);
         drawKeyValue("Shadowed Point Lights", snapshot.frame.shadowed_point_light_count);
+        drawKeyValue(
+            "Point Shadows Clipped",
+            snapshot.frame.point_shadow_request_count > snapshot.frame.shadowed_point_light_count ?
+                snapshot.frame.point_shadow_request_count - snapshot.frame.shadowed_point_light_count :
+                0u);
         drawKeyValue("Rect Lights", snapshot.frame.rect_light_count);
         drawKeyValue("Rect Lights Clipped", snapshot.frame.rect_light_clipped_count);
         drawKeyValue("Rect Shadow Requests", snapshot.frame.rect_shadow_request_count);
         drawKeyValue("Shadowed Rect Lights", snapshot.frame.shadowed_rect_light_count);
+        drawKeyValue(
+            "Rect Shadows Clipped",
+            snapshot.frame.rect_shadow_request_count > snapshot.frame.shadowed_rect_light_count ?
+                snapshot.frame.rect_shadow_request_count - snapshot.frame.shadowed_rect_light_count :
+                0u);
         drawKeyValue("Debug Lines", snapshot.frame.debug_line_count);
     }
 
@@ -226,6 +236,22 @@ namespace NexAur {
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));
         drawKeyValue("Rect Shadow Debug Ready", boolToText(snapshot.effects.rect_shadow_debug_available));
+        drawKeyValue("Point Shadows", boolToText(snapshot.effects.point_shadow_enabled));
+        drawKeyValue("Rect Shadows", boolToText(snapshot.effects.rect_shadow_enabled));
+        drawKeyValue("Contact Shadows", boolToText(snapshot.effects.contact_shadow_enabled));
+        drawKeyValue("Point Shadow Budget", snapshot.effects.point_shadow_budget);
+        drawKeyValue("Rect Shadow Budget", snapshot.effects.rect_shadow_budget);
+        drawKeyValue("Point Shadow Map", snapshot.effects.point_shadow_map_resolution);
+        drawKeyValue("Rect Shadow Map", snapshot.effects.rect_shadow_map_resolution);
+        ImGui::Text("Point Shadow Strength: %.2f", snapshot.effects.point_shadow_strength);
+        ImGui::Text("Point Shadow Bias: %.4f", snapshot.effects.point_shadow_bias);
+        ImGui::Text("Point Shadow Normal Bias: %.4f", snapshot.effects.point_shadow_normal_bias);
+        ImGui::Text("Point Shadow Filter: %.2f", snapshot.effects.point_shadow_filter_radius);
+        ImGui::Text("Rect Shadow Strength: %.2f", snapshot.effects.rect_shadow_strength);
+        ImGui::Text("Rect Shadow Bias: %.4f", snapshot.effects.rect_shadow_bias);
+        ImGui::Text("Rect Shadow Normal Bias: %.4f", snapshot.effects.rect_shadow_normal_bias);
+        ImGui::Text("Rect Shadow Filter: %.2f", snapshot.effects.rect_shadow_filter_radius);
+        ImGui::Text("Rect Shadow Margin: %.2f", snapshot.effects.rect_shadow_projection_margin);
         drawKeyValue("Rect LTC Specular", boolToText(snapshot.effects.rect_ltc_specular_enabled));
         drawKeyValue("Rect LTC Only", boolToText(snapshot.effects.rect_ltc_debug_only));
         ImGui::Text("Rect LTC Scale: %.2f", snapshot.effects.rect_ltc_specular_scale);
