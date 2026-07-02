@@ -218,6 +218,9 @@ set(NEXAUR_ENGINE_VULKAN_SHADER_FILES
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_downsample.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_upsample.hlsl"
     "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_composite.hlsl"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/post/vulkan_smaa_edge.hlsl"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/post/vulkan_smaa_blend.hlsl"
+    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/post/vulkan_smaa_neighborhood.hlsl"
 )
 
 set_source_files_properties(
@@ -262,6 +265,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/passes/vulkan_object_id_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_post_process_pass.h
     Function/Renderer/Vulkan/passes/vulkan_post_process_pass.cpp
+    Function/Renderer/Vulkan/passes/vulkan_smaa_pass.h
+    Function/Renderer/Vulkan/passes/vulkan_smaa_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_shadow_pass.h
     Function/Renderer/Vulkan/passes/vulkan_shadow_pass.cpp
     Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h
@@ -299,6 +304,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/targets/vulkan_point_shadow_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_scene_color_target.h
     Function/Renderer/Vulkan/targets/vulkan_scene_color_target.cpp
+    Function/Renderer/Vulkan/targets/vulkan_smaa_target.h
+    Function/Renderer/Vulkan/targets/vulkan_smaa_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.h
     Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.cpp
     Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h
@@ -443,6 +450,12 @@ nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulka
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_upsample.hlsl ps_6_0 PSMain vulkan_bloom_upsample.frag.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_composite.hlsl vs_6_0 VSMain vulkan_bloom_composite.vert.spv)
 nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_composite.hlsl ps_6_0 PSMain vulkan_bloom_composite.frag.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_edge.hlsl vs_6_0 VSMain vulkan_smaa_edge.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_edge.hlsl ps_6_0 PSMain vulkan_smaa_edge.frag.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_blend.hlsl vs_6_0 VSMain vulkan_smaa_blend.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_blend.hlsl ps_6_0 PSMain vulkan_smaa_blend.frag.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_neighborhood.hlsl vs_6_0 VSMain vulkan_smaa_neighborhood.vert.spv)
+nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_neighborhood.hlsl ps_6_0 PSMain vulkan_smaa_neighborhood.frag.spv)
 
 add_custom_command(TARGET NexAurEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}"

@@ -22,6 +22,7 @@
 #include "Function/Renderer/Vulkan/passes/vulkan_forward_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_object_id_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_post_process_pass.h"
+#include "Function/Renderer/Vulkan/passes/vulkan_smaa_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_shadow_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
@@ -34,6 +35,7 @@
 #include "Function/Renderer/Vulkan/targets/vulkan_point_shadow_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_scene_color_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.h"
+#include "Function/Renderer/Vulkan/targets/vulkan_smaa_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_viewport_target.h"
 #include "Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h"
 #include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
@@ -170,6 +172,22 @@ namespace NexAur {
             return view == RenderEffectDebugView::PointShadowMap;
         }
 
+        bool isSmaaDebugView(RenderEffectDebugView view) {
+            return view == RenderEffectDebugView::SmaaEdgeMask ||
+                   view == RenderEffectDebugView::SmaaBlendWeight ||
+                   view == RenderEffectDebugView::SmaaOutput;
+        }
+
+        const char* antiAliasingModeToText(RenderAntiAliasingMode mode) {
+            switch (mode) {
+            case RenderAntiAliasingMode::None:
+                return "None";
+            case RenderAntiAliasingMode::SMAA:
+            default:
+                return "SMAA";
+            }
+        }
+
         const char* toneMappingModeToText(RenderToneMappingMode mode) {
             switch (mode) {
             case RenderToneMappingMode::None:
@@ -208,6 +226,12 @@ namespace NexAur {
                 return "Post Tone Map";
             case RenderEffectDebugView::ColorGraded:
                 return "Color Graded";
+            case RenderEffectDebugView::SmaaEdgeMask:
+                return "SMAA Edge Mask";
+            case RenderEffectDebugView::SmaaBlendWeight:
+                return "SMAA Blend Weight";
+            case RenderEffectDebugView::SmaaOutput:
+                return "SMAA Output";
             case RenderEffectDebugView::FinalLit:
             default:
                 return "Final Lit";
@@ -580,6 +604,27 @@ namespace NexAur {
 
             return VK_FORMAT_UNDEFINED;
         }
+
+        VkFormat findSmaaMaskFormat(VkPhysicalDevice physical_device) {
+            constexpr VkFormatFeatureFlags required_features =
+                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+            const std::array<VkFormat, 3> candidates{
+                VK_FORMAT_R8G8B8A8_UNORM,
+                VK_FORMAT_B8G8R8A8_UNORM,
+                VK_FORMAT_R16G16B16A16_SFLOAT
+            };
+
+            for (VkFormat format : candidates) {
+                VkFormatProperties properties{};
+                vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
+                if ((properties.optimalTilingFeatures & required_features) == required_features) {
+                    return format;
+                }
+            }
+
+            return VK_FORMAT_UNDEFINED;
+        }
     } // namespace
 
     struct VulkanRendererSystem::Backend {
@@ -626,6 +671,12 @@ namespace NexAur {
                 shutdown();
                 return false;
             }
+            smaa_mask_format = findSmaaMaskFormat(physical_device.physical_device);
+            if (smaa_mask_format == VK_FORMAT_UNDEFINED) {
+                NX_CORE_ERROR("VulkanRendererSystem failed to find a supported SMAA mask target format.");
+                shutdown();
+                return false;
+            }
 
             if (!viewport_target.init(createResourceContext(), swapchain.image_format, surface_width, surface_height)) {
                 shutdown();
@@ -635,8 +686,10 @@ namespace NexAur {
             if (!scene_color_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
                 !ao_target.init(createResourceContext(), ao_format, surface_width, surface_height, RenderSettings().ao.half_resolution) ||
                 !bloom_target.init(createResourceContext(), scene_color_format, surface_width, surface_height) ||
+                !smaa_target.init(createResourceContext(), swapchain.image_format, smaa_mask_format, surface_width, surface_height) ||
                 !recreateAoPassResourcesIfReady() ||
-                !recreateBloomPassResourcesIfReady()) {
+                !recreateBloomPassResourcesIfReady() ||
+                !recreateSmaaPassResourcesIfReady()) {
                 shutdown();
                 return false;
             }
@@ -694,6 +747,7 @@ namespace NexAur {
             }
 
             imgui_renderer.shutdown();
+            smaa_pass.shutdown();
             post_process_pass.shutdown();
             bloom_pass.shutdown();
             ao_pass.shutdown();
@@ -705,6 +759,7 @@ namespace NexAur {
             point_shadow_target.shutdown();
             shadow_target.shutdown();
             picking_target.shutdown();
+            smaa_target.shutdown();
             bloom_target.shutdown();
             ao_target.shutdown();
             scene_color_target.shutdown();
@@ -742,6 +797,7 @@ namespace NexAur {
             device_api_version = kRequiredVulkanApiVersion;
             scene_color_format = VK_FORMAT_UNDEFINED;
             ao_format = VK_FORMAT_UNDEFINED;
+            smaa_mask_format = VK_FORMAT_UNDEFINED;
             initialized = false;
         }
 
@@ -795,16 +851,19 @@ namespace NexAur {
             const bool scene_color_resized = scene_color_target.resize(width, height);
             const bool ao_resized = ao_target.resize(width, height, RenderSettings().ao.half_resolution);
             const bool bloom_resized = bloom_target.resize(width, height);
+            const bool smaa_resized = smaa_target.resize(width, height);
             const bool picking_resized = picking_target.resize(width, height);
             if (!viewport_resized ||
                 !scene_color_resized ||
                 !ao_resized ||
                 !bloom_resized ||
+                !smaa_resized ||
                 !picking_resized ||
                 !recreateAoPassResourcesIfReady() ||
                 !recreateBloomPassResourcesIfReady() ||
+                !recreateSmaaPassResourcesIfReady() ||
                 !updatePostProcessInput()) {
-                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, AO, bloom, or picking target.");
+                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, AO, bloom, SMAA, or picking target.");
                 return;
             }
             picking_frame_ready = false;
@@ -939,6 +998,7 @@ namespace NexAur {
             snapshot.post_process = buildPostProcessDebugStats(render_data.render_settings);
             snapshot.bloom = buildBloomDebugStats();
             snapshot.ao = buildAoDebugStats();
+            snapshot.smaa = buildSmaaDebugStats(render_data.render_settings);
             snapshot.effects = buildEffectsDebugStats(render_data.render_settings);
             snapshot.resources = buildResourceDebugStats(draw_list);
 
@@ -1189,6 +1249,27 @@ namespace NexAur {
             return stats;
         }
 
+        RendererDebugSmaaStats buildSmaaDebugStats(const RenderSettings& render_settings) const {
+            RendererDebugSmaaStats stats;
+            stats.ready = smaa_target.isReady() && smaa_pass.isReady();
+            stats.mode = antiAliasingModeToText(render_settings.anti_aliasing.mode);
+            stats.edge_threshold = render_settings.anti_aliasing.smaa_edge_threshold;
+            stats.contrast_factor = render_settings.anti_aliasing.smaa_contrast_factor;
+            stats.max_search_steps = render_settings.anti_aliasing.smaa_max_search_steps;
+            stats.blend_strength = render_settings.anti_aliasing.smaa_blend_strength;
+            if (!smaa_target.isReady()) {
+                return stats;
+            }
+
+            const VkExtent2D extent = smaa_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.source_format = vkFormatToString(smaa_target.getSourceFormat());
+            stats.edge_format = vkFormatToString(smaa_target.getMaskFormat());
+            stats.blend_format = vkFormatToString(smaa_target.getMaskFormat());
+            return stats;
+        }
+
         RendererDebugEffectsStats buildEffectsDebugStats(const RenderSettings& render_settings) const {
             RendererDebugEffectsStats stats;
             stats.lighting_preset = renderLightingPresetName(render_settings.lighting.preset);
@@ -1199,6 +1280,7 @@ namespace NexAur {
             stats.rect_shadow_layer = render_settings.effects_debug.rect_shadow_layer;
             stats.bloom_debug_available = bloom_target.isReady() && bloom_pass.isReady();
             stats.ao_debug_available = ao_target.isReady() && ao_pass.isReady();
+            stats.smaa_debug_available = smaa_target.isReady() && smaa_pass.isReady();
             stats.shadow_debug_available = shadow_target.isReady();
             stats.point_shadow_debug_available = point_shadow_target.isReady();
             stats.rect_shadow_debug_available = rect_shadow_target.isReady();
@@ -1671,6 +1753,26 @@ namespace NexAur {
                    updateBloomInputsIfReady();
         }
 
+        bool recreateSmaaPassResourcesIfReady() {
+            if (!smaa_target.isReady()) {
+                return true;
+            }
+
+            VulkanSmaaPassContext smaa_context;
+            smaa_context.device = device.device;
+            smaa_context.source_color_format = smaa_target.getSourceFormat();
+            smaa_context.mask_color_format = smaa_target.getMaskFormat();
+            smaa_context.output_color_format = swapchain.image_format;
+            smaa_context.single_input_descriptor_set_layout =
+                descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::AoInput);
+            smaa_context.dual_input_descriptor_set_layout =
+                descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::BloomDualInput);
+            smaa_context.descriptor_allocator = &descriptor_allocator;
+            smaa_context.pipeline_cache = &pipeline_cache;
+
+            return smaa_pass.recreateResources(smaa_context);
+        }
+
         bool updateBloomInputs() {
             if (!bloom_pass.isReady() || !scene_color_target.isReady() || !bloom_target.isReady()) {
                 return false;
@@ -1758,7 +1860,8 @@ namespace NexAur {
                 debug_settings.view == RenderEffectDebugView::FinalLit ||
                 debug_settings.view == RenderEffectDebugView::ShadowCascades ||
                 debug_settings.view == RenderEffectDebugView::PostToneMap ||
-                debug_settings.view == RenderEffectDebugView::ColorGraded;
+                debug_settings.view == RenderEffectDebugView::ColorGraded ||
+                isSmaaDebugView(debug_settings.view);
             const bool bloom_enabled =
                 (final_output &&
                  post_process_settings.bloom_enabled &&
@@ -1775,6 +1878,24 @@ namespace NexAur {
             return (ao_settings.enabled || isAoDebugView(debug_settings.view)) &&
                    ao_target.isReady() &&
                    ao_pass.isReady();
+        }
+
+        bool shouldRenderSmaa(
+            const RenderAntiAliasingSettings& anti_aliasing_settings,
+            const RenderEffectDebugSettings& debug_settings) const {
+            const bool final_output =
+                debug_settings.view == RenderEffectDebugView::FinalLit &&
+                anti_aliasing_settings.mode == RenderAntiAliasingMode::SMAA;
+            return (final_output || isSmaaDebugView(debug_settings.view)) &&
+                   smaa_target.isReady() &&
+                   smaa_pass.isReady();
+        }
+
+        RenderEffectDebugSettings postProcessDebugSettingsForSmaa(RenderEffectDebugSettings debug_settings) const {
+            if (isSmaaDebugView(debug_settings.view)) {
+                debug_settings.view = RenderEffectDebugView::ColorGraded;
+            }
+            return debug_settings;
         }
 
         bool createInstance(const std::vector<const char*>& required_extensions) {
@@ -1994,6 +2115,9 @@ namespace NexAur {
             if (!recreateBloomPassResourcesIfReady()) {
                 return false;
             }
+            if (!recreateSmaaPassResourcesIfReady()) {
+                return false;
+            }
 
             VulkanPostProcessPassContext post_process_context;
             post_process_context.device = device.device;
@@ -2024,6 +2148,7 @@ namespace NexAur {
         }
 
         void cleanupSwapchain() {
+            smaa_pass.cleanupResources();
             post_process_pass.cleanupResources();
             bloom_pass.cleanupResources();
             debug_draw_pass.cleanupResources();
@@ -2335,6 +2460,8 @@ namespace NexAur {
             VulkanGraphImageHandle post_process_input_color = scene_color;
             const VkImageView viewport_depth_view = viewport_target.getRenderTarget().depth_view;
             VulkanPostProcessInput post_process_input = makeScenePostProcessInput(viewport_depth_view);
+            const bool render_smaa =
+                shouldRenderSmaa(render_settings.anti_aliasing, render_settings.effects_debug);
             if (!addBloomPass(
                     graph,
                     scene_color,
@@ -2346,17 +2473,38 @@ namespace NexAur {
                 return false;
             }
 
+            VulkanGraphImageHandle post_process_output_color = viewport_color;
+            VulkanPostProcessRenderTarget post_process_target = makeViewportPostProcessTarget();
+            if (render_smaa) {
+                post_process_output_color = addSmaaSourceImage(graph);
+                if (!post_process_output_color.valid()) {
+                    return false;
+                }
+                post_process_target = makeSmaaSourcePostProcessTarget();
+            }
+
             if (!addPostProcessPass(
                     graph,
                     post_process_input_color,
-                    viewport_color,
+                    post_process_output_color,
                     viewport_depth,
                     ao_raw,
                     ao_blurred,
-                    makeViewportPostProcessTarget(),
+                    post_process_target,
                     post_process_input,
                     render_settings.post_process,
                     render_settings.ao,
+                    postProcessDebugSettingsForSmaa(render_settings.effects_debug))) {
+                return false;
+            }
+
+            if (render_smaa &&
+                !addSmaaPass(
+                    graph,
+                    post_process_output_color,
+                    viewport_color,
+                    makeViewportSmaaOutputTarget(),
+                    render_settings.anti_aliasing,
                     render_settings.effects_debug)) {
                 return false;
             }
@@ -2455,6 +2603,8 @@ namespace NexAur {
             VulkanGraphImageHandle post_process_input_color = scene_color;
             const VkImageView swapchain_depth_view = forward_pass.getSwapchainRenderTarget(image_index).depth_view;
             VulkanPostProcessInput post_process_input = makeScenePostProcessInput(swapchain_depth_view);
+            const bool render_smaa =
+                shouldRenderSmaa(render_settings.anti_aliasing, render_settings.effects_debug);
             if (!addBloomPass(
                     graph,
                     scene_color,
@@ -2466,17 +2616,38 @@ namespace NexAur {
                 return false;
             }
 
+            VulkanGraphImageHandle post_process_output_color = swapchain_color;
+            VulkanPostProcessRenderTarget post_process_target = makeSwapchainPostProcessTarget(image_index);
+            if (render_smaa) {
+                post_process_output_color = addSmaaSourceImage(graph);
+                if (!post_process_output_color.valid()) {
+                    return false;
+                }
+                post_process_target = makeSmaaSourcePostProcessTarget();
+            }
+
             if (!addPostProcessPass(
                     graph,
                     post_process_input_color,
-                    swapchain_color,
+                    post_process_output_color,
                     swapchain_depth,
                     ao_raw,
                     ao_blurred,
-                    makeSwapchainPostProcessTarget(image_index),
+                    post_process_target,
                     post_process_input,
                     render_settings.post_process,
                     render_settings.ao,
+                    postProcessDebugSettingsForSmaa(render_settings.effects_debug))) {
+                return false;
+            }
+
+            if (render_smaa &&
+                !addSmaaPass(
+                    graph,
+                    post_process_output_color,
+                    swapchain_color,
+                    makeSwapchainSmaaOutputTarget(image_index),
+                    render_settings.anti_aliasing,
                     render_settings.effects_debug)) {
                 return false;
             }
@@ -2840,6 +3011,98 @@ namespace NexAur {
             return true;
         }
 
+        bool addSmaaPass(
+            VulkanPassGraph& graph,
+            VulkanGraphImageHandle source_color,
+            VulkanGraphImageHandle output_color,
+            VulkanSmaaRenderTarget output_target,
+            RenderAntiAliasingSettings anti_aliasing_settings,
+            RenderEffectDebugSettings debug_settings) {
+            if (!source_color.valid() || !output_color.valid() || !output_target.valid()) {
+                return false;
+            }
+            if (!shouldRenderSmaa(anti_aliasing_settings, debug_settings)) {
+                return true;
+            }
+
+            const VulkanGraphImageHandle edge_color = addSmaaEdgeImage(graph);
+            if (!edge_color.valid()) {
+                return false;
+            }
+
+            const VulkanSmaaImageView& source_image = smaa_target.getSourceImage();
+            const VulkanSmaaImageView& edge_image = smaa_target.getEdgeImage();
+            const VulkanSmaaImageView& blend_image = smaa_target.getBlendImage();
+            VulkanSmaaInput source_input;
+            source_input.view = source_image.view;
+            source_input.sampler = smaa_target.getSampler();
+            source_input.extent = source_image.extent;
+            source_input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            VulkanSmaaInput edge_input;
+            edge_input.view = edge_image.view;
+            edge_input.sampler = smaa_target.getSampler();
+            edge_input.extent = edge_image.extent;
+            edge_input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            VulkanSmaaInput blend_input;
+            blend_input.view = blend_image.view;
+            blend_input.sampler = smaa_target.getSampler();
+            blend_input.extent = blend_image.extent;
+            blend_input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            const VulkanSmaaRenderTarget edge_target = smaa_target.getEdgeRenderTarget();
+            graph.addPass("SMAAEdge")
+                .readImage(source_color, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(edge_color, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, source_input, edge_input, blend_input, edge_target, anti_aliasing_settings](VkCommandBuffer target_command_buffer) {
+                    if (!smaa_pass.updateInputs(source_input, edge_input, blend_input)) {
+                        return false;
+                    }
+                    return smaa_pass.recordEdge(target_command_buffer, edge_target, anti_aliasing_settings);
+                });
+
+            if (debug_settings.view == RenderEffectDebugView::SmaaEdgeMask) {
+                graph.addPass("SMAAEdgeDebug")
+                    .readImage(edge_color, VulkanGraphImageUsage::ShaderRead)
+                    .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
+                    .execute([this, output_target, edge_input](VkCommandBuffer target_command_buffer) {
+                        return smaa_pass.recordDebugResolve(target_command_buffer, output_target, edge_input);
+                    });
+                return true;
+            }
+
+            const VulkanGraphImageHandle blend_color = addSmaaBlendImage(graph);
+            if (!blend_color.valid()) {
+                return false;
+            }
+
+            const VulkanSmaaRenderTarget blend_target = smaa_target.getBlendRenderTarget();
+            graph.addPass("SMAABlend")
+                .readImage(edge_color, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(blend_color, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, blend_target, anti_aliasing_settings](VkCommandBuffer target_command_buffer) {
+                    return smaa_pass.recordBlend(target_command_buffer, blend_target, anti_aliasing_settings);
+                });
+
+            if (debug_settings.view == RenderEffectDebugView::SmaaBlendWeight) {
+                graph.addPass("SMAABlendDebug")
+                    .readImage(blend_color, VulkanGraphImageUsage::ShaderRead)
+                    .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
+                    .execute([this, output_target, blend_input](VkCommandBuffer target_command_buffer) {
+                        return smaa_pass.recordDebugResolve(target_command_buffer, output_target, blend_input);
+                    });
+                return true;
+            }
+
+            graph.addPass("SMAANeighborhood")
+                .readImage(source_color, VulkanGraphImageUsage::ShaderRead)
+                .readImage(blend_color, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
+                .execute([this, output_target, anti_aliasing_settings](VkCommandBuffer target_command_buffer) {
+                    return smaa_pass.recordNeighborhood(target_command_buffer, output_target, anti_aliasing_settings);
+                });
+            return true;
+        }
+
         bool addPostProcessPass(
             VulkanPassGraph& graph,
             VulkanGraphImageHandle input_color,
@@ -3052,6 +3315,45 @@ namespace NexAur {
             return graph.addImage(std::move(desc));
         }
 
+        VulkanGraphImageHandle addSmaaSourceImage(VulkanPassGraph& graph) {
+            const VulkanSmaaImageView& smaa_image = smaa_target.getSourceImage();
+            VulkanGraphImageDesc desc;
+            desc.name = "SMAASource";
+            desc.image = smaa_image.image;
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = smaa_image.layout;
+            desc.commit_layout = [this](VkImageLayout layout) {
+                smaa_target.setSourceLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addSmaaEdgeImage(VulkanPassGraph& graph) {
+            const VulkanSmaaImageView& smaa_image = smaa_target.getEdgeImage();
+            VulkanGraphImageDesc desc;
+            desc.name = "SMAAEdge";
+            desc.image = smaa_image.image;
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = smaa_image.layout;
+            desc.commit_layout = [this](VkImageLayout layout) {
+                smaa_target.setEdgeLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
+        VulkanGraphImageHandle addSmaaBlendImage(VulkanPassGraph& graph) {
+            const VulkanSmaaImageView& smaa_image = smaa_target.getBlendImage();
+            VulkanGraphImageDesc desc;
+            desc.name = "SMAABlend";
+            desc.image = smaa_image.image;
+            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.initial_layout = smaa_image.layout;
+            desc.commit_layout = [this](VkImageLayout layout) {
+                smaa_target.setBlendLayout(layout);
+            };
+            return graph.addImage(std::move(desc));
+        }
+
         VulkanGraphImageHandle addPointShadowDepthImage(VulkanPassGraph& graph) {
             VulkanGraphImageDesc desc;
             desc.name = "PointShadowDepth";
@@ -3118,8 +3420,33 @@ namespace NexAur {
             return target;
         }
 
+        VulkanPostProcessRenderTarget makeSmaaSourcePostProcessTarget() const {
+            const VulkanSmaaRenderTarget source_target = smaa_target.getSourceRenderTarget();
+            VulkanPostProcessRenderTarget target;
+            target.color_view = source_target.color_view;
+            target.color_format = source_target.color_format;
+            target.extent = source_target.extent;
+            return target;
+        }
+
         VulkanPostProcessRenderTarget makeSwapchainPostProcessTarget(uint32_t image_index) const {
             VulkanPostProcessRenderTarget target;
+            target.color_view = forward_pass.getSwapchainColorImageView(image_index);
+            target.color_format = swapchain.image_format;
+            target.extent = swapchain.extent;
+            return target;
+        }
+
+        VulkanSmaaRenderTarget makeViewportSmaaOutputTarget() const {
+            VulkanSmaaRenderTarget target;
+            target.color_view = viewport_target.getColorImageView();
+            target.color_format = viewport_target.getColorFormat();
+            target.extent = viewport_target.getExtent();
+            return target;
+        }
+
+        VulkanSmaaRenderTarget makeSwapchainSmaaOutputTarget(uint32_t image_index) const {
+            VulkanSmaaRenderTarget target;
             target.color_view = forward_pass.getSwapchainColorImageView(image_index);
             target.color_format = swapchain.image_format;
             target.extent = swapchain.extent;
@@ -3355,6 +3682,7 @@ namespace NexAur {
         uint32_t device_api_version = kRequiredVulkanApiVersion;
         VkFormat scene_color_format = VK_FORMAT_UNDEFINED;
         VkFormat ao_format = VK_FORMAT_UNDEFINED;
+        VkFormat smaa_mask_format = VK_FORMAT_UNDEFINED;
 
         VkCommandPool command_pool = VK_NULL_HANDLE;
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
@@ -3375,6 +3703,7 @@ namespace NexAur {
         VulkanDebugDrawBuffer debug_draw_buffer;
         VulkanAoPass ao_pass;
         VulkanBloomPass bloom_pass;
+        VulkanSmaaPass smaa_pass;
         VulkanDebugDrawPass debug_draw_pass;
         VulkanShadowPass shadow_pass;
         VulkanSkyboxPass skybox_pass;
@@ -3385,6 +3714,7 @@ namespace NexAur {
         VulkanSceneColorTarget scene_color_target;
         VulkanAoTarget ao_target;
         VulkanBloomTarget bloom_target;
+        VulkanSmaaTarget smaa_target;
         VulkanPickingTarget picking_target;
         VulkanShadowMapTarget shadow_target;
         VulkanPointShadowTarget point_shadow_target;

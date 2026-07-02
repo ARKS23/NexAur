@@ -36,6 +36,11 @@ namespace NexAur {
         PCSS = 4
     };
 
+    enum class RenderAntiAliasingMode : uint32_t {
+        None = 0,
+        SMAA = 1
+    };
+
     enum class RenderEffectDebugView : uint32_t {
         FinalLit = 0,
         HdrSceneColor = 1,
@@ -50,7 +55,10 @@ namespace NexAur {
         PointShadowMap = 10,
         RectShadowMap = 11,
         PostToneMap = 12,
-        ColorGraded = 13
+        ColorGraded = 13,
+        SmaaEdgeMask = 14,
+        SmaaBlendWeight = 15,
+        SmaaOutput = 16
     };
 
     enum class RenderLightingPreset : uint32_t {
@@ -115,6 +123,14 @@ namespace NexAur {
         float vignette_radius = 0.75f;
         float vignette_softness = 0.35f;
         float sharpen_intensity = 0.0f;
+    };
+
+    struct RenderAntiAliasingSettings {
+        RenderAntiAliasingMode mode = RenderAntiAliasingMode::SMAA;
+        float smaa_edge_threshold = 0.08f;
+        float smaa_contrast_factor = 2.0f;
+        uint32_t smaa_max_search_steps = 8;
+        float smaa_blend_strength = 0.85f;
     };
 
     struct RenderIblDebugSettings {
@@ -197,6 +213,7 @@ namespace NexAur {
     struct RenderSettings {
         RenderLightingCalibrationSettings lighting;
         RenderPostProcessSettings post_process;
+        RenderAntiAliasingSettings anti_aliasing;
         RenderAoSettings ao;
         RenderIblDebugSettings ibl_debug;
         RenderEffectDebugSettings effects_debug;

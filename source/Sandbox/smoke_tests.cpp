@@ -1018,6 +1018,11 @@ int runRenderSettingsSmoke() {
     settings.post_process.vignette_radius = 0.65f;
     settings.post_process.vignette_softness = 0.4f;
     settings.post_process.sharpen_intensity = 0.2f;
+    settings.anti_aliasing.mode = NexAur::RenderAntiAliasingMode::None;
+    settings.anti_aliasing.smaa_edge_threshold = 0.18f;
+    settings.anti_aliasing.smaa_contrast_factor = 3.0f;
+    settings.anti_aliasing.smaa_max_search_steps = 6u;
+    settings.anti_aliasing.smaa_blend_strength = 0.55f;
     settings.ao.enabled = true;
     settings.ao.radius = 1.4f;
     settings.ao.intensity = 0.7f;
@@ -1027,7 +1032,7 @@ int runRenderSettingsSmoke() {
     settings.ao.half_resolution = false;
     settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
     settings.ibl_debug.prefilter_mip = 3.0f;
-    settings.effects_debug.view = NexAur::RenderEffectDebugView::PostToneMap;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::SmaaEdgeMask;
     settings.effects_debug.bloom_mip = 3u;
     settings.effects_debug.shadow_cascade = 2u;
     settings.effects_debug.point_shadow_layer = 5u;
@@ -1087,6 +1092,8 @@ int runRenderSettingsSmoke() {
 
     const NexAur::RenderPostProcessSettings& first_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderAntiAliasingSettings& first_anti_aliasing =
+        render_context.getReadData().render_settings.anti_aliasing;
     const NexAur::RenderLightingCalibrationSettings& first_lighting =
         render_context.getReadData().render_settings.lighting;
     const NexAur::RenderAoSettings& first_ao =
@@ -1132,6 +1139,13 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_post_process.sharpen_intensity, 0.2f),
         "RenderSettings smoke failed: color grading parameters did not reach the read packet.");
     expect(
+        first_anti_aliasing.mode == NexAur::RenderAntiAliasingMode::None &&
+        nearlyEqual(first_anti_aliasing.smaa_edge_threshold, 0.18f) &&
+        nearlyEqual(first_anti_aliasing.smaa_contrast_factor, 3.0f) &&
+        first_anti_aliasing.smaa_max_search_steps == 6u &&
+        nearlyEqual(first_anti_aliasing.smaa_blend_strength, 0.55f),
+        "RenderSettings smoke failed: anti-aliasing parameters did not reach the read packet.");
+    expect(
         first_lighting.preset == NexAur::RenderLightingPreset::Custom &&
         nearlyEqual(first_lighting.directional_light_intensity_scale, 0.25f) &&
         nearlyEqual(first_lighting.point_light_intensity_scale, 1.5f) &&
@@ -1153,7 +1167,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
     expect(
-        first_effects_debug.view == NexAur::RenderEffectDebugView::PostToneMap &&
+        first_effects_debug.view == NexAur::RenderEffectDebugView::SmaaEdgeMask &&
         first_effects_debug.bloom_mip == 3u &&
         first_effects_debug.shadow_cascade == 2u &&
         first_effects_debug.point_shadow_layer == 5u &&
@@ -1241,7 +1255,12 @@ int runRenderSettingsSmoke() {
     settings.post_process.vignette_radius = 0.75f;
     settings.post_process.vignette_softness = 0.35f;
     settings.post_process.sharpen_intensity = 0.0f;
-    settings.effects_debug.view = NexAur::RenderEffectDebugView::ColorGraded;
+    settings.anti_aliasing.mode = NexAur::RenderAntiAliasingMode::SMAA;
+    settings.anti_aliasing.smaa_edge_threshold = 0.08f;
+    settings.anti_aliasing.smaa_contrast_factor = 2.0f;
+    settings.anti_aliasing.smaa_max_search_steps = 12u;
+    settings.anti_aliasing.smaa_blend_strength = 0.85f;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::SmaaOutput;
     settings.effects_debug.bloom_mip = 0u;
     settings.effects_debug.shadow_cascade = 1u;
     settings.effects_debug.point_shadow_layer = 2u;
@@ -1301,6 +1320,8 @@ int runRenderSettingsSmoke() {
 
     const NexAur::RenderPostProcessSettings& second_post_process =
         render_context.getReadData().render_settings.post_process;
+    const NexAur::RenderAntiAliasingSettings& second_anti_aliasing =
+        render_context.getReadData().render_settings.anti_aliasing;
     const NexAur::RenderLightingCalibrationSettings& second_lighting =
         render_context.getReadData().render_settings.lighting;
     const NexAur::RenderAoSettings& second_ao =
@@ -1346,6 +1367,13 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_post_process.sharpen_intensity, 0.0f),
         "RenderSettings smoke failed: updated color grading parameters did not reach the read packet.");
     expect(
+        second_anti_aliasing.mode == NexAur::RenderAntiAliasingMode::SMAA &&
+        nearlyEqual(second_anti_aliasing.smaa_edge_threshold, 0.08f) &&
+        nearlyEqual(second_anti_aliasing.smaa_contrast_factor, 2.0f) &&
+        second_anti_aliasing.smaa_max_search_steps == 12u &&
+        nearlyEqual(second_anti_aliasing.smaa_blend_strength, 0.85f),
+        "RenderSettings smoke failed: updated anti-aliasing parameters did not reach the read packet.");
+    expect(
         second_lighting.preset == NexAur::RenderLightingPreset::Cornell &&
         nearlyEqual(second_lighting.directional_light_intensity_scale, 0.0f) &&
         nearlyEqual(second_lighting.point_light_intensity_scale, 1.0f) &&
@@ -1367,7 +1395,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_ibl_debug.prefilter_mip, 0.0f),
         "RenderSettings smoke failed: updated IBL debug settings did not reach the read packet.");
     expect(
-        second_effects_debug.view == NexAur::RenderEffectDebugView::ColorGraded &&
+        second_effects_debug.view == NexAur::RenderEffectDebugView::SmaaOutput &&
         second_effects_debug.bloom_mip == 0u &&
         second_effects_debug.shadow_cascade == 1u &&
         second_effects_debug.point_shadow_layer == 2u &&

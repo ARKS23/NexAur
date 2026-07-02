@@ -19,7 +19,10 @@ namespace NexAur {
         BloomUpsample,
         BloomComposite,
         Ssao,
-        AoBlur
+        AoBlur,
+        SmaaEdge,
+        SmaaBlend,
+        SmaaNeighborhood
     };
 
     struct VulkanShaderProgram {

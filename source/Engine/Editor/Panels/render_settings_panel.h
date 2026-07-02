@@ -21,6 +21,7 @@ namespace NexAur {
         void drawLightingPresetSection(RenderSettings& settings, bool& changed);
         void drawEffectsDebugSection(RenderSettings& settings, bool& changed);
         void drawPostProcessSection(RenderSettings& settings, bool& changed);
+        void drawAntiAliasingSection(RenderSettings& settings, bool& changed);
         void drawAoSection(RenderSettings& settings, bool& changed);
         void drawIblDebugSection(RenderSettings& settings, bool& changed);
         void drawShadowSection(RenderSettings& settings, bool& changed);

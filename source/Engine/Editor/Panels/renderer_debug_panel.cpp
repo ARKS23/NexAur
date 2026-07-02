@@ -231,6 +231,19 @@ namespace NexAur {
         drawExtent("  Size", snapshot.ao.width, snapshot.ao.height);
         drawKeyValue("  Color Format", snapshot.ao.color_format.c_str());
         drawKeyValue("  Half Resolution", boolToText(snapshot.ao.half_resolution));
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted("SMAA Target");
+        drawKeyValue("  Ready", boolToText(snapshot.smaa.ready));
+        drawExtent("  Size", snapshot.smaa.width, snapshot.smaa.height);
+        drawKeyValue("  Source Format", snapshot.smaa.source_format.c_str());
+        drawKeyValue("  Edge Format", snapshot.smaa.edge_format.c_str());
+        drawKeyValue("  Blend Format", snapshot.smaa.blend_format.c_str());
+        drawKeyValue("  Mode", snapshot.smaa.mode.c_str());
+        ImGui::Text("  Edge Threshold: %.3f", snapshot.smaa.edge_threshold);
+        ImGui::Text("  Contrast Factor: %.2f", snapshot.smaa.contrast_factor);
+        drawKeyValue("  Search Steps", snapshot.smaa.max_search_steps);
+        ImGui::Text("  Blend Strength: %.2f", snapshot.smaa.blend_strength);
     }
 
     void RendererDebugPanel::drawEffectsSection(const RendererDebugSnapshot& snapshot) {
@@ -246,6 +259,7 @@ namespace NexAur {
         drawKeyValue("Rect Shadow Layer", snapshot.effects.rect_shadow_layer);
         drawKeyValue("Bloom Debug Ready", boolToText(snapshot.effects.bloom_debug_available));
         drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
+        drawKeyValue("SMAA Debug Ready", boolToText(snapshot.effects.smaa_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));
         drawKeyValue("Rect Shadow Debug Ready", boolToText(snapshot.effects.rect_shadow_debug_available));

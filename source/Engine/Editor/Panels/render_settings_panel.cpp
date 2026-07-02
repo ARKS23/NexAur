@@ -28,6 +28,20 @@ namespace NexAur {
             return index == 1 ? RenderToneMappingMode::ACES : RenderToneMappingMode::None;
         }
 
+        int antiAliasingModeToIndex(RenderAntiAliasingMode mode) {
+            switch (mode) {
+            case RenderAntiAliasingMode::SMAA:
+                return 1;
+            case RenderAntiAliasingMode::None:
+            default:
+                return 0;
+            }
+        }
+
+        RenderAntiAliasingMode antiAliasingModeFromIndex(int index) {
+            return index == 1 ? RenderAntiAliasingMode::SMAA : RenderAntiAliasingMode::None;
+        }
+
         int lightingPresetToIndex(RenderLightingPreset preset) {
             return static_cast<int>(preset);
         }
@@ -212,6 +226,12 @@ namespace NexAur {
                 return RenderEffectDebugView::PostToneMap;
             case 13:
                 return RenderEffectDebugView::ColorGraded;
+            case 14:
+                return RenderEffectDebugView::SmaaEdgeMask;
+            case 15:
+                return RenderEffectDebugView::SmaaBlendWeight;
+            case 16:
+                return RenderEffectDebugView::SmaaOutput;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -248,6 +268,7 @@ namespace NexAur {
         drawLightingPresetSection(settings, changed);
         drawEffectsDebugSection(settings, changed);
         drawPostProcessSection(settings, changed);
+        drawAntiAliasingSection(settings, changed);
         drawAoSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
@@ -322,7 +343,10 @@ namespace NexAur {
                 "Point Shadow Map",
                 "Rect Shadow Map",
                 "Post Tone Map",
-                "Color Graded"
+                "Color Graded",
+                "SMAA Edge Mask",
+                "SMAA Blend Weight",
+                "SMAA Output"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -416,6 +440,11 @@ namespace NexAur {
         if (settings.effects_debug.view == RenderEffectDebugView::PostToneMap ||
             settings.effects_debug.view == RenderEffectDebugView::ColorGraded) {
             ImGui::TextDisabled("Post debug uses the current HDR, Bloom, AO and tone mapping inputs.");
+        }
+        if (settings.effects_debug.view == RenderEffectDebugView::SmaaEdgeMask ||
+            settings.effects_debug.view == RenderEffectDebugView::SmaaBlendWeight ||
+            settings.effects_debug.view == RenderEffectDebugView::SmaaOutput) {
+            ImGui::TextDisabled("SMAA debug can run the SMAA graph without changing the AA mode.");
         }
     }
 
@@ -606,6 +635,66 @@ namespace NexAur {
         });
 
         if (!settings.post_process.color_grading_enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawAntiAliasingSection(RenderSettings& settings, bool& changed) {
+        if (!EditorWidgets::sectionHeader("Anti-Aliasing")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Mode", [&]() {
+            const char* items[] = { "None", "SMAA" };
+            int index = antiAliasingModeToIndex(settings.anti_aliasing.mode);
+            setControlWidth();
+            if (ImGui::Combo("##AntiAliasingMode", &index, items, IM_ARRAYSIZE(items))) {
+                settings.anti_aliasing.mode = antiAliasingModeFromIndex(index);
+                changed = true;
+            }
+        });
+
+        if (settings.anti_aliasing.mode != RenderAntiAliasingMode::SMAA) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Edge Threshold", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##SmaaEdgeThreshold",
+                &settings.anti_aliasing.smaa_edge_threshold,
+                0.01f,
+                0.30f,
+                "%.3f");
+        });
+        EditorWidgets::propertyRow("Contrast Factor", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##SmaaContrastFactor",
+                &settings.anti_aliasing.smaa_contrast_factor,
+                0.25f,
+                6.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Search Steps", [&]() {
+            int steps = static_cast<int>(settings.anti_aliasing.smaa_max_search_steps);
+            setControlWidth();
+            if (ImGui::SliderInt("##SmaaSearchSteps", &steps, 1, 16)) {
+                settings.anti_aliasing.smaa_max_search_steps = static_cast<uint32_t>(std::max(1, steps));
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Blend Strength", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##SmaaBlendStrength",
+                &settings.anti_aliasing.smaa_blend_strength,
+                0.0f,
+                1.0f,
+                "%.2f");
+        });
+
+        if (settings.anti_aliasing.mode != RenderAntiAliasingMode::SMAA) {
             ImGui::EndDisabled();
         }
     }
