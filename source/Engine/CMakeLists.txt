@@ -306,6 +306,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/targets/vulkan_picking_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_point_shadow_target.h
     Function/Renderer/Vulkan/targets/vulkan_point_shadow_target.cpp
+    Function/Renderer/Vulkan/targets/vulkan_reflection_probe_capture_target.h
+    Function/Renderer/Vulkan/targets/vulkan_reflection_probe_capture_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_scene_color_target.h
     Function/Renderer/Vulkan/targets/vulkan_scene_color_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_ssr_target.h

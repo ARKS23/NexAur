@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 #include <vk_mem_alloc.h>
@@ -56,6 +57,11 @@ namespace NexAur {
         bool createFallback(
             const VulkanEnvironmentResourceCreateContext& context,
             const glm::vec3& color,
+            const VulkanEnvironmentResourceBuildSettings& settings);
+        bool createFromCubePixels(
+            const VulkanEnvironmentResourceCreateContext& context,
+            uint32_t cube_size,
+            const std::vector<float>& rgba_pixels,
             const VulkanEnvironmentResourceBuildSettings& settings);
         void reset();
 

@@ -132,6 +132,88 @@ namespace NexAur {
             mip.pixels[base + 3] = 1.0f;
         }
 
+        glm::vec3 readCubePixel(const CubeMipPixels& mip, uint32_t face, uint32_t x, uint32_t y) {
+            if (mip.size == 0 || mip.pixels.empty()) {
+                return glm::vec3{ 0.0f };
+            }
+
+            face = std::min(face, 5u);
+            x = std::min(x, mip.size - 1u);
+            y = std::min(y, mip.size - 1u);
+            const size_t base =
+                ((static_cast<size_t>(face) * mip.size * mip.size) +
+                 (static_cast<size_t>(y) * mip.size) +
+                 x) *
+                4u;
+            return glm::vec3{
+                std::max(0.0f, mip.pixels[base + 0]),
+                std::max(0.0f, mip.pixels[base + 1]),
+                std::max(0.0f, mip.pixels[base + 2])
+            };
+        }
+
+        glm::vec3 sampleCube(const CubeMipPixels& mip, const glm::vec3& direction) {
+            if (mip.size == 0 || mip.pixels.empty()) {
+                return glm::vec3{ 0.0f };
+            }
+
+            const glm::vec3 n = glm::normalize(direction);
+            const glm::vec3 a = glm::abs(n);
+            uint32_t face = 0;
+            float u = 0.0f;
+            float v = 0.0f;
+            if (a.x >= a.y && a.x >= a.z) {
+                if (n.x >= 0.0f) {
+                    face = 0;
+                    u = -n.z / a.x;
+                    v = -n.y / a.x;
+                } else {
+                    face = 1;
+                    u = n.z / a.x;
+                    v = -n.y / a.x;
+                }
+            } else if (a.y >= a.x && a.y >= a.z) {
+                if (n.y >= 0.0f) {
+                    face = 2;
+                    u = n.x / a.y;
+                    v = n.z / a.y;
+                } else {
+                    face = 3;
+                    u = n.x / a.y;
+                    v = -n.z / a.y;
+                }
+            } else {
+                if (n.z >= 0.0f) {
+                    face = 4;
+                    u = n.x / a.z;
+                    v = -n.y / a.z;
+                } else {
+                    face = 5;
+                    u = -n.x / a.z;
+                    v = -n.y / a.z;
+                }
+            }
+
+            const float x = (u * 0.5f + 0.5f) * static_cast<float>(mip.size - 1u);
+            const float y = (v * 0.5f + 0.5f) * static_cast<float>(mip.size - 1u);
+            const uint32_t x0 = static_cast<uint32_t>(std::clamp(
+                static_cast<int>(std::floor(x)),
+                0,
+                static_cast<int>(mip.size - 1u)));
+            const uint32_t y0 = static_cast<uint32_t>(std::clamp(
+                static_cast<int>(std::floor(y)),
+                0,
+                static_cast<int>(mip.size - 1u)));
+            const uint32_t x1 = std::min(x0 + 1u, mip.size - 1u);
+            const uint32_t y1 = std::min(y0 + 1u, mip.size - 1u);
+            const float fx = x - std::floor(x);
+            const float fy = y - std::floor(y);
+
+            const glm::vec3 top = glm::mix(readCubePixel(mip, face, x0, y0), readCubePixel(mip, face, x1, y0), fx);
+            const glm::vec3 bottom = glm::mix(readCubePixel(mip, face, x0, y1), readCubePixel(mip, face, x1, y1), fx);
+            return glm::mix(top, bottom, fy);
+        }
+
         void buildBasis(const glm::vec3& normal, glm::vec3& tangent, glm::vec3& bitangent) {
             const glm::vec3 helper = std::abs(normal.y) < 0.999f
                 ? glm::vec3{ 0.0f, 1.0f, 0.0f }
@@ -361,6 +443,144 @@ namespace NexAur {
                                 x,
                                 y,
                                 prefilterEnvironment(environment, direction, roughness));
+                        }
+                    }
+                }
+                mips.push_back(std::move(prefiltered_mip));
+            }
+
+            return mips;
+        }
+
+        CubeMipPixels generateEnvironmentCubeMipFromCube(const CubeMipPixels& source, uint32_t size) {
+            CubeMipPixels mip;
+            mip.size = size;
+            mip.pixels.resize(static_cast<size_t>(size) * size * 6u * 4u);
+
+            for (uint32_t face = 0; face < 6; ++face) {
+                for (uint32_t y = 0; y < size; ++y) {
+                    for (uint32_t x = 0; x < size; ++x) {
+                        const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                        const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                        const glm::vec3 direction = cubeDirection(face, u, v);
+                        writeCubePixel(mip, face, x, y, sampleCube(source, direction));
+                    }
+                }
+            }
+
+            return mip;
+        }
+
+        CubeMipPixels generateIrradianceMipFromCube(const CubeMipPixels& source, uint32_t size) {
+            constexpr float kSampleDelta = 0.35f;
+            CubeMipPixels mip;
+            mip.size = size;
+            mip.pixels.resize(static_cast<size_t>(size) * size * 6u * 4u);
+
+            for (uint32_t face = 0; face < 6; ++face) {
+                for (uint32_t y = 0; y < size; ++y) {
+                    for (uint32_t x = 0; x < size; ++x) {
+                        const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                        const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                        const glm::vec3 normal = cubeDirection(face, u, v);
+
+                        glm::vec3 right;
+                        glm::vec3 up;
+                        buildBasis(normal, right, up);
+
+                        glm::vec3 irradiance{ 0.0f };
+                        float sample_count = 0.0f;
+                        for (float phi = 0.0f; phi < 2.0f * kPi; phi += kSampleDelta) {
+                            for (float theta = 0.0f; theta < 0.5f * kPi; theta += kSampleDelta) {
+                                const float sin_theta = std::sin(theta);
+                                const float cos_theta = std::cos(theta);
+                                const glm::vec3 tangent_sample{
+                                    sin_theta * std::cos(phi),
+                                    sin_theta * std::sin(phi),
+                                    cos_theta
+                                };
+                                const glm::vec3 sample_direction = glm::normalize(
+                                    tangent_sample.x * right +
+                                    tangent_sample.y * up +
+                                    tangent_sample.z * normal);
+                                irradiance += sampleCube(source, sample_direction) * cos_theta * sin_theta;
+                                sample_count += 1.0f;
+                            }
+                        }
+
+                        const glm::vec3 color = sample_count > 0.0f
+                            ? kPi * irradiance / sample_count
+                            : sampleCube(source, normal);
+                        writeCubePixel(mip, face, x, y, color);
+                    }
+                }
+            }
+
+            return mip;
+        }
+
+        glm::vec3 prefilterCube(const CubeMipPixels& source, const glm::vec3& normal, float roughness) {
+            constexpr uint32_t kSampleCount = 32;
+            if (roughness <= 0.001f) {
+                return sampleCube(source, normal);
+            }
+
+            const glm::vec3 view_direction = normal;
+            glm::vec3 prefiltered{ 0.0f };
+            float total_weight = 0.0f;
+
+            for (uint32_t sample_index = 0; sample_index < kSampleCount; ++sample_index) {
+                const glm::vec2 xi = hammersley(sample_index, kSampleCount);
+                const glm::vec3 half_vector = importanceSampleGGX(xi, roughness, normal);
+                glm::vec3 light_direction =
+                    2.0f * glm::dot(view_direction, half_vector) * half_vector - view_direction;
+                if (glm::dot(light_direction, light_direction) <= 0.000001f) {
+                    continue;
+                }
+                light_direction = glm::normalize(light_direction);
+
+                const float n_dot_l = std::max(glm::dot(normal, light_direction), 0.0f);
+                if (n_dot_l <= 0.0f) {
+                    continue;
+                }
+
+                prefiltered += sampleCube(source, light_direction) * n_dot_l;
+                total_weight += n_dot_l;
+            }
+
+            return total_weight > 0.0f ? prefiltered / total_weight : sampleCube(source, normal);
+        }
+
+        std::vector<CubeMipPixels> generatePrefilterMipsFromCube(const CubeMipPixels& source, uint32_t base_size) {
+            const uint32_t mip_count = calculateMipCount(base_size);
+            std::vector<CubeMipPixels> mips;
+            mips.reserve(mip_count);
+
+            for (uint32_t mip = 0; mip < mip_count; ++mip) {
+                const uint32_t size = std::max(1u, base_size >> mip);
+                const float roughness = mip_count > 1
+                    ? static_cast<float>(mip) / static_cast<float>(mip_count - 1)
+                    : 0.0f;
+                if (mip == 0) {
+                    mips.push_back(generateEnvironmentCubeMipFromCube(source, size));
+                    continue;
+                }
+
+                CubeMipPixels prefiltered_mip;
+                prefiltered_mip.size = size;
+                prefiltered_mip.pixels.resize(static_cast<size_t>(size) * size * 6u * 4u);
+                for (uint32_t face = 0; face < 6; ++face) {
+                    for (uint32_t y = 0; y < size; ++y) {
+                        for (uint32_t x = 0; x < size; ++x) {
+                            const float u = (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                            const float v = (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(size)) - 1.0f;
+                            const glm::vec3 direction = cubeDirection(face, u, v);
+                            writeCubePixel(
+                                prefiltered_mip,
+                                face,
+                                x,
+                                y,
+                                prefilterCube(source, direction, roughness));
                         }
                     }
                 }
@@ -926,6 +1146,65 @@ namespace NexAur {
             settings.debug_name_override;
         EnvironmentMapAsset fallback = createSolidEnvironment(color, source_path);
         return create(context, fallback, settings);
+    }
+
+    bool VulkanEnvironmentResource::createFromCubePixels(
+        const VulkanEnvironmentResourceCreateContext& context,
+        uint32_t cube_size,
+        const std::vector<float>& rgba_pixels,
+        const VulkanEnvironmentResourceBuildSettings& settings) {
+        reset();
+
+        const size_t expected_value_count =
+            static_cast<size_t>(cube_size) *
+            static_cast<size_t>(cube_size) *
+            6u *
+            4u;
+        if (!context.valid() ||
+            cube_size == 0 ||
+            rgba_pixels.size() < expected_value_count) {
+            NX_CORE_ERROR("VulkanEnvironmentResource requires valid cube pixels for runtime environment creation.");
+            return false;
+        }
+
+        m_allocator = context.upload_context.allocator;
+        m_device = context.upload_context.device;
+        m_descriptor_allocator = context.descriptor_allocator;
+        m_descriptor_set_layout = context.descriptor_set_layout;
+        const VulkanEnvironmentResourceBuildSettings build_settings = sanitizeBuildSettings(settings);
+        m_debug_name = build_settings.debug_name_override.empty() ?
+            "RuntimeCubeEnvironment" :
+            build_settings.debug_name_override;
+        m_source_width = cube_size;
+        m_source_height = cube_size;
+
+        CubeMipPixels source_cube;
+        source_cube.size = cube_size;
+        source_cube.pixels.assign(rgba_pixels.begin(), rgba_pixels.begin() + expected_value_count);
+
+        std::vector<CubeMipPixels> environment_mips;
+        environment_mips.push_back(generateEnvironmentCubeMipFromCube(source_cube, build_settings.environment_size));
+        std::vector<CubeMipPixels> irradiance_mips;
+        irradiance_mips.push_back(generateIrradianceMipFromCube(source_cube, build_settings.irradiance_size));
+        std::vector<CubeMipPixels> prefilter_mips =
+            generatePrefilterMipsFromCube(source_cube, build_settings.prefilter_size);
+        const std::vector<float>& brdf_lut = generateBrdfLut(build_settings.brdf_lut_size);
+
+        if (!uploadCubeImage(context.upload_context, environment_mips, m_environment) ||
+            !uploadCubeImage(context.upload_context, irradiance_mips, m_irradiance) ||
+            !uploadCubeImage(context.upload_context, prefilter_mips, m_prefiltered) ||
+            !uploadImage2D(
+                context.upload_context,
+                build_settings.brdf_lut_size,
+                build_settings.brdf_lut_size,
+                brdf_lut,
+                m_brdf_lut) ||
+            !updateDescriptorSet()) {
+            reset();
+            return false;
+        }
+
+        return true;
     }
 
     void VulkanEnvironmentResource::reset() {

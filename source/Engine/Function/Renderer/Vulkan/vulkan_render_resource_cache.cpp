@@ -293,6 +293,28 @@ namespace NexAur {
         return environment_resource;
     }
 
+    std::unique_ptr<VulkanEnvironmentResource> VulkanRenderResourceCache::createRuntimeEnvironmentFromCubePixels(
+        uint32_t cube_size,
+        const std::vector<float>& rgba_pixels,
+        const VulkanEnvironmentResourceBuildSettings& settings) {
+        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+            NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
+            return nullptr;
+        }
+
+        auto environment_resource = std::make_unique<VulkanEnvironmentResource>();
+        if (!environment_resource->createFromCubePixels(
+                createEnvironmentContext(),
+                cube_size,
+                rgba_pixels,
+                settings)) {
+            NX_CORE_ERROR("Failed to create runtime reflection probe environment from captured cubemap.");
+            return nullptr;
+        }
+
+        return environment_resource;
+    }
+
     size_t VulkanRenderResourceCache::getMeshCount() const {
         size_t mesh_count = 0;
         for (const auto& [asset_handle, model_resource] : m_model_cache) {

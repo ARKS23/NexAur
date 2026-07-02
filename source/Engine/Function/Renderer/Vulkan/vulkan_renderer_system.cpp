@@ -34,6 +34,7 @@
 #include "Function/Renderer/Vulkan/targets/vulkan_bloom_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_picking_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_point_shadow_target.h"
+#include "Function/Renderer/Vulkan/targets/vulkan_reflection_probe_capture_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_scene_color_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_smaa_target.h"
@@ -313,6 +314,58 @@ namespace NexAur {
                 std::max(0.01f, near_plane),
                 safe_range);
             return toVulkanProjection(light_projection) * light_view;
+        }
+
+        RenderView buildReflectionProbeCaptureView(
+            const RenderFrameReflectionProbe& probe,
+            uint32_t face_index,
+            uint32_t resolution,
+            float near_clip,
+            float far_clip) {
+            constexpr std::array<glm::vec3, VulkanReflectionProbeCaptureTarget::kFaceCount> kFaceDirections{
+                glm::vec3{  1.0f,  0.0f,  0.0f },
+                glm::vec3{ -1.0f,  0.0f,  0.0f },
+                glm::vec3{  0.0f,  1.0f,  0.0f },
+                glm::vec3{  0.0f, -1.0f,  0.0f },
+                glm::vec3{  0.0f,  0.0f,  1.0f },
+                glm::vec3{  0.0f,  0.0f, -1.0f }
+            };
+            constexpr std::array<glm::vec3, VulkanReflectionProbeCaptureTarget::kFaceCount> kFaceUps{
+                glm::vec3{ 0.0f, -1.0f,  0.0f },
+                glm::vec3{ 0.0f, -1.0f,  0.0f },
+                glm::vec3{ 0.0f,  0.0f,  1.0f },
+                glm::vec3{ 0.0f,  0.0f, -1.0f },
+                glm::vec3{ 0.0f, -1.0f,  0.0f },
+                glm::vec3{ 0.0f, -1.0f,  0.0f }
+            };
+
+            const uint32_t safe_face =
+                std::min(face_index, VulkanReflectionProbeCaptureTarget::kFaceCount - 1u);
+            const float safe_near = sanitizeMin(near_clip, probe.capture_near_clip, 0.001f);
+            const float safe_far = std::max(
+                safe_near + 0.01f,
+                sanitizeMin(far_clip, probe.capture_far_clip, safe_near + 0.01f));
+
+            RenderView view;
+            view.viewport_width = std::max(1u, resolution);
+            view.viewport_height = std::max(1u, resolution);
+            view.near_clip = safe_near;
+            view.far_clip = safe_far;
+            view.camera_position = probe.position;
+            view.view_matrix = glm::lookAt(
+                probe.position,
+                probe.position + kFaceDirections[safe_face],
+                kFaceUps[safe_face]);
+            const glm::mat4 projection = glm::perspective(
+                glm::radians(90.0f),
+                1.0f,
+                safe_near,
+                safe_far);
+            view.projection_matrix = toVulkanProjection(projection);
+            view.view_projection_matrix = view.projection_matrix * view.view_matrix;
+            view.inverse_view_matrix = glm::inverse(view.view_matrix);
+            view.inverse_projection_matrix = glm::inverse(view.projection_matrix);
+            return view;
         }
 
         glm::mat4 buildRectShadowViewProjection(
@@ -809,6 +862,7 @@ namespace NexAur {
             rect_shadow_target.shutdown();
             point_shadow_target.shutdown();
             shadow_target.shutdown();
+            reflection_probe_capture_target.shutdown();
             picking_target.shutdown();
             smaa_target.shutdown();
             ssr_target.shutdown();
@@ -879,7 +933,7 @@ namespace NexAur {
 
             waitForInFlightFrame();
             pruneReflectionProbeCaptures(scene_frame);
-            processPendingReflectionProbeCapture(scene_frame);
+            processPendingReflectionProbeCapture(scene_frame, draw_list, render_data.render_settings);
             bindRuntimeReflectionProbeCapture(draw_list);
             enforceReflectionProbeResidentBudget(draw_list.active_reflection_probe.entity_id);
             drawFrame(draw_list, render_data.render_settings);
@@ -1208,7 +1262,475 @@ namespace NexAur {
             }
         }
 
-        void processPendingReflectionProbeCapture(const RenderSceneFrame& scene_frame) {
+        template<typename RecordCommands>
+        bool submitImmediateCommands(const char* operation, RecordCommands&& record_commands) {
+            if (device.device == VK_NULL_HANDLE ||
+                command_pool == VK_NULL_HANDLE ||
+                graphics_queue == VK_NULL_HANDLE) {
+                return false;
+            }
+
+            VkCommandBuffer immediate_command_buffer = VK_NULL_HANDLE;
+            VkFence immediate_fence = VK_NULL_HANDLE;
+
+            auto cleanup = [&]() {
+                if (immediate_fence != VK_NULL_HANDLE) {
+                    vkDestroyFence(device.device, immediate_fence, nullptr);
+                }
+                if (immediate_command_buffer != VK_NULL_HANDLE) {
+                    vkFreeCommandBuffers(device.device, command_pool, 1, &immediate_command_buffer);
+                }
+            };
+
+            VkCommandBufferAllocateInfo allocate_info{};
+            allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            allocate_info.commandPool = command_pool;
+            allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocate_info.commandBufferCount = 1;
+            if (!checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &immediate_command_buffer), "vkAllocateCommandBuffers(immediate)")) {
+                cleanup();
+                return false;
+            }
+
+            VkCommandBufferBeginInfo begin_info{};
+            begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            if (!checkVk(vkBeginCommandBuffer(immediate_command_buffer, &begin_info), "vkBeginCommandBuffer(immediate)")) {
+                cleanup();
+                return false;
+            }
+
+            if (!record_commands(immediate_command_buffer) ||
+                !checkVk(vkEndCommandBuffer(immediate_command_buffer), "vkEndCommandBuffer(immediate)")) {
+                cleanup();
+                return false;
+            }
+
+            VkFenceCreateInfo fence_info{};
+            fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            if (!checkVk(vkCreateFence(device.device, &fence_info, nullptr, &immediate_fence), "vkCreateFence(immediate)")) {
+                cleanup();
+                return false;
+            }
+
+            VkSubmitInfo submit_info{};
+            submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit_info.commandBufferCount = 1;
+            submit_info.pCommandBuffers = &immediate_command_buffer;
+            if (!checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, immediate_fence), operation) ||
+                !checkVk(vkWaitForFences(device.device, 1, &immediate_fence, VK_TRUE, UINT64_MAX), "vkWaitForFences(immediate)")) {
+                cleanup();
+                return false;
+            }
+
+            cleanup();
+            return true;
+        }
+
+        bool ensureReflectionProbeCaptureTarget(uint32_t resolution, std::string& error_message) {
+            resolution = sanitizeReflectionProbeCaptureResolution(resolution);
+            if (reflection_probe_capture_target.isReady() &&
+                reflection_probe_capture_target.getResolution() == resolution) {
+                return true;
+            }
+
+            if (device.device == VK_NULL_HANDLE ||
+                scene_color_format == VK_FORMAT_UNDEFINED ||
+                forward_pass.getDepthFormat() == VK_FORMAT_UNDEFINED) {
+                error_message = "Renderer was not ready to create reflection probe capture target.";
+                return false;
+            }
+
+            if (reflection_probe_capture_target.isReady()) {
+                vkDeviceWaitIdle(device.device);
+                if (!reflection_probe_capture_target.resize(resolution)) {
+                    error_message = "Failed to resize reflection probe capture target.";
+                    return false;
+                }
+                return true;
+            }
+
+            if (!reflection_probe_capture_target.init(
+                    createResourceContext(),
+                    scene_color_format,
+                    forward_pass.getDepthFormat(),
+                    resolution)) {
+                error_message = "Failed to create reflection probe capture target.";
+                return false;
+            }
+
+            return true;
+        }
+
+        void transitionDepthImageToAttachment(
+            VkCommandBuffer target_command_buffer,
+            VkImage image,
+            VkImageLayout old_layout,
+            uint32_t layer_count) {
+            VkAccessFlags src_access = 0;
+            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                src_access = VK_ACCESS_SHADER_READ_BIT;
+                src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            }
+
+            transitionImageLayout(
+                target_command_buffer,
+                image,
+                old_layout,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_DEPTH_BIT,
+                src_access,
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                src_stage,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                0,
+                layer_count);
+        }
+
+        void transitionDepthImageToShaderRead(
+            VkCommandBuffer target_command_buffer,
+            VkImage image,
+            VkImageLayout old_layout,
+            uint32_t layer_count) {
+            VkAccessFlags src_access = 0;
+            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (old_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+                src_access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                src_stage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            }
+
+            transitionImageLayout(
+                target_command_buffer,
+                image,
+                old_layout,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_ASPECT_DEPTH_BIT,
+                src_access,
+                VK_ACCESS_SHADER_READ_BIT,
+                src_stage,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                0,
+                layer_count);
+        }
+
+        void transitionCaptureColorToAttachment(VkCommandBuffer target_command_buffer) {
+            const VkImageLayout old_layout = reflection_probe_capture_target.getColorLayout();
+            VkAccessFlags src_access = 0;
+            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+                src_access = VK_ACCESS_TRANSFER_READ_BIT;
+                src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            } else if (old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+                src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            }
+
+            transitionImageLayout(
+                target_command_buffer,
+                reflection_probe_capture_target.getColorImage(),
+                old_layout,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                src_access,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                src_stage,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0,
+                VulkanReflectionProbeCaptureTarget::kFaceCount);
+            reflection_probe_capture_target.setColorLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        }
+
+        void transitionCaptureDepthToAttachment(VkCommandBuffer target_command_buffer) {
+            transitionDepthImageToAttachment(
+                target_command_buffer,
+                reflection_probe_capture_target.getDepthImage(),
+                reflection_probe_capture_target.getDepthLayout(),
+                1);
+            reflection_probe_capture_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        }
+
+        bool recordCaptureShadowMaps(
+            VkCommandBuffer target_command_buffer,
+            const VulkanDrawList& capture_draw_list,
+            const RenderShadowCascadeFrame& shadow_frame,
+            const RenderPointShadowFrame& point_shadow_frame,
+            const RenderRectShadowFrame& rect_shadow_frame,
+            const RenderSettings& capture_settings) {
+            if (shadow_target.isReady()) {
+                const bool directional_shadow_enabled =
+                    capture_settings.shadow.enabled &&
+                    capture_draw_list.directional_light.cast_shadow;
+                if (directional_shadow_enabled) {
+                    transitionDepthImageToAttachment(
+                        target_command_buffer,
+                        shadow_target.getDepthImage(),
+                        shadow_target.getDepthLayout(),
+                        shadow_target.getLayerCount());
+                    shadow_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+                    const uint32_t cascade_count = std::clamp(
+                        shadow_frame.cascade_count,
+                        1u,
+                        std::min(shadow_target.getLayerCount(), kMaxRenderShadowCascadeCount));
+                    for (uint32_t cascade_index = 0; cascade_index < cascade_count; ++cascade_index) {
+                        if (!shadow_pass.record(
+                                target_command_buffer,
+                                shadow_target.getRenderTarget(cascade_index),
+                                capture_draw_list,
+                                shadow_frame.light_view_projections[cascade_index])) {
+                            return false;
+                        }
+                    }
+                }
+
+                transitionDepthImageToShaderRead(
+                    target_command_buffer,
+                    shadow_target.getDepthImage(),
+                    shadow_target.getDepthLayout(),
+                    shadow_target.getLayerCount());
+                shadow_target.setDepthLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+
+            if (point_shadow_target.isReady()) {
+                if (point_shadow_frame.enabled && point_shadow_frame.face_count > 0) {
+                    transitionDepthImageToAttachment(
+                        target_command_buffer,
+                        point_shadow_target.getDepthImage(),
+                        point_shadow_target.getDepthLayout(),
+                        point_shadow_target.getLayerCount());
+                    point_shadow_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+                    const uint32_t face_count = std::min(
+                        point_shadow_frame.face_count,
+                        point_shadow_target.getLayerCount());
+                    for (uint32_t layer_index = 0; layer_index < face_count; ++layer_index) {
+                        if (!shadow_pass.record(
+                                target_command_buffer,
+                                point_shadow_target.getRenderTarget(layer_index),
+                                capture_draw_list,
+                                point_shadow_frame.light_view_projections[layer_index])) {
+                            return false;
+                        }
+                    }
+                }
+
+                transitionDepthImageToShaderRead(
+                    target_command_buffer,
+                    point_shadow_target.getDepthImage(),
+                    point_shadow_target.getDepthLayout(),
+                    point_shadow_target.getLayerCount());
+                point_shadow_target.setDepthLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+
+            if (rect_shadow_target.isReady()) {
+                if (rect_shadow_frame.enabled && rect_shadow_frame.shadowed_light_count > 0) {
+                    transitionDepthImageToAttachment(
+                        target_command_buffer,
+                        rect_shadow_target.getDepthImage(),
+                        rect_shadow_target.getDepthLayout(),
+                        rect_shadow_target.getLayerCount());
+                    rect_shadow_target.setDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+                    const uint32_t layer_count = std::min(
+                        rect_shadow_frame.shadowed_light_count,
+                        rect_shadow_target.getLayerCount());
+                    for (uint32_t layer_index = 0; layer_index < layer_count; ++layer_index) {
+                        if (!shadow_pass.record(
+                                target_command_buffer,
+                                rect_shadow_target.getRenderTarget(layer_index),
+                                capture_draw_list,
+                                rect_shadow_frame.light_view_projections[layer_index])) {
+                            return false;
+                        }
+                    }
+                }
+
+                transitionDepthImageToShaderRead(
+                    target_command_buffer,
+                    rect_shadow_target.getDepthImage(),
+                    rect_shadow_target.getDepthLayout(),
+                    rect_shadow_target.getLayerCount());
+                rect_shadow_target.setDepthLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+
+            return true;
+        }
+
+        VulkanForwardPassRenderOptions reflectionProbeClearOptions() const {
+            VulkanForwardPassRenderOptions options;
+            options.color_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            options.depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            options.color_clear_value.color.float32[0] = 0.0f;
+            options.color_clear_value.color.float32[1] = 0.0f;
+            options.color_clear_value.color.float32[2] = 0.0f;
+            options.color_clear_value.color.float32[3] = 1.0f;
+            options.depth_clear_value.depthStencil.depth = 1.0f;
+            options.depth_clear_value.depthStencil.stencil = 0;
+            return options;
+        }
+
+        bool recordReflectionProbeFace(
+            VkCommandBuffer target_command_buffer,
+            const VulkanDrawList& capture_draw_list,
+            uint32_t face_index,
+            bool include_skybox) {
+            transitionCaptureColorToAttachment(target_command_buffer);
+            transitionCaptureDepthToAttachment(target_command_buffer);
+
+            const VulkanRenderTarget face_target =
+                reflection_probe_capture_target.getFaceRenderTarget(face_index);
+            if (!face_target.valid()) {
+                return false;
+            }
+
+            VulkanForwardPassRenderOptions options = reflectionProbeClearOptions();
+            if (include_skybox) {
+                VulkanSkyboxRenderTarget skybox_target;
+                skybox_target.color_view = face_target.color_view;
+                skybox_target.color_format = face_target.color_format;
+                skybox_target.extent = face_target.extent;
+                if (!skybox_pass.record(
+                        target_command_buffer,
+                        skybox_target,
+                        capture_draw_list,
+                        resolveEnvironmentDescriptorSet(capture_draw_list))) {
+                    return false;
+                }
+                options = forwardAfterSkyboxOptions();
+            }
+
+            return forward_pass.record(
+                target_command_buffer,
+                face_target,
+                capture_draw_list,
+                frame_lighting_resource.getDescriptorSet(),
+                resolveEnvironmentDescriptorSet(capture_draw_list),
+                resolveReflectionProbeDescriptorSet(capture_draw_list),
+                options);
+        }
+
+        std::unique_ptr<VulkanEnvironmentResource> captureReflectionProbeScene(
+            const VulkanDrawList& source_draw_list,
+            const RenderFrameReflectionProbe& probe,
+            const ReflectionProbeCaptureRequest& request,
+            const RenderSettings& render_settings,
+            const VulkanEnvironmentResourceBuildSettings& build_settings,
+            std::string& error_message) {
+            const uint32_t resolution = sanitizeReflectionProbeCaptureResolution(request.resolution);
+            if (!ensureReflectionProbeCaptureTarget(resolution, error_message)) {
+                return nullptr;
+            }
+            if (!ensureShadowTarget(render_settings.shadow) ||
+                !ensurePointShadowTarget(render_settings.point_shadow) ||
+                !ensureRectShadowTarget(render_settings.rect_shadow)) {
+                error_message = "Failed to prepare shadow targets for reflection probe capture.";
+                return nullptr;
+            }
+
+            RenderSettings capture_settings = render_settings;
+            capture_settings.ibl_debug.mode = RenderIblDebugMode::FinalLit;
+            capture_settings.effects_debug.view = RenderEffectDebugView::FinalLit;
+            capture_settings.shadow.cascade_debug_overlay = false;
+
+            for (uint32_t face = 0; face < VulkanReflectionProbeCaptureTarget::kFaceCount; ++face) {
+                VulkanDrawList capture_draw_list = source_draw_list;
+                capture_draw_list.view = buildReflectionProbeCaptureView(
+                    probe,
+                    face,
+                    resolution,
+                    request.near_clip,
+                    request.far_clip);
+                capture_draw_list.active_reflection_probe = {};
+                capture_draw_list.debug_draw = {};
+
+                const RenderShadowCascadeFrame shadow_frame =
+                    buildDirectionalShadowFrame(capture_draw_list, capture_settings);
+                const RenderPointShadowFrame point_shadow_frame =
+                    buildPointShadowFrame(capture_draw_list, capture_settings);
+                const RenderRectShadowFrame rect_shadow_frame =
+                    buildRectShadowFrame(capture_draw_list, capture_settings);
+                if (!frame_lighting_resource.update(
+                        capture_draw_list,
+                        shadow_frame,
+                        point_shadow_frame,
+                        rect_shadow_frame,
+                        getShadowMapSize(),
+                        getPointShadowMapSize(),
+                        getRectShadowMapSize(),
+                        capture_settings)) {
+                    error_message = "Failed to update frame globals for reflection probe capture.";
+                    return nullptr;
+                }
+
+                const std::string operation =
+                    "vkQueueSubmit(reflection probe capture face " + std::to_string(face) + ")";
+                if (!submitImmediateCommands(
+                        operation.c_str(),
+                        [&](VkCommandBuffer target_command_buffer) {
+                            return recordCaptureShadowMaps(
+                                       target_command_buffer,
+                                       capture_draw_list,
+                                       shadow_frame,
+                                       point_shadow_frame,
+                                       rect_shadow_frame,
+                                       capture_settings) &&
+                                   recordReflectionProbeFace(
+                                       target_command_buffer,
+                                       capture_draw_list,
+                                       face,
+                                       request.include_skybox);
+                        })) {
+                    error_message = "Failed to render reflection probe cubemap face " + std::to_string(face) + ".";
+                    return nullptr;
+                }
+            }
+
+            if (!submitImmediateCommands(
+                    "vkQueueSubmit(reflection probe capture readback)",
+                    [&](VkCommandBuffer target_command_buffer) {
+                        transitionImageLayout(
+                            target_command_buffer,
+                            reflection_probe_capture_target.getColorImage(),
+                            reflection_probe_capture_target.getColorLayout(),
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_IMAGE_ASPECT_COLOR_BIT,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_TRANSFER_READ_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            0,
+                            VulkanReflectionProbeCaptureTarget::kFaceCount);
+                        reflection_probe_capture_target.setColorLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                        return reflection_probe_capture_target.recordCopyToReadback(target_command_buffer);
+                    })) {
+                error_message = "Failed to copy reflection probe cubemap to readback buffer.";
+                return nullptr;
+            }
+
+            std::vector<float> captured_pixels;
+            if (!reflection_probe_capture_target.readColorPixels(captured_pixels)) {
+                error_message = "Failed to read reflection probe cubemap pixels.";
+                return nullptr;
+            }
+
+            std::unique_ptr<VulkanEnvironmentResource> runtime_environment =
+                resource_cache.createRuntimeEnvironmentFromCubePixels(
+                    resolution,
+                    captured_pixels,
+                    build_settings);
+            if (!runtime_environment || !runtime_environment->isReady()) {
+                error_message = "Failed to create runtime reflection probe resource from scene capture.";
+                return nullptr;
+            }
+
+            return runtime_environment;
+        }
+
+        void processPendingReflectionProbeCapture(
+            const RenderSceneFrame& scene_frame,
+            const VulkanDrawList& draw_list,
+            const RenderSettings& render_settings) {
             uint32_t processed_count = 0;
             while (processed_count < kReflectionProbeCaptureBudgetPerFrame &&
                    !pending_reflection_probe_captures.empty()) {
@@ -1235,28 +1757,27 @@ namespace NexAur {
                     continue;
                 }
 
-                const AssetHandle source_environment =
-                    request.include_skybox ?
-                        (probe->environment_asset ? probe->environment_asset : scene_frame.environment_asset) :
-                        AssetHandle{};
-                const glm::vec3 fallback_color = request.include_skybox ?
-                    glm::max(scene_frame.environment_color * std::max(0.0f, scene_frame.ibl_intensity), glm::vec3{ 0.0f }) :
-                    glm::vec3{ 0.0f };
+                const VulkanEnvironmentResourceBuildSettings build_settings =
+                    buildRuntimeProbeBuildSettings(request);
+                std::string capture_error;
                 std::unique_ptr<VulkanEnvironmentResource> runtime_environment =
-                    resource_cache.createRuntimeEnvironment(
-                        source_environment,
-                        AssetManager::getInstance(),
-                        fallback_color,
-                        buildRuntimeProbeBuildSettings(request));
+                    captureReflectionProbeScene(
+                        draw_list,
+                        *probe,
+                        request,
+                        render_settings,
+                        build_settings,
+                        capture_error);
 
                 if (!runtime_environment || !runtime_environment->isReady()) {
-                    capture.environment.reset();
                     capture.baked_asset = AssetHandle{};
                     capture.state = buildCaptureState(
                         request,
                         ReflectionProbeCaptureStatus::Failed,
                         false,
-                        "Failed to create runtime reflection probe resource.");
+                        capture_error.empty() ?
+                            "Failed to capture runtime reflection probe from scene." :
+                            capture_error);
                     ++processed_count;
                     continue;
                 }
@@ -1278,8 +1799,8 @@ namespace NexAur {
                     ReflectionProbeCaptureStatus::Ready,
                     true,
                     request.kind == ReflectionProbeCaptureKind::Bake ?
-                        "Runtime bake ready." :
-                        "Runtime capture ready.");
+                        "Scene capture bake ready." :
+                        "Scene capture ready.");
                 capture.state.resolution = actual_resolution;
                 capture.state.generation = capture.generation;
                 capture.state.baked_asset = capture.baked_asset;
@@ -4141,7 +4662,10 @@ namespace NexAur {
             VkAccessFlags src_access_mask,
             VkAccessFlags dst_access_mask,
             VkPipelineStageFlags src_stage,
-            VkPipelineStageFlags dst_stage) {
+            VkPipelineStageFlags dst_stage,
+            uint32_t base_array_layer = 0,
+            uint32_t layer_count = 1,
+            uint32_t level_count = 1) {
             if (old_layout == new_layout) {
                 return;
             }
@@ -4157,9 +4681,9 @@ namespace NexAur {
             barrier.image = image;
             barrier.subresourceRange.aspectMask = aspect_mask;
             barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount = 1;
+            barrier.subresourceRange.levelCount = level_count;
+            barrier.subresourceRange.baseArrayLayer = base_array_layer;
+            barrier.subresourceRange.layerCount = layer_count;
 
             vkCmdPipelineBarrier(
                 target_command_buffer,
@@ -4334,6 +4858,7 @@ namespace NexAur {
         VulkanSsrTarget ssr_target;
         VulkanSmaaTarget smaa_target;
         VulkanPickingTarget picking_target;
+        VulkanReflectionProbeCaptureTarget reflection_probe_capture_target;
         VulkanShadowMapTarget shadow_target;
         VulkanPointShadowTarget point_shadow_target;
         VulkanShadowMapTarget rect_shadow_target;

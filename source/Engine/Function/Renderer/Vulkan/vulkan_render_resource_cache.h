@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -46,6 +47,10 @@ namespace NexAur {
             AssetHandle environment_asset,
             AssetManager& asset_manager,
             const glm::vec3& fallback_color,
+            const VulkanEnvironmentResourceBuildSettings& settings);
+        std::unique_ptr<VulkanEnvironmentResource> createRuntimeEnvironmentFromCubePixels(
+            uint32_t cube_size,
+            const std::vector<float>& rgba_pixels,
             const VulkanEnvironmentResourceBuildSettings& settings);
         VulkanTextureResource* getFallbackWhiteTexture() const { return m_fallback_white_texture.get(); }
         VulkanMaterialResource* getFallbackMaterial() const { return m_fallback_material.get(); }
