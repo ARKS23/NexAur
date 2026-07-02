@@ -21,6 +21,7 @@
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Editor/Camera/editor_camera.h"
+#include "Function/Scene/component.h"
 #include "Function/Scene/scene_serializer.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/UI/ui_system.h"
@@ -46,6 +47,8 @@ namespace NexAur {
 
         constexpr const char* kCommandSaveScene = "scene.save";
         constexpr const char* kCommandLoadScene = "scene.load";
+        constexpr const char* kCommandBakeReflectionProbes = "scene.reflection_probes.bake_all";
+        constexpr const char* kCommandBakeDirtyReflectionProbes = "scene.reflection_probes.bake_dirty";
         constexpr const char* kCommandShowProject = "panel.project.show";
         constexpr const char* kCommandShowConsole = "panel.console.show";
         constexpr const char* kCommandShowRenderSettings = "panel.render_settings.show";
@@ -194,6 +197,7 @@ namespace NexAur {
 
         // 每帧先刷新 EditorContext，再让面板和相机读取最新服务状态。
         syncPanelContext();
+        syncReflectionProbeCaptureStates();
         updateViewportCamera(delta_time);
 
         for (auto& panel : m_panels) {
@@ -327,6 +331,36 @@ namespace NexAur {
             [this]() { return m_context && m_context->scene_service && m_context->asset_manager; },
             {},
             [this]() { loadScene(); }
+        });
+
+        commands.registerCommand({
+            kCommandBakeReflectionProbes,
+            "Bake Reflection Probes",
+            "Queue every enabled reflection probe for runtime bake.",
+            "",
+            ImGuiKey_None,
+            [this]() {
+                return m_context &&
+                       m_context->active_scene &&
+                       m_context->renderer_service;
+            },
+            {},
+            [this]() { bakeReflectionProbes(false); }
+        });
+
+        commands.registerCommand({
+            kCommandBakeDirtyReflectionProbes,
+            "Bake Dirty Reflection Probes",
+            "Queue every dirty enabled reflection probe for runtime bake.",
+            "",
+            ImGuiKey_None,
+            [this]() {
+                return m_context &&
+                       m_context->active_scene &&
+                       m_context->renderer_service;
+            },
+            {},
+            [this]() { bakeReflectionProbes(true); }
         });
 
         commands.registerCommand({
@@ -535,6 +569,7 @@ namespace NexAur {
 
         drawFileMenu();
         drawEditMenu();
+        drawSceneMenu();
         drawProjectMenu();
         drawWindowMenu();
         drawHelpMenu();
@@ -621,6 +656,17 @@ namespace NexAur {
         ImGui::MenuItem("Undo", "Ctrl+Z");
         ImGui::MenuItem("Redo", "Ctrl+Y");
         ImGui::EndDisabled();
+
+        ImGui::EndMenu();
+    }
+
+    void EditorLayer::drawSceneMenu() {
+        if (!ImGui::BeginMenu("Scene")) {
+            return;
+        }
+
+        drawCommandMenuItem(kCommandBakeReflectionProbes);
+        drawCommandMenuItem(kCommandBakeDirtyReflectionProbes);
 
         ImGui::EndMenu();
     }
@@ -990,6 +1036,69 @@ namespace NexAur {
         syncPanelContext();
 
         NX_CORE_INFO("{}. Entity count: {}.", result.message, result.entity_count);
+    }
+
+    void EditorLayer::bakeReflectionProbes(bool dirty_only) {
+        if (!m_context || !m_context->active_scene || !m_context->renderer_service) {
+            NX_CORE_WARN("Bake Reflection Probes skipped: editor scene or renderer service is unavailable.");
+            return;
+        }
+
+        uint32_t queued_count = 0;
+        uint32_t skipped_count = 0;
+        auto view = m_context->active_scene->getRegistry().view<ReflectionProbeComponent>();
+        for (entt::entity entity : view) {
+            ReflectionProbeComponent& probe = view.get<ReflectionProbeComponent>(entity);
+            if (!probe.enabled || (dirty_only && !probe.capture_dirty)) {
+                ++skipped_count;
+                continue;
+            }
+
+            ReflectionProbeCaptureRequest request;
+            request.entity_id = static_cast<int>(static_cast<uint32_t>(entity));
+            request.resolution = std::clamp(probe.capture_resolution, 32u, 1024u);
+            request.priority = probe.capture_priority;
+            request.near_clip = std::max(0.001f, probe.capture_near_clip);
+            request.far_clip = std::max(probe.capture_far_clip, request.near_clip + 0.001f);
+            request.include_skybox = probe.capture_include_skybox;
+            request.kind = ReflectionProbeCaptureKind::Bake;
+
+            if (m_context->renderer_service->requestReflectionProbeCapture(request)) {
+                probe.capture_dirty = false;
+                ++queued_count;
+            } else {
+                ++skipped_count;
+            }
+        }
+
+        NX_CORE_INFO(
+            "Queued {} reflection probe bake request(s). Skipped {} probe(s).",
+            queued_count,
+            skipped_count);
+    }
+
+    void EditorLayer::syncReflectionProbeCaptureStates() {
+        if (!m_context || !m_context->active_scene || !m_context->renderer_service) {
+            return;
+        }
+
+        auto view = m_context->active_scene->getRegistry().view<ReflectionProbeComponent>();
+        for (entt::entity entity : view) {
+            ReflectionProbeComponent& probe = view.get<ReflectionProbeComponent>(entity);
+            const ReflectionProbeCaptureState state =
+                m_context->renderer_service->getReflectionProbeCaptureState(
+                    static_cast<int>(static_cast<uint32_t>(entity)));
+
+            if (state.status == ReflectionProbeCaptureStatus::Ready && state.runtime_resource_ready) {
+                probe.capture_dirty = false;
+                if (state.last_kind == ReflectionProbeCaptureKind::Bake && state.baked_asset) {
+                    probe.baked_environment_asset = state.baked_asset;
+                }
+            } else if (state.status == ReflectionProbeCaptureStatus::Failed &&
+                       state.last_kind == ReflectionProbeCaptureKind::Bake) {
+                probe.capture_dirty = true;
+            }
+        }
     }
 
     std::filesystem::path EditorLayer::getDefaultScenePath() const {

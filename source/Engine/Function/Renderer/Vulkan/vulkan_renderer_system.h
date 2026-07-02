@@ -32,7 +32,9 @@ namespace NexAur {
         ViewportOutput getViewportOutput() const override;
         ViewportPickResult pickViewport(const ViewportPickRequest& request) override;
         bool requestReflectionProbeCapture(const ReflectionProbeCaptureRequest& request) override;
+        bool clearReflectionProbeCapture(int entity_id) override;
         ReflectionProbeCaptureState getReflectionProbeCaptureState(int entity_id) const override;
+        ReflectionProbeCaptureQueueState getReflectionProbeCaptureQueueState() const override;
         void onUIContextInitialized() override;
         void beginUIFrame() override;
         void onUIContextShutdown() override;

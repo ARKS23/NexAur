@@ -42,6 +42,10 @@ namespace NexAur {
             ImGui::Text("%s: %u", label, value);
         }
 
+        void drawKeyValue(const char* label, int32_t value) {
+            ImGui::Text("%s: %d", label, value);
+        }
+
         void drawKeyValue(const char* label, size_t value) {
             ImGui::Text("%s: %zu", label, value);
         }
@@ -342,5 +346,10 @@ namespace NexAur {
         drawKeyValue("Probe Runtime", boolToText(snapshot.resources.active_reflection_probe_runtime));
         drawKeyValue("Probe Capture Size", snapshot.resources.active_reflection_probe_capture_resolution);
         drawKeyValue("Probe Capture Status", snapshot.resources.active_reflection_probe_capture_status.c_str());
+        drawKeyValue("Probe Capture Pending", snapshot.resources.reflection_probe_capture_pending_count);
+        drawKeyValue("Probe Capture Budget", snapshot.resources.reflection_probe_capture_budget_per_frame);
+        drawKeyValue("Runtime Probe Count", snapshot.resources.reflection_probe_runtime_capture_count);
+        drawKeyValue("Runtime Probe Limit", snapshot.resources.reflection_probe_runtime_capture_limit);
+        drawKeyValue("Last Captured Probe", snapshot.resources.reflection_probe_last_captured_entity_id);
     }
 } // namespace NexAur

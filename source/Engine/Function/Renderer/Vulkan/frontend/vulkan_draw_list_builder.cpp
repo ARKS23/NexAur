@@ -97,6 +97,23 @@ namespace NexAur {
             return best_probe;
         }
 
+        AssetHandle selectReflectionProbeEnvironmentAsset(
+            const RenderFrameReflectionProbe& probe,
+            const RenderSceneFrame& scene_frame,
+            const AssetManager& asset_manager) {
+            if (probe.baked_environment_asset) {
+                const AssetMetadata* metadata = asset_manager.getMetadata(probe.baked_environment_asset);
+                if (metadata &&
+                    metadata->type == AssetType::EnvironmentMap &&
+                    !metadata->runtime_generated &&
+                    !metadata->path.empty()) {
+                    return probe.baked_environment_asset;
+                }
+            }
+
+            return probe.environment_asset ? probe.environment_asset : scene_frame.environment_asset;
+        }
+
         VulkanActiveReflectionProbe buildActiveReflectionProbe(
             const RenderSceneFrame& scene_frame,
             VulkanRenderResourceCache& resource_cache,
@@ -110,9 +127,8 @@ namespace NexAur {
             }
 
             active_probe.enabled = true;
-            active_probe.environment_asset = selected_probe->environment_asset ?
-                selected_probe->environment_asset :
-                scene_frame.environment_asset;
+            active_probe.environment_asset =
+                selectReflectionProbeEnvironmentAsset(*selected_probe, scene_frame, asset_manager);
             active_probe.environment =
                 resource_cache.getOrCreateEnvironment(active_probe.environment_asset, asset_manager);
             active_probe.position = selected_probe->position;

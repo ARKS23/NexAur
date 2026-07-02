@@ -177,6 +177,7 @@ namespace NexAur {
         RenderFrameReflectionProbe buildReflectionProbe(const RendererReflectionProbeData& source) {
             RenderFrameReflectionProbe probe;
             probe.environment_asset = source.environment_asset;
+            probe.baked_environment_asset = source.baked_environment_asset;
             probe.position = isFinite(source.position) ? source.position : glm::vec3{ 0.0f };
             probe.box_extents = isFinite(source.box_extents)
                 ? glm::max(source.box_extents, glm::vec3{ 0.05f })
@@ -184,6 +185,7 @@ namespace NexAur {
             probe.intensity = sanitizeNonNegative(source.intensity, 1.0f);
             probe.blend_distance = sanitizeMin(source.blend_distance, 0.75f, 0.0f);
             probe.capture_resolution = std::clamp(source.capture_resolution, 32u, 1024u);
+            probe.capture_priority = source.capture_priority;
             probe.capture_near_clip = sanitizeMin(source.capture_near_clip, 0.1f, 0.001f);
             probe.capture_far_clip =
                 std::max(sanitizeMin(source.capture_far_clip, 40.0f, 0.01f), probe.capture_near_clip + 0.001f);

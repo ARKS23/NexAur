@@ -45,7 +45,7 @@ namespace NexAur {
             case ReflectionProbeCaptureStatus::Capturing:
                 return "Capturing";
             case ReflectionProbeCaptureStatus::Ready:
-                return "Ready";
+                return "Fresh";
             case ReflectionProbeCaptureStatus::Failed:
                 return "Failed";
             default:
@@ -346,6 +346,7 @@ namespace NexAur {
                     asset_manager->importEnvironmentMapAsset(s_environment_path_buffer.data());
                 if (imported) {
                     probe.environment_asset = imported;
+                    probe.capture_dirty = true;
                     s_last_asset_id = static_cast<uint64_t>(probe.environment_asset.id);
                 }
             }
@@ -364,6 +365,7 @@ namespace NexAur {
 
                 if (scene_environment) {
                     probe.environment_asset = scene_environment;
+                    probe.capture_dirty = true;
                     if (asset_manager) {
                         copyStringToBuffer(
                             asset_manager->getPath(probe.environment_asset),
@@ -379,6 +381,7 @@ namespace NexAur {
                 probe.environment_asset = AssetHandle();
                 s_environment_path_buffer.fill('\0');
                 s_last_asset_id = 0;
+                probe.capture_dirty = true;
             }
         });
 
@@ -399,6 +402,17 @@ namespace NexAur {
                 1024,
                 kFlags)) {
             probe.capture_resolution = static_cast<uint32_t>(std::clamp(capture_resolution, 32, 1024));
+            probe.capture_dirty = true;
+        }
+        int capture_priority = static_cast<int>(probe.capture_priority);
+        if (EditorPropertyDrawer::drawIntProperty(
+                "Capture Priority",
+                capture_priority,
+                1,
+                0,
+                100,
+                kFlags)) {
+            probe.capture_priority = static_cast<uint32_t>(std::clamp(capture_priority, 0, 100));
             probe.capture_dirty = true;
         }
         if (EditorPropertyDrawer::drawFloatProperty(
@@ -437,6 +451,15 @@ namespace NexAur {
         EditorPropertyDrawer::drawReadOnlyText(
             "Capture Status",
             std::string(reflectionProbeCaptureStatusText(capture_state.status)) + " - " + capture_state.message);
+        std::string baked_asset_text = "None";
+        if (probe.baked_environment_asset) {
+            const AssetMetadata* metadata =
+                asset_manager ? asset_manager->getMetadata(probe.baked_environment_asset) : nullptr;
+            baked_asset_text = metadata && !metadata->debug_name.empty() ?
+                metadata->debug_name :
+                std::to_string(static_cast<uint64_t>(probe.baked_environment_asset.id));
+        }
+        EditorPropertyDrawer::drawReadOnlyText("Baked Asset", baked_asset_text);
 
         EditorWidgets::propertyRow("Capture", [&]() {
             auto request_capture = [&](ReflectionProbeCaptureKind kind) {
@@ -447,6 +470,7 @@ namespace NexAur {
                 ReflectionProbeCaptureRequest request;
                 request.entity_id = probe_entity_id;
                 request.resolution = std::clamp(probe.capture_resolution, 32u, 1024u);
+                request.priority = probe.capture_priority;
                 request.near_clip = std::max(0.001f, probe.capture_near_clip);
                 request.far_clip = std::max(probe.capture_far_clip, request.near_clip + 0.001f);
                 request.include_skybox = probe.capture_include_skybox;
@@ -465,6 +489,21 @@ namespace NexAur {
             if (ImGui::Button("Bake Probe")) {
                 request_capture(ReflectionProbeCaptureKind::Bake);
             }
+            ImGui::SameLine();
+            const bool can_clear =
+                m_context &&
+                m_context->renderer_service &&
+                (capture_state.runtime_resource_ready || probe.baked_environment_asset);
+            ImGui::BeginDisabled(!can_clear);
+            if (ImGui::Button("Clear Baked Data")) {
+                const bool cleared_runtime =
+                    m_context->renderer_service->clearReflectionProbeCapture(probe_entity_id);
+                if (cleared_runtime || probe.baked_environment_asset) {
+                    probe.baked_environment_asset = AssetHandle();
+                    probe.capture_dirty = true;
+                }
+            }
+            ImGui::EndDisabled();
             ImGui::EndDisabled();
         });
     }

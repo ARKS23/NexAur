@@ -58,6 +58,7 @@ namespace NexAur {
         void drawMainToolbar();
         void drawFileMenu();
         void drawEditMenu();
+        void drawSceneMenu();
         void drawProjectMenu();
         void drawWindowMenu();
         void drawHelpMenu();
@@ -77,6 +78,8 @@ namespace NexAur {
         bool shouldBuildDefaultDockLayout(unsigned int dockspace_id) const;
         void saveActiveScene();
         void loadScene();
+        void bakeReflectionProbes(bool dirty_only);
+        void syncReflectionProbeCaptureStates();
         std::filesystem::path getDefaultScenePath() const;
         void syncPanelContext();
         void updateViewportCamera(TimeStep delta_time);

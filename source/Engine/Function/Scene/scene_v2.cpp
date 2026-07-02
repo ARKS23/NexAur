@@ -69,11 +69,13 @@ namespace NexAur {
             entt::entity entity) {
             RendererReflectionProbeData probe_data;
             probe_data.environment_asset = probe.getEnvironmentHandle();
+            probe_data.baked_environment_asset = probe.baked_environment_asset;
             probe_data.position = transform.translation;
             probe_data.box_extents = glm::max(probe.box_extents, glm::vec3{ 0.05f });
             probe_data.intensity = std::max(0.0f, probe.intensity);
             probe_data.blend_distance = std::max(0.0f, probe.blend_distance);
             probe_data.capture_resolution = std::clamp(probe.capture_resolution, 32u, 1024u);
+            probe_data.capture_priority = probe.capture_priority;
             probe_data.capture_near_clip = std::max(0.001f, probe.capture_near_clip);
             probe_data.capture_far_clip = std::max(probe.capture_far_clip, probe_data.capture_near_clip + 0.001f);
             probe_data.entity_id = static_cast<int>(entity);

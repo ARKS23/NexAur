@@ -61,10 +61,10 @@
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <limits>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace NexAur {
     namespace {
@@ -72,6 +72,8 @@ namespace NexAur {
         constexpr uint32_t kDefaultViewportHeight = 720;
         constexpr uint32_t kDefaultShadowMapResolution = 2048;
         constexpr uint32_t kRequiredVulkanApiVersion = VK_API_VERSION_1_3;
+        constexpr uint32_t kReflectionProbeCaptureBudgetPerFrame = 1;
+        constexpr uint32_t kMaxRuntimeReflectionProbeCaptures = 8;
 
         glm::mat4 toVulkanProjection(const glm::mat4& engine_projection) {
             glm::mat4 clip_transform{ 1.0f };
@@ -666,6 +668,9 @@ namespace NexAur {
         struct RuntimeReflectionProbeCapture {
             ReflectionProbeCaptureState state;
             std::unique_ptr<VulkanEnvironmentResource> environment;
+            AssetHandle baked_asset;
+            uint64_t generation = 0;
+            uint64_t last_used_frame = 0;
         };
 
         bool init(WindowService& service) {
@@ -799,7 +804,7 @@ namespace NexAur {
             skybox_pass.shutdown();
             shadow_pass.shutdown();
             object_id_pass.shutdown();
-            pending_reflection_probe_capture.reset();
+            pending_reflection_probe_captures.clear();
             reflection_probe_captures.clear();
             rect_shadow_target.shutdown();
             point_shadow_target.shutdown();
@@ -861,6 +866,7 @@ namespace NexAur {
                 updateDebugSnapshot(ts, render_data, nullptr, nullptr, nullptr, render_start_time);
                 return;
             }
+            ++render_frame_index;
 
             auto [render_width, render_height] = getViewportRenderExtent();
             translator.resetFrame();
@@ -875,6 +881,7 @@ namespace NexAur {
             pruneReflectionProbeCaptures(scene_frame);
             processPendingReflectionProbeCapture(scene_frame);
             bindRuntimeReflectionProbeCapture(draw_list);
+            enforceReflectionProbeResidentBudget(draw_list.active_reflection_probe.entity_id);
             drawFrame(draw_list, render_data.render_settings);
             updateDebugSnapshot(
                 ts,
@@ -1023,6 +1030,7 @@ namespace NexAur {
 
             ReflectionProbeCaptureRequest sanitized_request = request;
             sanitized_request.resolution = sanitizeReflectionProbeCaptureResolution(request.resolution);
+            sanitized_request.priority = std::min(request.priority, 100u);
             sanitized_request.near_clip = sanitizeMin(request.near_clip, 0.1f, 0.001f);
             sanitized_request.far_clip =
                 std::max(sanitizeMin(request.far_clip, 40.0f, 0.01f), sanitized_request.near_clip + 0.001f);
@@ -1033,9 +1041,19 @@ namespace NexAur {
                 sanitized_request,
                 ReflectionProbeCaptureStatus::Pending,
                 false,
-                "Pending manual reflection probe capture.");
-            pending_reflection_probe_capture = sanitized_request;
+                "Queued reflection probe capture.");
+            enqueueReflectionProbeCapture(sanitized_request);
             return true;
+        }
+
+        bool clearReflectionProbeCapture(int entity_id) {
+            if (entity_id < 0) {
+                return false;
+            }
+
+            const bool removed_pending = erasePendingReflectionProbeCapture(entity_id);
+            const bool removed_capture = reflection_probe_captures.erase(entity_id) > 0;
+            return removed_pending || removed_capture;
         }
 
         ReflectionProbeCaptureState getReflectionProbeCaptureState(int entity_id) const {
@@ -1047,6 +1065,20 @@ namespace NexAur {
             return capture_it != reflection_probe_captures.end() ?
                 capture_it->second.state :
                 ReflectionProbeCaptureState{};
+        }
+
+        ReflectionProbeCaptureQueueState getReflectionProbeCaptureQueueState() const {
+            ReflectionProbeCaptureQueueState state;
+            state.pending_count = static_cast<uint32_t>(pending_reflection_probe_captures.size());
+            state.capture_budget_per_frame = kReflectionProbeCaptureBudgetPerFrame;
+            state.resident_capture_count = countResidentReflectionProbeCaptures();
+            state.resident_capture_limit = kMaxRuntimeReflectionProbeCaptures;
+            state.last_captured_entity_id = last_captured_reflection_probe_entity_id;
+            state.last_captured_generation = reflection_probe_capture_generation;
+            state.message = state.pending_count > 0 ?
+                "Reflection probe captures queued." :
+                "Reflection probe capture queue idle.";
+            return state;
         }
 
     private:
@@ -1108,14 +1140,65 @@ namespace NexAur {
             return settings;
         }
 
+        void enqueueReflectionProbeCapture(const ReflectionProbeCaptureRequest& request) {
+            auto existing_request = std::find_if(
+                pending_reflection_probe_captures.begin(),
+                pending_reflection_probe_captures.end(),
+                [&](const ReflectionProbeCaptureRequest& queued_request) {
+                    return queued_request.entity_id == request.entity_id;
+                });
+            if (existing_request != pending_reflection_probe_captures.end()) {
+                *existing_request = request;
+            } else {
+                pending_reflection_probe_captures.push_back(request);
+            }
+
+            std::stable_sort(
+                pending_reflection_probe_captures.begin(),
+                pending_reflection_probe_captures.end(),
+                [](const ReflectionProbeCaptureRequest& lhs, const ReflectionProbeCaptureRequest& rhs) {
+                    return lhs.priority > rhs.priority;
+                });
+        }
+
+        bool erasePendingReflectionProbeCapture(int entity_id) {
+            const auto old_size = pending_reflection_probe_captures.size();
+            pending_reflection_probe_captures.erase(
+                std::remove_if(
+                    pending_reflection_probe_captures.begin(),
+                    pending_reflection_probe_captures.end(),
+                    [entity_id](const ReflectionProbeCaptureRequest& request) {
+                        return request.entity_id == entity_id;
+                    }),
+                pending_reflection_probe_captures.end());
+            return pending_reflection_probe_captures.size() != old_size;
+        }
+
+        bool hasPendingReflectionProbeCapture(int entity_id) const {
+            return std::any_of(
+                pending_reflection_probe_captures.begin(),
+                pending_reflection_probe_captures.end(),
+                [entity_id](const ReflectionProbeCaptureRequest& request) {
+                    return request.entity_id == entity_id;
+                });
+        }
+
+        uint32_t countResidentReflectionProbeCaptures() const {
+            uint32_t count = 0;
+            for (const auto& [entity_id, capture] : reflection_probe_captures) {
+                (void)entity_id;
+                if (capture.environment && capture.environment->isReady()) {
+                    ++count;
+                }
+            }
+            return count;
+        }
+
         void pruneReflectionProbeCaptures(const RenderSceneFrame& scene_frame) {
-            const int pending_entity_id = pending_reflection_probe_capture ?
-                pending_reflection_probe_capture->entity_id :
-                -1;
             for (auto capture_it = reflection_probe_captures.begin();
                  capture_it != reflection_probe_captures.end();) {
                 const int entity_id = capture_it->first;
-                if (entity_id != pending_entity_id &&
+                if (!hasPendingReflectionProbeCapture(entity_id) &&
                     findReflectionProbe(scene_frame, entity_id) == nullptr) {
                     capture_it = reflection_probe_captures.erase(capture_it);
                     continue;
@@ -1126,68 +1209,86 @@ namespace NexAur {
         }
 
         void processPendingReflectionProbeCapture(const RenderSceneFrame& scene_frame) {
-            if (!pending_reflection_probe_capture) {
-                return;
-            }
+            uint32_t processed_count = 0;
+            while (processed_count < kReflectionProbeCaptureBudgetPerFrame &&
+                   !pending_reflection_probe_captures.empty()) {
+                ReflectionProbeCaptureRequest request = pending_reflection_probe_captures.front();
+                pending_reflection_probe_captures.erase(pending_reflection_probe_captures.begin());
 
-            ReflectionProbeCaptureRequest request = *pending_reflection_probe_capture;
-            pending_reflection_probe_capture.reset();
-
-            RuntimeReflectionProbeCapture& capture = reflection_probe_captures[request.entity_id];
-            capture.state = buildCaptureState(
-                request,
-                ReflectionProbeCaptureStatus::Capturing,
-                false,
-                "Capturing runtime reflection probe.");
-
-            const RenderFrameReflectionProbe* probe = findReflectionProbe(scene_frame, request.entity_id);
-            if (!probe) {
-                capture.environment.reset();
+                RuntimeReflectionProbeCapture& capture = reflection_probe_captures[request.entity_id];
                 capture.state = buildCaptureState(
                     request,
-                    ReflectionProbeCaptureStatus::Failed,
+                    ReflectionProbeCaptureStatus::Capturing,
                     false,
-                    "Probe was not present in the current render frame.");
-                return;
-            }
+                    "Capturing runtime reflection probe.");
 
-            const AssetHandle source_environment =
-                request.include_skybox ?
-                    (probe->environment_asset ? probe->environment_asset : scene_frame.environment_asset) :
+                const RenderFrameReflectionProbe* probe = findReflectionProbe(scene_frame, request.entity_id);
+                if (!probe) {
+                    capture.environment.reset();
+                    capture.baked_asset = AssetHandle{};
+                    capture.state = buildCaptureState(
+                        request,
+                        ReflectionProbeCaptureStatus::Failed,
+                        false,
+                        "Probe was not present in the current render frame.");
+                    ++processed_count;
+                    continue;
+                }
+
+                const AssetHandle source_environment =
+                    request.include_skybox ?
+                        (probe->environment_asset ? probe->environment_asset : scene_frame.environment_asset) :
+                        AssetHandle{};
+                const glm::vec3 fallback_color = request.include_skybox ?
+                    glm::max(scene_frame.environment_color * std::max(0.0f, scene_frame.ibl_intensity), glm::vec3{ 0.0f }) :
+                    glm::vec3{ 0.0f };
+                std::unique_ptr<VulkanEnvironmentResource> runtime_environment =
+                    resource_cache.createRuntimeEnvironment(
+                        source_environment,
+                        AssetManager::getInstance(),
+                        fallback_color,
+                        buildRuntimeProbeBuildSettings(request));
+
+                if (!runtime_environment || !runtime_environment->isReady()) {
+                    capture.environment.reset();
+                    capture.baked_asset = AssetHandle{};
+                    capture.state = buildCaptureState(
+                        request,
+                        ReflectionProbeCaptureStatus::Failed,
+                        false,
+                        "Failed to create runtime reflection probe resource.");
+                    ++processed_count;
+                    continue;
+                }
+
+                const uint32_t actual_resolution = runtime_environment->getEnvironmentSize();
+                capture.environment = std::move(runtime_environment);
+                capture.generation = ++reflection_probe_capture_generation;
+                capture.last_used_frame = render_frame_index;
+                capture.baked_asset = request.kind == ReflectionProbeCaptureKind::Bake ?
+                    AssetManager::getInstance().registerRuntimeAsset(
+                        AssetType::EnvironmentMap,
+                        "BakedReflectionProbe." +
+                            std::to_string(request.entity_id) +
+                            ".g" +
+                            std::to_string(capture.generation)) :
                     AssetHandle{};
-            const glm::vec3 fallback_color = request.include_skybox ?
-                glm::max(scene_frame.environment_color * std::max(0.0f, scene_frame.ibl_intensity), glm::vec3{ 0.0f }) :
-                glm::vec3{ 0.0f };
-            std::unique_ptr<VulkanEnvironmentResource> runtime_environment =
-                resource_cache.createRuntimeEnvironment(
-                    source_environment,
-                    AssetManager::getInstance(),
-                    fallback_color,
-                    buildRuntimeProbeBuildSettings(request));
-
-            if (!runtime_environment || !runtime_environment->isReady()) {
-                capture.environment.reset();
                 capture.state = buildCaptureState(
                     request,
-                    ReflectionProbeCaptureStatus::Failed,
-                    false,
-                    "Failed to create runtime reflection probe resource.");
-                return;
+                    ReflectionProbeCaptureStatus::Ready,
+                    true,
+                    request.kind == ReflectionProbeCaptureKind::Bake ?
+                        "Runtime bake ready." :
+                        "Runtime capture ready.");
+                capture.state.resolution = actual_resolution;
+                capture.state.generation = capture.generation;
+                capture.state.baked_asset = capture.baked_asset;
+                last_captured_reflection_probe_entity_id = request.entity_id;
+                ++processed_count;
             }
-
-            const uint32_t actual_resolution = runtime_environment->getEnvironmentSize();
-            capture.environment = std::move(runtime_environment);
-            capture.state = buildCaptureState(
-                request,
-                ReflectionProbeCaptureStatus::Ready,
-                true,
-                request.kind == ReflectionProbeCaptureKind::Bake ?
-                    "Runtime bake ready." :
-                    "Runtime capture ready.");
-            capture.state.resolution = actual_resolution;
         }
 
-        void bindRuntimeReflectionProbeCapture(VulkanDrawList& draw_list) const {
+        void bindRuntimeReflectionProbeCapture(VulkanDrawList& draw_list) {
             VulkanActiveReflectionProbe& active_probe = draw_list.active_reflection_probe;
             if (!active_probe.enabled || active_probe.entity_id < 0) {
                 return;
@@ -1206,6 +1307,38 @@ namespace NexAur {
             active_probe.environment = runtime_environment;
             active_probe.using_runtime_capture = true;
             active_probe.prefilter_mip_count = runtime_environment->getPrefilterMipCount();
+            capture_it->second.last_used_frame = render_frame_index;
+        }
+
+        void enforceReflectionProbeResidentBudget(int protected_entity_id) {
+            while (countResidentReflectionProbeCaptures() > kMaxRuntimeReflectionProbeCaptures) {
+                auto evict_it = reflection_probe_captures.end();
+                for (auto capture_it = reflection_probe_captures.begin();
+                     capture_it != reflection_probe_captures.end();
+                     ++capture_it) {
+                    const int entity_id = capture_it->first;
+                    const RuntimeReflectionProbeCapture& capture = capture_it->second;
+                    if (entity_id == protected_entity_id ||
+                        hasPendingReflectionProbeCapture(entity_id) ||
+                        !capture.environment ||
+                        !capture.environment->isReady()) {
+                        continue;
+                    }
+
+                    if (evict_it == reflection_probe_captures.end() ||
+                        capture.last_used_frame < evict_it->second.last_used_frame ||
+                        (capture.last_used_frame == evict_it->second.last_used_frame &&
+                         capture.generation < evict_it->second.generation)) {
+                        evict_it = capture_it;
+                    }
+                }
+
+                if (evict_it == reflection_probe_captures.end()) {
+                    return;
+                }
+
+                reflection_probe_captures.erase(evict_it);
+            }
         }
 
         void updateDebugSnapshot(
@@ -1640,6 +1773,12 @@ namespace NexAur {
                     }
                 }
             }
+            stats.reflection_probe_capture_pending_count =
+                static_cast<uint32_t>(pending_reflection_probe_captures.size());
+            stats.reflection_probe_capture_budget_per_frame = kReflectionProbeCaptureBudgetPerFrame;
+            stats.reflection_probe_runtime_capture_count = countResidentReflectionProbeCaptures();
+            stats.reflection_probe_runtime_capture_limit = kMaxRuntimeReflectionProbeCaptures;
+            stats.reflection_probe_last_captured_entity_id = last_captured_reflection_probe_entity_id;
             return stats;
         }
 
@@ -4199,8 +4338,11 @@ namespace NexAur {
         VulkanPointShadowTarget point_shadow_target;
         VulkanShadowMapTarget rect_shadow_target;
         VulkanImGuiRenderer imgui_renderer;
-        std::optional<ReflectionProbeCaptureRequest> pending_reflection_probe_capture;
+        std::vector<ReflectionProbeCaptureRequest> pending_reflection_probe_captures;
         std::unordered_map<int, RuntimeReflectionProbeCapture> reflection_probe_captures;
+        uint64_t render_frame_index = 0;
+        uint64_t reflection_probe_capture_generation = 0;
+        int last_captured_reflection_probe_entity_id = -1;
         RendererDebugSnapshot debug_snapshot;
     };
 
@@ -4245,8 +4387,16 @@ namespace NexAur {
         return m_backend ? m_backend->requestReflectionProbeCapture(request) : false;
     }
 
+    bool VulkanRendererSystem::clearReflectionProbeCapture(int entity_id) {
+        return m_backend ? m_backend->clearReflectionProbeCapture(entity_id) : false;
+    }
+
     ReflectionProbeCaptureState VulkanRendererSystem::getReflectionProbeCaptureState(int entity_id) const {
         return m_backend ? m_backend->getReflectionProbeCaptureState(entity_id) : ReflectionProbeCaptureState{};
+    }
+
+    ReflectionProbeCaptureQueueState VulkanRendererSystem::getReflectionProbeCaptureQueueState() const {
+        return m_backend ? m_backend->getReflectionProbeCaptureQueueState() : ReflectionProbeCaptureQueueState{};
     }
 
     void VulkanRendererSystem::onUIContextInitialized() {

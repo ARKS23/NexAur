@@ -206,6 +206,36 @@ namespace NexAur {
             }
         }
 
+        AssetHandle importOptionalGeneratedAssetReference(
+            const json& asset,
+            AssetType expected_type,
+            AssetManager& asset_manager) {
+            if (!asset.is_object()) {
+                return AssetHandle();
+            }
+
+            const std::string path = asset.value("path", "");
+            if (!path.empty()) {
+                return importAssetReference(asset, expected_type, asset_manager);
+            }
+
+            if (!asset.value("runtime_generated", false)) {
+                return AssetHandle();
+            }
+
+            const AssetType serialized_type = readAssetType(asset);
+            if (serialized_type != AssetType::Unknown && serialized_type != expected_type) {
+                NX_CORE_WARN(
+                    "Scene generated asset reference type mismatch. Expected {}, got {}.",
+                    assetTypeToString(expected_type),
+                    assetTypeToString(serialized_type));
+            }
+
+            const std::string debug_name =
+                asset.value("debug_name", std::string(assetTypeToString(expected_type)));
+            return asset_manager.registerRuntimeAsset(expected_type, debug_name);
+        }
+
         json writeTagComponent(const TagComponent& tag) {
             return json{ { "name", tag.name } };
         }
@@ -271,10 +301,12 @@ namespace NexAur {
             const AssetManager& asset_manager) {
             return json{
                 { "environment", writeAssetReference(probe.getEnvironmentHandle(), asset_manager) },
+                { "baked_environment", writeAssetReference(probe.baked_environment_asset, asset_manager) },
                 { "box_extents", writeVec3(probe.box_extents) },
                 { "intensity", probe.intensity },
                 { "blend_distance", probe.blend_distance },
                 { "capture_resolution", probe.capture_resolution },
+                { "capture_priority", probe.capture_priority },
                 { "capture_near_clip", probe.capture_near_clip },
                 { "capture_far_clip", probe.capture_far_clip },
                 { "enabled", probe.enabled },
@@ -426,6 +458,10 @@ namespace NexAur {
                 component.value("environment", json::object()),
                 AssetType::EnvironmentMap,
                 asset_manager);
+            probe.baked_environment_asset = importOptionalGeneratedAssetReference(
+                component.value("baked_environment", json::object()),
+                AssetType::EnvironmentMap,
+                asset_manager);
             probe.box_extents = glm::max(
                 readVec3(component.value("box_extents", json::array()), probe.box_extents),
                 glm::vec3{ 0.05f });
@@ -433,6 +469,7 @@ namespace NexAur {
             probe.blend_distance = component.value("blend_distance", probe.blend_distance);
             probe.capture_resolution =
                 std::clamp(component.value("capture_resolution", probe.capture_resolution), 32u, 1024u);
+            probe.capture_priority = component.value("capture_priority", probe.capture_priority);
             probe.capture_near_clip =
                 std::max(0.001f, component.value("capture_near_clip", probe.capture_near_clip));
             probe.capture_far_clip =

@@ -26,8 +26,15 @@ namespace NexAur {
             (void)request;
             return false;
         }
+        virtual bool clearReflectionProbeCapture(int entity_id) {
+            (void)entity_id;
+            return false;
+        }
         virtual ReflectionProbeCaptureState getReflectionProbeCaptureState(int entity_id) const {
             (void)entity_id;
+            return {};
+        }
+        virtual ReflectionProbeCaptureQueueState getReflectionProbeCaptureQueueState() const {
             return {};
         }
 

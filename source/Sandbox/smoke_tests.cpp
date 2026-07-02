@@ -809,10 +809,15 @@ bool configureDefaultReflectionProbe(const std::shared_ptr<NexAur::SceneV2>& sce
     NexAur::Entity entity = scene->createEntity("ReflectionProbe");
     auto& probe = entity.addComponent<NexAur::ReflectionProbeComponent>();
     probe.environment_asset = findDefaultEnvironmentHandle(scene);
+    probe.baked_environment_asset =
+        NexAur::AssetManager::getInstance().registerRuntimeAsset(
+            NexAur::AssetType::EnvironmentMap,
+            "ReflectionProbeSmoke.BakedEnvironment");
     probe.box_extents = glm::vec3{ 3.5f, 2.25f, 4.25f };
     probe.intensity = 1.35f;
     probe.blend_distance = 0.55f;
     probe.capture_resolution = 256u;
+    probe.capture_priority = 37u;
     probe.capture_near_clip = 0.05f;
     probe.capture_far_clip = 22.0f;
     probe.enabled = true;
@@ -846,10 +851,12 @@ bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene
                nearlyEqual(probe.intensity, 1.35f) &&
                nearlyEqual(probe.blend_distance, 0.55f) &&
                probe.capture_resolution == 256u &&
+               probe.capture_priority == 37u &&
                nearlyEqual(probe.capture_near_clip, 0.05f) &&
                nearlyEqual(probe.capture_far_clip, 22.0f) &&
                probe.enabled &&
                probe.box_projection &&
+               probe.baked_environment_asset &&
                !probe.capture_include_skybox &&
                !probe.capture_dirty &&
                nearlyEqual(transform.translation.x, 0.5f) &&
@@ -1611,8 +1618,13 @@ int runRenderSettingsSmoke() {
     active_probe.intensity = 1.4f;
     active_probe.blend_distance = 0.6f;
     active_probe.capture_resolution = 256u;
+    active_probe.capture_priority = 75u;
     active_probe.capture_near_clip = 0.05f;
     active_probe.capture_far_clip = 18.0f;
+    active_probe.baked_environment_asset =
+        NexAur::AssetManager::getInstance().registerRuntimeAsset(
+            NexAur::AssetType::EnvironmentMap,
+            "RenderSettingsSmoke.BakedProbe");
     active_probe.entity_id = 41;
     active_probe.enabled = true;
     active_probe.box_projection = true;
@@ -1670,8 +1682,10 @@ int runRenderSettingsSmoke() {
         nearlyEqual(cornell_frame.reflection_probes.front().intensity, 1.4f) &&
         nearlyEqual(cornell_frame.reflection_probes.front().blend_distance, 0.6f) &&
         cornell_frame.reflection_probes.front().capture_resolution == 256u &&
+        cornell_frame.reflection_probes.front().capture_priority == 75u &&
         nearlyEqual(cornell_frame.reflection_probes.front().capture_near_clip, 0.05f) &&
         nearlyEqual(cornell_frame.reflection_probes.front().capture_far_clip, 18.0f) &&
+        cornell_frame.reflection_probes.front().baked_environment_asset &&
         cornell_frame.reflection_probes.front().entity_id == 41 &&
         cornell_frame.reflection_probes.front().box_projection &&
         !cornell_frame.reflection_probes.front().capture_include_skybox &&

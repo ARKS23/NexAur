@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Core/Base.h"
+#include "Function/Resource/asset_handle.h"
 
 namespace NexAur {
     enum class RendererBackendType {
@@ -65,6 +66,7 @@ namespace NexAur {
     struct NEXAUR_API ReflectionProbeCaptureRequest {
         int entity_id = -1;
         uint32_t resolution = 128;
+        uint32_t priority = 0;
         float near_clip = 0.1f;
         float far_clip = 40.0f;
         bool include_skybox = true;
@@ -74,9 +76,21 @@ namespace NexAur {
     struct NEXAUR_API ReflectionProbeCaptureState {
         ReflectionProbeCaptureStatus status = ReflectionProbeCaptureStatus::Idle;
         uint32_t resolution = 0;
+        uint64_t generation = 0;
         bool runtime_resource_ready = false;
         bool include_skybox = true;
+        AssetHandle baked_asset;
         ReflectionProbeCaptureKind last_kind = ReflectionProbeCaptureKind::Capture;
+        std::string message = "Idle";
+    };
+
+    struct NEXAUR_API ReflectionProbeCaptureQueueState {
+        uint32_t pending_count = 0;
+        uint32_t capture_budget_per_frame = 0;
+        uint32_t resident_capture_count = 0;
+        uint32_t resident_capture_limit = 0;
+        int last_captured_entity_id = -1;
+        uint64_t last_captured_generation = 0;
         std::string message = "Idle";
     };
 } // namespace NexAur
