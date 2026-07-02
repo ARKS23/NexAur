@@ -252,6 +252,13 @@ namespace NexAur {
         ImGui::Text("Rect Shadow Normal Bias: %.4f", snapshot.effects.rect_shadow_normal_bias);
         ImGui::Text("Rect Shadow Filter: %.2f", snapshot.effects.rect_shadow_filter_radius);
         ImGui::Text("Rect Shadow Margin: %.2f", snapshot.effects.rect_shadow_projection_margin);
+        drawKeyValue("Rect Soft Shadow", boolToText(snapshot.effects.rect_shadow_soft_enabled));
+        ImGui::Text("Rect PCSS Light: %.2f", snapshot.effects.rect_shadow_pcss_light_radius);
+        ImGui::Text("Rect PCSS Search: %.2f", snapshot.effects.rect_shadow_pcss_search_radius);
+        ImGui::Text("Rect PCSS Min: %.2f", snapshot.effects.rect_shadow_pcss_min_filter_radius);
+        ImGui::Text("Rect PCSS Max: %.2f", snapshot.effects.rect_shadow_pcss_max_filter_radius);
+        drawKeyValue("Rect PCSS Blocker Taps", snapshot.effects.rect_shadow_pcss_blocker_taps);
+        drawKeyValue("Rect PCSS Filter Taps", snapshot.effects.rect_shadow_pcss_filter_taps);
         drawKeyValue("Rect LTC Specular", boolToText(snapshot.effects.rect_ltc_specular_enabled));
         drawKeyValue("Rect LTC Only", boolToText(snapshot.effects.rect_ltc_debug_only));
         ImGui::Text("Rect LTC Scale: %.2f", snapshot.effects.rect_ltc_specular_scale);

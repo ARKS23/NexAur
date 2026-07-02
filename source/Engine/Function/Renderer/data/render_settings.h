@@ -163,6 +163,13 @@ namespace NexAur {
         float normal_bias = 0.02f;
         float filter_radius = 1.0f;
         float projection_margin = 0.35f;
+        bool soft_shadow_enabled = true;
+        float pcss_light_radius = 0.75f;
+        float pcss_search_radius = 3.0f;
+        float pcss_min_filter_radius = 0.5f;
+        float pcss_max_filter_radius = 5.0f;
+        uint32_t pcss_blocker_taps = 8;
+        uint32_t pcss_filter_taps = 16;
     };
 
     struct RenderRectLightSettings {

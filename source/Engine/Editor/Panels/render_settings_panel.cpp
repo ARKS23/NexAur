@@ -866,6 +866,50 @@ namespace NexAur {
             setControlWidth();
             changed |= ImGui::SliderFloat("##RectShadowProjectionMargin", &settings.rect_shadow.projection_margin, 0.0f, 1.0f, "%.2f");
         });
+        EditorWidgets::propertyRow("Soft Shadow", [&]() {
+            changed |= ImGui::Checkbox("##RectShadowSoftShadow", &settings.rect_shadow.soft_shadow_enabled);
+        });
+
+        if (!settings.rect_shadow.soft_shadow_enabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("PCSS Light", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowPcssLightRadius", &settings.rect_shadow.pcss_light_radius, 0.0f, 4.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("PCSS Search", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowPcssSearchRadius", &settings.rect_shadow.pcss_search_radius, 0.0f, 12.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("PCSS Min", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowPcssMinRadius", &settings.rect_shadow.pcss_min_filter_radius, 0.0f, 4.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("PCSS Max", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat("##RectShadowPcssMaxRadius", &settings.rect_shadow.pcss_max_filter_radius, 0.0f, 16.0f, "%.2f");
+        });
+        EditorWidgets::propertyRow("Blocker Taps", [&]() {
+            int taps = static_cast<int>(settings.rect_shadow.pcss_blocker_taps);
+            setControlWidth();
+            if (ImGui::SliderInt("##RectShadowPcssBlockerTaps", &taps, 1, 16)) {
+                settings.rect_shadow.pcss_blocker_taps = static_cast<uint32_t>(std::clamp(taps, 1, 16));
+                changed = true;
+            }
+        });
+        EditorWidgets::propertyRow("Filter Taps", [&]() {
+            int taps = static_cast<int>(settings.rect_shadow.pcss_filter_taps);
+            setControlWidth();
+            if (ImGui::SliderInt("##RectShadowPcssFilterTaps", &taps, 1, 16)) {
+                settings.rect_shadow.pcss_filter_taps = static_cast<uint32_t>(std::clamp(taps, 1, 16));
+                changed = true;
+            }
+        });
+
+        if (!settings.rect_shadow.soft_shadow_enabled) {
+            ImGui::EndDisabled();
+        }
 
         if (!settings.rect_shadow.enabled) {
             ImGui::EndDisabled();

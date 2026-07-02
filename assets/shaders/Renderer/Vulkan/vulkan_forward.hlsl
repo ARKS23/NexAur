@@ -46,6 +46,8 @@ struct FrameGlobals {
     float4x4 rect_shadow_view_projection[4];
     float4 rect_shadow_params; // x: enabled, y: map size, z: constant bias, w: normal bias
     float4 rect_shadow_quality_params; // x: filter radius, y: shadowed light count, z: strength, w: reserved
+    float4 rect_shadow_pcss_params; // x: enabled, y: light radius, z: search radius, w: min filter radius
+    float4 rect_shadow_pcss_quality_params; // x: max filter radius, y: blocker taps, z: filter taps, w: reserved
     float4 rect_light_params; // x: enabled, y: count, z: ltc specular enabled, w: reserved
     float4 rect_light_ltc_params; // x: specular scale, y: debug ltc only, zw: reserved
 };

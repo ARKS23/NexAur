@@ -361,18 +361,34 @@ float NxEvaluatePointShadowVisibility(
     return NxApplyLocalShadowVisibility(strength, occlusion);
 }
 
-float NxSampleRectShadowOcclusion(float2 uv, uint layer_index, float current_depth, float bias) {
-    const float closest_depth = g_rect_shadow_map.SampleLevel(
+float NxRectShadowTexelSize() {
+    return 1.0f / max(g_frame.rect_shadow_params.y, 1.0f);
+}
+
+float NxSampleRectShadowDepth(float2 uv, uint layer_index) {
+    return g_rect_shadow_map.SampleLevel(
         g_rect_shadow_sampler,
         float3(uv, (float)layer_index),
         0.0f);
+}
+
+float NxSampleRectShadowOcclusion(float2 uv, uint layer_index, float current_depth, float bias) {
+    const float closest_depth = NxSampleRectShadowDepth(uv, layer_index);
     return current_depth - bias > closest_depth ? 1.0f : 0.0f;
 }
 
-float NxEvaluateRectPcfShadow(float2 uv, uint layer_index, float current_depth, float bias) {
-    const float sample_stride =
-        max(g_frame.rect_shadow_quality_params.x, 0.0f) /
-        max(g_frame.rect_shadow_params.y, 1.0f);
+uint NxRectShadowTapCount(float requested_taps) {
+    const uint safe_taps = (uint)round(max(requested_taps, 1.0f));
+    return min(max(safe_taps, 1u), NX_SHADOW_POISSON_SAMPLE_COUNT);
+}
+
+float NxEvaluateRectPcfShadow(
+    float2 uv,
+    uint layer_index,
+    float current_depth,
+    float bias,
+    float filter_radius) {
+    const float sample_stride = NxRectShadowTexelSize() * max(filter_radius, 0.0f);
 
     float occlusion = 0.0f;
     float sample_count = 0.0f;
@@ -388,6 +404,108 @@ float NxEvaluateRectPcfShadow(float2 uv, uint layer_index, float current_depth, 
     }
 
     return occlusion / max(sample_count, 1.0f);
+}
+
+float NxEvaluateRectPoissonPcfShadow(
+    float2 uv,
+    uint layer_index,
+    float current_depth,
+    float bias,
+    float filter_radius,
+    uint tap_count) {
+    const float sample_stride = NxRectShadowTexelSize() * max(filter_radius, 0.0f);
+
+    float occlusion = NxSampleRectShadowOcclusion(uv, layer_index, current_depth, bias);
+    float sample_count = 1.0f;
+    const uint poisson_taps = tap_count > 1u ? tap_count - 1u : 0u;
+    [loop]
+    for (uint index = 0u; index < poisson_taps; ++index) {
+        const float2 sample_uv = uv + NX_SHADOW_POISSON_DISK[index] * sample_stride;
+        occlusion += NxSampleRectShadowOcclusion(sample_uv, layer_index, current_depth, bias);
+        sample_count += 1.0f;
+    }
+
+    return occlusion / max(sample_count, 1.0f);
+}
+
+float NxFindRectShadowBlocker(
+    float2 uv,
+    uint layer_index,
+    float current_depth,
+    float bias,
+    float search_radius,
+    uint tap_count,
+    out float blocker_count) {
+    const float sample_stride = NxRectShadowTexelSize() * max(search_radius, 0.0f);
+    const float receiver_depth = current_depth - bias;
+
+    blocker_count = 0.0f;
+    float blocker_depth_sum = 0.0f;
+    const float center_blocker_depth = NxSampleRectShadowDepth(uv, layer_index);
+    if (receiver_depth > center_blocker_depth) {
+        blocker_depth_sum += center_blocker_depth;
+        blocker_count += 1.0f;
+    }
+
+    const uint poisson_taps = tap_count > 1u ? tap_count - 1u : 0u;
+    [loop]
+    for (uint index = 0u; index < poisson_taps; ++index) {
+        const float2 sample_uv = uv + NX_SHADOW_POISSON_DISK[index] * sample_stride;
+        const float blocker_depth = NxSampleRectShadowDepth(sample_uv, layer_index);
+        if (receiver_depth > blocker_depth) {
+            blocker_depth_sum += blocker_depth;
+            blocker_count += 1.0f;
+        }
+    }
+
+    return blocker_count > 0.0f ? blocker_depth_sum / blocker_count : 1.0f;
+}
+
+float NxEstimateRectPenumbraRadius(float receiver_depth, float blocker_depth, RectLightData light) {
+    const float safe_blocker_depth = max(blocker_depth, 0.001f);
+    const float light_extent = max(max(light.right_width.w, light.up_height.w), 0.01f);
+    const float light_radius = max(g_frame.rect_shadow_pcss_params.y, 0.0f) * light_extent;
+    const float search_radius = max(g_frame.rect_shadow_pcss_params.z, 0.0f);
+    const float min_radius = max(g_frame.rect_shadow_pcss_params.w, 0.0f);
+    const float max_radius = max(g_frame.rect_shadow_pcss_quality_params.x, min_radius);
+    const float penumbra = max(receiver_depth - blocker_depth, 0.0f) / safe_blocker_depth;
+    return clamp(penumbra * light_radius * search_radius, min_radius, max_radius);
+}
+
+float NxSampleRectShadowPcss(
+    float2 uv,
+    uint layer_index,
+    float current_depth,
+    float bias,
+    RectLightData light) {
+    const uint blocker_taps = NxRectShadowTapCount(g_frame.rect_shadow_pcss_quality_params.y);
+    const uint filter_taps = NxRectShadowTapCount(g_frame.rect_shadow_pcss_quality_params.z);
+
+    float blocker_count = 0.0f;
+    const float average_blocker_depth = NxFindRectShadowBlocker(
+        uv,
+        layer_index,
+        current_depth,
+        bias,
+        g_frame.rect_shadow_pcss_params.z,
+        blocker_taps,
+        blocker_count);
+
+    if (blocker_count <= 0.0f) {
+        return 0.0f;
+    }
+
+    const float filter_radius = NxEstimateRectPenumbraRadius(
+        current_depth - bias,
+        average_blocker_depth,
+        light);
+    return NxEvaluateRectPoissonPcfShadow(
+        uv,
+        layer_index,
+        current_depth,
+        bias,
+        filter_radius,
+        filter_taps);
 }
 
 float NxEvaluateRectShadowVisibility(
@@ -426,9 +544,19 @@ float NxEvaluateRectShadowVisibility(
         -light.normal_range.xyz,
         float3(0.0f, 1.0f, 0.0f));
     const float bias = NxComputeLocalShadowBias(g_frame.rect_shadow_params.z, safe_normal, fragment_to_light);
-    const float occlusion = g_frame.rect_shadow_quality_params.x > 0.0f ?
-        NxEvaluateRectPcfShadow(uv, shadow_slot, current_depth, bias) :
-        NxSampleRectShadowOcclusion(uv, shadow_slot, current_depth, bias);
+    float occlusion = 0.0f;
+    if (g_frame.rect_shadow_pcss_params.x > 0.5f) {
+        occlusion = NxSampleRectShadowPcss(uv, shadow_slot, current_depth, bias, light);
+    } else if (g_frame.rect_shadow_quality_params.x > 0.0f) {
+        occlusion = NxEvaluateRectPcfShadow(
+            uv,
+            shadow_slot,
+            current_depth,
+            bias,
+            g_frame.rect_shadow_quality_params.x);
+    } else {
+        occlusion = NxSampleRectShadowOcclusion(uv, shadow_slot, current_depth, bias);
+    }
     const float strength = saturate(light.shadow.y);
     return NxApplyLocalShadowVisibility(strength, occlusion);
 }

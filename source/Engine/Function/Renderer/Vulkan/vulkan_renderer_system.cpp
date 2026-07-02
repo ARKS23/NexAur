@@ -1196,6 +1196,19 @@ namespace NexAur {
             stats.rect_shadow_normal_bias = render_settings.rect_shadow.normal_bias;
             stats.rect_shadow_filter_radius = render_settings.rect_shadow.filter_radius;
             stats.rect_shadow_projection_margin = render_settings.rect_shadow.projection_margin;
+            stats.rect_shadow_soft_enabled = render_settings.rect_shadow.soft_shadow_enabled;
+            stats.rect_shadow_pcss_light_radius = render_settings.rect_shadow.pcss_light_radius;
+            stats.rect_shadow_pcss_search_radius = render_settings.rect_shadow.pcss_search_radius;
+            stats.rect_shadow_pcss_min_filter_radius = render_settings.rect_shadow.pcss_min_filter_radius;
+            stats.rect_shadow_pcss_max_filter_radius = render_settings.rect_shadow.pcss_max_filter_radius;
+            stats.rect_shadow_pcss_blocker_taps = std::clamp(
+                render_settings.rect_shadow.pcss_blocker_taps,
+                1u,
+                16u);
+            stats.rect_shadow_pcss_filter_taps = std::clamp(
+                render_settings.rect_shadow.pcss_filter_taps,
+                1u,
+                16u);
             stats.rect_ltc_specular_enabled = render_settings.rect_light.ltc_specular_enabled;
             stats.rect_ltc_debug_only = render_settings.rect_light.debug_ltc_only;
             stats.rect_ltc_specular_scale = render_settings.rect_light.specular_intensity_scale;

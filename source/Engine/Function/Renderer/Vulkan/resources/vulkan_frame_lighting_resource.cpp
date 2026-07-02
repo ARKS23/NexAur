@@ -50,6 +50,8 @@ namespace NexAur {
             std::array<glm::mat4, kMaxRenderRectShadowLights> rect_shadow_view_projections{};
             glm::vec4 rect_shadow_params{ 0.0f, 1024.0f, 0.01f, 0.02f };
             glm::vec4 rect_shadow_quality_params{ 1.0f, 0.0f, 0.85f, 0.0f };
+            glm::vec4 rect_shadow_pcss_params{ 1.0f, 0.75f, 3.0f, 0.5f };
+            glm::vec4 rect_shadow_pcss_quality_params{ 5.0f, 8.0f, 16.0f, 0.0f };
             glm::vec4 rect_light_params{ 1.0f, 0.0f, 0.0f, 0.0f };
             glm::vec4 rect_light_ltc_params{ 1.0f, 0.0f, 0.0f, 0.0f };
         };
@@ -278,6 +280,16 @@ namespace NexAur {
             sanitizeMin(rect_shadow_settings.filter_radius, 1.0f, 0.0f),
             static_cast<float>(std::min(rect_shadow_frame.shadowed_light_count, kMaxRenderRectShadowLights)),
             sanitizeUnit(rect_shadow_settings.strength, 0.85f),
+            0.0f);
+        frame_globals.rect_shadow_pcss_params = glm::vec4(
+            rect_shadow_settings.soft_shadow_enabled ? 1.0f : 0.0f,
+            sanitizeMin(rect_shadow_settings.pcss_light_radius, 0.75f, 0.0f),
+            sanitizeMin(rect_shadow_settings.pcss_search_radius, 3.0f, 0.0f),
+            sanitizeMin(rect_shadow_settings.pcss_min_filter_radius, 0.5f, 0.0f));
+        frame_globals.rect_shadow_pcss_quality_params = glm::vec4(
+            sanitizeMin(rect_shadow_settings.pcss_max_filter_radius, 5.0f, 0.0f),
+            static_cast<float>(std::clamp(rect_shadow_settings.pcss_blocker_taps, 1u, 16u)),
+            static_cast<float>(std::clamp(rect_shadow_settings.pcss_filter_taps, 1u, 16u)),
             0.0f);
         frame_globals.rect_light_params = glm::vec4(
             render_settings.rect_light.enabled ? 1.0f : 0.0f,

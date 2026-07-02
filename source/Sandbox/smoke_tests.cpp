@@ -1057,6 +1057,13 @@ int runRenderSettingsSmoke() {
     settings.rect_shadow.normal_bias = 0.035f;
     settings.rect_shadow.filter_radius = 2.25f;
     settings.rect_shadow.projection_margin = 0.55f;
+    settings.rect_shadow.soft_shadow_enabled = false;
+    settings.rect_shadow.pcss_light_radius = 1.35f;
+    settings.rect_shadow.pcss_search_radius = 6.25f;
+    settings.rect_shadow.pcss_min_filter_radius = 0.75f;
+    settings.rect_shadow.pcss_max_filter_radius = 9.5f;
+    settings.rect_shadow.pcss_blocker_taps = 6u;
+    settings.rect_shadow.pcss_filter_taps = 12u;
     settings.rect_light.enabled = false;
     settings.rect_light.max_lights = 7u;
     settings.rect_light.ltc_specular_enabled = false;
@@ -1169,7 +1176,14 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_rect_shadow.constant_bias, 0.018f) &&
         nearlyEqual(first_rect_shadow.normal_bias, 0.035f) &&
         nearlyEqual(first_rect_shadow.filter_radius, 2.25f) &&
-        nearlyEqual(first_rect_shadow.projection_margin, 0.55f),
+        nearlyEqual(first_rect_shadow.projection_margin, 0.55f) &&
+        !first_rect_shadow.soft_shadow_enabled &&
+        nearlyEqual(first_rect_shadow.pcss_light_radius, 1.35f) &&
+        nearlyEqual(first_rect_shadow.pcss_search_radius, 6.25f) &&
+        nearlyEqual(first_rect_shadow.pcss_min_filter_radius, 0.75f) &&
+        nearlyEqual(first_rect_shadow.pcss_max_filter_radius, 9.5f) &&
+        first_rect_shadow.pcss_blocker_taps == 6u &&
+        first_rect_shadow.pcss_filter_taps == 12u,
         "RenderSettings smoke failed: rect shadow settings did not reach the read packet.");
     expect(
         !first_rect_light.enabled &&
@@ -1231,6 +1245,13 @@ int runRenderSettingsSmoke() {
     settings.rect_shadow.normal_bias = 0.02f;
     settings.rect_shadow.filter_radius = 1.0f;
     settings.rect_shadow.projection_margin = 0.35f;
+    settings.rect_shadow.soft_shadow_enabled = true;
+    settings.rect_shadow.pcss_light_radius = 0.75f;
+    settings.rect_shadow.pcss_search_radius = 3.0f;
+    settings.rect_shadow.pcss_min_filter_radius = 0.5f;
+    settings.rect_shadow.pcss_max_filter_radius = 5.0f;
+    settings.rect_shadow.pcss_blocker_taps = 8u;
+    settings.rect_shadow.pcss_filter_taps = 16u;
     settings.rect_light.enabled = true;
     settings.rect_light.max_lights = 1u;
     settings.rect_light.ltc_specular_enabled = true;
@@ -1343,7 +1364,14 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_rect_shadow.constant_bias, 0.01f) &&
         nearlyEqual(second_rect_shadow.normal_bias, 0.02f) &&
         nearlyEqual(second_rect_shadow.filter_radius, 1.0f) &&
-        nearlyEqual(second_rect_shadow.projection_margin, 0.35f),
+        nearlyEqual(second_rect_shadow.projection_margin, 0.35f) &&
+        second_rect_shadow.soft_shadow_enabled &&
+        nearlyEqual(second_rect_shadow.pcss_light_radius, 0.75f) &&
+        nearlyEqual(second_rect_shadow.pcss_search_radius, 3.0f) &&
+        nearlyEqual(second_rect_shadow.pcss_min_filter_radius, 0.5f) &&
+        nearlyEqual(second_rect_shadow.pcss_max_filter_radius, 5.0f) &&
+        second_rect_shadow.pcss_blocker_taps == 8u &&
+        second_rect_shadow.pcss_filter_taps == 16u,
         "RenderSettings smoke failed: updated rect shadow settings did not reach the read packet.");
     expect(
         second_rect_light.enabled &&

@@ -122,6 +122,13 @@ namespace NexAur {
         float rect_shadow_normal_bias = 0.0f;
         float rect_shadow_filter_radius = 0.0f;
         float rect_shadow_projection_margin = 0.0f;
+        bool rect_shadow_soft_enabled = false;
+        float rect_shadow_pcss_light_radius = 0.0f;
+        float rect_shadow_pcss_search_radius = 0.0f;
+        float rect_shadow_pcss_min_filter_radius = 0.0f;
+        float rect_shadow_pcss_max_filter_radius = 0.0f;
+        uint32_t rect_shadow_pcss_blocker_taps = 0;
+        uint32_t rect_shadow_pcss_filter_taps = 0;
         bool rect_ltc_specular_enabled = false;
         bool rect_ltc_debug_only = false;
         float rect_ltc_specular_scale = 1.0f;
