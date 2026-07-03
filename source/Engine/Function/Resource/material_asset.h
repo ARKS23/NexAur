@@ -37,8 +37,12 @@ namespace NexAur {
         float getMetallicFactor() const { return m_metallic_factor; }
         float getRoughnessFactor() const { return m_roughness_factor; }
         const glm::vec3& getEmissiveFactor() const { return m_emissive_factor; }
+        float getEmissiveStrength() const { return m_emissive_strength; }
         float getNormalScale() const { return m_normal_scale; }
         float getOcclusionStrength() const { return m_occlusion_strength; }
+        float getClearcoatFactor() const { return m_clearcoat_factor; }
+        float getClearcoatRoughnessFactor() const { return m_clearcoat_roughness_factor; }
+        float getTransmissionFactor() const { return m_transmission_factor; }
         MaterialMetallicRoughnessTextureMode getMetallicRoughnessMode() const { return m_metallic_roughness_mode; }
         MaterialAlphaMode getAlphaMode() const { return m_alpha_mode; }
         float getAlphaCutoff() const { return m_alpha_cutoff; }
@@ -57,8 +61,12 @@ namespace NexAur {
         void setMetallicFactor(float value);
         void setRoughnessFactor(float value);
         void setEmissiveFactor(const glm::vec3& value);
+        void setEmissiveStrength(float value);
         void setNormalScale(float value);
         void setOcclusionStrength(float value);
+        void setClearcoatFactor(float value);
+        void setClearcoatRoughnessFactor(float value);
+        void setTransmissionFactor(float value);
         void setMetallicRoughnessMode(MaterialMetallicRoughnessTextureMode mode);
         void setAlphaMode(MaterialAlphaMode mode);
         void setAlphaCutoff(float value);
@@ -93,8 +101,12 @@ namespace NexAur {
         float m_metallic_factor = 0.0f;
         float m_roughness_factor = 1.0f;
         glm::vec3 m_emissive_factor{ 0.0f };
+        float m_emissive_strength = 1.0f;
         float m_normal_scale = 1.0f;
         float m_occlusion_strength = 1.0f;
+        float m_clearcoat_factor = 0.0f;
+        float m_clearcoat_roughness_factor = 0.0f;
+        float m_transmission_factor = 0.0f;
         MaterialMetallicRoughnessTextureMode m_metallic_roughness_mode =
             MaterialMetallicRoughnessTextureMode::Separate;
         MaterialAlphaMode m_alpha_mode = MaterialAlphaMode::Opaque;

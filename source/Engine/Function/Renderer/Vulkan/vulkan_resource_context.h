@@ -29,12 +29,14 @@ namespace NexAur {
     // cache 持有 allocator / upload command pool，resource 只在 create/reset 中消费。
     struct VulkanResourceUploadContext {
         VmaAllocator allocator = VK_NULL_HANDLE;
+        VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
         VkQueue graphics_queue = VK_NULL_HANDLE;
         VkCommandPool command_pool = VK_NULL_HANDLE;
 
         bool valid() const {
             return allocator != VK_NULL_HANDLE &&
+                   physical_device != VK_NULL_HANDLE &&
                    device != VK_NULL_HANDLE &&
                    graphics_queue != VK_NULL_HANDLE &&
                    command_pool != VK_NULL_HANDLE;

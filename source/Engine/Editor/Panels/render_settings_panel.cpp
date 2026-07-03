@@ -96,6 +96,8 @@ namespace NexAur {
                 return RenderIblDebugMode::ReflectionProbeSpecular;
             case 14:
                 return RenderIblDebugMode::ReflectionProbeDiffuse;
+            case 15:
+                return RenderIblDebugMode::MaterialBaseColor;
             case 0:
             default:
                 return RenderIblDebugMode::FinalLit;
@@ -837,7 +839,8 @@ namespace NexAur {
                 "BRDF LUT",
                 "Reflection Probe Influence",
                 "Reflection Probe Specular",
-                "Reflection Probe Diffuse"
+                "Reflection Probe Diffuse",
+                "Material Base Color"
             };
 
             int index = iblDebugModeToIndex(settings.ibl_debug.mode);

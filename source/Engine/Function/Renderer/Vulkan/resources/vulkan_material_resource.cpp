@@ -89,7 +89,7 @@ namespace NexAur {
         VulkanMaterialConstants constants;
         constants.base_color_factor = material_asset.getBaseColorFactor();
         constants.emissive_factor_normal_scale = glm::vec4{
-            material_asset.getEmissiveFactor(),
+            material_asset.getEmissiveFactor() * material_asset.getEmissiveStrength(),
             material_asset.getNormalScale()
         };
         constants.factors = glm::vec4{

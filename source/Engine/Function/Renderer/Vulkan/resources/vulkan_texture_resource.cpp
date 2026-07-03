@@ -3,6 +3,7 @@
 
 #include "Function/Resource/texture_asset.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace NexAur {
@@ -20,6 +21,46 @@ namespace NexAur {
             return color_space == TextureColorSpace::SRGB
                 ? VK_FORMAT_R8G8B8A8_SRGB
                 : VK_FORMAT_R8G8B8A8_UNORM;
+        }
+
+        uint32_t calculateMipLevels(uint32_t width, uint32_t height) {
+            uint32_t levels = 1;
+            uint32_t size = std::max(width, height);
+            while (size > 1) {
+                size /= 2;
+                ++levels;
+            }
+            return levels;
+        }
+
+        bool supportsLinearMipmapBlit(VkPhysicalDevice physical_device, VkFormat format) {
+            if (physical_device == VK_NULL_HANDLE) {
+                return false;
+            }
+
+            VkFormatProperties properties{};
+            vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
+            constexpr VkFormatFeatureFlags kRequiredFeatures =
+                VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+                VK_FORMAT_FEATURE_BLIT_DST_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+            return (properties.optimalTilingFeatures & kRequiredFeatures) == kRequiredFeatures;
+        }
+
+        float resolveTextureMaxAnisotropy(VkPhysicalDevice physical_device) {
+            if (physical_device == VK_NULL_HANDLE) {
+                return 1.0f;
+            }
+
+            VkPhysicalDeviceFeatures features{};
+            vkGetPhysicalDeviceFeatures(physical_device, &features);
+            if (features.samplerAnisotropy != VK_TRUE) {
+                return 1.0f;
+            }
+
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(physical_device, &properties);
+            return std::clamp(properties.limits.maxSamplerAnisotropy, 1.0f, 8.0f);
         }
 
         bool createBuffer(
@@ -147,7 +188,9 @@ namespace NexAur {
             VkCommandBuffer command_buffer,
             VkImage image,
             VkImageLayout old_layout,
-            VkImageLayout new_layout) {
+            VkImageLayout new_layout,
+            uint32_t base_mip_level,
+            uint32_t level_count) {
             VkImageMemoryBarrier barrier{};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             barrier.oldLayout = old_layout;
@@ -156,8 +199,8 @@ namespace NexAur {
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.image = image;
             barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseMipLevel = base_mip_level;
+            barrier.subresourceRange.levelCount = level_count;
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount = 1;
 
@@ -168,6 +211,18 @@ namespace NexAur {
                 new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
                 barrier.srcAccessMask = 0;
                 barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+                       new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL &&
+                       new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
                        new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
                 barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -187,6 +242,81 @@ namespace NexAur {
                 nullptr,
                 1,
                 &barrier);
+        }
+
+        void generateMipmaps(
+            VkCommandBuffer command_buffer,
+            VkImage image,
+            uint32_t width,
+            uint32_t height,
+            uint32_t mip_levels) {
+            if (mip_levels <= 1) {
+                transitionImageLayout(
+                    command_buffer,
+                    image,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    0,
+                    1);
+                return;
+            }
+
+            int32_t mip_width = static_cast<int32_t>(width);
+            int32_t mip_height = static_cast<int32_t>(height);
+            for (uint32_t mip = 1; mip < mip_levels; ++mip) {
+                transitionImageLayout(
+                    command_buffer,
+                    image,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    mip - 1,
+                    1);
+
+                const int32_t next_mip_width = std::max(mip_width / 2, 1);
+                const int32_t next_mip_height = std::max(mip_height / 2, 1);
+                VkImageBlit blit{};
+                blit.srcOffsets[0] = { 0, 0, 0 };
+                blit.srcOffsets[1] = { mip_width, mip_height, 1 };
+                blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.srcSubresource.mipLevel = mip - 1;
+                blit.srcSubresource.baseArrayLayer = 0;
+                blit.srcSubresource.layerCount = 1;
+                blit.dstOffsets[0] = { 0, 0, 0 };
+                blit.dstOffsets[1] = { next_mip_width, next_mip_height, 1 };
+                blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.dstSubresource.mipLevel = mip;
+                blit.dstSubresource.baseArrayLayer = 0;
+                blit.dstSubresource.layerCount = 1;
+
+                vkCmdBlitImage(
+                    command_buffer,
+                    image,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    image,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    1,
+                    &blit,
+                    VK_FILTER_LINEAR);
+
+                transitionImageLayout(
+                    command_buffer,
+                    image,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    mip - 1,
+                    1);
+
+                mip_width = next_mip_width;
+                mip_height = next_mip_height;
+            }
+
+            transitionImageLayout(
+                command_buffer,
+                image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                mip_levels - 1,
+                1);
         }
 
         void copyBufferToImage(
@@ -237,6 +367,9 @@ namespace NexAur {
         m_width = texture.getWidth();
         m_height = texture.getHeight();
         m_format = toVulkanFormat(texture.getColorSpace());
+        m_mip_levels = supportsLinearMipmapBlit(context.physical_device, m_format)
+            ? calculateMipLevels(m_width, m_height)
+            : 1u;
 
         VkBuffer staging_buffer = VK_NULL_HANDLE;
         VmaAllocation staging_allocation = VK_NULL_HANDLE;
@@ -273,12 +406,15 @@ namespace NexAur {
         image_info.extent.width = m_width;
         image_info.extent.height = m_height;
         image_info.extent.depth = 1;
-        image_info.mipLevels = 1;
+        image_info.mipLevels = m_mip_levels;
         image_info.arrayLayers = 1;
         image_info.format = m_format;
         image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
         image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        image_info.usage =
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT |
+            (m_mip_levels > 1 ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
         image_info.samples = VK_SAMPLE_COUNT_1_BIT;
         image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -299,13 +435,11 @@ namespace NexAur {
                     command_buffer,
                     m_image,
                     VK_IMAGE_LAYOUT_UNDEFINED,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                copyBufferToImage(command_buffer, staging_buffer, m_image, m_width, m_height);
-                transitionImageLayout(
-                    command_buffer,
-                    m_image,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                    0,
+                    m_mip_levels);
+                copyBufferToImage(command_buffer, staging_buffer, m_image, m_width, m_height);
+                generateMipmaps(command_buffer, m_image, m_width, m_height, m_mip_levels);
             });
 
         destroyBuffer(context.allocator, staging_buffer, staging_allocation);
@@ -321,7 +455,7 @@ namespace NexAur {
         view_info.format = m_format;
         view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         view_info.subresourceRange.baseMipLevel = 0;
-        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.levelCount = m_mip_levels;
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = 1;
         if (!checkVk(vkCreateImageView(context.device, &view_info, nullptr, &m_image_view), "vkCreateImageView(texture)")) {
@@ -336,15 +470,16 @@ namespace NexAur {
         sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        sampler_info.anisotropyEnable = VK_FALSE;
-        sampler_info.maxAnisotropy = 1.0f;
+        const float max_anisotropy = resolveTextureMaxAnisotropy(context.physical_device);
+        sampler_info.anisotropyEnable = max_anisotropy > 1.0f ? VK_TRUE : VK_FALSE;
+        sampler_info.maxAnisotropy = max_anisotropy;
         sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
         sampler_info.unnormalizedCoordinates = VK_FALSE;
         sampler_info.compareEnable = VK_FALSE;
         sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
         sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
         sampler_info.minLod = 0.0f;
-        sampler_info.maxLod = 0.0f;
+        sampler_info.maxLod = static_cast<float>(m_mip_levels > 0 ? m_mip_levels - 1 : 0);
         sampler_info.mipLodBias = 0.0f;
         if (!checkVk(vkCreateSampler(context.device, &sampler_info, nullptr, &m_sampler), "vkCreateSampler(texture)")) {
             reset();
@@ -379,5 +514,6 @@ namespace NexAur {
         m_format = VK_FORMAT_UNDEFINED;
         m_width = 0;
         m_height = 0;
+        m_mip_levels = 1;
     }
 } // namespace NexAur

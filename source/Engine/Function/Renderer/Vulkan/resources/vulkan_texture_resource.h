@@ -37,6 +37,7 @@ namespace NexAur {
         VkFormat getFormat() const { return m_format; }
         uint32_t getWidth() const { return m_width; }
         uint32_t getHeight() const { return m_height; }
+        uint32_t getMipLevels() const { return m_mip_levels; }
 
     private:
         VmaAllocator m_allocator = VK_NULL_HANDLE;
@@ -49,5 +50,6 @@ namespace NexAur {
         VkFormat m_format = VK_FORMAT_UNDEFINED;
         uint32_t m_width = 0;
         uint32_t m_height = 0;
+        uint32_t m_mip_levels = 1;
     };
 } // namespace NexAur

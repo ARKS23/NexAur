@@ -1257,7 +1257,7 @@ struct RenderRectShadowSettings {
 - Debug view 能区分 global diffuse IBL 与 local probe diffuse contribution。
 - 文档明确记录漏光和非完整 GI 限制。
 
-### 4.17 PR-R41：Material / Texture Sampling Polish
+### 4.17 PR-R41：Material / Texture Sampling Polish （已完成）
 
 目标：
 
@@ -1762,3 +1762,22 @@ Reflection、LTC Area Light、SSR 和 TAA 会进一步提高上限，但不建�
 验证：
 - `cmake --build build\msvc-vcpkg --config Debug --target Sandbox`
 - `ctest --test-dir build\msvc-vcpkg -C Debug -R "NexAur.(SceneSerializerSmoke|RenderSettingsSmoke)" --output-on-failure`
+
+### 2026-07-03：PR-R41 Material / Texture Sampling Polish
+
+完成内容：
+- Vulkan 2D texture resource 从单 mip 升级为按格式能力生成完整 mip chain；不支持 linear blit 的格式保守退回单 mip。
+- 材质 sampler 启用 repeat + linear mip sampling，并在 device 支持时启用最高 8x anisotropic filtering；不支持 anisotropy 时保守回退 trilinear mip sampling。
+- `VulkanTextureResource` 记录 mip level 数，image view / sampler LOD 与实际 mip chain 对齐。
+- 新增 `RenderIblDebugMode::MaterialBaseColor`，配合已有 Normal / Metallic / Roughness / AO / Emissive debug view 覆盖主要材质输入通道。
+- `MaterialImportData` / `MaterialAsset` 预留 glTF extension 字段：emissive strength、clearcoat factor、clearcoat roughness、transmission factor；TinyGLTF importer 读取对应 KHR extension 数值。
+- Vulkan material constants 上传时将 emissive factor 乘以 emissive strength；clearcoat / transmission 仅作为后续 shading extension 的 CPU 数据落点。
+
+范围说明：
+- 本 PR 不实现 clearcoat / transmission BRDF，也不引入 per-material sampler asset、texture transform、UV set selection 或 glTF sampler wrap/filter 完整还原。
+- 纹理 mipmap 采用上传期同步 blit 生成，优先改善画质稳定性；GPU async streaming / BC 压缩 / KTX pipeline 留给后续。
+
+验证：
+- `cmake --build build\msvc-vcpkg --config Debug --target Sandbox`
+- `ctest --test-dir build\msvc-vcpkg -C Debug -R "NexAur.(MaterialAssetSmoke|TinyGltfMaterialSmoke|RenderSettingsSmoke)" --output-on-failure`
+- `bin\msvc-vcpkg\Debug\Sandbox.exe` 短启动 smoke

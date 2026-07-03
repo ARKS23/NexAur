@@ -39,8 +39,12 @@ namespace NexAur {
         float metallic_factor = 0.0f;
         float roughness_factor = 1.0f;
         glm::vec3 emissive_factor{ 0.0f };
+        float emissive_strength = 1.0f;
         float normal_scale = 1.0f;
         float occlusion_strength = 1.0f;
+        float clearcoat_factor = 0.0f;
+        float clearcoat_roughness_factor = 0.0f;
+        float transmission_factor = 0.0f;
         MaterialMetallicRoughnessTextureMode metallic_roughness_mode =
             MaterialMetallicRoughnessTextureMode::Separate;
         MaterialAlphaMode alpha_mode = MaterialAlphaMode::Opaque;

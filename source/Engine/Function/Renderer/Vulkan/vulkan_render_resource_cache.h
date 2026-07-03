@@ -92,6 +92,7 @@ namespace NexAur {
         };
 
         VmaAllocator m_allocator = VK_NULL_HANDLE;
+        VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VkQueue m_graphics_queue = VK_NULL_HANDLE;
         VkCommandPool m_upload_command_pool = VK_NULL_HANDLE;

@@ -595,6 +595,26 @@ namespace NexAur {
             texture = source.texture;
         }
 
+        const tinygltf::Value* findExtension(const tinygltf::Material& material, const std::string& extension_name) {
+            const auto extension_it = material.extensions.find(extension_name);
+            return extension_it != material.extensions.end() ? &extension_it->second : nullptr;
+        }
+
+        const tinygltf::Value* findObjectValue(const tinygltf::Value& object, const std::string& key) {
+            if (!object.IsObject()) {
+                return nullptr;
+            }
+
+            const auto& values = object.Get<tinygltf::Value::Object>();
+            const auto value_it = values.find(key);
+            return value_it != values.end() ? &value_it->second : nullptr;
+        }
+
+        float readExtensionFloat(const tinygltf::Value& extension, const std::string& key, float fallback) {
+            const tinygltf::Value* value = findObjectValue(extension, key);
+            return value && value->IsNumber() ? static_cast<float>(value->GetNumberAsDouble()) : fallback;
+        }
+
         MaterialImportData buildMaterial(
             const tinygltf::Model& model,
             const std::filesystem::path& model_path,
@@ -634,6 +654,28 @@ namespace NexAur {
             material.alpha_mode = parseAlphaMode(gltf_material.alphaMode);
             material.alpha_cutoff = static_cast<float>(gltf_material.alphaCutoff);
             material.double_sided = gltf_material.doubleSided;
+
+            if (const tinygltf::Value* emissive_strength = findExtension(gltf_material, "KHR_materials_emissive_strength")) {
+                material.emissive_strength = std::max(
+                    0.0f,
+                    readExtensionFloat(*emissive_strength, "emissiveStrength", material.emissive_strength));
+            }
+            if (const tinygltf::Value* clearcoat = findExtension(gltf_material, "KHR_materials_clearcoat")) {
+                material.clearcoat_factor = std::clamp(
+                    readExtensionFloat(*clearcoat, "clearcoatFactor", material.clearcoat_factor),
+                    0.0f,
+                    1.0f);
+                material.clearcoat_roughness_factor = std::clamp(
+                    readExtensionFloat(*clearcoat, "clearcoatRoughnessFactor", material.clearcoat_roughness_factor),
+                    0.0f,
+                    1.0f);
+            }
+            if (const tinygltf::Value* transmission = findExtension(gltf_material, "KHR_materials_transmission")) {
+                material.transmission_factor = std::clamp(
+                    readExtensionFloat(*transmission, "transmissionFactor", material.transmission_factor),
+                    0.0f,
+                    1.0f);
+            }
 
             ImportedTextureSlot base_color_texture;
             ImportedTextureSlot metallic_roughness;

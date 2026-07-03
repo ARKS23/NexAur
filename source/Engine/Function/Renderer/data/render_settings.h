@@ -29,7 +29,8 @@ namespace NexAur {
         BrdfLut = 11,
         ReflectionProbeInfluence = 12,
         ReflectionProbeSpecular = 13,
-        ReflectionProbeDiffuse = 14
+        ReflectionProbeDiffuse = 14,
+        MaterialBaseColor = 15
     };
 
     enum class RenderShadowFilterMode : uint32_t {

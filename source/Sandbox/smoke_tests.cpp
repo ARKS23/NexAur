@@ -307,6 +307,7 @@ namespace {
         std::ostringstream json_stream;
         json_stream
             << "{\"asset\":{\"version\":\"2.0\",\"generator\":\"NexAur TinyGltfMaterialSmoke\"},"
+            << "\"extensionsUsed\":[\"KHR_materials_emissive_strength\",\"KHR_materials_clearcoat\",\"KHR_materials_transmission\"],"
             << "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
             << "\"nodes\":[{\"name\":\"TinyGltfMaterialQuad\",\"mesh\":0}],"
             << "\"samplers\":[{\"magFilter\":9729,\"minFilter\":9729,\"wrapS\":10497,\"wrapT\":10497}],"
@@ -321,6 +322,9 @@ namespace {
             << "{\"sampler\":0,\"source\":3},{\"sampler\":0,\"source\":4}],"
             << "\"materials\":[{\"name\":\"TinyGltfMaterialSmoke\",\"doubleSided\":true,"
             << "\"alphaMode\":\"MASK\",\"alphaCutoff\":0.42,"
+            << "\"extensions\":{\"KHR_materials_emissive_strength\":{\"emissiveStrength\":2.5},"
+            << "\"KHR_materials_clearcoat\":{\"clearcoatFactor\":0.6,\"clearcoatRoughnessFactor\":0.2},"
+            << "\"KHR_materials_transmission\":{\"transmissionFactor\":0.35}},"
             << "\"emissiveFactor\":[0.1,0.2,0.3],\"emissiveTexture\":{\"index\":4},"
             << "\"normalTexture\":{\"index\":2,\"scale\":0.5},"
             << "\"occlusionTexture\":{\"index\":3,\"strength\":0.25},"
@@ -1315,7 +1319,7 @@ int runRenderSettingsSmoke() {
     settings.ssr.roughness_fade = 0.55f;
     settings.ssr.edge_fade = 0.18f;
     settings.ssr.intensity = 0.8f;
-    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::ReflectionProbeDiffuse;
+    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::MaterialBaseColor;
     settings.ibl_debug.prefilter_mip = 3.0f;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::SmaaEdgeMask;
     settings.effects_debug.bloom_mip = 3u;
@@ -1460,7 +1464,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_ssr.intensity, 0.8f),
         "RenderSettings smoke failed: SSR settings did not reach the read packet.");
     expect(
-        first_ibl_debug.mode == NexAur::RenderIblDebugMode::ReflectionProbeDiffuse &&
+        first_ibl_debug.mode == NexAur::RenderIblDebugMode::MaterialBaseColor &&
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
     expect(
@@ -1932,8 +1936,12 @@ int runMaterialAssetSmoke() {
     separate_material.metallic_factor = 0.8f;
     separate_material.roughness_factor = 0.35f;
     separate_material.emissive_factor = glm::vec3{ 1.5f, 1.0f, 0.5f };
+    separate_material.emissive_strength = 2.0f;
     separate_material.normal_scale = 0.75f;
     separate_material.occlusion_strength = 0.6f;
+    separate_material.clearcoat_factor = 0.35f;
+    separate_material.clearcoat_roughness_factor = 0.45f;
+    separate_material.transmission_factor = 0.15f;
 
     std::shared_ptr<NexAur::MaterialAsset> separate = asset_manager.createMaterialFromImportData(separate_material);
     expect(separate != nullptr, "MaterialAsset smoke failed: separate material was not created.");
@@ -1948,8 +1956,12 @@ int runMaterialAssetSmoke() {
         expect(nearlyEqual(separate->getMetallicFactor(), 0.8f), "Separate material metallic factor should round-trip.");
         expect(nearlyEqual(separate->getRoughnessFactor(), 0.35f), "Separate material roughness factor should round-trip.");
         expect(nearlyEqualVec3(separate->getEmissiveFactor(), glm::vec3{ 1.5f, 1.0f, 0.5f }), "Separate material emissive factor should round-trip.");
+        expect(nearlyEqual(separate->getEmissiveStrength(), 2.0f), "Separate material emissive strength should round-trip.");
         expect(nearlyEqual(separate->getNormalScale(), 0.75f), "Separate material normal scale should round-trip.");
         expect(nearlyEqual(separate->getOcclusionStrength(), 0.6f), "Separate material AO strength should round-trip.");
+        expect(nearlyEqual(separate->getClearcoatFactor(), 0.35f), "Separate material clearcoat factor should round-trip.");
+        expect(nearlyEqual(separate->getClearcoatRoughnessFactor(), 0.45f), "Separate material clearcoat roughness should round-trip.");
+        expect(nearlyEqual(separate->getTransmissionFactor(), 0.15f), "Separate material transmission should round-trip.");
 
         expectColorSpace(separate->getBaseColorTexture(), NexAur::TextureColorSpace::SRGB, "Base color texture");
         expectColorSpace(separate->getNormalTexture(), NexAur::TextureColorSpace::Linear, "Normal texture");
@@ -1970,8 +1982,12 @@ int runMaterialAssetSmoke() {
             runtime_material->setMetallicFactor(1.0f);
             runtime_material->setRoughnessFactor(0.05f);
             runtime_material->setEmissiveFactor(glm::vec3{ 0.1f, 0.2f, 0.3f });
+            runtime_material->setEmissiveStrength(3.0f);
             runtime_material->setNormalScale(0.5f);
             runtime_material->setOcclusionStrength(0.4f);
+            runtime_material->setClearcoatFactor(0.25f);
+            runtime_material->setClearcoatRoughnessFactor(0.65f);
+            runtime_material->setTransmissionFactor(0.2f);
 
             expect(runtime_material->getGeneration() > initial_generation, "Runtime material generation should advance after edits.");
             expect(nearlyEqual(runtime_material->getBaseColorFactor().x, 0.25f), "Runtime material base color R should update.");
@@ -1981,8 +1997,12 @@ int runMaterialAssetSmoke() {
             expect(nearlyEqual(runtime_material->getMetallicFactor(), 1.0f), "Runtime material metallic should update.");
             expect(nearlyEqual(runtime_material->getRoughnessFactor(), 0.05f), "Runtime material roughness should update.");
             expect(nearlyEqualVec3(runtime_material->getEmissiveFactor(), glm::vec3{ 0.1f, 0.2f, 0.3f }), "Runtime material emissive should update.");
+            expect(nearlyEqual(runtime_material->getEmissiveStrength(), 3.0f), "Runtime material emissive strength should update.");
             expect(nearlyEqual(runtime_material->getNormalScale(), 0.5f), "Runtime material normal scale should update.");
             expect(nearlyEqual(runtime_material->getOcclusionStrength(), 0.4f), "Runtime material AO strength should update.");
+            expect(nearlyEqual(runtime_material->getClearcoatFactor(), 0.25f), "Runtime material clearcoat factor should update.");
+            expect(nearlyEqual(runtime_material->getClearcoatRoughnessFactor(), 0.65f), "Runtime material clearcoat roughness should update.");
+            expect(nearlyEqual(runtime_material->getTransmissionFactor(), 0.2f), "Runtime material transmission should update.");
             expect(runtime_material->getBaseColorTexture() == separate->getBaseColorTexture(), "Runtime material should copy base color texture handle.");
             expect(runtime_material->getNormalTexture() == separate->getNormalTexture(), "Runtime material should copy normal texture handle.");
             expect(runtime_material->getMetallicTexture() == separate->getMetallicTexture(), "Runtime material should copy metallic texture handle.");
@@ -2405,8 +2425,12 @@ int runTinyGltfMaterialSmoke() {
         expect(nearlyEqual(material.metallic_factor, 0.7f), "TinyGltfMaterial smoke metallic factor should round-trip.");
         expect(nearlyEqual(material.roughness_factor, 0.3f), "TinyGltfMaterial smoke roughness factor should round-trip.");
         expect(nearlyEqualVec3(material.emissive_factor, glm::vec3{ 0.1f, 0.2f, 0.3f }), "TinyGltfMaterial smoke emissive factor should round-trip.");
+        expect(nearlyEqual(material.emissive_strength, 2.5f), "TinyGltfMaterial smoke emissive strength should round-trip.");
         expect(nearlyEqual(material.normal_scale, 0.5f), "TinyGltfMaterial smoke normal scale should round-trip.");
         expect(nearlyEqual(material.occlusion_strength, 0.25f), "TinyGltfMaterial smoke AO strength should round-trip.");
+        expect(nearlyEqual(material.clearcoat_factor, 0.6f), "TinyGltfMaterial smoke clearcoat factor should round-trip.");
+        expect(nearlyEqual(material.clearcoat_roughness_factor, 0.2f), "TinyGltfMaterial smoke clearcoat roughness should round-trip.");
+        expect(nearlyEqual(material.transmission_factor, 0.35f), "TinyGltfMaterial smoke transmission should round-trip.");
         expect(material.alpha_mode == NexAur::MaterialAlphaMode::Mask, "TinyGltfMaterial smoke alpha mode should be MASK.");
         expect(nearlyEqual(material.alpha_cutoff, 0.42f), "TinyGltfMaterial smoke alpha cutoff should round-trip.");
         expect(material.double_sided, "TinyGltfMaterial smoke doubleSided should round-trip.");
@@ -2430,6 +2454,10 @@ int runTinyGltfMaterialSmoke() {
         if (material_asset) {
             expect(material_asset->usesPackedMetallicRoughness(), "TinyGltfMaterial smoke material asset should use packed MR.");
             expect(material_asset->isDoubleSided(), "TinyGltfMaterial smoke material asset should keep doubleSided.");
+            expect(nearlyEqual(material_asset->getEmissiveStrength(), 2.5f), "TinyGltfMaterial smoke material asset should keep emissive strength.");
+            expect(nearlyEqual(material_asset->getClearcoatFactor(), 0.6f), "TinyGltfMaterial smoke material asset should keep clearcoat factor.");
+            expect(nearlyEqual(material_asset->getClearcoatRoughnessFactor(), 0.2f), "TinyGltfMaterial smoke material asset should keep clearcoat roughness.");
+            expect(nearlyEqual(material_asset->getTransmissionFactor(), 0.35f), "TinyGltfMaterial smoke material asset should keep transmission.");
 
             expectTextureAsset(asset_manager, material_asset->getBaseColorTexture(), NexAur::TextureColorSpace::SRGB, "Embedded base color texture");
             expectTextureAsset(asset_manager, material_asset->getMetallicRoughnessTexture(), NexAur::TextureColorSpace::Linear, "Embedded metallic-roughness texture");

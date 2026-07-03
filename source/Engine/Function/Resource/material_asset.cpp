@@ -64,8 +64,12 @@ namespace NexAur {
         , m_metallic_factor(import_data.metallic_factor)
         , m_roughness_factor(import_data.roughness_factor)
         , m_emissive_factor(import_data.emissive_factor)
+        , m_emissive_strength(sanitizeNonNegative(import_data.emissive_strength, 1.0f))
         , m_normal_scale(import_data.normal_scale)
         , m_occlusion_strength(import_data.occlusion_strength)
+        , m_clearcoat_factor(sanitizeUnit(import_data.clearcoat_factor, 0.0f))
+        , m_clearcoat_roughness_factor(sanitizeUnit(import_data.clearcoat_roughness_factor, 0.0f))
+        , m_transmission_factor(sanitizeUnit(import_data.transmission_factor, 0.0f))
         , m_metallic_roughness_mode(import_data.metallic_roughness_mode)
         , m_alpha_mode(import_data.alpha_mode)
         , m_alpha_cutoff(import_data.alpha_cutoff)
@@ -130,6 +134,11 @@ namespace NexAur {
         markDirty();
     }
 
+    void MaterialAsset::setEmissiveStrength(float value) {
+        m_emissive_strength = sanitizeNonNegative(value, m_emissive_strength);
+        markDirty();
+    }
+
     void MaterialAsset::setNormalScale(float value) {
         m_normal_scale = sanitizeNonNegative(value, m_normal_scale);
         markDirty();
@@ -137,6 +146,21 @@ namespace NexAur {
 
     void MaterialAsset::setOcclusionStrength(float value) {
         m_occlusion_strength = sanitizeUnit(value, m_occlusion_strength);
+        markDirty();
+    }
+
+    void MaterialAsset::setClearcoatFactor(float value) {
+        m_clearcoat_factor = sanitizeUnit(value, m_clearcoat_factor);
+        markDirty();
+    }
+
+    void MaterialAsset::setClearcoatRoughnessFactor(float value) {
+        m_clearcoat_roughness_factor = sanitizeUnit(value, m_clearcoat_roughness_factor);
+        markDirty();
+    }
+
+    void MaterialAsset::setTransmissionFactor(float value) {
+        m_transmission_factor = sanitizeUnit(value, m_transmission_factor);
         markDirty();
     }
 

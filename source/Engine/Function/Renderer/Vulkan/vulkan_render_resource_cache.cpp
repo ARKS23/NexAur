@@ -48,6 +48,7 @@ namespace NexAur {
         }
 
         m_device = context.device;
+        m_physical_device = context.physical_device;
         m_graphics_queue = context.graphics_queue;
         m_descriptor_layout_cache = &descriptor_layout_cache;
         m_descriptor_allocator = &descriptor_allocator;
@@ -98,6 +99,7 @@ namespace NexAur {
         }
 
         m_device = VK_NULL_HANDLE;
+        m_physical_device = VK_NULL_HANDLE;
         m_graphics_queue = VK_NULL_HANDLE;
         m_descriptor_layout_cache = nullptr;
         m_descriptor_allocator = nullptr;
@@ -558,6 +560,7 @@ namespace NexAur {
     VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() const {
         VulkanResourceUploadContext context;
         context.allocator = m_allocator;
+        context.physical_device = m_physical_device;
         context.device = m_device;
         context.graphics_queue = m_graphics_queue;
         context.command_pool = m_upload_command_pool;

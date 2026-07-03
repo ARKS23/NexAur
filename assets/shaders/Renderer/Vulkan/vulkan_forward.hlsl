@@ -238,6 +238,8 @@ float3 EvaluateIblDebugColor(
             return reflection_probe_specular * reflection_probe_influence;
         case 14:
             return reflection_probe_diffuse * reflection_probe_influence;
+        case 15:
+            return material.base_color.rgb;
         default:
             return 0.0f;
     }

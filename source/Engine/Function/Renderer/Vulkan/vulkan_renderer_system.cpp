@@ -2943,6 +2943,14 @@ namespace NexAur {
             physical_device = physical_device_result.value();
             cachePhysicalDeviceProperties();
 
+            VkPhysicalDeviceFeatures optional_core_features{};
+            optional_core_features.samplerAnisotropy = VK_TRUE;
+            const bool sampler_anisotropy_enabled =
+                physical_device.enable_features_if_present(optional_core_features);
+            if (!sampler_anisotropy_enabled) {
+                NX_CORE_WARN("Vulkan samplerAnisotropy is not available; material textures will use trilinear mip sampling.");
+            }
+
             VkPhysicalDeviceVulkan13Features vulkan13_features{};
             if (!buildRequiredVulkan13Features(vulkan13_features)) {
                 return false;
