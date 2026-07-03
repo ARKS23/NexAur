@@ -66,6 +66,10 @@ namespace NexAur::EditorPropertyDrawer {
         const char* label,
         glm::vec3& value);
 
+    NEXAUR_API bool drawColor4Property(
+        const char* label,
+        glm::vec4& value);
+
     NEXAUR_API void drawAssetField(
         const char* label,
         AssetHandle handle,

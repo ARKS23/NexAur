@@ -150,6 +150,15 @@ namespace NexAur::EditorPropertyDrawer {
         return changed;
     }
 
+    bool drawColor4Property(const char* label, glm::vec4& value) {
+        bool changed = false;
+        EditorWidgets::propertyRow(label, [&]() {
+            ImGui::SetNextItemWidth(kValueWidth);
+            changed = ImGui::ColorEdit4("##value", glm::value_ptr(value));
+        });
+        return changed;
+    }
+
     void drawAssetField(const char* label, AssetHandle handle, const AssetManager* asset_manager) {
         EditorWidgets::propertyRow(label, [&]() {
             std::array<char, 256> buffer{};

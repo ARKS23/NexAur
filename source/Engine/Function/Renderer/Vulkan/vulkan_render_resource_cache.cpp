@@ -72,6 +72,7 @@ namespace NexAur {
 
     void VulkanRenderResourceCache::clear() {
         m_model_cache.clear();
+        m_material_cache.clear();
         m_texture_cache.clear();
         m_environment_cache.clear();
     }
@@ -209,6 +210,67 @@ namespace NexAur {
         return cached_it != m_texture_cache.end() ? cached_it->second.get() : nullptr;
     }
 
+    VulkanMaterialResource* VulkanRenderResourceCache::getOrCreateMaterial(
+        AssetHandle material_asset,
+        AssetManager& asset_manager) {
+        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+            NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
+            return getFallbackMaterial();
+        }
+        if (!material_asset) {
+            return getFallbackMaterial();
+        }
+
+        const AssetType asset_type = asset_manager.getAssetType(material_asset);
+        if (asset_type != AssetType::Material) {
+            NX_CORE_WARN(
+                "AssetHandle is not a Material asset: {} ({})",
+                static_cast<uint64_t>(material_asset.id),
+                assetTypeToString(asset_type));
+            return getFallbackMaterial();
+        }
+
+        std::shared_ptr<MaterialAsset> cpu_material = asset_manager.loadMaterialCPU(material_asset);
+        if (!cpu_material) {
+            NX_CORE_WARN("Failed to load CPU material for Vulkan resource: {}", static_cast<uint64_t>(material_asset.id));
+            return getFallbackMaterial();
+        }
+
+        const uint64_t generation = cpu_material->getGeneration();
+        auto cached_it = m_material_cache.find(material_asset);
+        if (cached_it != m_material_cache.end() &&
+            cached_it->second.resource &&
+            cached_it->second.resource->isReady() &&
+            cached_it->second.generation == generation) {
+            return cached_it->second.resource.get();
+        }
+
+        auto material_resource = std::make_unique<VulkanMaterialResource>();
+        if (!createMaterialResource(*material_resource, *cpu_material, asset_manager)) {
+            NX_CORE_ERROR("Failed to create Vulkan material resource: {}", cpu_material->getDebugName());
+            return getFallbackMaterial();
+        }
+
+        VulkanMaterialResource* material_resource_ptr = material_resource.get();
+        m_material_cache[material_asset] = CachedMaterialResource{
+            std::move(material_resource),
+            generation
+        };
+        return material_resource_ptr;
+    }
+
+    VulkanMaterialResource* VulkanRenderResourceCache::getMaterial(AssetHandle material_asset) const {
+        if (!material_asset) {
+            return nullptr;
+        }
+
+        auto cached_it = m_material_cache.find(material_asset);
+        if (cached_it == m_material_cache.end()) {
+            return nullptr;
+        }
+        return cached_it->second.resource.get();
+    }
+
     VulkanEnvironmentResource* VulkanRenderResourceCache::getOrCreateEnvironment(
         AssetHandle environment_asset,
         AssetManager& asset_manager) {
@@ -332,6 +394,13 @@ namespace NexAur {
             (void)asset_handle;
             if (model_resource) {
                 material_count += model_resource->getMaterials().size();
+            }
+        }
+
+        for (const auto& [asset_handle, material_resource] : m_material_cache) {
+            (void)asset_handle;
+            if (material_resource.resource && material_resource.resource->isReady()) {
+                ++material_count;
             }
         }
 

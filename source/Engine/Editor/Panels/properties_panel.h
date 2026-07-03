@@ -3,7 +3,12 @@
 #include "editor_panel.h"
 #include "Function/Scene/entity.h"
 
+#include <cstddef>
+
 namespace NexAur {
+    class Model;
+    struct MeshRendererComponent;
+
     class PropertiesPanel : public EditorPanel {
     public:
         PropertiesPanel(const std::string& name = "Properties") : EditorPanel(name) {}
@@ -21,6 +26,8 @@ namespace NexAur {
         void drawCameraComponent(Entity entity);
         void drawActiveCameraComponent(Entity entity);
         void drawMeshRendererComponent(Entity entity);
+        void drawMaterialSlots(Entity entity, MeshRendererComponent& mesh_renderer);
+        void drawMaterialSlot(Entity entity, MeshRendererComponent& mesh_renderer, const Model& model, size_t slot_index);
         void drawProceduralPrimitiveComponent(Entity entity);
         void drawDirectionalLightComponent(Entity entity);
         void drawPointLightComponent(Entity entity);

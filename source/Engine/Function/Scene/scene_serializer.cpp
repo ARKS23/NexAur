@@ -150,6 +150,30 @@ namespace NexAur {
             return asset;
         }
 
+        json writeAssetReferenceArray(
+            const std::vector<AssetHandle>& handles,
+            const AssetManager& asset_manager) {
+            json values = json::array();
+            for (AssetHandle handle : handles) {
+                values.push_back(handle ? writeAssetReference(handle, asset_manager) : json());
+            }
+            return values;
+        }
+
+        AssetHandle readSerializedAssetHandle(const json& asset) {
+            const std::string uuid_text = asset.value("uuid", "");
+            if (uuid_text.empty()) {
+                return AssetHandle();
+            }
+
+            try {
+                const uint64_t uuid = std::stoull(uuid_text);
+                return uuid != INVALID_UUID ? AssetHandle(UUID(uuid)) : AssetHandle();
+            } catch (const std::exception&) {
+                return AssetHandle();
+            }
+        }
+
         AssetType readAssetType(const json& asset) {
             if (!asset.is_object()) {
                 return AssetType::Unknown;
@@ -186,6 +210,14 @@ namespace NexAur {
             if (path.empty()) {
                 const bool runtime_generated = asset.value("runtime_generated", false);
                 if (runtime_generated) {
+                    const AssetHandle serialized_handle = readSerializedAssetHandle(asset);
+                    if (serialized_handle) {
+                        const AssetMetadata* metadata = asset_manager.getMetadata(serialized_handle);
+                        if (metadata && metadata->type == expected_type) {
+                            return serialized_handle;
+                        }
+                    }
+
                     NX_CORE_WARN(
                         "Scene asset reference is runtime generated and has no path: {}.",
                         asset.value("debug_name", ""));
@@ -198,6 +230,9 @@ namespace NexAur {
                 return asset_manager.importModelAsset(path);
             case AssetType::EnvironmentMap:
                 return asset_manager.importEnvironmentMapAsset(path);
+            case AssetType::Material:
+                NX_CORE_WARN("Persistent material import is not implemented yet: {}.", path);
+                return AssetHandle();
             default:
                 NX_CORE_WARN(
                     "Scene serializer cannot import asset type {} from path {}.",
@@ -224,6 +259,14 @@ namespace NexAur {
                 return AssetHandle();
             }
 
+            const AssetHandle serialized_handle = readSerializedAssetHandle(asset);
+            if (serialized_handle) {
+                const AssetMetadata* metadata = asset_manager.getMetadata(serialized_handle);
+                if (metadata && metadata->type == expected_type) {
+                    return serialized_handle;
+                }
+            }
+
             const AssetType serialized_type = readAssetType(asset);
             if (serialized_type != AssetType::Unknown && serialized_type != expected_type) {
                 NX_CORE_WARN(
@@ -235,6 +278,23 @@ namespace NexAur {
             const std::string debug_name =
                 asset.value("debug_name", std::string(assetTypeToString(expected_type)));
             return asset_manager.registerRuntimeAsset(expected_type, debug_name);
+        }
+
+        std::vector<AssetHandle> readMaterialOverrides(
+            const json& values,
+            AssetManager& asset_manager) {
+            std::vector<AssetHandle> overrides;
+            if (!values.is_array()) {
+                return overrides;
+            }
+
+            overrides.reserve(values.size());
+            for (const json& value : values) {
+                overrides.push_back(value.is_object()
+                    ? importOptionalGeneratedAssetReference(value, AssetType::Material, asset_manager)
+                    : AssetHandle());
+            }
+            return overrides;
         }
 
         json writeTagComponent(const TagComponent& tag) {
@@ -575,6 +635,7 @@ namespace NexAur {
             if (const auto* mesh_renderer = registry.try_get<MeshRendererComponent>(entity)) {
                 components["MeshRenderer"] = json{
                     { "model", writeAssetReference(mesh_renderer->getModelHandle(), asset_manager) },
+                    { "material_overrides", writeAssetReferenceArray(mesh_renderer->material_overrides, asset_manager) },
                     { "is_transparent", mesh_renderer->is_transparent },
                 };
             }
@@ -813,6 +874,8 @@ namespace NexAur {
                     }
                     mesh_renderer.is_transparent =
                         mesh_json.value("is_transparent", mesh_renderer.is_transparent);
+                    mesh_renderer.material_overrides =
+                        readMaterialOverrides(mesh_json.value("material_overrides", json::array()), m_asset_manager);
                 }
 
                 if (components.contains("ProceduralPrimitive") &&

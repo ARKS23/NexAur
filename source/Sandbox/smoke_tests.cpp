@@ -960,6 +960,83 @@ bool defaultProceduralPrimitiveMatches(const std::shared_ptr<NexAur::SceneV2>& s
     return false;
 }
 
+bool configureDefaultMaterialOverride(
+    const std::shared_ptr<NexAur::SceneV2>& scene,
+    NexAur::AssetManager& asset_manager) {
+    if (!scene) {
+        return false;
+    }
+
+    NexAur::Entity entity = scene->findEntityByName("Procedural Cone");
+    if (!entity || !entity.hasComponent<NexAur::MeshRendererComponent>()) {
+        return false;
+    }
+
+    NexAur::MeshRendererComponent& mesh_renderer =
+        entity.getComponent<NexAur::MeshRendererComponent>();
+    std::shared_ptr<NexAur::Model> model = asset_manager.loadModelCPU(mesh_renderer.getModelHandle());
+    if (!model || !model->isLoaded() || model->getMeshes().empty()) {
+        return false;
+    }
+
+    std::shared_ptr<NexAur::MaterialAsset> default_material =
+        asset_manager.createMaterialFromImportData(model->getMeshes().front().getMaterialImportData());
+    if (!default_material) {
+        return false;
+    }
+
+    const NexAur::AssetHandle material_handle =
+        asset_manager.createRuntimeMaterialInstance(*default_material, "SceneSerializerSmoke.RuntimeMaterial");
+    std::shared_ptr<NexAur::MaterialAsset> material =
+        asset_manager.loadMaterialCPU(material_handle);
+    if (!material) {
+        return false;
+    }
+
+    material->setBaseColorFactor(glm::vec4{ 0.9f, 0.1f, 0.05f, 1.0f });
+    material->setMetallicFactor(0.95f);
+    material->setRoughnessFactor(0.04f);
+    material->setEmissiveFactor(glm::vec3{ 0.02f, 0.01f, 0.0f });
+    material->setNormalScale(0.8f);
+    material->setOcclusionStrength(0.7f);
+
+    mesh_renderer.material_overrides.resize(1u);
+    mesh_renderer.material_overrides[0] = material_handle;
+    return true;
+}
+
+bool defaultMaterialOverrideMatches(
+    const std::shared_ptr<NexAur::SceneV2>& scene,
+    NexAur::AssetManager& asset_manager) {
+    if (!scene) {
+        return false;
+    }
+
+    NexAur::Entity entity = scene->findEntityByName("Procedural Cone");
+    if (!entity || !entity.hasComponent<NexAur::MeshRendererComponent>()) {
+        return false;
+    }
+
+    const NexAur::MeshRendererComponent& mesh_renderer =
+        entity.getComponent<NexAur::MeshRendererComponent>();
+    if (mesh_renderer.material_overrides.empty() || !mesh_renderer.material_overrides.front()) {
+        return false;
+    }
+
+    std::shared_ptr<NexAur::MaterialAsset> material =
+        asset_manager.loadMaterialCPU(mesh_renderer.material_overrides.front());
+    return material &&
+           nearlyEqual(material->getBaseColorFactor().x, 0.9f) &&
+           nearlyEqual(material->getBaseColorFactor().y, 0.1f) &&
+           nearlyEqual(material->getBaseColorFactor().z, 0.05f) &&
+           nearlyEqual(material->getBaseColorFactor().w, 1.0f) &&
+           nearlyEqual(material->getMetallicFactor(), 0.95f) &&
+           nearlyEqual(material->getRoughnessFactor(), 0.04f) &&
+           nearlyEqualVec3(material->getEmissiveFactor(), glm::vec3{ 0.02f, 0.01f, 0.0f }) &&
+           nearlyEqual(material->getNormalScale(), 0.8f) &&
+           nearlyEqual(material->getOcclusionStrength(), 0.7f);
+}
+
 int runSceneSerializerSmoke() {
     NexAur::Engine engine;
     engine.startEngine();
@@ -997,6 +1074,9 @@ int runSceneSerializerSmoke() {
     } else if (!configureDefaultProceduralPrimitive(scene_service->getActiveScene(), *asset_manager)) {
         success = false;
         failure = "SceneSerializer smoke failed: could not configure procedural primitive.";
+    } else if (!configureDefaultMaterialOverride(scene_service->getActiveScene(), *asset_manager)) {
+        success = false;
+        failure = "SceneSerializer smoke failed: could not configure material override.";
     } else {
         NexAur::SceneSerializer serializer(*asset_manager);
         const NexAur::SceneSerializationResult save_result =
@@ -1034,6 +1114,9 @@ int runSceneSerializerSmoke() {
             } else if (!defaultProceduralPrimitiveMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: procedural primitive settings were not preserved.";
+            } else if (!defaultMaterialOverrideMatches(load_result.scene, *asset_manager)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: material override settings were not preserved.";
             } else {
                 NX_CORE_INFO(
                     "SceneSerializer smoke passed. Saved {} entities and loaded {} entities.",
@@ -1866,6 +1949,39 @@ int runMaterialAssetSmoke() {
         expectColorSpace(separate->getRoughnessTexture(), NexAur::TextureColorSpace::Linear, "Roughness texture");
         expectColorSpace(separate->getAOTexture(), NexAur::TextureColorSpace::Linear, "AO texture");
         expectColorSpace(separate->getEmissiveTexture(), NexAur::TextureColorSpace::SRGB, "Emissive texture");
+
+        const NexAur::AssetHandle runtime_handle =
+            asset_manager.createRuntimeMaterialInstance(*separate, "MaterialAssetSmoke.Runtime");
+        std::shared_ptr<NexAur::MaterialAsset> runtime_material =
+            asset_manager.loadMaterialCPU(runtime_handle);
+        expect(runtime_handle.isValid(), "Runtime material instance should return a valid handle.");
+        expect(runtime_material != nullptr, "Runtime material instance should load CPU data.");
+        if (runtime_material) {
+            const uint64_t initial_generation = runtime_material->getGeneration();
+            runtime_material->setBaseColorFactor(glm::vec4{ 0.25f, 0.5f, 0.75f, 1.0f });
+            runtime_material->setMetallicFactor(1.0f);
+            runtime_material->setRoughnessFactor(0.05f);
+            runtime_material->setEmissiveFactor(glm::vec3{ 0.1f, 0.2f, 0.3f });
+            runtime_material->setNormalScale(0.5f);
+            runtime_material->setOcclusionStrength(0.4f);
+
+            expect(runtime_material->getGeneration() > initial_generation, "Runtime material generation should advance after edits.");
+            expect(nearlyEqual(runtime_material->getBaseColorFactor().x, 0.25f), "Runtime material base color R should update.");
+            expect(nearlyEqual(runtime_material->getBaseColorFactor().y, 0.5f), "Runtime material base color G should update.");
+            expect(nearlyEqual(runtime_material->getBaseColorFactor().z, 0.75f), "Runtime material base color B should update.");
+            expect(nearlyEqual(runtime_material->getBaseColorFactor().w, 1.0f), "Runtime material base color A should update.");
+            expect(nearlyEqual(runtime_material->getMetallicFactor(), 1.0f), "Runtime material metallic should update.");
+            expect(nearlyEqual(runtime_material->getRoughnessFactor(), 0.05f), "Runtime material roughness should update.");
+            expect(nearlyEqualVec3(runtime_material->getEmissiveFactor(), glm::vec3{ 0.1f, 0.2f, 0.3f }), "Runtime material emissive should update.");
+            expect(nearlyEqual(runtime_material->getNormalScale(), 0.5f), "Runtime material normal scale should update.");
+            expect(nearlyEqual(runtime_material->getOcclusionStrength(), 0.4f), "Runtime material AO strength should update.");
+            expect(runtime_material->getBaseColorTexture() == separate->getBaseColorTexture(), "Runtime material should copy base color texture handle.");
+            expect(runtime_material->getNormalTexture() == separate->getNormalTexture(), "Runtime material should copy normal texture handle.");
+            expect(runtime_material->getMetallicTexture() == separate->getMetallicTexture(), "Runtime material should copy metallic texture handle.");
+            expect(runtime_material->getRoughnessTexture() == separate->getRoughnessTexture(), "Runtime material should copy roughness texture handle.");
+            expect(runtime_material->getAOTexture() == separate->getAOTexture(), "Runtime material should copy AO texture handle.");
+            expect(runtime_material->getEmissiveTexture() == separate->getEmissiveTexture(), "Runtime material should copy emissive texture handle.");
+        }
     }
 
     NexAur::MaterialImportData packed_material;

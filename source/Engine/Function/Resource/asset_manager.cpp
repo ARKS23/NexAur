@@ -245,6 +245,14 @@ namespace NexAur {
             emissive_texture);
     }
 
+    AssetHandle AssetManager::createRuntimeMaterialInstance(
+        const MaterialAsset& source,
+        const std::string& debug_name) {
+        auto material = std::make_shared<MaterialAsset>(source);
+        material->setDebugName(debug_name.empty() ? source.getDebugName() + ".Instance" : debug_name);
+        return registerRuntimeMaterial(material, material->getDebugName());
+    }
+
     AssetHandle AssetManager::registerRuntimeMaterial(const std::shared_ptr<MaterialAsset>& material, const std::string& debug_name) {
         if (!material) {
             NX_CORE_ERROR("Attempted to register invalid runtime material.");

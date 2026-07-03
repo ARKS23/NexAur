@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include <glm/glm.hpp>
@@ -12,6 +13,8 @@ namespace NexAur {
     class NEXAUR_API MaterialAsset {
     public:
         MaterialAsset() = default;
+        MaterialAsset(const MaterialAsset&) = default;
+        MaterialAsset& operator=(const MaterialAsset&) = default;
         MaterialAsset(
             const MaterialImportData& import_data,
             AssetHandle base_color_texture = AssetHandle(),
@@ -40,6 +43,26 @@ namespace NexAur {
         MaterialAlphaMode getAlphaMode() const { return m_alpha_mode; }
         float getAlphaCutoff() const { return m_alpha_cutoff; }
         bool isDoubleSided() const { return m_double_sided; }
+        uint64_t getGeneration() const { return m_generation; }
+
+        void setDebugName(const std::string& value);
+        void setBaseColorFactor(const glm::vec4& value);
+        void setBaseColorTexture(AssetHandle handle);
+        void setNormalTexture(AssetHandle handle);
+        void setMetallicTexture(AssetHandle handle);
+        void setRoughnessTexture(AssetHandle handle);
+        void setMetallicRoughnessTexture(AssetHandle handle);
+        void setAOTexture(AssetHandle handle);
+        void setEmissiveTexture(AssetHandle handle);
+        void setMetallicFactor(float value);
+        void setRoughnessFactor(float value);
+        void setEmissiveFactor(const glm::vec3& value);
+        void setNormalScale(float value);
+        void setOcclusionStrength(float value);
+        void setMetallicRoughnessMode(MaterialMetallicRoughnessTextureMode mode);
+        void setAlphaMode(MaterialAlphaMode mode);
+        void setAlphaCutoff(float value);
+        void setDoubleSided(bool value);
 
         bool hasBaseColorTexture() const { return m_base_color_texture.isValid(); }
         bool hasNormalTexture() const { return m_normal_texture.isValid(); }
@@ -53,6 +76,9 @@ namespace NexAur {
                    hasMetallicRoughnessTexture();
         }
         bool isTransparent() const { return m_alpha_mode == MaterialAlphaMode::Blend; }
+
+    private:
+        void markDirty();
 
     private:
         std::string m_debug_name = "Material";
@@ -74,5 +100,6 @@ namespace NexAur {
         MaterialAlphaMode m_alpha_mode = MaterialAlphaMode::Opaque;
         float m_alpha_cutoff = 0.5f;
         bool m_double_sided = false;
+        uint64_t m_generation = 0;
     };
 } // namespace NexAur

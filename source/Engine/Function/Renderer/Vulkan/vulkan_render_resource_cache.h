@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstddef>
 #include <memory>
 #include <unordered_map>
@@ -41,6 +42,8 @@ namespace NexAur {
         VulkanModelResource* getModel(AssetHandle model_asset) const;
         VulkanTextureResource* getOrCreateTexture(AssetHandle texture_asset, AssetManager& asset_manager);
         VulkanTextureResource* getTexture(AssetHandle texture_asset) const;
+        VulkanMaterialResource* getOrCreateMaterial(AssetHandle material_asset, AssetManager& asset_manager);
+        VulkanMaterialResource* getMaterial(AssetHandle material_asset) const;
         VulkanEnvironmentResource* getOrCreateEnvironment(AssetHandle environment_asset, AssetManager& asset_manager);
         VulkanEnvironmentResource* getEnvironment(AssetHandle environment_asset) const;
         std::unique_ptr<VulkanEnvironmentResource> createRuntimeEnvironment(
@@ -83,6 +86,11 @@ namespace NexAur {
         VulkanEnvironmentResourceCreateContext createEnvironmentContext() const;
 
     private:
+        struct CachedMaterialResource {
+            std::unique_ptr<VulkanMaterialResource> resource;
+            uint64_t generation = 0;
+        };
+
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VkQueue m_graphics_queue = VK_NULL_HANDLE;
@@ -93,6 +101,7 @@ namespace NexAur {
         VkDescriptorSetLayout m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanModelResource>> m_model_cache;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanTextureResource>> m_texture_cache;
+        std::unordered_map<AssetHandle, CachedMaterialResource> m_material_cache;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanEnvironmentResource>> m_environment_cache;
         std::unique_ptr<VulkanTextureResource> m_fallback_white_texture;
         std::unique_ptr<VulkanMaterialResource> m_fallback_material;

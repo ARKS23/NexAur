@@ -3,7 +3,10 @@
 
 #include "Editor/Widgets/editor_property_drawer.h"
 #include "Editor/Widgets/editor_widgets.h"
+#include "Function/Resource/asset_metadata.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Resource/material_asset.h"
+#include "Function/Resource/model.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/procedural_primitive_entity.h"
@@ -14,7 +17,10 @@
 #include <array>
 #include <cfloat>
 #include <cstring>
+#include <memory>
+#include <sstream>
 #include <utility>
+#include <vector>
 
 namespace NexAur {
     namespace {
@@ -53,6 +59,66 @@ namespace NexAur {
             default:
                 return "Unknown";
             }
+        }
+
+        std::string assetDisplayName(AssetHandle handle, const AssetManager* asset_manager) {
+            if (!handle) {
+                return "None";
+            }
+
+            if (asset_manager) {
+                if (const AssetMetadata* metadata = asset_manager->getMetadata(handle)) {
+                    if (!metadata->debug_name.empty()) {
+                        return metadata->debug_name;
+                    }
+                    if (!metadata->path.empty()) {
+                        return metadata->path;
+                    }
+                }
+            }
+
+            std::ostringstream stream;
+            stream << "Asset " << static_cast<uint64_t>(handle.id);
+            return stream.str();
+        }
+
+        void trimTrailingInvalidOverrides(std::vector<AssetHandle>& overrides) {
+            while (!overrides.empty() && !overrides.back()) {
+                overrides.pop_back();
+            }
+        }
+
+        AssetHandle materialOverrideAt(const MeshRendererComponent& mesh_renderer, size_t slot_index) {
+            return slot_index < mesh_renderer.material_overrides.size()
+                ? mesh_renderer.material_overrides[slot_index]
+                : AssetHandle();
+        }
+
+        void setMaterialOverride(
+            MeshRendererComponent& mesh_renderer,
+            size_t slot_index,
+            AssetHandle material_handle) {
+            if (mesh_renderer.material_overrides.size() <= slot_index) {
+                mesh_renderer.material_overrides.resize(slot_index + 1u);
+            }
+            mesh_renderer.material_overrides[slot_index] = material_handle;
+            trimTrailingInvalidOverrides(mesh_renderer.material_overrides);
+        }
+
+        std::string defaultMaterialName(const MaterialImportData& material, size_t slot_index) {
+            if (!material.name.empty()) {
+                return material.name;
+            }
+            return "Default Slot " + std::to_string(slot_index);
+        }
+
+        std::string runtimeMaterialName(Entity entity, size_t slot_index, const MaterialImportData& source) {
+            std::string entity_name = "Entity";
+            if (entity && entity.hasComponent<TagComponent>()) {
+                entity_name = entity.getComponent<TagComponent>().name;
+            }
+
+            return entity_name + "." + defaultMaterialName(source, slot_index) + ".Instance";
         }
     } // namespace
 
@@ -237,6 +303,154 @@ namespace NexAur {
             mesh_renderer.model_asset,
             m_context && m_context->asset_manager ? m_context->asset_manager.get() : nullptr);
         EditorPropertyDrawer::drawBoolProperty("Transparent", mesh_renderer.is_transparent);
+        drawMaterialSlots(entity, mesh_renderer);
+    }
+
+    void PropertiesPanel::drawMaterialSlots(Entity entity, MeshRendererComponent& mesh_renderer) {
+        AssetManager* asset_manager =
+            m_context && m_context->asset_manager ? m_context->asset_manager.get() : nullptr;
+        if (!asset_manager || !mesh_renderer.model_asset) {
+            return;
+        }
+
+        std::shared_ptr<Model> model = asset_manager->loadModelCPU(mesh_renderer.model_asset);
+        if (!model || !model->isLoaded()) {
+            return;
+        }
+
+        if (!EditorWidgets::sectionHeader("Materials", true)) {
+            return;
+        }
+
+        const std::vector<Mesh>& meshes = model->getMeshes();
+        for (size_t slot_index = 0; slot_index < meshes.size(); ++slot_index) {
+            drawMaterialSlot(entity, mesh_renderer, *model, slot_index);
+        }
+    }
+
+    void PropertiesPanel::drawMaterialSlot(
+        Entity entity,
+        MeshRendererComponent& mesh_renderer,
+        const Model& model,
+        size_t slot_index) {
+        AssetManager* asset_manager =
+            m_context && m_context->asset_manager ? m_context->asset_manager.get() : nullptr;
+        if (!asset_manager || slot_index >= model.getMeshes().size()) {
+            return;
+        }
+
+        const MaterialImportData& default_material =
+            model.getMeshes()[slot_index].getMaterialImportData();
+        const AssetHandle override_material = materialOverrideAt(mesh_renderer, slot_index);
+
+        const std::string slot_label = "Slot " + std::to_string(slot_index);
+        ImGui::PushID(static_cast<int>(slot_index));
+        if (ImGui::TreeNodeEx(slot_label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth)) {
+            const std::string default_name = defaultMaterialName(default_material, slot_index);
+            EditorWidgets::propertyRow("Default", [&]() {
+                ImGui::TextDisabled("%s", default_name.c_str());
+            });
+
+            const std::string override_name = assetDisplayName(override_material, asset_manager);
+            EditorWidgets::propertyRow("Override", [&]() {
+                ImGui::TextDisabled("%s", override_name.c_str());
+            });
+
+            EditorWidgets::propertyRow("Actions", [&]() {
+                if (ImGui::Button("Make Instance")) {
+                    std::shared_ptr<MaterialAsset> source_material =
+                        override_material ? asset_manager->loadMaterialCPU(override_material) : nullptr;
+                    if (!source_material) {
+                        source_material = asset_manager->createMaterialFromImportData(default_material);
+                    }
+
+                    if (source_material) {
+                        const AssetHandle material_instance =
+                            asset_manager->createRuntimeMaterialInstance(
+                                *source_material,
+                                runtimeMaterialName(entity, slot_index, default_material));
+                        if (material_instance) {
+                            setMaterialOverride(mesh_renderer, slot_index, material_instance);
+                        }
+                    }
+                }
+
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!override_material);
+                if (ImGui::Button("Use Default")) {
+                    setMaterialOverride(mesh_renderer, slot_index, AssetHandle());
+                }
+                ImGui::EndDisabled();
+            });
+
+            const AssetHandle editable_material = materialOverrideAt(mesh_renderer, slot_index);
+            if (editable_material) {
+                std::shared_ptr<MaterialAsset> material =
+                    asset_manager->loadMaterialCPU(editable_material);
+                if (material) {
+                    glm::vec4 base_color = material->getBaseColorFactor();
+                    if (EditorPropertyDrawer::drawColor4Property("Base Color", base_color)) {
+                        material->setBaseColorFactor(base_color);
+                    }
+
+                    float metallic = material->getMetallicFactor();
+                    if (EditorPropertyDrawer::drawFloatProperty(
+                            "Metallic",
+                            metallic,
+                            0.01f,
+                            0.0f,
+                            1.0f,
+                            "%.3f",
+                            ImGuiSliderFlags_AlwaysClamp)) {
+                        material->setMetallicFactor(metallic);
+                    }
+
+                    float roughness = material->getRoughnessFactor();
+                    if (EditorPropertyDrawer::drawFloatProperty(
+                            "Roughness",
+                            roughness,
+                            0.01f,
+                            0.0f,
+                            1.0f,
+                            "%.3f",
+                            ImGuiSliderFlags_AlwaysClamp)) {
+                        material->setRoughnessFactor(roughness);
+                    }
+
+                    glm::vec3 emissive = material->getEmissiveFactor();
+                    if (EditorPropertyDrawer::drawColor3Property("Emissive", emissive)) {
+                        material->setEmissiveFactor(emissive);
+                    }
+
+                    float normal_scale = material->getNormalScale();
+                    if (EditorPropertyDrawer::drawFloatProperty(
+                            "Normal Scale",
+                            normal_scale,
+                            0.01f,
+                            0.0f,
+                            4.0f,
+                            "%.3f",
+                            ImGuiSliderFlags_AlwaysClamp)) {
+                        material->setNormalScale(normal_scale);
+                    }
+
+                    float ao_strength = material->getOcclusionStrength();
+                    if (EditorPropertyDrawer::drawFloatProperty(
+                            "AO Strength",
+                            ao_strength,
+                            0.01f,
+                            0.0f,
+                            1.0f,
+                            "%.3f",
+                            ImGuiSliderFlags_AlwaysClamp)) {
+                        material->setOcclusionStrength(ao_strength);
+                    }
+                }
+            }
+
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
     }
 
     void PropertiesPanel::drawProceduralPrimitiveComponent(Entity entity) {

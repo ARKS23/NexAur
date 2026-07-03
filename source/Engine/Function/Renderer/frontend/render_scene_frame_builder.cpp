@@ -211,6 +211,7 @@ namespace NexAur {
 
                 RenderSceneFrameObject object;
                 object.model_asset = source.model_asset;
+                object.material_overrides = source.material_overrides;
                 object.transform = sanitizeTransform(source.transform);
                 object.entity_id = source.entity_id;
                 target_objects.push_back(object);

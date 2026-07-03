@@ -48,6 +48,9 @@ namespace NexAur {
         AssetHandle loadTextureCubeAsset(const std::string& path) { return importTextureCubeAsset(path); }
 
         std::shared_ptr<MaterialAsset> createMaterialFromImportData(const MaterialImportData& import_data);
+        AssetHandle createRuntimeMaterialInstance(
+            const MaterialAsset& source,
+            const std::string& debug_name = "RuntimeMaterialInstance");
         AssetHandle registerRuntimeMaterial(const std::shared_ptr<MaterialAsset>& material, const std::string& debug_name = "RuntimeMaterial");
         std::shared_ptr<MaterialAsset> loadMaterialCPU(AssetHandle handle);
 

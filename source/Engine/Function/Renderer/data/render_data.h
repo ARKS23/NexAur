@@ -84,6 +84,7 @@ namespace NexAur {
     // 场景提取阶段的物体引用：只保存可序列化资产身份，不直接保存 GPU 指针。
     struct RenderObjectData {
         AssetHandle model_asset;
+        std::vector<AssetHandle> material_overrides;
         glm::mat4 transform{ 1.0f };
         int entity_id = -1; // 用于标记实体ID，编辑器选中时需要
     };

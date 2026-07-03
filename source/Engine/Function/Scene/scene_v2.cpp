@@ -266,6 +266,7 @@ namespace NexAur {
             RenderObjectData object_data;
             // Scene 只输出资产引用，GPU 数据由 Renderer 后端在渲染前解析。
             object_data.model_asset = model_handle;
+            object_data.material_overrides = mesh_renderer_comp.material_overrides;
             object_data.transform = transform_comp.getTransform();
             object_data.entity_id = static_cast<int>(static_cast<uint32_t>(entity)); // 标记实体ID，编辑器选中时需要
 

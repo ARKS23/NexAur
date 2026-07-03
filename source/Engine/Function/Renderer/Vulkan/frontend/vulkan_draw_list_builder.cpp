@@ -13,9 +13,37 @@
 
 namespace NexAur {
     namespace {
-        uint64_t buildSortKey(AssetHandle model_asset, size_t mesh_index) {
+        uint64_t buildSortKey(AssetHandle model_asset, size_t mesh_index, AssetHandle material_asset) {
             const uint64_t asset_key = static_cast<uint64_t>(model_asset.id);
-            return asset_key ^ (static_cast<uint64_t>(mesh_index) << 32u);
+            const uint64_t material_key = static_cast<uint64_t>(material_asset.id);
+            return asset_key ^
+                   (static_cast<uint64_t>(mesh_index) << 32u) ^
+                   (material_key << 1u);
+        }
+
+        const VulkanMaterialResource* resolveMaterial(
+            const RenderSceneFrameObject& object,
+            size_t mesh_index,
+            const std::vector<VulkanMaterialResource>& model_materials,
+            VulkanRenderResourceCache& resource_cache,
+            AssetManager& asset_manager,
+            AssetHandle& resolved_material_asset) {
+            resolved_material_asset = AssetHandle();
+
+            if (mesh_index < object.material_overrides.size()) {
+                const AssetHandle override_material = object.material_overrides[mesh_index];
+                if (override_material) {
+                    if (VulkanMaterialResource* material =
+                            resource_cache.getOrCreateMaterial(override_material, asset_manager)) {
+                        resolved_material_asset = override_material;
+                        return material;
+                    }
+                }
+            }
+
+            return mesh_index < model_materials.size()
+                ? &model_materials[mesh_index]
+                : resource_cache.getFallbackMaterial();
         }
 
         void appendModelObjects(
@@ -44,10 +72,17 @@ namespace NexAur {
 
                     VulkanMeshDrawItem draw_item;
                     draw_item.mesh = &mesh;
-                    draw_item.material = mesh_index < materials.size() ? &materials[mesh_index] : resource_cache.getFallbackMaterial();
+                    AssetHandle resolved_material_asset;
+                    draw_item.material = resolveMaterial(
+                        object,
+                        mesh_index,
+                        materials,
+                        resource_cache,
+                        asset_manager,
+                        resolved_material_asset);
                     draw_item.transform = object.transform;
                     draw_item.entity_id = object.entity_id;
-                    draw_item.sort_key = buildSortKey(object.model_asset, mesh_index);
+                    draw_item.sort_key = buildSortKey(object.model_asset, mesh_index, resolved_material_asset);
                     draw_items.push_back(draw_item);
                 }
             }

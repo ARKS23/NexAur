@@ -71,6 +71,7 @@ namespace NexAur {
 
     struct RenderSceneFrameObject {
         AssetHandle model_asset;
+        std::vector<AssetHandle> material_overrides;
         glm::mat4 transform{ 1.0f };
         int entity_id = -1;
     };

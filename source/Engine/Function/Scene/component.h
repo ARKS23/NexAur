@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <memory>
+#include <vector>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -91,6 +92,7 @@ namespace NexAur {
     // 网格体组件
     struct MeshRendererComponent {
         AssetHandle model_asset;
+        std::vector<AssetHandle> material_overrides;
         bool is_transparent = false; // 是否为透明物体
 
         MeshRendererComponent() = default;

@@ -10,6 +10,7 @@
 #include "Function/Scene/scene_v2.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace NexAur {
     namespace {
@@ -71,6 +72,10 @@ namespace NexAur {
         const bool was_transparent =
             entity.hasComponent<MeshRendererComponent>() &&
             entity.getComponent<MeshRendererComponent>().is_transparent;
+        const std::vector<AssetHandle> material_overrides =
+            entity.hasComponent<MeshRendererComponent>()
+                ? entity.getComponent<MeshRendererComponent>().material_overrides
+                : std::vector<AssetHandle>{};
         const AssetHandle model_asset = registerProceduralPrimitiveModel(asset_manager, primitive);
         if (!model_asset) {
             return false;
@@ -79,6 +84,7 @@ namespace NexAur {
         MeshRendererComponent& mesh_renderer =
             entity.addOrReplaceComponent<MeshRendererComponent>(model_asset);
         mesh_renderer.is_transparent = was_transparent;
+        mesh_renderer.material_overrides = material_overrides;
         return true;
     }
 
