@@ -53,6 +53,7 @@ struct FrameGlobals {
     float4 reflection_probe_center_intensity; // xyz: center, w: intensity
     float4 reflection_probe_extents_blend; // xyz: box extents, w: blend distance
     float4 reflection_probe_params; // x: enabled, y: box projection, z: probe prefilter max lod, w: reserved
+    float4 reflection_probe_diffuse_params; // x: enabled, y: intensity, zw: reserved
 };
 
 struct PointLightData {
@@ -199,7 +200,8 @@ float3 EvaluateIblDebugColor(
     NxIblSample ibl,
     float3 view_dir,
     float reflection_probe_influence,
-    float3 reflection_probe_specular) {
+    float3 reflection_probe_specular,
+    float3 reflection_probe_diffuse) {
     switch (mode) {
         case 1:
             return ibl.diffuse;
@@ -234,6 +236,8 @@ float3 EvaluateIblDebugColor(
                 reflection_probe_influence);
         case 13:
             return reflection_probe_specular * reflection_probe_influence;
+        case 14:
+            return reflection_probe_diffuse * reflection_probe_influence;
         default:
             return 0.0f;
     }
@@ -303,6 +307,7 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     float reflection_probe_influence = 0.0f;
     float3 reflection_probe_specular = 0.0f;
+    float3 reflection_probe_diffuse = 0.0f;
     if (g_frame.reflection_probe_params.x > 0.5f) {
         const NxReflectionProbeSample reflection_probe = NxEvaluateReflectionProbeSpecular(
             material.base_color.rgb,
@@ -319,7 +324,20 @@ float4 PSMain(VSOutput input) : SV_Target0 {
             g_frame.reflection_probe_params.z);
         reflection_probe_influence = reflection_probe.influence;
         reflection_probe_specular = reflection_probe.specular;
-        ibl.specular = lerp(ibl.specular, reflection_probe_specular, reflection_probe_influence);
+        if (g_frame.reflection_probe_center_intensity.w > 0.0001f) {
+            ibl.specular = lerp(ibl.specular, reflection_probe_specular, reflection_probe_influence);
+        }
+        if (g_frame.reflection_probe_diffuse_params.x > 0.5f) {
+            reflection_probe_diffuse = NxEvaluateReflectionProbeDiffuse(
+                material.base_color.rgb,
+                material.metallic,
+                material.roughness,
+                material.ambient_occlusion,
+                material.normal,
+                view_dir,
+                g_frame.reflection_probe_diffuse_params.y);
+            ibl.diffuse = lerp(ibl.diffuse, reflection_probe_diffuse, reflection_probe_influence);
+        }
     }
 
     const uint ibl_debug_mode = ResolveIblDebugMode();
@@ -331,7 +349,8 @@ float4 PSMain(VSOutput input) : SV_Target0 {
                 ibl,
                 view_dir,
                 reflection_probe_influence,
-                reflection_probe_specular),
+                reflection_probe_specular,
+                reflection_probe_diffuse),
             EvaluateSsrSurfaceMask(material, view_dir));
     }
 

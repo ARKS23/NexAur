@@ -817,12 +817,14 @@ bool configureDefaultReflectionProbe(const std::shared_ptr<NexAur::SceneV2>& sce
             "ReflectionProbeSmoke.BakedEnvironment");
     probe.box_extents = glm::vec3{ 3.5f, 2.25f, 4.25f };
     probe.intensity = 1.35f;
+    probe.diffuse_intensity = 0.42f;
     probe.blend_distance = 0.55f;
     probe.capture_resolution = 256u;
     probe.capture_priority = 37u;
     probe.capture_near_clip = 0.05f;
     probe.capture_far_clip = 22.0f;
     probe.enabled = true;
+    probe.diffuse_enabled = true;
     probe.box_projection = true;
     probe.capture_include_skybox = false;
     probe.capture_dirty = false;
@@ -851,12 +853,14 @@ bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene
                nearlyEqual(probe.box_extents.y, 2.25f) &&
                nearlyEqual(probe.box_extents.z, 4.25f) &&
                nearlyEqual(probe.intensity, 1.35f) &&
+               nearlyEqual(probe.diffuse_intensity, 0.42f) &&
                nearlyEqual(probe.blend_distance, 0.55f) &&
                probe.capture_resolution == 256u &&
                probe.capture_priority == 37u &&
                nearlyEqual(probe.capture_near_clip, 0.05f) &&
                nearlyEqual(probe.capture_far_clip, 22.0f) &&
                probe.enabled &&
+               probe.diffuse_enabled &&
                probe.box_projection &&
                probe.baked_environment_asset &&
                !probe.capture_include_skybox &&
@@ -1311,7 +1315,7 @@ int runRenderSettingsSmoke() {
     settings.ssr.roughness_fade = 0.55f;
     settings.ssr.edge_fade = 0.18f;
     settings.ssr.intensity = 0.8f;
-    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::SpecularIbl;
+    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::ReflectionProbeDiffuse;
     settings.ibl_debug.prefilter_mip = 3.0f;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::SmaaEdgeMask;
     settings.effects_debug.bloom_mip = 3u;
@@ -1456,7 +1460,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(first_ssr.intensity, 0.8f),
         "RenderSettings smoke failed: SSR settings did not reach the read packet.");
     expect(
-        first_ibl_debug.mode == NexAur::RenderIblDebugMode::SpecularIbl &&
+        first_ibl_debug.mode == NexAur::RenderIblDebugMode::ReflectionProbeDiffuse &&
         nearlyEqual(first_ibl_debug.prefilter_mip, 3.0f),
         "RenderSettings smoke failed: IBL debug settings did not reach the read packet.");
     expect(
@@ -1802,6 +1806,7 @@ int runRenderSettingsSmoke() {
     active_probe.position = glm::vec3{ 0.0f, 1.0f, 0.0f };
     active_probe.box_extents = glm::vec3{ 3.0f, 2.0f, 4.0f };
     active_probe.intensity = 1.4f;
+    active_probe.diffuse_intensity = 0.58f;
     active_probe.blend_distance = 0.6f;
     active_probe.capture_resolution = 256u;
     active_probe.capture_priority = 75u;
@@ -1813,6 +1818,7 @@ int runRenderSettingsSmoke() {
             "RenderSettingsSmoke.BakedProbe");
     active_probe.entity_id = 41;
     active_probe.enabled = true;
+    active_probe.diffuse_enabled = true;
     active_probe.box_projection = true;
     active_probe.capture_include_skybox = false;
     active_probe.capture_dirty = false;
@@ -1866,6 +1872,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(cornell_frame.reflection_probes.front().box_extents.y, 2.0f) &&
         nearlyEqual(cornell_frame.reflection_probes.front().box_extents.z, 4.0f) &&
         nearlyEqual(cornell_frame.reflection_probes.front().intensity, 1.4f) &&
+        nearlyEqual(cornell_frame.reflection_probes.front().diffuse_intensity, 0.58f) &&
         nearlyEqual(cornell_frame.reflection_probes.front().blend_distance, 0.6f) &&
         cornell_frame.reflection_probes.front().capture_resolution == 256u &&
         cornell_frame.reflection_probes.front().capture_priority == 75u &&
@@ -1873,6 +1880,7 @@ int runRenderSettingsSmoke() {
         nearlyEqual(cornell_frame.reflection_probes.front().capture_far_clip, 18.0f) &&
         cornell_frame.reflection_probes.front().baked_environment_asset &&
         cornell_frame.reflection_probes.front().entity_id == 41 &&
+        cornell_frame.reflection_probes.front().diffuse_enabled &&
         cornell_frame.reflection_probes.front().box_projection &&
         !cornell_frame.reflection_probes.front().capture_include_skybox &&
         !cornell_frame.reflection_probes.front().capture_dirty,

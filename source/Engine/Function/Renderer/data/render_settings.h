@@ -28,7 +28,8 @@ namespace NexAur {
         PrefilteredEnvironment = 10,
         BrdfLut = 11,
         ReflectionProbeInfluence = 12,
-        ReflectionProbeSpecular = 13
+        ReflectionProbeSpecular = 13,
+        ReflectionProbeDiffuse = 14
     };
 
     enum class RenderShadowFilterMode : uint32_t {

@@ -107,25 +107,32 @@ namespace NexAur {
             return glm::length(outside_delta);
         }
 
+        float probeLightingWeight(const RenderFrameReflectionProbe& probe) {
+            const float specular_weight = std::max(0.0f, probe.intensity);
+            const float diffuse_weight = probe.diffuse_enabled ? std::max(0.0f, probe.diffuse_intensity) : 0.0f;
+            return std::max(specular_weight, diffuse_weight);
+        }
+
         const RenderFrameReflectionProbe* selectActiveReflectionProbe(
             const std::vector<RenderFrameReflectionProbe>& probes,
             const glm::vec3& camera_position) {
             const RenderFrameReflectionProbe* best_probe = nullptr;
             float best_distance = std::numeric_limits<float>::max();
-            float best_intensity = -1.0f;
+            float best_weight = -1.0f;
 
             for (const RenderFrameReflectionProbe& probe : probes) {
-                if (probe.intensity <= 0.0001f) {
+                const float lighting_weight = probeLightingWeight(probe);
+                if (lighting_weight <= 0.0001f) {
                     continue;
                 }
 
                 const float distance = distanceToProbeBox(probe, camera_position);
                 const bool better_distance = distance + 0.0001f < best_distance;
                 const bool same_distance = std::abs(distance - best_distance) <= 0.0001f;
-                if (better_distance || (same_distance && probe.intensity > best_intensity)) {
+                if (better_distance || (same_distance && lighting_weight > best_weight)) {
                     best_probe = &probe;
                     best_distance = distance;
-                    best_intensity = probe.intensity;
+                    best_weight = lighting_weight;
                 }
             }
 
@@ -169,8 +176,10 @@ namespace NexAur {
             active_probe.position = selected_probe->position;
             active_probe.box_extents = glm::max(selected_probe->box_extents, glm::vec3{ 0.05f });
             active_probe.intensity = std::max(0.0f, selected_probe->intensity);
+            active_probe.diffuse_intensity = std::max(0.0f, selected_probe->diffuse_intensity);
             active_probe.blend_distance = std::max(0.0f, selected_probe->blend_distance);
             active_probe.entity_id = selected_probe->entity_id;
+            active_probe.diffuse_enabled = selected_probe->diffuse_enabled;
             active_probe.box_projection = selected_probe->box_projection;
             if (active_probe.environment && active_probe.environment->isReady()) {
                 active_probe.prefilter_mip_count = active_probe.environment->getPrefilterMipCount();

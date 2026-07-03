@@ -203,6 +203,8 @@ namespace NexAur {
         bool active_reflection_probe_ready = false;
         std::string active_reflection_probe_name = "None";
         float active_reflection_probe_intensity = 0.0f;
+        bool active_reflection_probe_diffuse_enabled = false;
+        float active_reflection_probe_diffuse_intensity = 0.0f;
         float active_reflection_probe_blend_distance = 0.0f;
         bool active_reflection_probe_runtime = false;
         uint32_t active_reflection_probe_capture_resolution = 0;

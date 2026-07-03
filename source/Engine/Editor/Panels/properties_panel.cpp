@@ -661,6 +661,15 @@ namespace NexAur {
             probe.box_extents = glm::max(probe.box_extents, glm::vec3{ 0.05f });
         }
         EditorPropertyDrawer::drawFloatProperty("Intensity", probe.intensity, 0.02f, 0.0f, 10.0f, "%.2f", kFlags);
+        EditorPropertyDrawer::drawBoolProperty("Diffuse Enabled", probe.diffuse_enabled);
+        EditorPropertyDrawer::drawFloatProperty(
+            "Diffuse Intensity",
+            probe.diffuse_intensity,
+            0.02f,
+            0.0f,
+            10.0f,
+            "%.2f",
+            kFlags);
         EditorPropertyDrawer::drawFloatProperty("Blend Distance", probe.blend_distance, 0.02f, 0.0f, 20.0f, "%.2f", kFlags);
 
         int capture_resolution = static_cast<int>(probe.capture_resolution);

@@ -365,12 +365,14 @@ namespace NexAur {
                 { "baked_environment", writeAssetReference(probe.baked_environment_asset, asset_manager) },
                 { "box_extents", writeVec3(probe.box_extents) },
                 { "intensity", probe.intensity },
+                { "diffuse_intensity", probe.diffuse_intensity },
                 { "blend_distance", probe.blend_distance },
                 { "capture_resolution", probe.capture_resolution },
                 { "capture_priority", probe.capture_priority },
                 { "capture_near_clip", probe.capture_near_clip },
                 { "capture_far_clip", probe.capture_far_clip },
                 { "enabled", probe.enabled },
+                { "diffuse_enabled", probe.diffuse_enabled },
                 { "box_projection", probe.box_projection },
                 { "capture_include_skybox", probe.capture_include_skybox },
                 { "capture_dirty", probe.capture_dirty },
@@ -534,7 +536,10 @@ namespace NexAur {
             probe.box_extents = glm::max(
                 readVec3(component.value("box_extents", json::array()), probe.box_extents),
                 glm::vec3{ 0.05f });
-            probe.intensity = component.value("intensity", probe.intensity);
+            probe.intensity = std::max(0.0f, component.value("intensity", probe.intensity));
+            probe.diffuse_intensity = std::max(
+                0.0f,
+                component.value("diffuse_intensity", probe.diffuse_intensity));
             probe.blend_distance = component.value("blend_distance", probe.blend_distance);
             probe.capture_resolution =
                 std::clamp(component.value("capture_resolution", probe.capture_resolution), 32u, 1024u);
@@ -544,6 +549,7 @@ namespace NexAur {
             probe.capture_far_clip =
                 std::max(component.value("capture_far_clip", probe.capture_far_clip), probe.capture_near_clip + 0.001f);
             probe.enabled = component.value("enabled", probe.enabled);
+            probe.diffuse_enabled = component.value("diffuse_enabled", probe.diffuse_enabled);
             probe.box_projection = component.value("box_projection", probe.box_projection);
             probe.capture_include_skybox = component.value("capture_include_skybox", probe.capture_include_skybox);
             probe.capture_dirty = component.value("capture_dirty", probe.capture_dirty);

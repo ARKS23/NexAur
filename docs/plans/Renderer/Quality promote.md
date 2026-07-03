@@ -1228,7 +1228,7 @@ struct RenderRectShadowSettings {
 - 多 probe bake 继续遵守 R40.8 scheduler 预算；scene reload / viewport resize / capture failure 后资源生命周期稳定。
 - Debug 构建通过；必要 smoke 覆盖 capture request、scheduler settings、component serialization 和 Sandbox 短启动。
 
-### 4.16 PR-R40.10：Local Diffuse IBL Baseline
+### 4.16 PR-R40.10：Local Diffuse IBL Baseline （已完成）
 
 目标：
 
@@ -1745,3 +1745,20 @@ Reflection、LTC Area Light、SSR 和 TAA 会进一步提高上限，但不建�
 - `cmake --build build\msvc-vcpkg --config Debug --target Sandbox`
 - `ctest --test-dir build\msvc-vcpkg -C Debug -R "NexAur.(SceneSerializerSmoke|RenderSettingsSmoke)" --output-on-failure`
 - `bin\msvc-vcpkg\Debug\Sandbox.exe` 短启动 smoke
+
+### 2026-07-03：PR-R40.10 Local Diffuse IBL Baseline
+
+完成内容：
+- Reflection Probe 数据链路新增 `diffuse_enabled` 和 `diffuse_intensity`，覆盖 component、SceneSerializer、RenderSceneFrame、Vulkan draw list 和 Renderer Debug。
+- Vulkan frame globals 新增 probe diffuse 参数；active probe 选择同时考虑 specular / diffuse 权重，支持 diffuse-only probe。
+- Forward shader 复用 captured probe irradiance cubemap，在 probe influence 内混合局部 diffuse IBL；specular probe 路径保持独立强度控制。
+- 新增 `RenderIblDebugMode::ReflectionProbeDiffuse`，Render Settings UI 可单独观察局部 diffuse probe contribution。
+- Properties Panel 增加 Diffuse Enabled / Diffuse Intensity，不触发重新 capture；capture resource 仍复用 R40.9 已生成的 irradiance。
+
+范围说明：
+- 这是 local diffuse IBL baseline，只解决 probe 影响范围内的环境漫反射颜色匹配；不包含 visibility、multi-bounce、DDGI、lightmap bake 或漏光求解。
+- Direct lighting 仍由 directional / point / rect light 负责；probe diffuse 只替换 ambient IBL diffuse 分量。
+
+验证：
+- `cmake --build build\msvc-vcpkg --config Debug --target Sandbox`
+- `ctest --test-dir build\msvc-vcpkg -C Debug -R "NexAur.(SceneSerializerSmoke|RenderSettingsSmoke)" --output-on-failure`

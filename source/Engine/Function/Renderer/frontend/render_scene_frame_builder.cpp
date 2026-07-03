@@ -183,6 +183,7 @@ namespace NexAur {
                 ? glm::max(source.box_extents, glm::vec3{ 0.05f })
                 : glm::vec3{ 4.0f, 3.0f, 4.0f };
             probe.intensity = sanitizeNonNegative(source.intensity, 1.0f);
+            probe.diffuse_intensity = sanitizeNonNegative(source.diffuse_intensity, 0.75f);
             probe.blend_distance = sanitizeMin(source.blend_distance, 0.75f, 0.0f);
             probe.capture_resolution = std::clamp(source.capture_resolution, 32u, 1024u);
             probe.capture_priority = source.capture_priority;
@@ -190,6 +191,7 @@ namespace NexAur {
             probe.capture_far_clip =
                 std::max(sanitizeMin(source.capture_far_clip, 40.0f, 0.01f), probe.capture_near_clip + 0.001f);
             probe.entity_id = source.entity_id;
+            probe.diffuse_enabled = source.diffuse_enabled;
             probe.box_projection = source.box_projection;
             probe.capture_include_skybox = source.capture_include_skybox;
             probe.capture_dirty = source.capture_dirty;

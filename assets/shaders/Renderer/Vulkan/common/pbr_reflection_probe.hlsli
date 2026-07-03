@@ -81,4 +81,26 @@ NxReflectionProbeSample NxEvaluateReflectionProbeSpecular(
     return result;
 }
 
+float3 NxEvaluateReflectionProbeDiffuse(
+    float3 base_color,
+    float metallic,
+    float roughness,
+    float ambient_occlusion,
+    float3 normal,
+    float3 view_dir,
+    float intensity) {
+    if (intensity <= 0.0f) {
+        return 0.0f;
+    }
+
+    const float ndotv = max(saturate(dot(normal, view_dir)), 0.0001f);
+    const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), base_color, metallic);
+    const float3 fresnel = NxFresnelSchlickRoughness(ndotv, f0, roughness);
+    const float3 diffuse_weight = (1.0f - fresnel) * (1.0f - metallic);
+    const float3 irradiance = max(
+        g_reflection_probe_irradiance_map.SampleLevel(g_reflection_probe_sampler, normal, 0.0f).rgb,
+        0.0f);
+    return diffuse_weight * irradiance * base_color * ambient_occlusion * max(intensity, 0.0f);
+}
+
 #endif

@@ -58,12 +58,14 @@ namespace NexAur {
         glm::vec3 position{ 0.0f };
         glm::vec3 box_extents{ 4.0f, 3.0f, 4.0f };
         float intensity = 1.0f;
+        float diffuse_intensity = 0.75f;
         float blend_distance = 0.75f;
         uint32_t capture_resolution = 128;
         uint32_t capture_priority = 0;
         float capture_near_clip = 0.1f;
         float capture_far_clip = 40.0f;
         int entity_id = -1;
+        bool diffuse_enabled = true;
         bool box_projection = true;
         bool capture_include_skybox = true;
         bool capture_dirty = true;

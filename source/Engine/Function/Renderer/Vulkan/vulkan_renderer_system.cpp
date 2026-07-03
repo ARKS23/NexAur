@@ -2287,6 +2287,8 @@ namespace NexAur {
                 stats.active_reflection_probe_ready = true;
                 stats.active_reflection_probe_name = active_probe_environment->getDebugName();
                 stats.active_reflection_probe_intensity = active_probe->intensity;
+                stats.active_reflection_probe_diffuse_enabled = active_probe->diffuse_enabled;
+                stats.active_reflection_probe_diffuse_intensity = active_probe->diffuse_intensity;
                 stats.active_reflection_probe_blend_distance = active_probe->blend_distance;
                 stats.active_reflection_probe_runtime = active_probe->using_runtime_capture;
                 if (active_probe->entity_id >= 0) {
