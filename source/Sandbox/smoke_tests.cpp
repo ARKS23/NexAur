@@ -32,6 +32,7 @@
 #include "Function/Resource/texture_asset.h"
 #include "Function/Scene/collision_component.h"
 #include "Function/Scene/component.h"
+#include "Function/Scene/procedural_primitive_entity.h"
 #include "Function/Scene/scene_serializer.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/Scene/gameplay_component.h"
@@ -868,6 +869,97 @@ bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene
     return false;
 }
 
+bool configureDefaultProceduralPrimitive(
+    const std::shared_ptr<NexAur::SceneV2>& scene,
+    NexAur::AssetManager& asset_manager) {
+    if (!scene) {
+        return false;
+    }
+
+    NexAur::ProceduralPrimitiveCreateInfo create_info;
+    create_info.type = NexAur::ProceduralPrimitiveType::Cone;
+    create_info.name = "Procedural Cone";
+    create_info.segments = 24u;
+    create_info.rings = 12u;
+    create_info.translation = glm::vec3{ 1.25f, 0.5f, -2.0f };
+    create_info.rotation = glm::vec3{ 0.0f, glm::radians(30.0f), 0.0f };
+    create_info.scale = glm::vec3{ 1.5f, 2.0f, 1.5f };
+
+    NexAur::Entity entity =
+        NexAur::createProceduralPrimitiveEntity(*scene, asset_manager, create_info);
+    return entity &&
+           entity.hasComponent<NexAur::ProceduralPrimitiveComponent>() &&
+           entity.hasComponent<NexAur::MeshRendererComponent>() &&
+           entity.getComponent<NexAur::MeshRendererComponent>().getModelHandle();
+}
+
+bool proceduralPrimitiveModelsAreBuildable(NexAur::AssetManager& asset_manager) {
+    constexpr std::array<NexAur::ProceduralPrimitiveType, 5> kPrimitiveTypes{
+        NexAur::ProceduralPrimitiveType::Cube,
+        NexAur::ProceduralPrimitiveType::Sphere,
+        NexAur::ProceduralPrimitiveType::Plane,
+        NexAur::ProceduralPrimitiveType::Cylinder,
+        NexAur::ProceduralPrimitiveType::Cone,
+    };
+
+    for (NexAur::ProceduralPrimitiveType type : kPrimitiveTypes) {
+        NexAur::ProceduralPrimitiveComponent primitive;
+        primitive.type = type;
+        primitive.segments = 16u;
+        primitive.rings = 8u;
+
+        const NexAur::AssetHandle model_handle =
+            NexAur::registerProceduralPrimitiveModel(asset_manager, primitive);
+        const std::shared_ptr<NexAur::Model> model =
+            asset_manager.loadModelCPU(model_handle);
+        if (!model ||
+            !model->isLoaded() ||
+            model->getMeshes().empty() ||
+            model->getMeshes().front().GetVertices().empty() ||
+            model->getMeshes().front().GetIndices().empty()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool defaultProceduralPrimitiveMatches(const std::shared_ptr<NexAur::SceneV2>& scene) {
+    if (!scene) {
+        return false;
+    }
+
+    const entt::registry& registry = scene->getRegistry();
+    auto view = registry.view<
+        NexAur::TagComponent,
+        NexAur::ProceduralPrimitiveComponent,
+        NexAur::MeshRendererComponent,
+        NexAur::TransformComponent>();
+    for (entt::entity entity : view) {
+        const auto& tag = view.get<NexAur::TagComponent>(entity);
+        if (tag.name != "Procedural Cone") {
+            continue;
+        }
+
+        const auto& primitive = view.get<NexAur::ProceduralPrimitiveComponent>(entity);
+        const auto& mesh_renderer = view.get<NexAur::MeshRendererComponent>(entity);
+        const auto& transform = view.get<NexAur::TransformComponent>(entity);
+        return primitive.type == NexAur::ProceduralPrimitiveType::Cone &&
+               primitive.segments == 24u &&
+               primitive.rings == 12u &&
+               mesh_renderer.getModelHandle() &&
+               nearlyEqual(transform.translation.x, 1.25f) &&
+               nearlyEqual(transform.translation.y, 0.5f) &&
+               nearlyEqual(transform.translation.z, -2.0f) &&
+               nearlyEqual(transform.rotation.y, glm::radians(30.0f)) &&
+               nearlyEqual(transform.scale.x, 1.5f) &&
+               nearlyEqual(transform.scale.y, 2.0f) &&
+               nearlyEqual(transform.scale.z, 1.5f);
+    }
+
+    return false;
+}
+
 int runSceneSerializerSmoke() {
     NexAur::Engine engine;
     engine.startEngine();
@@ -899,6 +991,12 @@ int runSceneSerializerSmoke() {
     } else if (!configureDefaultReflectionProbe(scene_service->getActiveScene())) {
         success = false;
         failure = "SceneSerializer smoke failed: could not configure reflection probe settings.";
+    } else if (!proceduralPrimitiveModelsAreBuildable(*asset_manager)) {
+        success = false;
+        failure = "SceneSerializer smoke failed: procedural primitive models were not buildable.";
+    } else if (!configureDefaultProceduralPrimitive(scene_service->getActiveScene(), *asset_manager)) {
+        success = false;
+        failure = "SceneSerializer smoke failed: could not configure procedural primitive.";
     } else {
         NexAur::SceneSerializer serializer(*asset_manager);
         const NexAur::SceneSerializationResult save_result =
@@ -917,7 +1015,8 @@ int runSceneSerializerSmoke() {
                 !hasEntityNamed(load_result.scene, "DirectionalLight") ||
                 !hasEntityNamed(load_result.scene, "PointLight") ||
                 !hasEntityNamed(load_result.scene, "RectLight") ||
-                !hasEntityNamed(load_result.scene, "ReflectionProbe")) {
+                !hasEntityNamed(load_result.scene, "ReflectionProbe") ||
+                !hasEntityNamed(load_result.scene, "Procedural Cone")) {
                 success = false;
                 failure = "SceneSerializer smoke failed: loaded scene is missing default entities.";
             } else if (!defaultEnvironmentCalibrationMatches(load_result.scene)) {
@@ -932,6 +1031,9 @@ int runSceneSerializerSmoke() {
             } else if (!defaultReflectionProbeMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: reflection probe settings were not preserved.";
+            } else if (!defaultProceduralPrimitiveMatches(load_result.scene)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: procedural primitive settings were not preserved.";
             } else {
                 NX_CORE_INFO(
                     "SceneSerializer smoke passed. Saved {} entities and loaded {} entities.",

@@ -6,6 +6,7 @@
 #include "Editor/editor_context.h"
 #include "Editor/editor_config.h"
 #include "Editor/editor_services.h"
+#include "Function/Resource/procedural_primitive.h"
 
 #include <filesystem>
 #include <memory>
@@ -78,6 +79,7 @@ namespace NexAur {
         bool shouldBuildDefaultDockLayout(unsigned int dockspace_id) const;
         void saveActiveScene();
         void loadScene();
+        void createProceduralPrimitive(ProceduralPrimitiveType type);
         void bakeReflectionProbes(bool dirty_only);
         void syncReflectionProbeCaptureStates();
         std::filesystem::path getDefaultScenePath() const;

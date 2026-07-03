@@ -6,11 +6,13 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Scene/component.h"
+#include "Function/Scene/procedural_primitive_entity.h"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <cstring>
 #include <utility>
 
@@ -89,6 +91,7 @@ namespace NexAur {
         drawCameraComponent(selected);
         drawActiveCameraComponent(selected);
         drawMeshRendererComponent(selected);
+        drawProceduralPrimitiveComponent(selected);
         drawDirectionalLightComponent(selected);
         drawPointLightComponent(selected);
         drawRectLightComponent(selected);
@@ -234,6 +237,59 @@ namespace NexAur {
             mesh_renderer.model_asset,
             m_context && m_context->asset_manager ? m_context->asset_manager.get() : nullptr);
         EditorPropertyDrawer::drawBoolProperty("Transparent", mesh_renderer.is_transparent);
+    }
+
+    void PropertiesPanel::drawProceduralPrimitiveComponent(Entity entity) {
+        if (!entity.hasComponent<ProceduralPrimitiveComponent>()) return;
+        if (!EditorPropertyDrawer::drawComponentHeader("Procedural Primitive")) return;
+
+        ProceduralPrimitiveComponent& primitive = entity.getComponent<ProceduralPrimitiveComponent>();
+        bool changed = false;
+
+        EditorWidgets::propertyRow("Type", [&]() {
+            const char* items[] = { "Cube", "Sphere", "Plane", "Cylinder", "Cone" };
+            constexpr int kMaxPrimitiveTypeIndex = static_cast<int>(ProceduralPrimitiveType::Cone);
+            int index = std::clamp(static_cast<int>(primitive.type), 0, kMaxPrimitiveTypeIndex);
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::Combo("##ProceduralPrimitiveType", &index, items, IM_ARRAYSIZE(items))) {
+                primitive.type = static_cast<ProceduralPrimitiveType>(index);
+                changed = true;
+            }
+        });
+
+        int segments = static_cast<int>(primitive.segments);
+        if (EditorPropertyDrawer::drawIntProperty(
+                "Segments",
+                segments,
+                1,
+                3,
+                128,
+                ImGuiSliderFlags_AlwaysClamp)) {
+            primitive.segments = static_cast<uint32_t>(std::clamp(segments, 3, 128));
+            changed = true;
+        }
+
+        int rings = static_cast<int>(primitive.rings);
+        if (EditorPropertyDrawer::drawIntProperty(
+                "Rings",
+                rings,
+                1,
+                2,
+                128,
+                ImGuiSliderFlags_AlwaysClamp)) {
+            primitive.rings = static_cast<uint32_t>(std::clamp(rings, 2, 128));
+            changed = true;
+        }
+
+        EditorWidgets::propertyRow("Actions", [&]() {
+            if (ImGui::Button("Rebuild")) {
+                changed = true;
+            }
+        });
+
+        if (changed && m_context && m_context->asset_manager) {
+            refreshProceduralPrimitiveMesh(entity, *m_context->asset_manager);
+        }
     }
 
     void PropertiesPanel::drawDirectionalLightComponent(Entity entity) {

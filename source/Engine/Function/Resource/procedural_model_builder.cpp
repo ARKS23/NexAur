@@ -79,6 +79,49 @@ namespace NexAur {
                 base_index
             });
         }
+
+        void appendCap(
+            std::vector<Vertex>& vertices,
+            std::vector<unsigned int>& indices,
+            unsigned int segments,
+            float y,
+            float radius,
+            bool top_cap) {
+            const float normal_y = top_cap ? 1.0f : -1.0f;
+            const glm::vec3 normal{ 0.0f, normal_y, 0.0f };
+            const unsigned int center_index = static_cast<unsigned int>(vertices.size());
+            vertices.push_back(makeVertex(
+                { 0.0f, y, 0.0f },
+                normal,
+                { 0.5f, 0.5f },
+                { 1.0f, 0.0f, 0.0f },
+                { 0.0f, 0.0f, 1.0f }));
+
+            const unsigned int ring_start = static_cast<unsigned int>(vertices.size());
+            constexpr float kPi = 3.14159265359f;
+            for (unsigned int index = 0; index <= segments; ++index) {
+                const float u = static_cast<float>(index) / static_cast<float>(segments);
+                const float angle = u * 2.0f * kPi;
+                const float x = std::cos(angle) * radius;
+                const float z = std::sin(angle) * radius;
+                vertices.push_back(makeVertex(
+                    { x, y, z },
+                    normal,
+                    { x / (radius * 2.0f) + 0.5f, z / (radius * 2.0f) + 0.5f },
+                    { 1.0f, 0.0f, 0.0f },
+                    { 0.0f, 0.0f, 1.0f }));
+            }
+
+            for (unsigned int index = 0; index < segments; ++index) {
+                const unsigned int current = ring_start + index;
+                const unsigned int next = ring_start + index + 1;
+                if (top_cap) {
+                    indices.insert(indices.end(), { center_index, next, current });
+                } else {
+                    indices.insert(indices.end(), { center_index, current, next });
+                }
+            }
+        }
     } // namespace
 
     std::shared_ptr<Model> ProceduralModelBuilder::createCubeModel(const MaterialImportData& material) {
@@ -183,5 +226,122 @@ namespace NexAur {
         std::vector<Mesh> meshes;
         meshes.emplace_back(vertices, indices, material);
         return std::make_shared<Model>(std::move(meshes), "ProceduralSphere");
+    }
+
+    std::shared_ptr<Model> ProceduralModelBuilder::createPlaneModel(const MaterialImportData& material) {
+        std::vector<Vertex> vertices;
+        std::vector<unsigned int> indices;
+        vertices.reserve(4);
+        indices.reserve(6);
+
+        appendQuad(vertices, indices, { {
+            { -0.5f, 0.0f, -0.5f },
+            { 0.5f, 0.0f, -0.5f },
+            { 0.5f, 0.0f, 0.5f },
+            { -0.5f, 0.0f, 0.5f }
+        } }, { 0.0f, 1.0f, 0.0f });
+
+        std::vector<Mesh> meshes;
+        meshes.emplace_back(vertices, indices, material);
+        return std::make_shared<Model>(std::move(meshes), "ProceduralPlane");
+    }
+
+    std::shared_ptr<Model> ProceduralModelBuilder::createCylinderModel(
+        unsigned int radial_segments,
+        const MaterialImportData& material) {
+        constexpr float kPi = 3.14159265359f;
+        radial_segments = std::max(3u, radial_segments);
+
+        std::vector<Vertex> vertices;
+        std::vector<unsigned int> indices;
+        vertices.reserve(static_cast<size_t>((radial_segments + 1u) * 2u + (radial_segments + 2u) * 2u));
+        indices.reserve(static_cast<size_t>(radial_segments * 12u));
+
+        for (unsigned int index = 0; index <= radial_segments; ++index) {
+            const float u = static_cast<float>(index) / static_cast<float>(radial_segments);
+            const float angle = u * 2.0f * kPi;
+            const float x = std::cos(angle) * 0.5f;
+            const float z = std::sin(angle) * 0.5f;
+            const glm::vec3 normal = safeNormalize({ x, 0.0f, z }, glm::vec3{ 1.0f, 0.0f, 0.0f });
+            const glm::vec3 tangent = safeNormalize({ -std::sin(angle), 0.0f, std::cos(angle) }, glm::vec3{ 0.0f, 0.0f, 1.0f });
+            const glm::vec3 bitangent = safeNormalize(glm::cross(normal, tangent), glm::vec3{ 0.0f, 1.0f, 0.0f });
+            vertices.push_back(makeVertex({ x, -0.5f, z }, normal, { u, 1.0f }, tangent, bitangent));
+            vertices.push_back(makeVertex({ x, 0.5f, z }, normal, { u, 0.0f }, tangent, bitangent));
+        }
+
+        for (unsigned int index = 0; index < radial_segments; ++index) {
+            const unsigned int bottom = index * 2u;
+            const unsigned int top = bottom + 1u;
+            const unsigned int next_bottom = bottom + 2u;
+            const unsigned int next_top = bottom + 3u;
+            indices.insert(indices.end(), {
+                bottom, top, next_top,
+                next_top, next_bottom, bottom
+            });
+        }
+
+        appendCap(vertices, indices, radial_segments, 0.5f, 0.5f, true);
+        appendCap(vertices, indices, radial_segments, -0.5f, 0.5f, false);
+
+        std::vector<Mesh> meshes;
+        meshes.emplace_back(vertices, indices, material);
+        return std::make_shared<Model>(std::move(meshes), "ProceduralCylinder");
+    }
+
+    std::shared_ptr<Model> ProceduralModelBuilder::createConeModel(
+        unsigned int radial_segments,
+        const MaterialImportData& material) {
+        constexpr float kPi = 3.14159265359f;
+        radial_segments = std::max(3u, radial_segments);
+
+        std::vector<Vertex> vertices;
+        std::vector<unsigned int> indices;
+        vertices.reserve(static_cast<size_t>((radial_segments + 1u) * 2u + radial_segments + 2u));
+        indices.reserve(static_cast<size_t>(radial_segments * 6u));
+
+        for (unsigned int index = 0; index <= radial_segments; ++index) {
+            const float u = static_cast<float>(index) / static_cast<float>(radial_segments);
+            const float angle = u * 2.0f * kPi;
+            const float x = std::cos(angle) * 0.5f;
+            const float z = std::sin(angle) * 0.5f;
+            const glm::vec3 normal = safeNormalize({ std::cos(angle), 0.5f, std::sin(angle) }, glm::vec3{ 1.0f, 0.0f, 0.0f });
+            const glm::vec3 tangent = safeNormalize({ -std::sin(angle), 0.0f, std::cos(angle) }, glm::vec3{ 0.0f, 0.0f, 1.0f });
+            const glm::vec3 bitangent = safeNormalize(glm::cross(normal, tangent), glm::vec3{ 0.0f, 1.0f, 0.0f });
+            vertices.push_back(makeVertex({ x, -0.5f, z }, normal, { u, 1.0f }, tangent, bitangent));
+            vertices.push_back(makeVertex({ 0.0f, 0.5f, 0.0f }, normal, { u, 0.0f }, tangent, bitangent));
+        }
+
+        for (unsigned int index = 0; index < radial_segments; ++index) {
+            const unsigned int bottom = index * 2u;
+            const unsigned int tip = bottom + 1u;
+            const unsigned int next_bottom = bottom + 2u;
+            indices.insert(indices.end(), { bottom, tip, next_bottom });
+        }
+
+        appendCap(vertices, indices, radial_segments, -0.5f, 0.5f, false);
+
+        std::vector<Mesh> meshes;
+        meshes.emplace_back(vertices, indices, material);
+        return std::make_shared<Model>(std::move(meshes), "ProceduralCone");
+    }
+
+    std::shared_ptr<Model> ProceduralModelBuilder::createPrimitiveModel(
+        ProceduralPrimitiveType type,
+        unsigned int segments,
+        unsigned int rings,
+        const MaterialImportData& material) {
+        switch (type) {
+        case ProceduralPrimitiveType::Sphere:
+            return createSphereModel(segments, rings, material);
+        case ProceduralPrimitiveType::Plane:
+            return createPlaneModel(material);
+        case ProceduralPrimitiveType::Cylinder:
+            return createCylinderModel(segments, material);
+        case ProceduralPrimitiveType::Cone:
+            return createConeModel(segments, material);
+        case ProceduralPrimitiveType::Cube:
+        default:
+            return createCubeModel(material);
+        }
     }
 } // namespace NexAur

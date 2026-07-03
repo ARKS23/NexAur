@@ -7,6 +7,7 @@
 #include "Function/Scene/component.h"
 #include "Function/Scene/entity.h"
 #include "Function/Scene/gameplay_component.h"
+#include "Function/Scene/procedural_primitive_entity.h"
 #include "Function/Scene/scene_v2.h"
 
 #include <algorithm>
@@ -316,6 +317,14 @@ namespace NexAur {
             };
         }
 
+        json writeProceduralPrimitiveComponent(const ProceduralPrimitiveComponent& primitive) {
+            return json{
+                { "type", proceduralPrimitiveTypeToString(primitive.type) },
+                { "segments", primitive.segments },
+                { "rings", primitive.rings },
+            };
+        }
+
         json writePlayerComponent(const PlayerComponent& player) {
             return json{ { "move_speed", player.move_speed } };
         }
@@ -480,6 +489,18 @@ namespace NexAur {
             probe.capture_dirty = component.value("capture_dirty", probe.capture_dirty);
         }
 
+        void readProceduralPrimitiveComponent(
+            const json& component,
+            ProceduralPrimitiveComponent& primitive) {
+            primitive.type = proceduralPrimitiveTypeFromString(
+                component.value("type", std::string(proceduralPrimitiveTypeToString(primitive.type))),
+                primitive.type);
+            primitive.segments =
+                std::clamp(component.value("segments", primitive.segments), 3u, 128u);
+            primitive.rings =
+                std::clamp(component.value("rings", primitive.rings), 2u, 128u);
+        }
+
         void readPlayerComponent(const json& component, PlayerComponent& player) {
             player.move_speed = component.value("move_speed", player.move_speed);
         }
@@ -556,6 +577,10 @@ namespace NexAur {
                     { "model", writeAssetReference(mesh_renderer->getModelHandle(), asset_manager) },
                     { "is_transparent", mesh_renderer->is_transparent },
                 };
+            }
+
+            if (const auto* primitive = registry.try_get<ProceduralPrimitiveComponent>(entity)) {
+                components["ProceduralPrimitive"] = writeProceduralPrimitiveComponent(*primitive);
             }
 
             if (const auto* directional_light = registry.try_get<DirectionalLightComponent>(entity)) {
@@ -777,12 +802,25 @@ namespace NexAur {
 
                 if (components.contains("MeshRenderer") && components["MeshRenderer"].is_object()) {
                     const json& mesh_json = components["MeshRenderer"];
+                    const bool has_procedural_primitive =
+                        components.contains("ProceduralPrimitive") &&
+                        components["ProceduralPrimitive"].is_object();
                     MeshRendererComponent& mesh_renderer =
                         entity.addOrReplaceComponent<MeshRendererComponent>();
-                    mesh_renderer.model_asset =
-                        importAssetReference(mesh_json.value("model", json::object()), AssetType::Model, m_asset_manager);
+                    if (!has_procedural_primitive) {
+                        mesh_renderer.model_asset =
+                            importAssetReference(mesh_json.value("model", json::object()), AssetType::Model, m_asset_manager);
+                    }
                     mesh_renderer.is_transparent =
                         mesh_json.value("is_transparent", mesh_renderer.is_transparent);
+                }
+
+                if (components.contains("ProceduralPrimitive") &&
+                    components["ProceduralPrimitive"].is_object()) {
+                    ProceduralPrimitiveComponent& primitive =
+                        entity.addOrReplaceComponent<ProceduralPrimitiveComponent>();
+                    readProceduralPrimitiveComponent(components["ProceduralPrimitive"], primitive);
+                    refreshProceduralPrimitiveMesh(entity, m_asset_manager);
                 }
 
                 if (components.contains("DirectionalLight") && components["DirectionalLight"].is_object()) {

@@ -22,6 +22,7 @@
 #include "Function/Renderer/data/render_context.h"
 #include "Editor/Camera/editor_camera.h"
 #include "Function/Scene/component.h"
+#include "Function/Scene/procedural_primitive_entity.h"
 #include "Function/Scene/scene_serializer.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/UI/ui_system.h"
@@ -47,6 +48,11 @@ namespace NexAur {
 
         constexpr const char* kCommandSaveScene = "scene.save";
         constexpr const char* kCommandLoadScene = "scene.load";
+        constexpr const char* kCommandCreateCube = "scene.create.primitive.cube";
+        constexpr const char* kCommandCreateSphere = "scene.create.primitive.sphere";
+        constexpr const char* kCommandCreatePlane = "scene.create.primitive.plane";
+        constexpr const char* kCommandCreateCylinder = "scene.create.primitive.cylinder";
+        constexpr const char* kCommandCreateCone = "scene.create.primitive.cone";
         constexpr const char* kCommandBakeReflectionProbes = "scene.reflection_probes.bake_all";
         constexpr const char* kCommandBakeDirtyReflectionProbes = "scene.reflection_probes.bake_dirty";
         constexpr const char* kCommandShowProject = "panel.project.show";
@@ -332,6 +338,25 @@ namespace NexAur {
             {},
             [this]() { loadScene(); }
         });
+
+        auto register_create_primitive_command = [&](const char* command_id, const char* display_name, ProceduralPrimitiveType type) {
+            commands.registerCommand({
+                command_id,
+                display_name,
+                "Create a procedural primitive in the active scene.",
+                "",
+                ImGuiKey_None,
+                [this]() { return m_context && m_context->active_scene && m_context->asset_manager; },
+                {},
+                [this, type]() { createProceduralPrimitive(type); }
+            });
+        };
+
+        register_create_primitive_command(kCommandCreateCube, "Cube", ProceduralPrimitiveType::Cube);
+        register_create_primitive_command(kCommandCreateSphere, "Sphere", ProceduralPrimitiveType::Sphere);
+        register_create_primitive_command(kCommandCreatePlane, "Plane", ProceduralPrimitiveType::Plane);
+        register_create_primitive_command(kCommandCreateCylinder, "Cylinder", ProceduralPrimitiveType::Cylinder);
+        register_create_primitive_command(kCommandCreateCone, "Cone", ProceduralPrimitiveType::Cone);
 
         commands.registerCommand({
             kCommandBakeReflectionProbes,
@@ -665,6 +690,19 @@ namespace NexAur {
             return;
         }
 
+        if (ImGui::BeginMenu("Create")) {
+            if (ImGui::BeginMenu("3D Object")) {
+                drawCommandMenuItem(kCommandCreateCube);
+                drawCommandMenuItem(kCommandCreateSphere);
+                drawCommandMenuItem(kCommandCreatePlane);
+                drawCommandMenuItem(kCommandCreateCylinder);
+                drawCommandMenuItem(kCommandCreateCone);
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+
+        ImGui::Separator();
         drawCommandMenuItem(kCommandBakeReflectionProbes);
         drawCommandMenuItem(kCommandBakeDirtyReflectionProbes);
 
@@ -1036,6 +1074,29 @@ namespace NexAur {
         syncPanelContext();
 
         NX_CORE_INFO("{}. Entity count: {}.", result.message, result.entity_count);
+    }
+
+    void EditorLayer::createProceduralPrimitive(ProceduralPrimitiveType type) {
+        if (!m_context || !m_context->active_scene || !m_context->asset_manager) {
+            return;
+        }
+
+        ProceduralPrimitiveCreateInfo create_info;
+        create_info.type = type;
+        create_info.name = proceduralPrimitiveTypeToString(type);
+        if (m_context->viewport_camera) {
+            create_info.translation =
+                m_context->viewport_camera->getPosition() +
+                m_context->viewport_camera->getForwardDirection() * 4.0f;
+        }
+
+        Entity entity = createProceduralPrimitiveEntity(
+            *m_context->active_scene,
+            *m_context->asset_manager,
+            create_info);
+        if (entity) {
+            setSelectedEntity(entity, "Scene Menu");
+        }
     }
 
     void EditorLayer::bakeReflectionProbes(bool dirty_only) {

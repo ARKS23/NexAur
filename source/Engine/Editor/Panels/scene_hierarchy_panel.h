@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Base.h"
 #include "editor_panel.h"
+#include "Function/Resource/procedural_primitive.h"
 
 #include <array>
 #include <string>
@@ -30,6 +31,7 @@ namespace NexAur {
         Entity createPointLightEntity(const std::shared_ptr<SceneV2>& scene);
         Entity createRectLightEntity(const std::shared_ptr<SceneV2>& scene);
         Entity createReflectionProbeEntity(const std::shared_ptr<SceneV2>& scene);
+        Entity createPrimitiveEntity(const std::shared_ptr<SceneV2>& scene, ProceduralPrimitiveType type);
         Entity duplicateEntity(const std::shared_ptr<SceneV2>& scene, Entity source);
         void deleteEntity(const std::shared_ptr<SceneV2>& scene, Entity entity);
 

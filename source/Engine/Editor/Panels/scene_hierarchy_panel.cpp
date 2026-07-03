@@ -2,9 +2,12 @@
 #include "scene_hierarchy_panel.h"
 
 #include "Editor/editor_services.h"
+#include "Editor/Camera/editor_camera.h"
 #include "Editor/Style/editor_icons.h"
 #include "Editor/Widgets/editor_widgets.h"
+#include "Function/Resource/asset_manager.h"
 #include "Function/Scene/component.h"
+#include "Function/Scene/procedural_primitive_entity.h"
 #include "Function/Scene/scene_v2.h"
 
 #include <algorithm>
@@ -151,6 +154,25 @@ namespace NexAur {
             selectEntity(createCameraEntity(scene));
         }
 
+        if (ImGui::BeginMenu("3D Object")) {
+            if (ImGui::MenuItem("Cube")) {
+                selectEntity(createPrimitiveEntity(scene, ProceduralPrimitiveType::Cube));
+            }
+            if (ImGui::MenuItem("Sphere")) {
+                selectEntity(createPrimitiveEntity(scene, ProceduralPrimitiveType::Sphere));
+            }
+            if (ImGui::MenuItem("Plane")) {
+                selectEntity(createPrimitiveEntity(scene, ProceduralPrimitiveType::Plane));
+            }
+            if (ImGui::MenuItem("Cylinder")) {
+                selectEntity(createPrimitiveEntity(scene, ProceduralPrimitiveType::Cylinder));
+            }
+            if (ImGui::MenuItem("Cone")) {
+                selectEntity(createPrimitiveEntity(scene, ProceduralPrimitiveType::Cone));
+            }
+            ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("Light")) {
             if (ImGui::MenuItem("Directional Light")) {
                 selectEntity(createDirectionalLightEntity(scene));
@@ -285,6 +307,24 @@ namespace NexAur {
         return entity;
     }
 
+    Entity SceneHierarchyPanel::createPrimitiveEntity(
+        const std::shared_ptr<SceneV2>& scene,
+        ProceduralPrimitiveType type) {
+        if (!scene || !m_context || !m_context->asset_manager) {
+            return Entity();
+        }
+
+        ProceduralPrimitiveCreateInfo create_info;
+        create_info.type = type;
+        create_info.name = proceduralPrimitiveTypeToString(type);
+        if (m_context->viewport_camera) {
+            create_info.translation =
+                m_context->viewport_camera->getPosition() +
+                m_context->viewport_camera->getForwardDirection() * 4.0f;
+        }
+        return createProceduralPrimitiveEntity(*scene, *m_context->asset_manager, create_info);
+    }
+
     Entity SceneHierarchyPanel::duplicateEntity(const std::shared_ptr<SceneV2>& scene, Entity source) {
         if (!scene || !source || !source.hasComponent<TagComponent>()) {
             return Entity();
@@ -303,6 +343,9 @@ namespace NexAur {
         }
         if (source.hasComponent<MeshRendererComponent>()) {
             duplicate.addComponent<MeshRendererComponent>(source.getComponent<MeshRendererComponent>());
+        }
+        if (source.hasComponent<ProceduralPrimitiveComponent>()) {
+            duplicate.addComponent<ProceduralPrimitiveComponent>(source.getComponent<ProceduralPrimitiveComponent>());
         }
         if (source.hasComponent<DirectionalLightComponent>()) {
             duplicate.addComponent<DirectionalLightComponent>(source.getComponent<DirectionalLightComponent>());

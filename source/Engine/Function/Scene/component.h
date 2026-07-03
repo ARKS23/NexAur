@@ -8,6 +8,7 @@
 
 #include "Core/Base.h"
 #include "Function/Resource/asset_handle.h"
+#include "Function/Resource/procedural_primitive.h"
 
 namespace NexAur {
     // 标签组件: 识别实体名称
@@ -107,6 +108,20 @@ namespace NexAur {
         UUID getModelUUID() const {
             return model_asset.id;
         }
+    };
+
+    struct ProceduralPrimitiveComponent {
+        ProceduralPrimitiveType type = ProceduralPrimitiveType::Cube;
+        uint32_t segments = 32;
+        uint32_t rings = 16;
+
+        ProceduralPrimitiveComponent() = default;
+        ProceduralPrimitiveComponent(const ProceduralPrimitiveComponent&) = default;
+        ProceduralPrimitiveComponent(
+            ProceduralPrimitiveType primitive_type,
+            uint32_t primitive_segments = 32,
+            uint32_t primitive_rings = 16)
+            : type(primitive_type), segments(primitive_segments), rings(primitive_rings) {}
     };
 
     struct EnvironmentComponent {

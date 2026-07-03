@@ -21,6 +21,7 @@ namespace NexAur {
         void drawCameraComponent(Entity entity);
         void drawActiveCameraComponent(Entity entity);
         void drawMeshRendererComponent(Entity entity);
+        void drawProceduralPrimitiveComponent(Entity entity);
         void drawDirectionalLightComponent(Entity entity);
         void drawPointLightComponent(Entity entity);
         void drawRectLightComponent(Entity entity);

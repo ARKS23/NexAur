@@ -156,6 +156,7 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Resource/mesh.h
     Function/Resource/model.h
     Function/Resource/model.cpp
+    Function/Resource/procedural_primitive.h
     Function/Resource/procedural_model_builder.h
     Function/Resource/procedural_model_builder.cpp
     Function/Resource/texture_types.h
@@ -168,6 +169,8 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
     Function/Scene/entity.h
     Function/Scene/entity.cpp
     Function/Scene/gameplay_component.h
+    Function/Scene/procedural_primitive_entity.h
+    Function/Scene/procedural_primitive_entity.cpp
     Function/Scene/scene_factory.h
     Function/Scene/scene_factory.cpp
     Function/Scene/scene_manager.h
