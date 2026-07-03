@@ -167,6 +167,28 @@ namespace NexAur {
             { size.x * 0.20f, size.y * 0.44f, size.z * 0.20f });
     }
 
+    void SceneTestClass::addSsrReflectionTestWall(glm::vec3 center, glm::vec3 size) {
+        if (!m_scene) {
+            NX_CORE_ERROR("SceneTestClass has no active scene.");
+            return;
+        }
+
+        MaterialImportData mirror_wall = makeSolidMaterial(
+            "SSR.MirrorWall",
+            glm::vec4{ 0.82f, 0.86f, 0.90f, 1.0f },
+            0.08f);
+        mirror_wall.metallic_factor = 1.0f;
+
+        const float half_width = size.x * 0.5f;
+        const float right_inner_x = center.x + half_width - 0.04f;
+        addSolidCubeEntity(
+            "SSR Mirror Wall",
+            mirror_wall,
+            { right_inner_x - 0.035f, center.y - size.y * 0.04f, center.z - size.z * 0.04f },
+            glm::vec3{ 0.0f },
+            { 0.05f, size.y * 0.68f, size.z * 0.72f });
+    }
+
     Entity SceneTestClass::addModelEntity(std::string name, const std::string& model_path, glm::vec3 position) {
         AssetHandle model_asset = m_asset_manager.importModelAsset(model_path);
         return addModelAssetEntity(std::move(name), model_asset, model_path, position);

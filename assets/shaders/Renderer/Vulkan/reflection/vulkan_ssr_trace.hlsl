@@ -20,6 +20,11 @@ struct SsrTracePushConstants {
 SsrTracePushConstants g_ssr;
 
 static const uint SSR_MAX_STEPS = 96u;
+static const int SSR_SAMPLE_VALID = 0;
+static const int SSR_SAMPLE_SKY = 1;
+static const int SSR_SAMPLE_OFFSCREEN = 2;
+static const int SSR_SAMPLE_NEAR_PLANE = 3;
+static const int SSR_SAMPLE_SELF = 4;
 
 FullscreenVSOutput VSMain(uint vertex_id : SV_VertexID) {
     return FullscreenTriangleVS(vertex_id);
@@ -100,39 +105,131 @@ float4 encodeDebugColor(float3 color, float normalized_steps) {
     return float4(max(color, 0.0f), saturate(normalized_steps));
 }
 
-float refineHitDistance(
+float computeAdaptiveThickness(float ray_view_depth, float base_thickness) {
+    return base_thickness * max(1.0f, ray_view_depth * 0.04f);
+}
+
+bool withinHitWindow(float depth_delta, float front_thickness, float back_thickness) {
+    return depth_delta >= -front_thickness && depth_delta <= back_thickness;
+}
+
+bool crossedHitWindow(
+    float previous_delta,
+    float current_delta,
+    float front_thickness,
+    float back_thickness) {
+    return (previous_delta < -front_thickness && current_delta > back_thickness) ||
+           (previous_delta > back_thickness && current_delta < -front_thickness);
+}
+
+int sampleRayDepth(
     float3 ray_origin,
+    float3 surface_normal,
+    float3 reflection_ray,
+    float ray_distance,
+    float self_hit_distance,
+    out float2 ray_uv,
+    out float depth_delta,
+    out float ray_view_depth,
+    out float surface_distance) {
+    ray_uv = 0.0f;
+    depth_delta = 0.0f;
+    ray_view_depth = 0.0f;
+    surface_distance = 0.0f;
+
+    const float3 ray_position = ray_origin + reflection_ray * ray_distance;
+    if (ray_position.z >= -0.001f) {
+        return SSR_SAMPLE_NEAR_PLANE;
+    }
+
+    ray_uv = projectViewPosition(ray_position);
+    if (!insideScreen(ray_uv)) {
+        return SSR_SAMPLE_OFFSCREEN;
+    }
+
+    const float sample_depth = g_scene_depth.SampleLevel(g_scene_sampler, ray_uv, 0.0f);
+    if (sample_depth >= 0.99999f) {
+        return SSR_SAMPLE_SKY;
+    }
+
+    const float3 sample_view_position = reconstructViewPosition(ray_uv, sample_depth);
+    surface_distance = abs(dot(sample_view_position - ray_origin, surface_normal));
+    if (surface_distance <= self_hit_distance) {
+        return SSR_SAMPLE_SELF;
+    }
+
+    const float sample_view_depth = -sample_view_position.z;
+    ray_view_depth = max(-ray_position.z, 0.0001f);
+    depth_delta = ray_view_depth - sample_view_depth;
+    return SSR_SAMPLE_VALID;
+}
+
+float refineCrossingHitDistance(
+    float3 ray_origin,
+    float3 surface_normal,
     float3 reflection_ray,
     float low_distance,
+    float low_delta,
     float high_distance,
-    float thickness) {
+    float high_delta,
+    float self_hit_distance,
+    out float2 refined_uv,
+    out float refined_delta,
+    out float refined_ray_view_depth) {
+    float best_distance = high_distance;
+    refined_delta = high_delta;
+    refined_ray_view_depth = max(-(ray_origin + reflection_ray * high_distance).z, 0.0001f);
+    refined_uv = projectViewPosition(ray_origin + reflection_ray * high_distance);
+
+    float low = low_distance;
+    float high = high_distance;
+    const bool low_is_front = low_delta < 0.0f;
+
     [unroll]
     for (uint refine_index = 0u; refine_index < 4u; ++refine_index) {
-        const float mid_distance = (low_distance + high_distance) * 0.5f;
-        const float3 ray_position = ray_origin + reflection_ray * mid_distance;
-        const float2 ray_uv = projectViewPosition(ray_position);
-        if (!insideScreen(ray_uv)) {
-            high_distance = mid_distance;
+        const float mid_distance = (low + high) * 0.5f;
+        float2 ray_uv = 0.0f;
+        float depth_delta = 0.0f;
+        float ray_view_depth = 0.0f;
+        float surface_distance = 0.0f;
+        const int sample_status = sampleRayDepth(
+            ray_origin,
+            surface_normal,
+            reflection_ray,
+            mid_distance,
+            self_hit_distance,
+            ray_uv,
+            depth_delta,
+            ray_view_depth,
+            surface_distance);
+
+        if (sample_status == SSR_SAMPLE_OFFSCREEN || sample_status == SSR_SAMPLE_NEAR_PLANE) {
+            high = mid_distance;
+            continue;
+        }
+        if (sample_status == SSR_SAMPLE_SKY || sample_status == SSR_SAMPLE_SELF) {
+            low = mid_distance;
             continue;
         }
 
-        const float sample_depth = g_scene_depth.SampleLevel(g_scene_sampler, ray_uv, 0.0f);
-        if (sample_depth >= 0.99999f) {
-            low_distance = mid_distance;
-            continue;
+        if (abs(depth_delta) < abs(refined_delta)) {
+            best_distance = mid_distance;
+            refined_delta = depth_delta;
+            refined_ray_view_depth = ray_view_depth;
+            refined_uv = ray_uv;
         }
 
-        const float sample_view_depth = -reconstructViewPosition(ray_uv, sample_depth).z;
-        const float ray_view_depth = max(-ray_position.z, 0.0001f);
-        const float depth_delta = ray_view_depth - sample_view_depth;
-        if (depth_delta >= -thickness) {
-            high_distance = mid_distance;
+        const bool mid_is_front = depth_delta < 0.0f;
+        if (mid_is_front == low_is_front) {
+            low = mid_distance;
+            low_delta = depth_delta;
         } else {
-            low_distance = mid_distance;
+            high = mid_distance;
+            high_delta = depth_delta;
         }
     }
 
-    return high_distance;
+    return best_distance;
 }
 
 float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
@@ -152,7 +249,7 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     const float3 view_ray = normalize(view_position);
     const float3 reflection_ray = normalize(reflect(view_ray, view_normal));
 
-    if (reflection_ray.z >= -0.01f) {
+    if (abs(reflection_ray.z) <= 0.01f) {
         return 0.0f;
     }
 
@@ -161,54 +258,90 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     const float thickness = max(g_ssr.trace_params.y, 0.0001f);
     const float stride = max(g_ssr.trace_params.z, 0.1f);
     const float step_distance = max_distance / (float)max_steps;
-    const float min_trace_distance = max(thickness * 2.0f, step_distance * 0.5f);
+    const float ray_step = max(step_distance * stride, 0.01f);
+    const float min_trace_distance = max(0.02f, min(thickness * 0.35f, ray_step * 0.25f));
+    const float self_hit_distance = clamp(thickness * 0.35f, 0.015f, 0.08f);
+    const float front_thickness = max(thickness * 0.5f, 0.01f);
     const float edge_weight = computeEdgeFade(input.uv);
     const float grazing_weight = computeGrazingFade(view_normal, view_ray);
 
     float2 hit_uv = input.uv;
     float hit_confidence = 0.0f;
     float normalized_steps = 0.0f;
-    float previous_distance = min_trace_distance;
+    float hit_depth_delta = 0.0f;
+    float hit_ray_view_depth = 0.0f;
+    float previous_distance = 0.0f;
+    float previous_delta = 0.0f;
+    bool previous_valid = false;
 
     [loop]
-    for (uint step_index = 1u; step_index <= SSR_MAX_STEPS; ++step_index) {
-        if (step_index > max_steps) {
+    for (uint step_index = 0u; step_index < SSR_MAX_STEPS; ++step_index) {
+        if (step_index >= max_steps) {
             break;
         }
 
-        const float ray_distance = min_trace_distance + step_distance * (float)step_index * stride;
+        const float ray_distance = min_trace_distance + ray_step * (float)step_index;
         if (ray_distance > max_distance) {
             break;
         }
 
-        const float3 ray_position = view_position + reflection_ray * ray_distance;
-        const float2 ray_uv = projectViewPosition(ray_position);
-        if (!insideScreen(ray_uv)) {
+        float2 ray_uv = 0.0f;
+        float depth_delta = 0.0f;
+        float ray_view_depth = 0.0f;
+        float surface_distance = 0.0f;
+        const int sample_status = sampleRayDepth(
+            view_position,
+            view_normal,
+            reflection_ray,
+            ray_distance,
+            self_hit_distance,
+            ray_uv,
+            depth_delta,
+            ray_view_depth,
+            surface_distance);
+
+        if (sample_status == SSR_SAMPLE_OFFSCREEN || sample_status == SSR_SAMPLE_NEAR_PLANE) {
             break;
         }
-
-        const float sample_depth = g_scene_depth.SampleLevel(g_scene_sampler, ray_uv, 0.0f);
-        if (sample_depth >= 0.99999f) {
+        if (sample_status == SSR_SAMPLE_SKY || sample_status == SSR_SAMPLE_SELF) {
+            previous_valid = false;
             continue;
         }
 
-        const float sample_view_depth = -reconstructViewPosition(ray_uv, sample_depth).z;
-        const float ray_view_depth = max(-ray_position.z, 0.0001f);
-        const float depth_delta = ray_view_depth - sample_view_depth;
-        const float adaptive_thickness = thickness * max(1.0f, ray_view_depth * 0.04f);
-        if (depth_delta >= -thickness && depth_delta <= adaptive_thickness) {
-            const float hit_distance = refineHitDistance(
-                view_position,
-                reflection_ray,
-                previous_distance,
-                ray_distance,
-                adaptive_thickness);
-            hit_uv = projectViewPosition(view_position + reflection_ray * hit_distance);
+        const float adaptive_thickness = computeAdaptiveThickness(ray_view_depth, thickness);
+        const bool direct_hit = withinHitWindow(depth_delta, front_thickness, adaptive_thickness);
+        const bool crossed_hit =
+            previous_valid &&
+            crossedHitWindow(previous_delta, depth_delta, front_thickness, adaptive_thickness);
+
+        if (direct_hit || crossed_hit) {
+            float hit_distance = ray_distance;
+            hit_uv = ray_uv;
+            hit_depth_delta = depth_delta;
+            hit_ray_view_depth = ray_view_depth;
+
+            if (crossed_hit) {
+                hit_distance = refineCrossingHitDistance(
+                    view_position,
+                    view_normal,
+                    reflection_ray,
+                    previous_distance,
+                    previous_delta,
+                    ray_distance,
+                    depth_delta,
+                    self_hit_distance,
+                    hit_uv,
+                    hit_depth_delta,
+                    hit_ray_view_depth);
+            }
+
+            const float hit_thickness = computeAdaptiveThickness(hit_ray_view_depth, thickness);
             normalized_steps = saturate(hit_distance / max_distance);
-            const float distance_weight = 1.0f - normalized_steps;
+            const float distance_weight = saturate(1.0f - normalized_steps * 0.75f);
             const float hit_edge_weight = computeEdgeFade(hit_uv);
-            const float facing_weight = saturate(-reflection_ray.z);
-            const float thickness_weight = 1.0f - saturate(abs(depth_delta) / max(adaptive_thickness, thickness));
+            const float facing_weight = lerp(0.35f, 1.0f, saturate(abs(reflection_ray.z) * 2.0f));
+            const float thickness_weight =
+                1.0f - saturate(abs(hit_depth_delta) / max(max(hit_thickness, front_thickness), 0.0001f));
             hit_confidence =
                 surface_reflection_mask *
                 edge_weight *
@@ -221,6 +354,8 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
         }
 
         previous_distance = ray_distance;
+        previous_delta = depth_delta;
+        previous_valid = true;
     }
 
     const bool hit = hit_confidence > 0.0001f;

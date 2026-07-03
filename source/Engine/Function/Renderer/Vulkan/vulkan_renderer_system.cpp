@@ -207,7 +207,8 @@ namespace NexAur {
         bool isSsrDebugView(RenderEffectDebugView view) {
             return view == RenderEffectDebugView::SsrHitMask ||
                    view == RenderEffectDebugView::SsrRaySteps ||
-                   view == RenderEffectDebugView::SsrRawReflection;
+                   view == RenderEffectDebugView::SsrRawReflection ||
+                   view == RenderEffectDebugView::SsrSurfaceMask;
         }
 
         const char* antiAliasingModeToText(RenderAntiAliasingMode mode) {
@@ -270,6 +271,8 @@ namespace NexAur {
                 return "SSR Ray Steps";
             case RenderEffectDebugView::SsrRawReflection:
                 return "SSR Raw Reflection";
+            case RenderEffectDebugView::SsrSurfaceMask:
+                return "SSR Surface Mask";
             case RenderEffectDebugView::FinalLit:
             default:
                 return "Final Lit";

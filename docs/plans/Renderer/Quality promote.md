@@ -1044,6 +1044,62 @@ struct RenderRectShadowSettings {
 - Debug view 能定位 hit、miss、confidence 和 raw reflection。
 - Debug 构建通过；必要 smoke 覆盖设置传递和 Sandbox 短启动。
 
+### 4.12.1 PR-R40.6.1：SSR Trace Robustness Fix （已完成）
+
+问题背景：
+
+- 当前 Final Lit 中低 roughness / metallic 测试面能看到天空环境，说明 PBR 材质、IBL / Reflection Probe fallback 与 post composite 基本工作。
+- 但 `SSR Hit Mask` 在镜面墙 / 镜面地面上只有零散噪点，`SSR Raw Reflection` 也没有形成稳定的球体 / 方块反射图案，说明问题主要发生在 SSR trace 阶段，而不是材质参数或最终混合阶段。
+- 当前 R40.6 trace 使用 depth-derived normal、固定步长 ray march 和 thickness window，容易出现三类误差：
+  - 大镜面平面用 depth 重建 normal 时方向不稳定，反射 ray 与真实材质 normal 不一致。
+  - 固定步长可能跨过球体、盒子边缘或薄物体，只留下噪点式 hit。
+  - 自命中过滤如果与 `thickness` 强绑定，阈值过大时会过滤掉靠近镜面的合法反射对象，阈值过小时又会采样镜面自身的天空反射。
+
+目标：
+
+- 收口 SSR v1 的核心 hit 判定，让镜面墙 / 镜面地面能稳定反射屏幕内可见的球体、方块和 Cornell block。
+- 保持 SSR 的边界清晰：只反射屏幕内已有深度的 opaque 物体；离屏、遮挡和透明内容仍由 Reflection Probe / IBL fallback 承担。
+- 让 debug view 能明确区分“没有 surface mask”、“ray 走出屏幕”、“被自命中过滤”、“没有 depth crossing”和“有效 hit”。
+
+主要工作：
+
+- 改造 `reflection/vulkan_ssr_trace.hlsl` 的 hit 判定：
+  - 从“单点落入 thickness window 即命中”改为“沿 ray 追踪 depth delta 的符号变化 / crossing，再二分 refine”。
+  - 同时支持 ray 朝屏幕深处和朝相机方向的反射，避免垂直镜面只能反天空。
+  - 对 ray 穿过 near plane、投影到屏幕外、采样到 sky depth 的路径做明确 miss。
+- 收敛自命中过滤：
+  - 将自命中 rejection 拆成独立参数或局部常量，不再简单使用 `thickness * 2` 作为大平面过滤阈值。
+  - 自命中过滤只跳过 origin surface 的连续深度平面，不应过滤掉与镜面相邻但几何上分离的球体 / cube / block。
+  - refinement 阶段复用同一套 self-hit 判定，避免 coarse pass 命中后又二分回镜面自身。
+- 改善 normal / mask 可观测性：
+  - 增加或扩展 SSR debug view：Surface Mask、Depth Normal 或 Trace Miss Reason 至少选一项。
+  - `SSR Hit Mask` 继续表达最终 confidence；`SSR Ray Steps` 继续表达命中距离 / 步数；`SSR Raw Reflection` 必须用于验证采样到的 scene color 是否来自目标物体。
+- 调整默认测试场景：
+  - 保留一个明确命名的 `SSR Mirror Wall` 或等价镜面平面，材质为 metallic 高、roughness 低、surface mask 明确为 1。
+  - 在镜面可反射方向上放置屏幕内可见的球体 / 方块，用于验证 wall reflection，而不是只依赖天空或 probe。
+- Post composite 只做保护性收敛：
+  - 保留 SSR disabled / miss 时回退到原 forward lighting 的行为。
+  - 不用 post 阶段放大 hit mask 掩盖 trace 问题；Raw Reflection / Hit Mask 必须先正确。
+
+范围约束：
+
+- 不做 temporal accumulation / denoise。
+- 不做 stochastic SSR、blue-noise resolve、Hi-Z tracing 或 hierarchical ray march。
+- 不做透明物体 SSR。
+- 不承诺离屏物体反射；离屏内容仍由 Reflection Probe / IBL 负责。
+- 不在本 PR 引入完整 deferred renderer 或 GBuffer。
+- 如需 material normal / roughness meta target，只允许作为轻量 forward auxiliary target 的后续 PR 规划；R40.6.1 优先修复当前 depth trace 的稳定性。
+
+验收标准：
+
+- 在 `SSR Mirror Wall` 测试视角下：
+  - `SSR Hit Mask` 能在镜面区域形成稳定、可解释的反射对象轮廓，而不是全黑或随机噪点。
+  - `SSR Raw Reflection` 能看到对应球体 / 方块 / Cornell block 的颜色，不再只采样到镜面自身天空反射。
+  - Final Lit 中镜面墙 / 镜面地面能看到屏幕内可见物体的 SSR contribution，miss 区域自然回退到 Reflection Probe / IBL。
+- 调大 / 调小 `max steps`、`thickness`、`stride` 时，hit mask 行为可解释，不出现全屏压黑、条纹爆闪或大面积错误命中。
+- SSR 关闭后画面回到 probe / IBL baseline；SSR debug view 开启时不会污染最终 composite。
+- Debug 构建通过；必要验证覆盖 HLSL 编译、`RenderSettingsSmoke` 和 Sandbox 短启动。
+
 ### 4.13 PR-R40.7：Reflection Probe Runtime Capture Baseline （已完成）
 
 目标：
@@ -1287,6 +1343,7 @@ R39.0 Color Grading / Post Tone Polish
   -> R40 Reflection Probe v1
   -> R40.5 SSR Foundation
   -> R40.6 SSR v1 Polish
+  -> R40.6.1 SSR Trace Robustness Fix
   -> R40.7 Reflection Probe Runtime Capture Baseline
   -> R40.8 Reflection Probe Capture Scheduling / Baked Asset
   -> R40.9 Reflection Probe True Scene Capture
@@ -1602,6 +1659,26 @@ Reflection、LTC Area Light、SSR 和 TAA 会进一步提高上限，但不建�
 范围说明：
 - 当前仍不做 temporal resolve、stochastic SSR、透明物体 SSR 或离屏内容反射。
 - 当前 forward renderer 尚未输出 material normal / roughness meta target，因此 v1 的 roughness fade 是全局贡献控制；材质级 roughness 衰减需要后续 material meta target。
+
+验证：
+- `cmake --build build\msvc-vcpkg --config Debug --target Sandbox`
+- `ctest --test-dir build\msvc-vcpkg -C Debug -R NexAur.RenderSettingsSmoke --output-on-failure`
+- `bin\msvc-vcpkg\Debug\Sandbox.exe` 短启动 smoke
+
+### 2026-07-03：PR-R40.6.1 SSR Trace Robustness Fix
+
+完成内容：
+- SSR trace 命中逻辑改为带 sample status 的 view-space ray march：明确区分 valid / sky / offscreen / near plane / self-hit，避免把天空或镜面自身当作有效反射来源。
+- 命中判定从单点 thickness window 扩展为 depth delta crossing + 4 次 binary refinement；反射 ray 朝屏幕深处或朝相机方向时都能参与追踪。
+- 自命中过滤从旧的 `thickness * 2` 大阈值拆成独立的局部距离阈值，降低大镜面平面把近处合法球体 / cube 过滤掉的风险。
+- confidence 计算继续保留 surface mask、边缘淡出、距离淡出、thickness 误差、facing 和 grazing 权重，但不在 post 阶段放大 hit mask 掩盖 trace 问题。
+- Effects Debug 新增 `SSR Surface Mask`，直接显示 HDR scene color alpha 中的 SSR surface mask，用于确认材质是否进入 SSR trace / composite 链路。
+- Sandbox 测试场景保留 `SSR Mirror Wall`，用于在镜面墙视角下验证屏幕内物体反射，而不是只观察天空 / probe fallback。
+
+范围说明：
+- 本 PR 仍不做 temporal resolve、Hi-Z / hierarchical tracing、stochastic SSR、透明物体 SSR 或离屏内容反射。
+- 当前 normal 仍来自 depth-derived normal；material normal / roughness meta target 留给后续 forward auxiliary target 或 deferred-lite PR。
+- 自动验证覆盖构建、RenderSettings smoke 和短启动；Final Lit 中反射形态仍需要在编辑器中结合 `SSR Hit Mask`、`SSR Raw Reflection` 和 `SSR Surface Mask` 做视觉确认。
 
 验证：
 - `cmake --build build\msvc-vcpkg --config Debug --target Sandbox`

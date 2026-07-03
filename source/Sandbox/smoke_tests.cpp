@@ -616,6 +616,7 @@ namespace {
 void setupScene() {
     NexAur::SceneTestClass scene_test;
     scene_test.addCornellBox();
+    scene_test.addSsrReflectionTestWall();
 
     // Material test scene.
     for (int i = 0; i < 5; ++i) {

@@ -242,6 +242,8 @@ namespace NexAur {
                 return RenderEffectDebugView::SsrRaySteps;
             case 19:
                 return RenderEffectDebugView::SsrRawReflection;
+            case 20:
+                return RenderEffectDebugView::SsrSurfaceMask;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -360,7 +362,8 @@ namespace NexAur {
                 "SMAA Output",
                 "SSR Hit Mask",
                 "SSR Ray Steps",
-                "SSR Raw Reflection"
+                "SSR Raw Reflection",
+                "SSR Surface Mask"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -462,7 +465,8 @@ namespace NexAur {
         }
         if (settings.effects_debug.view == RenderEffectDebugView::SsrHitMask ||
             settings.effects_debug.view == RenderEffectDebugView::SsrRaySteps ||
-            settings.effects_debug.view == RenderEffectDebugView::SsrRawReflection) {
+            settings.effects_debug.view == RenderEffectDebugView::SsrRawReflection ||
+            settings.effects_debug.view == RenderEffectDebugView::SsrSurfaceMask) {
             ImGui::TextDisabled("SSR debug can run the SSR graph without changing the SSR toggle.");
         }
     }
