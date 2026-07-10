@@ -490,6 +490,12 @@ namespace NexAur {
             []() { NX_CORE_INFO("Editor Stop command is reserved for a later play-mode lifecycle pass."); }
         });
 
+        const auto supports_rotation_and_scale = [this]() {
+            return !m_context ||
+                   !m_context->selected_entity ||
+                   !m_context->selected_entity.hasComponent<ReflectionProbeComponent>();
+        };
+
         commands.registerCommand({
             kCommandToolSelect,
             "Select",
@@ -518,7 +524,7 @@ namespace NexAur {
             "Rotate the selected entity.",
             "E",
             ImGuiKey_E,
-            {},
+            supports_rotation_and_scale,
             [this]() { return m_context && m_context->tool_state.operation == EditorToolOperation::Rotate; },
             [this]() { if (m_context) { m_context->tool_state.operation = EditorToolOperation::Rotate; } }
         });
@@ -529,7 +535,7 @@ namespace NexAur {
             "Scale the selected entity.",
             "R",
             ImGuiKey_R,
-            {},
+            supports_rotation_and_scale,
             [this]() { return m_context && m_context->tool_state.operation == EditorToolOperation::Scale; },
             [this]() { if (m_context) { m_context->tool_state.operation = EditorToolOperation::Scale; } }
         });
@@ -1107,9 +1113,10 @@ namespace NexAur {
 
         uint32_t queued_count = 0;
         uint32_t skipped_count = 0;
-        auto view = m_context->active_scene->getRegistry().view<ReflectionProbeComponent>();
+        auto view = m_context->active_scene->getRegistry().view<ReflectionProbeComponent, TransformComponent>();
         for (entt::entity entity : view) {
             ReflectionProbeComponent& probe = view.get<ReflectionProbeComponent>(entity);
+            const TransformComponent& transform = view.get<TransformComponent>(entity);
             if (!probe.enabled || (dirty_only && !probe.capture_dirty)) {
                 ++skipped_count;
                 continue;
@@ -1123,9 +1130,10 @@ namespace NexAur {
             request.far_clip = std::max(probe.capture_far_clip, request.near_clip + 0.001f);
             request.include_skybox = probe.capture_include_skybox;
             request.kind = ReflectionProbeCaptureKind::Bake;
+            request.input_hash = probe.computeCaptureInputHash(transform);
 
+            probe.capture_dirty = true;
             if (m_context->renderer_service->requestReflectionProbeCapture(request)) {
-                probe.capture_dirty = false;
                 ++queued_count;
             } else {
                 ++skipped_count;
@@ -1143,20 +1151,42 @@ namespace NexAur {
             return;
         }
 
-        auto view = m_context->active_scene->getRegistry().view<ReflectionProbeComponent>();
+        auto view = m_context->active_scene->getRegistry().view<ReflectionProbeComponent, TransformComponent>();
         for (entt::entity entity : view) {
             ReflectionProbeComponent& probe = view.get<ReflectionProbeComponent>(entity);
+            const TransformComponent& transform = view.get<TransformComponent>(entity);
+            const uint64_t current_input_hash = probe.computeCaptureInputHash(transform);
             const ReflectionProbeCaptureState state =
                 m_context->renderer_service->getReflectionProbeCaptureState(
                     static_cast<int>(static_cast<uint32_t>(entity)));
 
-            if (state.status == ReflectionProbeCaptureStatus::Ready && state.runtime_resource_ready) {
-                probe.capture_dirty = false;
-                if (state.last_kind == ReflectionProbeCaptureKind::Bake && state.baked_asset) {
-                    probe.baked_environment_asset = state.baked_asset;
+            if (probe.last_capture_input_hash != 0 &&
+                probe.last_capture_input_hash != current_input_hash) {
+                probe.capture_dirty = true;
+            }
+
+            if (state.status == ReflectionProbeCaptureStatus::Idle) {
+                probe.last_applied_capture_generation = 0;
+            } else if (state.status == ReflectionProbeCaptureStatus::Pending ||
+                       state.status == ReflectionProbeCaptureStatus::Capturing) {
+                probe.capture_dirty = true;
+            } else if (state.status == ReflectionProbeCaptureStatus::Ready) {
+                if (!state.runtime_resource_ready || state.generation == 0) {
+                    probe.capture_dirty = true;
+                } else if (state.generation != probe.last_applied_capture_generation) {
+                    probe.last_applied_capture_generation = state.generation;
+                    if (state.last_kind == ReflectionProbeCaptureKind::Bake && state.baked_asset) {
+                        probe.baked_environment_asset = state.baked_asset;
+                    }
+
+                    if (state.input_hash != 0 && state.input_hash == current_input_hash) {
+                        probe.last_capture_input_hash = state.input_hash;
+                        probe.capture_dirty = false;
+                    } else {
+                        probe.capture_dirty = true;
+                    }
                 }
-            } else if (state.status == ReflectionProbeCaptureStatus::Failed &&
-                       state.last_kind == ReflectionProbeCaptureKind::Bake) {
+            } else if (state.status == ReflectionProbeCaptureStatus::Failed) {
                 probe.capture_dirty = true;
             }
         }

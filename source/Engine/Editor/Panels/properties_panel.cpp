@@ -253,8 +253,22 @@ namespace NexAur {
         constexpr float kScaleMax = 100.0f;
         constexpr ImGuiSliderFlags kFlags = ImGuiSliderFlags_AlwaysClamp;
 
-        EditorPropertyDrawer::drawVec3Property("Translation", tc.translation, 0.05f, kPosMin, kPosMax, "%.3f", kFlags);
+        const bool reflection_probe = entity.hasComponent<ReflectionProbeComponent>();
+        if (EditorPropertyDrawer::drawVec3Property(
+                "Translation",
+                tc.translation,
+                0.05f,
+                kPosMin,
+                kPosMax,
+                "%.3f",
+                kFlags) &&
+            reflection_probe) {
+            entity.getComponent<ReflectionProbeComponent>().capture_dirty = true;
+        }
 
+        if (reflection_probe) {
+            ImGui::BeginDisabled();
+        }
         glm::vec3 rotation_degrees = glm::degrees(tc.rotation);
         if (EditorPropertyDrawer::drawVec3Property("Rotation", rotation_degrees, 0.5f, kRotMin, kRotMax, "%.1f", kFlags)) {
             tc.rotation = glm::radians(rotation_degrees);
@@ -264,11 +278,18 @@ namespace NexAur {
             tc.scale = glm::max(tc.scale, glm::vec3(kScaleMin)); // 确保缩放不为负数或过小
         }
 
+        if (reflection_probe) {
+            ImGui::EndDisabled();
+        }
+
         EditorWidgets::propertyRow("Actions", [&]() {
             if (ImGui::Button("Reset Transform")) {
                 tc.translation = glm::vec3(0.0f);
                 tc.rotation = glm::vec3(0.0f);
                 tc.scale = glm::vec3(1.0f);
+                if (reflection_probe) {
+                    entity.getComponent<ReflectionProbeComponent>().capture_dirty = true;
+                }
             }
         });
     }
@@ -577,6 +598,9 @@ namespace NexAur {
         if (!EditorPropertyDrawer::drawComponentHeader("Reflection Probe")) return;
 
         ReflectionProbeComponent& probe = entity.getComponent<ReflectionProbeComponent>();
+        const TransformComponent* transform = entity.hasComponent<TransformComponent>() ?
+            &entity.getComponent<TransformComponent>() :
+            nullptr;
         AssetManager* asset_manager =
             m_context && m_context->asset_manager ? m_context->asset_manager.get() : nullptr;
         constexpr ImGuiSliderFlags kFlags = ImGuiSliderFlags_AlwaysClamp;
@@ -692,7 +716,6 @@ namespace NexAur {
                 100,
                 kFlags)) {
             probe.capture_priority = static_cast<uint32_t>(std::clamp(capture_priority, 0, 100));
-            probe.capture_dirty = true;
         }
         if (EditorPropertyDrawer::drawFloatProperty(
                 "Capture Near",
@@ -720,7 +743,9 @@ namespace NexAur {
         if (EditorPropertyDrawer::drawBoolProperty("Capture Skybox", probe.capture_include_skybox)) {
             probe.capture_dirty = true;
         }
-        EditorPropertyDrawer::drawBoolProperty("Capture Dirty", probe.capture_dirty);
+        EditorPropertyDrawer::drawReadOnlyText(
+            "Capture Freshness",
+            probe.capture_dirty ? "Dirty" : "Fresh");
 
         const int probe_entity_id = static_cast<int>(static_cast<uint32_t>(entity));
         const ReflectionProbeCaptureState capture_state =
@@ -754,12 +779,13 @@ namespace NexAur {
                 request.far_clip = std::max(probe.capture_far_clip, request.near_clip + 0.001f);
                 request.include_skybox = probe.capture_include_skybox;
                 request.kind = kind;
-                if (m_context->renderer_service->requestReflectionProbeCapture(request)) {
-                    probe.capture_dirty = false;
-                }
+                request.input_hash = transform ? probe.computeCaptureInputHash(*transform) : 0;
+                probe.capture_dirty = true;
+                m_context->renderer_service->requestReflectionProbeCapture(request);
             };
 
-            const bool can_capture = probe.enabled && m_context && m_context->renderer_service;
+            const bool can_capture =
+                probe.enabled && transform && m_context && m_context->renderer_service;
             ImGui::BeginDisabled(!can_capture);
             if (ImGui::Button("Capture Probe")) {
                 request_capture(ReflectionProbeCaptureKind::Capture);

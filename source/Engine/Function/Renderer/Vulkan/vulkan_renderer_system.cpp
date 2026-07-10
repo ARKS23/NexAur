@@ -1169,6 +1169,7 @@ namespace NexAur {
             state.runtime_resource_ready = runtime_resource_ready;
             state.include_skybox = request.include_skybox;
             state.last_kind = request.kind;
+            state.input_hash = request.input_hash;
             state.message = std::move(message);
             return state;
         }

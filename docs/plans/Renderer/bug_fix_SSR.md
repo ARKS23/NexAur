@@ -1,6 +1,6 @@
 # SSR / Reflection Probe Bug Fix Plan
 
-状态：4.1 - 4.2 已审核并完成；4.3 - 4.4 待审核。
+状态：4.1 - 4.3 已审核并完成；4.4 待审核。
 
 ## 1. 背景与结论
 
@@ -117,7 +117,7 @@
 - Sandbox 隐藏窗口短启动通过。
 - Reflection Probe Influence / Specular / Diffuse 的纯输出仍需在编辑器视角下人工确认。
 
-### 4.3 BF-R40.9.1：Reflection Probe Transform / Dirty State Fix
+### 4.3 BF-R40.9.1：Reflection Probe Transform / Dirty State Fix（已完成）
 
 主要工作：
 
@@ -128,12 +128,29 @@
 - capture 失败、资源创建失败或请求被拒绝时保持 dirty，并保留上一版可用 resource。
 - 本轮维持 axis-aligned probe box：rotation / Transform scale 不参与 capture 或 influence；Editor 应明确该约束，box 尺寸继续由 component extents 控制。
 
+实现结果：
+
+- `ReflectionProbeComponent` 新增稳定 capture input hash，覆盖 translation、resolution、near / far clip 和 include skybox；priority、rotation、scale、box extents 和光照强度不进入 hash。
+- capture request / renderer state 携带输入 hash，组件持久化上一次成功 capture 的 hash；旧场景缺少 hash 时不会错误恢复为 Fresh。
+- 单 probe Capture / Bake 和 Bake All 入队后立即保持 Dirty，不再在请求接受时清除。
+- Editor 仅在新的 Ready generation、runtime resource ready 且 state hash 与当前输入一致时清除 Dirty；Pending、Capturing、Failed 或输入不匹配均保持 Dirty。
+- Inspector 将 capture freshness 改为只读状态，不能手动绕过成功条件写成 Fresh。
+- Inspector 的 probe Rotation / Scale 控件禁用，Viewport Rotate / Scale 命令和 gizmo 对 probe 不生效；probe 继续使用 translation + component extents 的 AABB 语义。
+- Capture Priority 仅影响调度顺序，不再触发无意义 recapture。
+
 验收：
 
 - 用 Gizmo 或 Properties 移动 probe 后立即显示 Dirty。
 - Pending / Capturing 期间不会短暂显示 Fresh。
 - capture 成功后显示 Fresh，失败后仍显示 Dirty 且错误信息可见。
 - 只修改不影响 capture 内容的 diffuse / specular intensity 时，不触发不必要的六面 recapture。
+
+验证：
+
+- Debug Sandbox 构建通过。
+- `NexAur.SceneSerializerSmoke` 通过，覆盖 hash 序列化、translation / resolution 变更和 rotation / scale / priority 忽略规则。
+- `NexAur.RenderSettingsSmoke` 通过。
+- Probe Gizmo、Pending / Capturing 状态和 capture failure 的最终交互仍需在编辑器中人工确认。
 
 ### 4.4 BF-R40.9.2：Runtime Bake Lifetime Fix
 

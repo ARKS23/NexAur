@@ -1,4 +1,5 @@
 #pragma once
+#include <bit>
 #include <cstdint>
 #include <string>
 #include <memory>
@@ -166,6 +167,8 @@ namespace NexAur {
         bool box_projection = true;
         bool capture_include_skybox = true;
         bool capture_dirty = true;
+        uint64_t last_capture_input_hash = 0;
+        uint64_t last_applied_capture_generation = 0;
 
         ReflectionProbeComponent() = default;
         ReflectionProbeComponent(const ReflectionProbeComponent&) = default;
@@ -181,6 +184,29 @@ namespace NexAur {
 
         UUID getEnvironmentUUID() const {
             return environment_asset.id;
+        }
+
+        uint64_t computeCaptureInputHash(const TransformComponent& transform) const {
+            uint64_t hash = 14695981039346656037ull;
+            const auto append = [&hash](uint32_t value) {
+                for (uint32_t byte_index = 0; byte_index < sizeof(value); ++byte_index) {
+                    hash ^= static_cast<uint8_t>(value >> (byte_index * 8u));
+                    hash *= 1099511628211ull;
+                }
+            };
+            const auto append_float = [&append](float value) {
+                append(std::bit_cast<uint32_t>(value == 0.0f ? 0.0f : value));
+            };
+
+            append(1u);
+            append_float(transform.translation.x);
+            append_float(transform.translation.y);
+            append_float(transform.translation.z);
+            append(capture_resolution);
+            append_float(capture_near_clip);
+            append_float(capture_far_clip);
+            append(capture_include_skybox ? 1u : 0u);
+            return hash != 0 ? hash : 1u;
         }
     };
 } // namespace NexAur

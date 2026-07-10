@@ -832,8 +832,9 @@ bool configureDefaultReflectionProbe(const std::shared_ptr<NexAur::SceneV2>& sce
     probe.box_projection = true;
     probe.capture_include_skybox = false;
     probe.capture_dirty = false;
-    entity.getComponent<NexAur::TransformComponent>().translation =
-        glm::vec3{ 0.5f, 1.25f, -0.75f };
+    auto& transform = entity.getComponent<NexAur::TransformComponent>();
+    transform.translation = glm::vec3{ 0.5f, 1.25f, -0.75f };
+    probe.last_capture_input_hash = probe.computeCaptureInputHash(transform);
     return true;
 }
 
@@ -852,6 +853,22 @@ bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene
 
         const auto& probe = view.get<NexAur::ReflectionProbeComponent>(entity);
         const auto& transform = view.get<NexAur::TransformComponent>(entity);
+        NexAur::TransformComponent moved_transform = transform;
+        moved_transform.translation.x += 0.25f;
+        NexAur::TransformComponent ignored_transform = transform;
+        ignored_transform.rotation = glm::vec3{ 0.4f, -0.2f, 0.1f };
+        ignored_transform.scale = glm::vec3{ 2.0f, 0.5f, 1.5f };
+        NexAur::ReflectionProbeComponent scheduling_probe = probe;
+        ++scheduling_probe.capture_priority;
+        NexAur::ReflectionProbeComponent recapture_probe = probe;
+        recapture_probe.capture_resolution = 512u;
+        const bool capture_hash_matches =
+            probe.last_capture_input_hash != 0 &&
+            probe.last_capture_input_hash == probe.computeCaptureInputHash(transform) &&
+            probe.last_capture_input_hash != probe.computeCaptureInputHash(moved_transform) &&
+            probe.last_capture_input_hash == probe.computeCaptureInputHash(ignored_transform) &&
+            probe.last_capture_input_hash == scheduling_probe.computeCaptureInputHash(transform) &&
+            probe.last_capture_input_hash != recapture_probe.computeCaptureInputHash(transform);
         return probe.environment_asset &&
                nearlyEqual(probe.box_extents.x, 3.5f) &&
                nearlyEqual(probe.box_extents.y, 2.25f) &&
@@ -869,6 +886,7 @@ bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene
                probe.baked_environment_asset &&
                !probe.capture_include_skybox &&
                !probe.capture_dirty &&
+               capture_hash_matches &&
                nearlyEqual(transform.translation.x, 0.5f) &&
                nearlyEqual(transform.translation.y, 1.25f) &&
                nearlyEqual(transform.translation.z, -0.75f);

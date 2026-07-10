@@ -71,6 +71,7 @@ namespace NexAur {
         float far_clip = 40.0f;
         bool include_skybox = true;
         ReflectionProbeCaptureKind kind = ReflectionProbeCaptureKind::Capture;
+        uint64_t input_hash = 0;
     };
 
     struct NEXAUR_API ReflectionProbeCaptureState {
@@ -81,6 +82,7 @@ namespace NexAur {
         bool include_skybox = true;
         AssetHandle baked_asset;
         ReflectionProbeCaptureKind last_kind = ReflectionProbeCaptureKind::Capture;
+        uint64_t input_hash = 0;
         std::string message = "Idle";
     };
 

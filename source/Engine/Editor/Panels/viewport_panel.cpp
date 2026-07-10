@@ -526,13 +526,17 @@ namespace NexAur {
             return;
         }
 
+        const Entity selected = m_context->selected_entity;
+        const bool translation_only =
+            selected && selected.hasComponent<ReflectionProbeComponent>();
+
         if (ImGui::IsKeyPressed(ImGuiKey_W)) {
             m_context->tool_state.operation = EditorToolOperation::Translate;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_E)) {
+        if (!translation_only && ImGui::IsKeyPressed(ImGuiKey_E)) {
             m_context->tool_state.operation = EditorToolOperation::Rotate;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+        if (!translation_only && ImGui::IsKeyPressed(ImGuiKey_R)) {
             m_context->tool_state.operation = EditorToolOperation::Scale;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_T)) {
@@ -550,7 +554,7 @@ namespace NexAur {
         if (!m_context || !m_context->active_scene) {
             return;
         }
-        const EditorToolState& tool_state = m_context->tool_state;
+        EditorToolState& tool_state = m_context->tool_state;
         if (!tool_state.gizmo_visible || tool_state.operation == EditorToolOperation::Select) {
             return;
         }
@@ -564,6 +568,11 @@ namespace NexAur {
         Entity selected = m_context->selected_entity;
         if (!selected || !selected.hasComponent<TransformComponent>()) {
             return;
+        }
+        if (selected.hasComponent<ReflectionProbeComponent>() &&
+            (tool_state.operation == EditorToolOperation::Rotate ||
+             tool_state.operation == EditorToolOperation::Scale)) {
+            tool_state.operation = EditorToolOperation::Translate;
         }
 
         std::shared_ptr<EditorCamera> editor_camera = m_context->viewport_camera;
@@ -668,6 +677,10 @@ namespace NexAur {
         if (!selected.hasComponent<TransformComponent>()) {
             return;
         }
+        if (selected.hasComponent<ReflectionProbeComponent>() &&
+            operation != EditorToolOperation::Translate) {
+            return;
+        }
 
         auto& tc = selected.getComponent<TransformComponent>();
 
@@ -678,6 +691,9 @@ namespace NexAur {
 
         if (operation == EditorToolOperation::Translate) {
             tc.translation = glm::vec3(translation[0], translation[1], translation[2]);
+            if (selected.hasComponent<ReflectionProbeComponent>()) {
+                selected.getComponent<ReflectionProbeComponent>().capture_dirty = true;
+            }
             return;
         }
 

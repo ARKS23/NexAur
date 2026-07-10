@@ -376,6 +376,7 @@ namespace NexAur {
                 { "box_projection", probe.box_projection },
                 { "capture_include_skybox", probe.capture_include_skybox },
                 { "capture_dirty", probe.capture_dirty },
+                { "last_capture_input_hash", probe.last_capture_input_hash },
             };
         }
 
@@ -553,6 +554,11 @@ namespace NexAur {
             probe.box_projection = component.value("box_projection", probe.box_projection);
             probe.capture_include_skybox = component.value("capture_include_skybox", probe.capture_include_skybox);
             probe.capture_dirty = component.value("capture_dirty", probe.capture_dirty);
+            probe.last_capture_input_hash =
+                component.value("last_capture_input_hash", probe.last_capture_input_hash);
+            if (!probe.capture_dirty && probe.last_capture_input_hash == 0) {
+                probe.capture_dirty = true;
+            }
         }
 
         void readProceduralPrimitiveComponent(
