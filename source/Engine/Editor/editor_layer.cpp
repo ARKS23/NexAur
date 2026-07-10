@@ -1167,6 +1167,14 @@ namespace NexAur {
 
             if (state.status == ReflectionProbeCaptureStatus::Idle) {
                 probe.last_applied_capture_generation = 0;
+                const AssetMetadata* baked_metadata =
+                    m_context->asset_manager && probe.baked_environment_asset ?
+                        m_context->asset_manager->getMetadata(probe.baked_environment_asset) :
+                        nullptr;
+                if (baked_metadata && baked_metadata->runtime_generated) {
+                    probe.baked_environment_asset = AssetHandle{};
+                    probe.capture_dirty = true;
+                }
             } else if (state.status == ReflectionProbeCaptureStatus::Pending ||
                        state.status == ReflectionProbeCaptureStatus::Capturing) {
                 probe.capture_dirty = true;

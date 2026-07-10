@@ -1,6 +1,6 @@
 # SSR / Reflection Probe Bug Fix Plan
 
-状态：4.1 - 4.3 已审核并完成；4.4 待审核。
+状态：4.1 - 4.4 已审核并完成。
 
 ## 1. 背景与结论
 
@@ -152,7 +152,7 @@
 - `NexAur.RenderSettingsSmoke` 通过。
 - Probe Gizmo、Pending / Capturing 状态和 capture failure 的最终交互仍需在编辑器中人工确认。
 
-### 4.4 BF-R40.9.2：Runtime Bake Lifetime Fix
+### 4.4 BF-R40.9.2：Runtime Bake Lifetime Fix（已完成）
 
 主要工作：
 
@@ -162,11 +162,29 @@
 - 超预算请求返回明确 Failed / OverBudget 状态，旧 probe 保持可用。
 - 清除 baked data、删除 probe 或卸载 scene 时解除 pin 并正常释放资源。
 
+实现结果：
+
+- residency policy 明确区分 resident、pinned、pending、active 和 transient capture；LRU 只从可淘汰 transient 中选择。
+- scene component 的 baked asset 引用与 runtime baked identity 匹配时长期 pin；首次 Bake 成功提供一帧写回宽限，避免 asset handle 尚未同步时被淘汰。
+- capture 前先验证 resident slot，可用 transient 只在新 capture 成功后才淘汰；无候选时返回 Failed / OverBudget，不执行静默 fallback。
+- capture / bake 失败会保留上一版 ready environment、generation 和 baked identity；重复 Bake 复用稳定 runtime asset handle。
+- transient eviction 不再直接删除状态记录，而是释放 GPU resource 并写入 Failed / Evicted，Editor 会恢复 Dirty。
+- `RenderDataPacket` 新增运行期 scene instance id；切换或重载 scene 时统一释放旧 capture，避免相同 entity id 复用旧资源。
+- pin / prune 使用未过滤的 scene probe 数据，disabled 或 intensity 为 0 的 probe 不会被误判为已删除。
+- Renderer Debug 新增 `Pinned Probe Count`，可同时观察 resident、pinned 和 limit。
+
 验收：
 
 - renderer debug 中显示 baked asset 时，对应 runtime descriptor 必须真实可用。
 - 多 probe bake 达到 resident limit 后，不会出现 Inspector 仍为 Fresh 但画面已 fallback 的状态。
 - scene reload、删除 probe、Clear Baked Data 后不残留无主 pinned resource。
+
+验证：
+
+- Debug Sandbox 构建通过。
+- `NexAur.RenderSettingsSmoke` 通过，覆盖 pinned / active / pending 保护、LRU 选择和全保护时拒绝淘汰。
+- `NexAur.SceneSerializerSmoke` 通过，覆盖 scene instance identity 唯一性与 baked probe 序列化链路。
+- 多 probe 达到 resident limit 的完整 GPU / Editor 状态仍需人工交互确认。
 
 ## 5. 范围约束
 

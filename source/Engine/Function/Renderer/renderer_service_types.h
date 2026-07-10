@@ -90,6 +90,7 @@ namespace NexAur {
         uint32_t pending_count = 0;
         uint32_t capture_budget_per_frame = 0;
         uint32_t resident_capture_count = 0;
+        uint32_t pinned_capture_count = 0;
         uint32_t resident_capture_limit = 0;
         int last_captured_entity_id = -1;
         uint64_t last_captured_generation = 0;

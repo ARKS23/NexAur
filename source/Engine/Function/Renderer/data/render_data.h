@@ -93,6 +93,7 @@ namespace NexAur {
     
     // 渲染数据包: 每帧从场景收集的数据,供渲染器使用
     struct RenderDataPacket {
+        uint64_t scene_id = 0;
         RendererCameraData camera_data;
 
         RendererDirectionalLightData directional_light_data;
@@ -112,6 +113,7 @@ namespace NexAur {
             const RenderSettings current_render_settings = render_settings;
             const RenderDebugVisualizationOptions current_debug_options = debug_visualization_options;
             // 清空完整帧状态，避免缺少相机或灯光组件时沿用上一帧数据。
+            scene_id = 0;
             camera_data = RendererCameraData();
             directional_light_data = RendererDirectionalLightData();
             environment_data = RendererEnvironmentData();

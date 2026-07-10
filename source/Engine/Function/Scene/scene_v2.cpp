@@ -139,6 +139,7 @@ namespace NexAur {
         if (!render_packet) return;
 
         render_packet->clear();
+        render_packet->scene_id = static_cast<uint64_t>(m_scene_id);
         const RenderDebugVisualizationOptions& debug_options =
             render_packet->debug_visualization_options;
 

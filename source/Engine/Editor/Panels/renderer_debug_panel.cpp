@@ -351,6 +351,7 @@ namespace NexAur {
         drawKeyValue("Probe Capture Pending", snapshot.resources.reflection_probe_capture_pending_count);
         drawKeyValue("Probe Capture Budget", snapshot.resources.reflection_probe_capture_budget_per_frame);
         drawKeyValue("Runtime Probe Count", snapshot.resources.reflection_probe_runtime_capture_count);
+        drawKeyValue("Pinned Probe Count", snapshot.resources.reflection_probe_pinned_capture_count);
         drawKeyValue("Runtime Probe Limit", snapshot.resources.reflection_probe_runtime_capture_limit);
         drawKeyValue("Last Captured Probe", snapshot.resources.reflection_probe_last_captured_entity_id);
     }

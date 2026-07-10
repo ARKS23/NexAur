@@ -33,6 +33,7 @@ namespace NexAur {
         void extractSceneData(RenderDataPacket* render_packet);
 
     private:
+        UUID m_scene_id;
         entt::registry m_Registry;
         friend class Entity;
     };

@@ -26,6 +26,7 @@
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
+#include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
@@ -895,6 +896,22 @@ bool defaultReflectionProbeMatches(const std::shared_ptr<NexAur::SceneV2>& scene
     return false;
 }
 
+bool sceneInstanceIdsAreDistinct(
+    const std::shared_ptr<NexAur::SceneV2>& first,
+    const std::shared_ptr<NexAur::SceneV2>& second) {
+    if (!first || !second) {
+        return false;
+    }
+
+    NexAur::RenderDataPacket first_packet;
+    NexAur::RenderDataPacket second_packet;
+    first->extractSceneData(&first_packet);
+    second->extractSceneData(&second_packet);
+    return first_packet.scene_id != 0 &&
+           second_packet.scene_id != 0 &&
+           first_packet.scene_id != second_packet.scene_id;
+}
+
 bool configureDefaultProceduralPrimitive(
     const std::shared_ptr<NexAur::SceneV2>& scene,
     NexAur::AssetManager& asset_manager) {
@@ -1137,6 +1154,11 @@ int runSceneSerializerSmoke() {
             } else if (!defaultReflectionProbeMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: reflection probe settings were not preserved.";
+            } else if (!sceneInstanceIdsAreDistinct(
+                           scene_service->getActiveScene(),
+                           load_result.scene)) {
+                success = false;
+                failure = "SceneSerializer smoke failed: scene instances did not receive distinct runtime identities.";
             } else if (!defaultProceduralPrimitiveMatches(load_result.scene)) {
                 success = false;
                 failure = "SceneSerializer smoke failed: procedural primitive settings were not preserved.";
@@ -1291,6 +1313,23 @@ int runRenderSettingsSmoke() {
         }
         success = expectGameplay(condition, message, failure);
     };
+
+    std::array<NexAur::ReflectionProbeResidencyCandidate, 6> residency_candidates{
+        NexAur::ReflectionProbeResidencyCandidate{ 1, 1, 1, true, true, false },
+        NexAur::ReflectionProbeResidencyCandidate{ 2, 2, 1, true, false, false },
+        NexAur::ReflectionProbeResidencyCandidate{ 3, 3, 1, true, false, true },
+        NexAur::ReflectionProbeResidencyCandidate{ 4, 10, 5, true, false, false },
+        NexAur::ReflectionProbeResidencyCandidate{ 5, 10, 3, true, false, false },
+        NexAur::ReflectionProbeResidencyCandidate{ 6, 0, 0, false, false, false }
+    };
+    expect(
+        NexAur::selectReflectionProbeEvictionCandidate(residency_candidates, 2) == 5,
+        "Reflection probe residency policy did not preserve pinned, active, and pending captures.");
+    residency_candidates[4].pinned = true;
+    residency_candidates[3].pinned = true;
+    expect(
+        NexAur::selectReflectionProbeEvictionCandidate(residency_candidates, 2) == -1,
+        "Reflection probe residency policy should reject eviction when every resident capture is protected.");
 
     NexAur::RenderSettings settings;
     settings.lighting.preset = NexAur::RenderLightingPreset::Custom;

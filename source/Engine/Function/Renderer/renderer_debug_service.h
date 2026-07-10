@@ -212,6 +212,7 @@ namespace NexAur {
         uint32_t reflection_probe_capture_pending_count = 0;
         uint32_t reflection_probe_capture_budget_per_frame = 0;
         uint32_t reflection_probe_runtime_capture_count = 0;
+        uint32_t reflection_probe_pinned_capture_count = 0;
         uint32_t reflection_probe_runtime_capture_limit = 0;
         int reflection_probe_last_captured_entity_id = -1;
     };

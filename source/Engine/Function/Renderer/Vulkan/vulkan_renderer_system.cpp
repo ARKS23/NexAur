@@ -27,6 +27,7 @@
 #include "Function/Renderer/Vulkan/passes/vulkan_skybox_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_ssr_pass.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
+#include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
@@ -727,6 +728,7 @@ namespace NexAur {
             AssetHandle baked_asset;
             uint64_t generation = 0;
             uint64_t last_used_frame = 0;
+            uint64_t bake_pin_until_frame = 0;
         };
 
         bool init(WindowService& service) {
@@ -862,6 +864,8 @@ namespace NexAur {
             object_id_pass.shutdown();
             pending_reflection_probe_captures.clear();
             reflection_probe_captures.clear();
+            reflection_probe_pinned_capture_count = 0;
+            active_render_scene_id = 0;
             rect_shadow_target.shutdown();
             point_shadow_target.shutdown();
             shadow_target.shutdown();
@@ -935,10 +939,18 @@ namespace NexAur {
                 AssetManager::getInstance());
 
             waitForInFlightFrame();
-            pruneReflectionProbeCaptures(scene_frame);
-            processPendingReflectionProbeCapture(scene_frame, draw_list, render_data.render_settings);
+            syncReflectionProbeScene(render_data.scene_id);
+            pruneReflectionProbeCaptures(render_data);
+            processPendingReflectionProbeCapture(
+                scene_frame,
+                render_data,
+                draw_list,
+                render_data.render_settings);
             bindRuntimeReflectionProbeCapture(draw_list);
-            enforceReflectionProbeResidentBudget(draw_list.active_reflection_probe.entity_id);
+            enforceReflectionProbeResidentBudget(
+                render_data,
+                draw_list.active_reflection_probe.entity_id);
+            reflection_probe_pinned_capture_count = countPinnedReflectionProbeCaptures(render_data);
             drawFrame(draw_list, render_data.render_settings);
             updateDebugSnapshot(
                 ts,
@@ -1129,6 +1141,7 @@ namespace NexAur {
             state.pending_count = static_cast<uint32_t>(pending_reflection_probe_captures.size());
             state.capture_budget_per_frame = kReflectionProbeCaptureBudgetPerFrame;
             state.resident_capture_count = countResidentReflectionProbeCaptures();
+            state.pinned_capture_count = reflection_probe_pinned_capture_count;
             state.resident_capture_limit = kMaxRuntimeReflectionProbeCaptures;
             state.last_captured_entity_id = last_captured_reflection_probe_entity_id;
             state.last_captured_generation = reflection_probe_capture_generation;
@@ -1174,6 +1187,24 @@ namespace NexAur {
             return state;
         }
 
+        void setReflectionProbeCaptureFailure(
+            RuntimeReflectionProbeCapture& capture,
+            const ReflectionProbeCaptureRequest& request,
+            std::string message) const {
+            const bool previous_resource_ready =
+                capture.environment && capture.environment->isReady();
+            capture.state = buildCaptureState(
+                request,
+                ReflectionProbeCaptureStatus::Failed,
+                previous_resource_ready,
+                std::move(message));
+            capture.state.generation = capture.generation;
+            capture.state.baked_asset = capture.baked_asset;
+            if (previous_resource_ready) {
+                capture.state.resolution = capture.environment->getEnvironmentSize();
+            }
+        }
+
         const RenderFrameReflectionProbe* findReflectionProbe(
             const RenderSceneFrame& scene_frame,
             int entity_id) const {
@@ -1184,6 +1215,18 @@ namespace NexAur {
             }
 
             return nullptr;
+        }
+
+        const RendererReflectionProbeData* findReflectionProbe(
+            const RenderDataPacket& render_data,
+            int entity_id) const {
+            const auto probe_it = std::find_if(
+                render_data.reflection_probes_data.begin(),
+                render_data.reflection_probes_data.end(),
+                [entity_id](const RendererReflectionProbeData& probe) {
+                    return probe.entity_id == entity_id;
+                });
+            return probe_it != render_data.reflection_probes_data.end() ? &*probe_it : nullptr;
         }
 
         VulkanEnvironmentResourceBuildSettings buildRuntimeProbeBuildSettings(
@@ -1252,12 +1295,126 @@ namespace NexAur {
             return count;
         }
 
-        void pruneReflectionProbeCaptures(const RenderSceneFrame& scene_frame) {
+        bool isReflectionProbeCapturePinned(
+            const RenderDataPacket& render_data,
+            int entity_id,
+            const RuntimeReflectionProbeCapture& capture) const {
+            if (!capture.baked_asset) {
+                return false;
+            }
+
+            const RendererReflectionProbeData* probe = findReflectionProbe(render_data, entity_id);
+            const bool referenced_by_scene =
+                probe && probe->baked_environment_asset == capture.baked_asset;
+            return referenced_by_scene || render_frame_index <= capture.bake_pin_until_frame;
+        }
+
+        uint32_t countPinnedReflectionProbeCaptures(const RenderDataPacket& render_data) const {
+            uint32_t count = 0;
+            for (const auto& [entity_id, capture] : reflection_probe_captures) {
+                if (capture.environment &&
+                    capture.environment->isReady() &&
+                    isReflectionProbeCapturePinned(render_data, entity_id, capture)) {
+                    ++count;
+                }
+            }
+            return count;
+        }
+
+        std::vector<ReflectionProbeResidencyCandidate> buildReflectionProbeResidencyCandidates(
+            const RenderDataPacket& render_data) const {
+            std::vector<ReflectionProbeResidencyCandidate> candidates;
+            candidates.reserve(reflection_probe_captures.size());
+            for (const auto& [entity_id, capture] : reflection_probe_captures) {
+                ReflectionProbeResidencyCandidate candidate;
+                candidate.entity_id = entity_id;
+                candidate.last_used_frame = capture.last_used_frame;
+                candidate.generation = capture.generation;
+                candidate.resident = capture.environment && capture.environment->isReady();
+                candidate.pinned = isReflectionProbeCapturePinned(render_data, entity_id, capture);
+                candidate.pending = hasPendingReflectionProbeCapture(entity_id);
+                candidates.push_back(candidate);
+            }
+            return candidates;
+        }
+
+        bool evictReflectionProbeCapture(
+            const RenderDataPacket& render_data,
+            int protected_entity_id) {
+            const std::vector<ReflectionProbeResidencyCandidate> candidates =
+                buildReflectionProbeResidencyCandidates(render_data);
+            const int entity_id =
+                selectReflectionProbeEvictionCandidate(candidates, protected_entity_id);
+            const auto capture_it = reflection_probe_captures.find(entity_id);
+            if (entity_id < 0 || capture_it == reflection_probe_captures.end()) {
+                return false;
+            }
+
+            RuntimeReflectionProbeCapture& capture = capture_it->second;
+            capture.environment.reset();
+            capture.baked_asset = AssetHandle{};
+            capture.bake_pin_until_frame = 0;
+            capture.state.status = ReflectionProbeCaptureStatus::Failed;
+            capture.state.runtime_resource_ready = false;
+            capture.state.baked_asset = AssetHandle{};
+            capture.state.message = "Runtime reflection probe evicted to satisfy the resident budget.";
+            return true;
+        }
+
+        bool ensureReflectionProbeResidentSlot(
+            const RenderDataPacket& render_data,
+            int requested_entity_id,
+            int protected_entity_id) {
+            const auto requested_capture = reflection_probe_captures.find(requested_entity_id);
+            if (requested_capture != reflection_probe_captures.end() &&
+                requested_capture->second.environment &&
+                requested_capture->second.environment->isReady()) {
+                return true;
+            }
+
+            while (countResidentReflectionProbeCaptures() >= kMaxRuntimeReflectionProbeCaptures) {
+                if (!evictReflectionProbeCapture(render_data, protected_entity_id)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool canAcquireReflectionProbeResidentSlot(
+            const RenderDataPacket& render_data,
+            int requested_entity_id,
+            int protected_entity_id) const {
+            const auto requested_capture = reflection_probe_captures.find(requested_entity_id);
+            if ((requested_capture != reflection_probe_captures.end() &&
+                 requested_capture->second.environment &&
+                 requested_capture->second.environment->isReady()) ||
+                countResidentReflectionProbeCaptures() < kMaxRuntimeReflectionProbeCaptures) {
+                return true;
+            }
+
+            const std::vector<ReflectionProbeResidencyCandidate> candidates =
+                buildReflectionProbeResidencyCandidates(render_data);
+            return selectReflectionProbeEvictionCandidate(candidates, protected_entity_id) >= 0;
+        }
+
+        void syncReflectionProbeScene(uint64_t scene_id) {
+            if (active_render_scene_id == scene_id) {
+                return;
+            }
+
+            pending_reflection_probe_captures.clear();
+            reflection_probe_captures.clear();
+            reflection_probe_pinned_capture_count = 0;
+            last_captured_reflection_probe_entity_id = -1;
+            active_render_scene_id = scene_id;
+        }
+
+        void pruneReflectionProbeCaptures(const RenderDataPacket& render_data) {
             for (auto capture_it = reflection_probe_captures.begin();
                  capture_it != reflection_probe_captures.end();) {
                 const int entity_id = capture_it->first;
                 if (!hasPendingReflectionProbeCapture(entity_id) &&
-                    findReflectionProbe(scene_frame, entity_id) == nullptr) {
+                    findReflectionProbe(render_data, entity_id) == nullptr) {
                     capture_it = reflection_probe_captures.erase(capture_it);
                     continue;
                 }
@@ -1733,6 +1890,7 @@ namespace NexAur {
 
         void processPendingReflectionProbeCapture(
             const RenderSceneFrame& scene_frame,
+            const RenderDataPacket& render_data,
             const VulkanDrawList& draw_list,
             const RenderSettings& render_settings) {
             uint32_t processed_count = 0;
@@ -1750,13 +1908,22 @@ namespace NexAur {
 
                 const RenderFrameReflectionProbe* probe = findReflectionProbe(scene_frame, request.entity_id);
                 if (!probe) {
-                    capture.environment.reset();
-                    capture.baked_asset = AssetHandle{};
-                    capture.state = buildCaptureState(
+                    setReflectionProbeCaptureFailure(
+                        capture,
                         request,
-                        ReflectionProbeCaptureStatus::Failed,
-                        false,
                         "Probe was not present in the current render frame.");
+                    ++processed_count;
+                    continue;
+                }
+
+                if (!canAcquireReflectionProbeResidentSlot(
+                        render_data,
+                        request.entity_id,
+                        draw_list.active_reflection_probe.entity_id)) {
+                    setReflectionProbeCaptureFailure(
+                        capture,
+                        request,
+                        "Reflection probe capture failed: resident budget is full and all resources are pinned, active, or pending.");
                     ++processed_count;
                     continue;
                 }
@@ -1774,11 +1941,9 @@ namespace NexAur {
                         capture_error);
 
                 if (!runtime_environment || !runtime_environment->isReady()) {
-                    capture.baked_asset = AssetHandle{};
-                    capture.state = buildCaptureState(
+                    setReflectionProbeCaptureFailure(
+                        capture,
                         request,
-                        ReflectionProbeCaptureStatus::Failed,
-                        false,
                         capture_error.empty() ?
                             "Failed to capture runtime reflection probe from scene." :
                             capture_error);
@@ -1787,17 +1952,31 @@ namespace NexAur {
                 }
 
                 const uint32_t actual_resolution = runtime_environment->getEnvironmentSize();
+                if (!ensureReflectionProbeResidentSlot(
+                        render_data,
+                        request.entity_id,
+                        draw_list.active_reflection_probe.entity_id)) {
+                    setReflectionProbeCaptureFailure(
+                        capture,
+                        request,
+                        "Reflection probe capture failed while reserving the resident resource slot.");
+                    ++processed_count;
+                    continue;
+                }
+
                 capture.environment = std::move(runtime_environment);
                 capture.generation = ++reflection_probe_capture_generation;
                 capture.last_used_frame = render_frame_index;
-                capture.baked_asset = request.kind == ReflectionProbeCaptureKind::Bake ?
-                    AssetManager::getInstance().registerRuntimeAsset(
-                        AssetType::EnvironmentMap,
-                        "BakedReflectionProbe." +
-                            std::to_string(request.entity_id) +
-                            ".g" +
-                            std::to_string(capture.generation)) :
-                    AssetHandle{};
+                if (request.kind == ReflectionProbeCaptureKind::Bake) {
+                    if (!capture.baked_asset) {
+                        capture.baked_asset = AssetManager::getInstance().registerRuntimeAsset(
+                            AssetType::EnvironmentMap,
+                            "BakedReflectionProbe." + std::to_string(request.entity_id));
+                    }
+                    capture.bake_pin_until_frame = render_frame_index + 1u;
+                } else if (!capture.baked_asset) {
+                    capture.bake_pin_until_frame = 0;
+                }
                 capture.state = buildCaptureState(
                     request,
                     ReflectionProbeCaptureStatus::Ready,
@@ -1835,34 +2014,13 @@ namespace NexAur {
             capture_it->second.last_used_frame = render_frame_index;
         }
 
-        void enforceReflectionProbeResidentBudget(int protected_entity_id) {
+        void enforceReflectionProbeResidentBudget(
+            const RenderDataPacket& render_data,
+            int protected_entity_id) {
             while (countResidentReflectionProbeCaptures() > kMaxRuntimeReflectionProbeCaptures) {
-                auto evict_it = reflection_probe_captures.end();
-                for (auto capture_it = reflection_probe_captures.begin();
-                     capture_it != reflection_probe_captures.end();
-                     ++capture_it) {
-                    const int entity_id = capture_it->first;
-                    const RuntimeReflectionProbeCapture& capture = capture_it->second;
-                    if (entity_id == protected_entity_id ||
-                        hasPendingReflectionProbeCapture(entity_id) ||
-                        !capture.environment ||
-                        !capture.environment->isReady()) {
-                        continue;
-                    }
-
-                    if (evict_it == reflection_probe_captures.end() ||
-                        capture.last_used_frame < evict_it->second.last_used_frame ||
-                        (capture.last_used_frame == evict_it->second.last_used_frame &&
-                         capture.generation < evict_it->second.generation)) {
-                        evict_it = capture_it;
-                    }
-                }
-
-                if (evict_it == reflection_probe_captures.end()) {
+                if (!evictReflectionProbeCapture(render_data, protected_entity_id)) {
                     return;
                 }
-
-                reflection_probe_captures.erase(evict_it);
             }
         }
 
@@ -2304,6 +2462,7 @@ namespace NexAur {
                 static_cast<uint32_t>(pending_reflection_probe_captures.size());
             stats.reflection_probe_capture_budget_per_frame = kReflectionProbeCaptureBudgetPerFrame;
             stats.reflection_probe_runtime_capture_count = countResidentReflectionProbeCaptures();
+            stats.reflection_probe_pinned_capture_count = reflection_probe_pinned_capture_count;
             stats.reflection_probe_runtime_capture_limit = kMaxRuntimeReflectionProbeCaptures;
             stats.reflection_probe_last_captured_entity_id = last_captured_reflection_probe_entity_id;
             return stats;
@@ -4925,7 +5084,9 @@ namespace NexAur {
         std::vector<ReflectionProbeCaptureRequest> pending_reflection_probe_captures;
         std::unordered_map<int, RuntimeReflectionProbeCapture> reflection_probe_captures;
         uint64_t render_frame_index = 0;
+        uint64_t active_render_scene_id = 0;
         uint64_t reflection_probe_capture_generation = 0;
+        uint32_t reflection_probe_pinned_capture_count = 0;
         int last_captured_reflection_probe_entity_id = -1;
         RendererDebugSnapshot debug_snapshot;
     };
