@@ -110,7 +110,8 @@ namespace NexAur {
             const RenderPostProcessSettings& post_process_settings,
             const RenderAoSettings& ao_settings,
             const RenderSsrSettings& ssr_settings,
-            const RenderEffectDebugSettings& debug_settings);
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug);
 
         bool isReady() const {
             return m_pipeline != VK_NULL_HANDLE &&

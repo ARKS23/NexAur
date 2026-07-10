@@ -20,7 +20,7 @@ namespace NexAur {
             uint32_t effect_debug_view = static_cast<uint32_t>(RenderEffectDebugView::FinalLit);
             uint32_t effect_debug_index = 0;
             uint32_t shadow_layer_count = 1;
-            uint32_t _padding0 = 0;
+            uint32_t isolate_forward_debug = 0;
             float ao_intensity = 0.0f;
             float ao_power = 1.0f;
             uint32_t ao_enabled = 0;
@@ -74,6 +74,7 @@ namespace NexAur {
             const RenderAoSettings& ao_settings,
             const RenderSsrSettings& ssr_settings,
             const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug,
             uint32_t shadow_layer_count,
             uint32_t point_shadow_layer_count,
             uint32_t rect_shadow_layer_count) {
@@ -93,6 +94,7 @@ namespace NexAur {
                 constants.effect_debug_index = debug_settings.shadow_cascade;
                 constants.shadow_layer_count = std::max(1u, shadow_layer_count);
             }
+            constants.isolate_forward_debug = isolate_forward_debug ? 1u : 0u;
             constants.ao_intensity = std::clamp(ao_settings.intensity, 0.0f, 2.0f);
             constants.ao_power = std::max(0.01f, ao_settings.power);
             constants.ao_enabled = ao_settings.enabled ? 1u : 0u;
@@ -255,7 +257,8 @@ namespace NexAur {
         const RenderPostProcessSettings& post_process_settings,
         const RenderAoSettings& ao_settings,
         const RenderSsrSettings& ssr_settings,
-        const RenderEffectDebugSettings& debug_settings) {
+        const RenderEffectDebugSettings& debug_settings,
+        bool isolate_forward_debug) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
             return false;
         }
@@ -317,6 +320,7 @@ namespace NexAur {
             ao_settings,
             ssr_settings,
             debug_settings,
+            isolate_forward_debug,
             m_current_input.shadow_layer_count,
             m_current_input.point_shadow_layer_count,
             m_current_input.rect_shadow_layer_count);

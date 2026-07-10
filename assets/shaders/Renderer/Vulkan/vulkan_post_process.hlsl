@@ -78,7 +78,7 @@ struct PostProcessPushConstants {
     uint effect_debug_view;
     uint effect_debug_index;
     uint shadow_layer_count;
-    uint _padding0;
+    uint isolate_forward_debug;
     float ao_intensity;
     float ao_power;
     uint ao_enabled;
@@ -237,10 +237,10 @@ float3 applyScreenSpaceReflection(float2 uv, float3 color, float surface_reflect
         return color;
     }
 
-    const float hit_confidence =
-        saturate(g_ssr_hit_mask_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f)) *
-        saturate(surface_reflection_mask);
-    if (hit_confidence <= 0.0001f) {
+    const float geometric_confidence =
+        saturate(g_ssr_hit_mask_debug.SampleLevel(g_ssr_debug_sampler, uv, 0.0f));
+    const float composite_confidence = geometric_confidence * saturate(surface_reflection_mask);
+    if (composite_confidence <= 0.0001f) {
         return color;
     }
 
@@ -251,7 +251,7 @@ float3 applyScreenSpaceReflection(float2 uv, float3 color, float surface_reflect
     }
 
     const float roughness_weight = saturate(1.0f - g_post_process.ssr_roughness_fade * 0.35f);
-    float blend = saturate(hit_confidence * saturate(g_post_process.ssr_intensity) * roughness_weight);
+    float blend = saturate(composite_confidence * saturate(g_post_process.ssr_intensity) * roughness_weight);
     blend = blend * blend * (3.0f - 2.0f * blend);
     blend = min(blend, 0.45f);
 
@@ -353,6 +353,10 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
 
     float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f);
     float3 color = max(hdr_color.rgb, 0.0f);
+
+    if (g_post_process.isolate_forward_debug != 0u) {
+        return float4(encodeOutputColor(color), 1.0f);
+    }
 
     if (g_post_process.effect_debug_view != EFFECT_DEBUG_FINAL_LIT &&
         g_post_process.effect_debug_view != EFFECT_DEBUG_SHADOW_CASCADES &&

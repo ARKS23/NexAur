@@ -2824,9 +2824,18 @@ namespace NexAur {
             input.ssr_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
 
+        bool shouldIsolateForwardDebug(const RenderSettings& render_settings) const {
+            return render_settings.ibl_debug.mode != RenderIblDebugMode::FinalLit &&
+                   render_settings.effects_debug.view == RenderEffectDebugView::FinalLit;
+        }
+
         bool shouldRenderBloom(
             const RenderPostProcessSettings& post_process_settings,
-            const RenderEffectDebugSettings& debug_settings) const {
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug) const {
+            if (isolate_forward_debug) {
+                return false;
+            }
             const bool final_output =
                 debug_settings.view == RenderEffectDebugView::FinalLit ||
                 debug_settings.view == RenderEffectDebugView::ShadowCascades ||
@@ -2845,7 +2854,11 @@ namespace NexAur {
 
         bool shouldRenderAo(
             const RenderAoSettings& ao_settings,
-            const RenderEffectDebugSettings& debug_settings) const {
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug) const {
+            if (isolate_forward_debug) {
+                return false;
+            }
             return (ao_settings.enabled || isAoDebugView(debug_settings.view)) &&
                    ao_target.isReady() &&
                    ao_pass.isReady();
@@ -2853,7 +2866,11 @@ namespace NexAur {
 
         bool shouldRenderSsr(
             const RenderSsrSettings& ssr_settings,
-            const RenderEffectDebugSettings& debug_settings) const {
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug) const {
+            if (isolate_forward_debug) {
+                return false;
+            }
             return (ssr_settings.enabled || isSsrDebugView(debug_settings.view)) &&
                    ssr_target.isReady() &&
                    ssr_pass.isReady();
@@ -2861,7 +2878,11 @@ namespace NexAur {
 
         bool shouldRenderSmaa(
             const RenderAntiAliasingSettings& anti_aliasing_settings,
-            const RenderEffectDebugSettings& debug_settings) const {
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug) const {
+            if (isolate_forward_debug) {
+                return false;
+            }
             const bool final_output =
                 debug_settings.view == RenderEffectDebugView::FinalLit &&
                 anti_aliasing_settings.mode == RenderAntiAliasingMode::SMAA;
@@ -3401,6 +3422,7 @@ namespace NexAur {
             const VulkanGraphImageHandle ssr_raw_reflection = addSsrRawReflectionImage(graph);
             const VulkanGraphImageHandle ssr_hit_mask = addSsrHitMaskImage(graph);
             const VulkanGraphImageHandle swapchain_color = addSwapchainColorImage(graph, image_index);
+            const bool isolate_forward_debug = shouldIsolateForwardDebug(render_settings);
             if (!shadow_depth.valid() ||
                 !point_shadow_depth.valid() ||
                 !rect_shadow_depth.valid() ||
@@ -3455,7 +3477,8 @@ namespace NexAur {
                     viewport_target.getRenderTarget().depth_view,
                     draw_list.view,
                     render_settings.ao,
-                    render_settings.effects_debug)) {
+                    render_settings.effects_debug,
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3468,7 +3491,8 @@ namespace NexAur {
                     viewport_target.getRenderTarget().depth_view,
                     draw_list.view,
                     render_settings.ssr,
-                    render_settings.effects_debug)) {
+                    render_settings.effects_debug,
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3484,12 +3508,16 @@ namespace NexAur {
             const VkImageView viewport_depth_view = viewport_target.getRenderTarget().depth_view;
             VulkanPostProcessInput post_process_input = makeScenePostProcessInput(viewport_depth_view);
             const bool render_smaa =
-                shouldRenderSmaa(render_settings.anti_aliasing, render_settings.effects_debug);
+                shouldRenderSmaa(
+                    render_settings.anti_aliasing,
+                    render_settings.effects_debug,
+                    isolate_forward_debug);
             if (!addBloomPass(
                     graph,
                     scene_color,
                     render_settings.post_process,
                     render_settings.effects_debug,
+                    isolate_forward_debug,
                     viewport_depth_view,
                     post_process_input_color,
                     post_process_input)) {
@@ -3520,7 +3548,8 @@ namespace NexAur {
                     render_settings.post_process,
                     render_settings.ao,
                     render_settings.ssr,
-                    postProcessDebugSettingsForSmaa(render_settings.effects_debug))) {
+                    postProcessDebugSettingsForSmaa(render_settings.effects_debug),
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3531,7 +3560,8 @@ namespace NexAur {
                     viewport_color,
                     makeViewportSmaaOutputTarget(),
                     render_settings.anti_aliasing,
-                    render_settings.effects_debug)) {
+                    render_settings.effects_debug,
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3566,6 +3596,7 @@ namespace NexAur {
             const VulkanGraphImageHandle ao_blurred = addAoBlurredImage(graph);
             const VulkanGraphImageHandle ssr_raw_reflection = addSsrRawReflectionImage(graph);
             const VulkanGraphImageHandle ssr_hit_mask = addSsrHitMaskImage(graph);
+            const bool isolate_forward_debug = shouldIsolateForwardDebug(render_settings);
             if (!shadow_depth.valid() ||
                 !point_shadow_depth.valid() ||
                 !rect_shadow_depth.valid() ||
@@ -3619,7 +3650,8 @@ namespace NexAur {
                     forward_pass.getSwapchainRenderTarget(image_index).depth_view,
                     draw_list.view,
                     render_settings.ao,
-                    render_settings.effects_debug)) {
+                    render_settings.effects_debug,
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3632,7 +3664,8 @@ namespace NexAur {
                     forward_pass.getSwapchainRenderTarget(image_index).depth_view,
                     draw_list.view,
                     render_settings.ssr,
-                    render_settings.effects_debug)) {
+                    render_settings.effects_debug,
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3648,12 +3681,16 @@ namespace NexAur {
             const VkImageView swapchain_depth_view = forward_pass.getSwapchainRenderTarget(image_index).depth_view;
             VulkanPostProcessInput post_process_input = makeScenePostProcessInput(swapchain_depth_view);
             const bool render_smaa =
-                shouldRenderSmaa(render_settings.anti_aliasing, render_settings.effects_debug);
+                shouldRenderSmaa(
+                    render_settings.anti_aliasing,
+                    render_settings.effects_debug,
+                    isolate_forward_debug);
             if (!addBloomPass(
                     graph,
                     scene_color,
                     render_settings.post_process,
                     render_settings.effects_debug,
+                    isolate_forward_debug,
                     swapchain_depth_view,
                     post_process_input_color,
                     post_process_input)) {
@@ -3684,7 +3721,8 @@ namespace NexAur {
                     render_settings.post_process,
                     render_settings.ao,
                     render_settings.ssr,
-                    postProcessDebugSettingsForSmaa(render_settings.effects_debug))) {
+                    postProcessDebugSettingsForSmaa(render_settings.effects_debug),
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3695,7 +3733,8 @@ namespace NexAur {
                     swapchain_color,
                     makeSwapchainSmaaOutputTarget(image_index),
                     render_settings.anti_aliasing,
-                    render_settings.effects_debug)) {
+                    render_settings.effects_debug,
+                    isolate_forward_debug)) {
                 return false;
             }
 
@@ -3881,12 +3920,13 @@ namespace NexAur {
             VkImageView scene_depth_view,
             const RenderView& view,
             const RenderAoSettings& ao_settings,
-            const RenderEffectDebugSettings& debug_settings) {
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug) {
             if (!depth_image.valid() || !ao_raw.valid() || !ao_blurred.valid()) {
                 return false;
             }
 
-            if (!shouldRenderAo(ao_settings, debug_settings)) {
+            if (!shouldRenderAo(ao_settings, debug_settings, isolate_forward_debug)) {
                 return true;
             }
 
@@ -3952,7 +3992,8 @@ namespace NexAur {
             VkImageView scene_depth_view,
             const RenderView& view,
             const RenderSsrSettings& ssr_settings,
-            const RenderEffectDebugSettings& debug_settings) {
+            const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug) {
             if (!scene_color.valid() ||
                 !scene_depth.valid() ||
                 !ssr_raw_reflection.valid() ||
@@ -3960,7 +4001,7 @@ namespace NexAur {
                 return false;
             }
 
-            if (!shouldRenderSsr(ssr_settings, debug_settings)) {
+            if (!shouldRenderSsr(ssr_settings, debug_settings, isolate_forward_debug)) {
                 return true;
             }
 
@@ -4016,6 +4057,7 @@ namespace NexAur {
             VulkanGraphImageHandle scene_color,
             const RenderPostProcessSettings& post_process_settings,
             const RenderEffectDebugSettings& debug_settings,
+            bool isolate_forward_debug,
             VkImageView scene_depth_view,
             VulkanGraphImageHandle& composite_color,
             VulkanPostProcessInput& post_process_input) {
@@ -4025,7 +4067,7 @@ namespace NexAur {
                 return false;
             }
 
-            if (!shouldRenderBloom(post_process_settings, debug_settings)) {
+            if (!shouldRenderBloom(post_process_settings, debug_settings, isolate_forward_debug)) {
                 return true;
             }
 
@@ -4132,11 +4174,12 @@ namespace NexAur {
             VulkanGraphImageHandle output_color,
             VulkanSmaaRenderTarget output_target,
             RenderAntiAliasingSettings anti_aliasing_settings,
-            RenderEffectDebugSettings debug_settings) {
+            RenderEffectDebugSettings debug_settings,
+            bool isolate_forward_debug) {
             if (!source_color.valid() || !output_color.valid() || !output_target.valid()) {
                 return false;
             }
-            if (!shouldRenderSmaa(anti_aliasing_settings, debug_settings)) {
+            if (!shouldRenderSmaa(anti_aliasing_settings, debug_settings, isolate_forward_debug)) {
                 return true;
             }
 
@@ -4232,7 +4275,8 @@ namespace NexAur {
             RenderPostProcessSettings post_process_settings,
             RenderAoSettings ao_settings,
             RenderSsrSettings ssr_settings,
-            RenderEffectDebugSettings debug_settings) {
+            RenderEffectDebugSettings debug_settings,
+            bool isolate_forward_debug) {
             if (!input_color.valid() ||
                 !output_color.valid() ||
                 !scene_depth.valid() ||
@@ -4258,14 +4302,15 @@ namespace NexAur {
                 .readImage(ssr_raw_reflection, VulkanGraphImageUsage::ShaderRead)
                 .readImage(ssr_hit_mask, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, target, post_process_settings, ao_settings, ssr_settings, debug_settings](VkCommandBuffer target_command_buffer) {
+                .execute([this, target, post_process_settings, ao_settings, ssr_settings, debug_settings, isolate_forward_debug](VkCommandBuffer target_command_buffer) {
                     return post_process_pass.record(
                         target_command_buffer,
                         target,
                         post_process_settings,
                         ao_settings,
                         ssr_settings,
-                        debug_settings);
+                        debug_settings,
+                        isolate_forward_debug);
                 });
             return true;
         }

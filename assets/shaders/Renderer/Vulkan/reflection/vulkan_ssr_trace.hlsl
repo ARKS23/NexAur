@@ -30,6 +30,15 @@ FullscreenVSOutput VSMain(uint vertex_id : SV_VertexID) {
     return FullscreenTriangleVS(vertex_id);
 }
 
+float loadSceneDepth(float2 uv) {
+    const float2 texel_size = max(g_ssr.texture_params.xy, float2(0.000001f, 0.000001f));
+    const uint2 texture_extent = max((uint2)round(1.0f / texel_size), uint2(1u, 1u));
+    const uint2 texel_coord = min(
+        (uint2)(saturate(uv) * float2(texture_extent)),
+        texture_extent - 1u);
+    return g_scene_depth.Load(int3(int2(texel_coord), 0));
+}
+
 float3 reconstructViewPosition(float2 uv, float depth) {
     const float2 ndc = uv * 2.0f - 1.0f;
     float4 view_position = mul(g_ssr.inverse_projection, float4(ndc, depth, 1.0f));
@@ -55,10 +64,10 @@ float3 reconstructViewNormal(float2 uv, float center_depth, float3 center_view_p
     const float2 uv_right = saturate(uv + float2(texel_size.x, 0.0f));
     const float2 uv_up = saturate(uv - float2(0.0f, texel_size.y));
     const float2 uv_down = saturate(uv + float2(0.0f, texel_size.y));
-    const float depth_left = g_scene_depth.SampleLevel(g_scene_sampler, uv_left, 0.0f);
-    const float depth_right = g_scene_depth.SampleLevel(g_scene_sampler, uv_right, 0.0f);
-    const float depth_up = g_scene_depth.SampleLevel(g_scene_sampler, uv_up, 0.0f);
-    const float depth_down = g_scene_depth.SampleLevel(g_scene_sampler, uv_down, 0.0f);
+    const float depth_left = loadSceneDepth(uv_left);
+    const float depth_right = loadSceneDepth(uv_right);
+    const float depth_up = loadSceneDepth(uv_up);
+    const float depth_down = loadSceneDepth(uv_down);
 
     const bool valid_left = depth_left < 0.99999f;
     const bool valid_right = depth_right < 0.99999f;
@@ -147,7 +156,7 @@ int sampleRayDepth(
         return SSR_SAMPLE_OFFSCREEN;
     }
 
-    const float sample_depth = g_scene_depth.SampleLevel(g_scene_sampler, ray_uv, 0.0f);
+    const float sample_depth = loadSceneDepth(ray_uv);
     if (sample_depth >= 0.99999f) {
         return SSR_SAMPLE_SKY;
     }
@@ -233,14 +242,8 @@ float refineCrossingHitDistance(
 }
 
 float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
-    const float depth = g_scene_depth.SampleLevel(g_scene_sampler, input.uv, 0.0f);
+    const float depth = loadSceneDepth(input.uv);
     if (depth >= 0.99999f) {
-        return 0.0f;
-    }
-
-    const float surface_reflection_mask =
-        saturate(g_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f).a);
-    if (surface_reflection_mask <= 0.0001f) {
         return 0.0f;
     }
 
@@ -343,7 +346,6 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
             const float thickness_weight =
                 1.0f - saturate(abs(hit_depth_delta) / max(max(hit_thickness, front_thickness), 0.0001f));
             hit_confidence =
-                surface_reflection_mask *
                 edge_weight *
                 hit_edge_weight *
                 distance_weight *
