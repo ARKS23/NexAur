@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "vulkan_pass_graph.h"
 
+#include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
+
 #include <utility>
 
 namespace NexAur {
@@ -21,14 +23,21 @@ namespace NexAur {
     VulkanGraphPassBuilder& VulkanGraphPassBuilder::readImage(
         VulkanGraphImageHandle image,
         VulkanGraphImageUsage usage) {
-        m_pass.m_image_accesses.push_back({ image, usage });
+        m_pass.m_image_accesses.push_back({ image, usage, VulkanGraphAccessType::Read });
         return *this;
     }
 
     VulkanGraphPassBuilder& VulkanGraphPassBuilder::writeImage(
         VulkanGraphImageHandle image,
         VulkanGraphImageUsage usage) {
-        m_pass.m_image_accesses.push_back({ image, usage });
+        m_pass.m_image_accesses.push_back({ image, usage, VulkanGraphAccessType::Write });
+        return *this;
+    }
+
+    VulkanGraphPassBuilder& VulkanGraphPassBuilder::readWriteImage(
+        VulkanGraphImageHandle image,
+        VulkanGraphImageUsage usage) {
+        m_pass.m_image_accesses.push_back({ image, usage, VulkanGraphAccessType::ReadWrite });
         return *this;
     }
 
@@ -44,7 +53,9 @@ namespace NexAur {
         }
 
         ImageResource resource;
-        resource.current_layout = desc.initial_layout;
+        resource.state = VulkanGraphStatePlanner::stateForLayout(
+            desc.initial_layout,
+            desc.subresource_range);
         resource.desc = std::move(desc);
 
         VulkanGraphImageHandle handle;
@@ -66,7 +77,7 @@ namespace NexAur {
     void VulkanPassGraph::commitImageLayouts() {
         for (ImageResource& image : m_images) {
             if (image.desc.commit_layout) {
-                image.desc.commit_layout(image.current_layout);
+                image.desc.commit_layout(image.state.layout);
             }
         }
     }

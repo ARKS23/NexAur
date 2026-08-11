@@ -37,6 +37,7 @@ namespace NexAur {
 
         VulkanGraphPassBuilder& readImage(VulkanGraphImageHandle image, VulkanGraphImageUsage usage);
         VulkanGraphPassBuilder& writeImage(VulkanGraphImageHandle image, VulkanGraphImageUsage usage);
+        VulkanGraphPassBuilder& readWriteImage(VulkanGraphImageHandle image, VulkanGraphImageUsage usage);
         VulkanGraphPassBuilder& execute(VulkanGraphPass::ExecuteCallback callback);
 
     private:
@@ -56,7 +57,7 @@ namespace NexAur {
 
         struct ImageResource {
             VulkanGraphImageDesc desc;
-            VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+            VulkanGraphImageState state;
         };
 
         ImageResource* getImage(VulkanGraphImageHandle handle);

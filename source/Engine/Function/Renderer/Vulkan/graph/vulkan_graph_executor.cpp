@@ -4,8 +4,6 @@
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 
-#include <algorithm>
-
 namespace NexAur {
     bool VulkanGraphExecutor::execute(VulkanPassGraph& graph, VkCommandBuffer command_buffer) {
         if (command_buffer == VK_NULL_HANDLE) {
@@ -40,40 +38,39 @@ namespace NexAur {
             return false;
         }
 
+        const VulkanGraphImageState destination = VulkanGraphStatePlanner::stateForUsage(
+            access.usage,
+            access.access_type,
+            image->desc.subresource_range);
         const VulkanGraphImageTransitionPlan transition =
-            VulkanGraphStatePlanner::planImageTransition(image->current_layout, access.usage);
-        if (!transition.requires_barrier) {
-            return true;
+            VulkanGraphStatePlanner::planImageTransition(image->state, destination);
+
+        if (transition.requires_barrier) {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.srcAccessMask = transition.source.access;
+            barrier.dstAccessMask = transition.destination.access;
+            barrier.oldLayout = transition.source.layout;
+            barrier.newLayout = transition.destination.layout;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = image->desc.image;
+            barrier.subresourceRange = transition.barrier_range.toVulkan();
+
+            vkCmdPipelineBarrier(
+                command_buffer,
+                transition.source.stage,
+                transition.destination.stage,
+                0,
+                0,
+                nullptr,
+                0,
+                nullptr,
+                1,
+                &barrier);
         }
 
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = transition.source.access;
-        barrier.dstAccessMask = transition.destination.access;
-        barrier.oldLayout = transition.source.layout;
-        barrier.newLayout = transition.destination.layout;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = image->desc.image;
-        barrier.subresourceRange.aspectMask = image->desc.aspect_mask;
-        barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = 1;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = std::max(1u, image->desc.layer_count);
-
-        vkCmdPipelineBarrier(
-            command_buffer,
-            transition.source.stage,
-            transition.destination.stage,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &barrier);
-
-        image->current_layout = transition.destination.layout;
+        image->state = transition.destination;
         return true;
     }
 } // namespace NexAur

@@ -3639,7 +3639,7 @@ namespace NexAur {
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(point_shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(rect_shadow_depth, VulkanGraphImageUsage::ShaderRead)
-                .writeImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
+                .readWriteImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(viewport_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, &draw_list](VkCommandBuffer target_command_buffer) {
                     VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
@@ -3757,7 +3757,7 @@ namespace NexAur {
                 });
 
             graph.addPass("PresentTransition")
-                .writeImage(swapchain_color, VulkanGraphImageUsage::Present);
+                .readImage(swapchain_color, VulkanGraphImageUsage::Present);
 
             return true;
         }
@@ -3812,7 +3812,7 @@ namespace NexAur {
                 .readImage(shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(point_shadow_depth, VulkanGraphImageUsage::ShaderRead)
                 .readImage(rect_shadow_depth, VulkanGraphImageUsage::ShaderRead)
-                .writeImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
+                .readWriteImage(scene_color, VulkanGraphImageUsage::ColorAttachment)
                 .writeImage(swapchain_depth, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, image_index, &draw_list](VkCommandBuffer target_command_buffer) {
                     VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
@@ -3923,7 +3923,7 @@ namespace NexAur {
             }
 
             graph.addPass("PresentTransition")
-                .writeImage(swapchain_color, VulkanGraphImageUsage::Present);
+                .readImage(swapchain_color, VulkanGraphImageUsage::Present);
 
             return true;
         }
@@ -3992,8 +3992,8 @@ namespace NexAur {
             }
 
             graph.addPass("DebugDraw")
-                .writeImage(color_image, VulkanGraphImageUsage::ColorAttachment)
-                .writeImage(depth_image, VulkanGraphImageUsage::DepthStencilAttachment)
+                .readWriteImage(color_image, VulkanGraphImageUsage::ColorAttachment)
+                .readWriteImage(depth_image, VulkanGraphImageUsage::DepthStencilAttachment)
                 .execute([this, target](VkCommandBuffer target_command_buffer) {
                     return debug_draw_pass.record(
                         target_command_buffer,
@@ -4126,19 +4126,14 @@ namespace NexAur {
             raw_input.sampler = ao_target.getSampler();
             raw_input.extent = raw_image.extent;
             raw_input.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            if (!ao_pass.updateInputs(depth_input, raw_input)) {
+                return false;
+            }
 
             graph.addPass("SSAO")
                 .readImage(depth_image, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(ao_raw, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, depth_input, raw_input, view, ao_settings](VkCommandBuffer target_command_buffer) {
-                    VulkanAoInput pass_depth_input = depth_input;
-                    if (pass_depth_input.view == VK_NULL_HANDLE) {
-                        return false;
-                    }
-                    if (!ao_pass.updateInputs(pass_depth_input, raw_input)) {
-                        return false;
-                    }
-
+                .execute([this, view, ao_settings](VkCommandBuffer target_command_buffer) {
                     return ao_pass.recordSsao(
                         target_command_buffer,
                         ao_target.getRawRenderTarget(),
@@ -4149,15 +4144,7 @@ namespace NexAur {
             graph.addPass("AOBlur")
                 .readImage(ao_raw, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(ao_blurred, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, depth_input, raw_input, ao_settings](VkCommandBuffer target_command_buffer) {
-                    VulkanAoInput pass_depth_input = depth_input;
-                    if (pass_depth_input.view == VK_NULL_HANDLE) {
-                        return false;
-                    }
-                    if (!ao_pass.updateInputs(pass_depth_input, raw_input)) {
-                        return false;
-                    }
-
+                .execute([this, ao_settings](VkCommandBuffer target_command_buffer) {
                     return ao_pass.recordBlur(
                         target_command_buffer,
                         ao_target.getBlurredRenderTarget(),
@@ -4198,16 +4185,16 @@ namespace NexAur {
                 scene_color_target.getExtent();
             input.scene_color_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             input.scene_depth_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            if (!ssr_pass.updateInput(input)) {
+                return false;
+            }
 
             const VulkanSsrRenderTarget reflection_target = ssr_target.getRawReflectionRenderTarget();
             graph.addPass("SSRRawReflection")
                 .readImage(scene_color, VulkanGraphImageUsage::ShaderRead)
                 .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(ssr_raw_reflection, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, input, reflection_target, view, ssr_settings](VkCommandBuffer target_command_buffer) {
-                    if (!ssr_pass.updateInput(input)) {
-                        return false;
-                    }
+                .execute([this, reflection_target, view, ssr_settings](VkCommandBuffer target_command_buffer) {
                     return ssr_pass.recordTrace(
                         target_command_buffer,
                         reflection_target,
@@ -4221,10 +4208,7 @@ namespace NexAur {
                 .readImage(scene_color, VulkanGraphImageUsage::ShaderRead)
                 .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
                 .writeImage(ssr_hit_mask, VulkanGraphImageUsage::ColorAttachment)
-                .execute([this, input, hit_mask_target, view, ssr_settings](VkCommandBuffer target_command_buffer) {
-                    if (!ssr_pass.updateInput(input)) {
-                        return false;
-                    }
+                .execute([this, hit_mask_target, view, ssr_settings](VkCommandBuffer target_command_buffer) {
                     return ssr_pass.recordTrace(
                         target_command_buffer,
                         hit_mask_target,
@@ -4507,7 +4491,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SwapchainColor";
             desc.image = swapchain_images[image_index];
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = swapchain_image_layouts[image_index];
             desc.commit_layout = [this, image_index](VkImageLayout layout) {
                 if (image_index < swapchain_image_layouts.size()) {
@@ -4521,7 +4505,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "HDRSceneColor";
             desc.image = scene_color_target.getColorImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = scene_color_target.getColorLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 scene_color_target.setColorLayout(layout);
@@ -4534,7 +4518,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "AORaw";
             desc.image = ao_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = ao_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 ao_target.setRawLayout(layout);
@@ -4547,7 +4531,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "AOBlurred";
             desc.image = ao_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = ao_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 ao_target.setBlurredLayout(layout);
@@ -4560,7 +4544,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "BloomDownsample" + std::to_string(mip_index);
             desc.image = bloom_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = bloom_image.layout;
             desc.commit_layout = [this, mip_index](VkImageLayout layout) {
                 bloom_target.setDownsampleLayout(mip_index, layout);
@@ -4573,7 +4557,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "BloomUpsample" + std::to_string(mip_index);
             desc.image = bloom_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = bloom_image.layout;
             desc.commit_layout = [this, mip_index](VkImageLayout layout) {
                 bloom_target.setUpsampleLayout(mip_index, layout);
@@ -4586,7 +4570,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "BloomComposite";
             desc.image = bloom_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = bloom_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 bloom_target.setCompositeLayout(layout);
@@ -4599,7 +4583,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SSRRawReflection";
             desc.image = ssr_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = ssr_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 ssr_target.setRawReflectionLayout(layout);
@@ -4612,7 +4596,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SSRHitMask";
             desc.image = ssr_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = ssr_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 ssr_target.setHitMaskLayout(layout);
@@ -4624,7 +4608,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SwapchainDepth";
             desc.image = forward_pass.getDepthImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
             desc.initial_layout = forward_pass.getDepthImageLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 forward_pass.setDepthImageLayout(layout);
@@ -4636,7 +4620,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "ViewportColor";
             desc.image = viewport_target.getColorImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = viewport_target.getColorLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 viewport_target.setColorLayout(layout);
@@ -4648,7 +4632,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "ViewportDepth";
             desc.image = viewport_target.getDepthImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
             desc.initial_layout = viewport_target.getDepthLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 viewport_target.setDepthLayout(layout);
@@ -4660,7 +4644,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "PickingObjectId";
             desc.image = picking_target.getObjectIdImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = picking_target.getObjectIdLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 picking_target.setObjectIdLayout(layout);
@@ -4672,7 +4656,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "PickingDepth";
             desc.image = picking_target.getDepthImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
             desc.initial_layout = picking_target.getDepthLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 picking_target.setDepthLayout(layout);
@@ -4684,8 +4668,8 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "ShadowDepth";
             desc.image = shadow_target.getDepthImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            desc.layer_count = shadow_target.getLayerCount();
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.subresource_range.layer_count = shadow_target.getLayerCount();
             desc.initial_layout = shadow_target.getDepthLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 shadow_target.setDepthLayout(layout);
@@ -4698,7 +4682,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SMAASource";
             desc.image = smaa_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = smaa_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 smaa_target.setSourceLayout(layout);
@@ -4711,7 +4695,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SMAAEdge";
             desc.image = smaa_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = smaa_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 smaa_target.setEdgeLayout(layout);
@@ -4724,7 +4708,7 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "SMAABlend";
             desc.image = smaa_image.image;
-            desc.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = smaa_image.layout;
             desc.commit_layout = [this](VkImageLayout layout) {
                 smaa_target.setBlendLayout(layout);
@@ -4736,8 +4720,8 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "PointShadowDepth";
             desc.image = point_shadow_target.getDepthImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            desc.layer_count = point_shadow_target.getLayerCount();
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.subresource_range.layer_count = point_shadow_target.getLayerCount();
             desc.initial_layout = point_shadow_target.getDepthLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 point_shadow_target.setDepthLayout(layout);
@@ -4749,8 +4733,8 @@ namespace NexAur {
             VulkanGraphImageDesc desc;
             desc.name = "RectShadowDepth";
             desc.image = rect_shadow_target.getDepthImage();
-            desc.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            desc.layer_count = rect_shadow_target.getLayerCount();
+            desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            desc.subresource_range.layer_count = rect_shadow_target.getLayerCount();
             desc.initial_layout = rect_shadow_target.getDepthLayout();
             desc.commit_layout = [this](VkImageLayout layout) {
                 rect_shadow_target.setDepthLayout(layout);
