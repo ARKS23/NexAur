@@ -3073,6 +3073,22 @@ namespace NexAur {
                 .enable_extensions(required_extensions);
 
 #if !defined(NDEBUG)
+            bool validation_layers_available = false;
+            auto system_info_result = vkb::SystemInfo::get_system_info();
+            if (system_info_result) {
+                validation_layers_available = system_info_result.value().validation_layers_available;
+            } else {
+                NX_CORE_WARN(
+                    "Vulkan validation availability query failed: {} ({}).",
+                    system_info_result.error().message(),
+                    vkResultToString(system_info_result.vk_result()));
+            }
+
+            if (!validation_layers_available) {
+                NX_CORE_WARN(
+                    "Vulkan validation was requested for this Debug build, but the standard validation layer is unavailable.");
+            }
+
             builder.request_validation_layers().use_default_debug_messenger();
 #endif
 
@@ -3083,6 +3099,14 @@ namespace NexAur {
             }
 
             instance = instance_result.value();
+#if !defined(NDEBUG)
+            if (validation_layers_available && instance.debug_messenger != VK_NULL_HANDLE) {
+                NX_CORE_INFO("Vulkan validation enabled for Debug build; debug messenger active.");
+            } else if (validation_layers_available) {
+                NX_CORE_WARN(
+                    "Vulkan validation layer is available, but the debug messenger is inactive.");
+            }
+#endif
             return true;
         }
 

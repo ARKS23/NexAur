@@ -256,6 +256,7 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp
     Function/Renderer/Vulkan/graph/vulkan_graph_resource.h
+    Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h
     Function/Renderer/Vulkan/graph/vulkan_pass_graph.h
     Function/Renderer/Vulkan/graph/vulkan_pass_graph.cpp
     Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.h

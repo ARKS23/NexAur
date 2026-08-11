@@ -18,8 +18,5 @@ namespace NexAur {
             VulkanPassGraph& graph,
             const VulkanGraphImageAccess& access,
             const char* pass_name) const;
-
-        VulkanGraphImageState stateForUsage(VulkanGraphImageUsage usage) const;
-        VulkanGraphImageState stateForLayout(VkImageLayout layout) const;
     };
 } // namespace NexAur

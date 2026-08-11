@@ -26,6 +26,7 @@
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
+#include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/material_asset.h"
@@ -3607,6 +3608,103 @@ int runEditorConfigSmoke() {
     return 0;
 }
 
+int runRenderGraphStatePlannerSmoke() {
+    struct UsageExpectation {
+        NexAur::VulkanGraphImageUsage usage;
+        VkImageLayout layout;
+        VkAccessFlags access;
+        VkPipelineStageFlags stage;
+    };
+
+    constexpr std::array<UsageExpectation, 5> kUsageExpectations{
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::ColorAttachment,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::DepthStencilAttachment,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::ShaderRead,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::TransferSource,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            VK_ACCESS_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::Present,
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            0,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+        }
+    };
+
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!condition && success) {
+            failure = message;
+        }
+        success = success && condition;
+    };
+
+    for (const UsageExpectation& expectation : kUsageExpectations) {
+        const NexAur::VulkanGraphImageState state =
+            NexAur::VulkanGraphStatePlanner::stateForUsage(expectation.usage);
+        expect(state.layout == expectation.layout, "RenderGraph planner produced an unexpected usage layout.");
+        expect(state.access == expectation.access, "RenderGraph planner produced an unexpected usage access mask.");
+        expect(state.stage == expectation.stage, "RenderGraph planner produced an unexpected usage stage mask.");
+    }
+
+    const NexAur::VulkanGraphImageState conservative_state =
+        NexAur::VulkanGraphStatePlanner::stateForLayout(VK_IMAGE_LAYOUT_GENERAL);
+    expect(conservative_state.layout == VK_IMAGE_LAYOUT_GENERAL, "RenderGraph planner did not preserve an unknown layout.");
+    expect(
+        conservative_state.access == (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT),
+        "RenderGraph planner did not use conservative access for an unknown layout.");
+    expect(
+        conservative_state.stage == VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        "RenderGraph planner did not use a conservative stage for an unknown layout.");
+
+    const NexAur::VulkanGraphImageTransitionPlan transition =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            NexAur::VulkanGraphImageUsage::ShaderRead);
+    expect(transition.requires_barrier, "RenderGraph planner skipped a color-write to shader-read layout transition.");
+    expect(
+        transition.source.access == VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        "RenderGraph planner produced an unexpected transition source access mask.");
+    expect(
+        transition.destination.access == VK_ACCESS_SHADER_READ_BIT,
+        "RenderGraph planner produced an unexpected transition destination access mask.");
+
+    const NexAur::VulkanGraphImageTransitionPlan same_layout =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            NexAur::VulkanGraphImageUsage::ColorAttachment);
+    expect(
+        !same_layout.requires_barrier,
+        "RenderGraph layout-only baseline changed before the access-model migration.");
+
+    if (!success) {
+        std::cerr << "RenderGraph state planner smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "RenderGraph state planner smoke passed." << std::endl;
+    return 0;
+}
+
 namespace {
     struct SmokeTestEntry {
         const char* argument = nullptr;
@@ -3619,6 +3717,7 @@ namespace {
         { "--audio-smoke", "Audio", runAudioSmoke },
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
+        { "--render-graph-state-planner-smoke", "RenderGraphStatePlanner", runRenderGraphStatePlannerSmoke },
         { "--editor-config-smoke", "EditorConfig", runEditorConfigSmoke },
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
