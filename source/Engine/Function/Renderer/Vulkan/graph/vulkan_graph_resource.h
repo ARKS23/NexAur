@@ -64,6 +64,7 @@ namespace NexAur {
         VkImage image = VK_NULL_HANDLE;
         VulkanGraphImageSubresourceRange subresource_range;
         VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkPipelineStageFlags2 external_acquire_stage = VK_PIPELINE_STAGE_2_NONE;
         std::function<void(VkImageLayout)> commit_layout;
 
         bool valid() const {
@@ -79,8 +80,8 @@ namespace NexAur {
 
     struct VulkanGraphImageState {
         VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        VkAccessFlags access = 0;
-        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkAccessFlags2 access = VK_ACCESS_2_NONE;
+        VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
         VulkanGraphAccessType last_access = VulkanGraphAccessType::None;
         VulkanGraphImageSubresourceRange subresource_range;
     };

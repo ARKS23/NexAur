@@ -347,6 +347,40 @@ Validation 输出：
 
 Synchronization Validation 尚未在 RR-00 中作为单独 preset 强制开启。RR-02 迁移到 synchronization2 时必须增加对应验证记录。
 
+### 6.3 RR-02 Synchronization Validation 实测
+
+日期：2026-08-12。
+
+代码基线：`deed5da refactor(renderer): add RenderGraph access model` 加 RR-02 工作区改动。
+
+环境：沿用第 2 节固定环境，Debug Sandbox，`VK_LAYER_KHRONOS_validation` 1.4.335。
+
+运行方式：
+
+```powershell
+$env:VK_LAYER_VALIDATE_SYNC = "1"
+bin/msvc-vcpkg/Debug/Sandbox.exe
+```
+
+覆盖：
+
+- 正常 Editor 启动并连续渲染 25 秒。
+- Swapchain 三张 image 的首次 acquire、present 和后续 reacquire。
+- 窗口 resize、minimize 到 `0x0`、restore，再次 resize。
+- RenderGraph image barrier 的 `vkCmdPipelineBarrier2` 提交路径。
+
+结果：
+
+| 检查项 | 结果 |
+|---|---|
+| `SYNC-HAZARD` | 0 |
+| VUID | 0 |
+| Validation error / warning | 0 / 0 |
+| stderr output | Empty |
+| resize / minimize / restore | Pass；恢复后继续 present，进程未提前退出 |
+
+本记录只证明本次涉及的常规帧与 swapchain 生命周期在 Synchronization Validation 下通过，不替代 SSR debug isolation、Reflection Probe bake、picking 等独立人工视觉验证。
+
 ## 7. GPU / Editor 手工验证矩阵
 
 以下矩阵是后续 Renderer PR 的选择性验证入口。只有受影响项需要执行，但所有已执行项都应记录 GPU、结果和异常。

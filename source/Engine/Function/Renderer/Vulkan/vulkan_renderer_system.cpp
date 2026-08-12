@@ -3329,7 +3329,7 @@ namespace NexAur {
                 imgui_renderer.onSwapchainRecreated(std::max(2u, swapchain.image_count));
             }
 
-            return true;
+            return createRenderFinishedSemaphores();
         }
 
         bool recreateSwapchain() {
@@ -3343,6 +3343,7 @@ namespace NexAur {
         }
 
         void cleanupSwapchain() {
+            cleanupRenderFinishedSemaphores();
             smaa_pass.cleanupResources();
             post_process_pass.cleanupResources();
             bloom_pass.cleanupResources();
@@ -3390,8 +3391,9 @@ namespace NexAur {
             VkSemaphoreCreateInfo semaphore_info{};
             semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-            if (!checkVk(vkCreateSemaphore(device.device, &semaphore_info, nullptr, &image_available), "vkCreateSemaphore(image_available)") ||
-                !checkVk(vkCreateSemaphore(device.device, &semaphore_info, nullptr, &render_finished), "vkCreateSemaphore(render_finished)")) {
+            if (!checkVk(
+                    vkCreateSemaphore(device.device, &semaphore_info, nullptr, &image_available),
+                    "vkCreateSemaphore(image_available)")) {
                 return false;
             }
 
@@ -3402,14 +3404,35 @@ namespace NexAur {
             return checkVk(vkCreateFence(device.device, &fence_info, nullptr, &in_flight), "vkCreateFence");
         }
 
+        bool createRenderFinishedSemaphores() {
+            render_finished_semaphores.assign(swapchain_images.size(), VK_NULL_HANDLE);
+
+            VkSemaphoreCreateInfo semaphore_info{};
+            semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            for (VkSemaphore& semaphore : render_finished_semaphores) {
+                if (!checkVk(
+                        vkCreateSemaphore(device.device, &semaphore_info, nullptr, &semaphore),
+                        "vkCreateSemaphore(render_finished)")) {
+                    cleanupRenderFinishedSemaphores();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        void cleanupRenderFinishedSemaphores() {
+            for (VkSemaphore semaphore : render_finished_semaphores) {
+                if (semaphore != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device.device, semaphore, nullptr);
+                }
+            }
+            render_finished_semaphores.clear();
+        }
+
         void cleanupSyncObjects() {
             if (in_flight != VK_NULL_HANDLE) {
                 vkDestroyFence(device.device, in_flight, nullptr);
                 in_flight = VK_NULL_HANDLE;
-            }
-            if (render_finished != VK_NULL_HANDLE) {
-                vkDestroySemaphore(device.device, render_finished, nullptr);
-                render_finished = VK_NULL_HANDLE;
             }
             if (image_available != VK_NULL_HANDLE) {
                 vkDestroySemaphore(device.device, image_available, nullptr);
@@ -3476,6 +3499,13 @@ namespace NexAur {
                 NX_CORE_ERROR("vkAcquireNextImageKHR failed: {}", vkResultToString(acquire_result));
                 return;
             }
+            if (image_index >= render_finished_semaphores.size()) {
+                NX_CORE_ERROR(
+                    "VulkanRendererSystem acquired swapchain image {} without a render-finished semaphore.",
+                    image_index);
+                return;
+            }
+            const VkSemaphore render_finished = render_finished_semaphores[image_index];
 
             if (!recordDrawCommands(image_index, draw_list, shadow_frame, point_shadow_frame, rect_shadow_frame, render_settings)) {
                 return;
@@ -4493,6 +4523,7 @@ namespace NexAur {
             desc.image = swapchain_images[image_index];
             desc.subresource_range.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
             desc.initial_layout = swapchain_image_layouts[image_index];
+            desc.external_acquire_stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             desc.commit_layout = [this, image_index](VkImageLayout layout) {
                 if (image_index < swapchain_image_layouts.size()) {
                     swapchain_image_layouts[image_index] = layout;
@@ -5053,7 +5084,7 @@ namespace NexAur {
         VkCommandPool command_pool = VK_NULL_HANDLE;
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
         VkSemaphore image_available = VK_NULL_HANDLE;
-        VkSemaphore render_finished = VK_NULL_HANDLE;
+        std::vector<VkSemaphore> render_finished_semaphores;
         VkFence in_flight = VK_NULL_HANDLE;
 
         VulkanShaderLibrary shader_library;

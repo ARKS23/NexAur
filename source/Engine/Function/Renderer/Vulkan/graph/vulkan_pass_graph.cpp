@@ -53,9 +53,10 @@ namespace NexAur {
         }
 
         ImageResource resource;
-        resource.state = VulkanGraphStatePlanner::stateForLayout(
+        resource.state = VulkanGraphStatePlanner::stateForImport(
             desc.initial_layout,
-            desc.subresource_range);
+            desc.subresource_range,
+            desc.external_acquire_stage);
         resource.desc = std::move(desc);
 
         VulkanGraphImageHandle handle;

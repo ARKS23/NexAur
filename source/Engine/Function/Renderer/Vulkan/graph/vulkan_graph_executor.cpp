@@ -46,9 +46,11 @@ namespace NexAur {
             VulkanGraphStatePlanner::planImageTransition(image->state, destination);
 
         if (transition.requires_barrier) {
-            VkImageMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            VkImageMemoryBarrier2 barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+            barrier.srcStageMask = transition.source.stage;
             barrier.srcAccessMask = transition.source.access;
+            barrier.dstStageMask = transition.destination.stage;
             barrier.dstAccessMask = transition.destination.access;
             barrier.oldLayout = transition.source.layout;
             barrier.newLayout = transition.destination.layout;
@@ -57,17 +59,11 @@ namespace NexAur {
             barrier.image = image->desc.image;
             barrier.subresourceRange = transition.barrier_range.toVulkan();
 
-            vkCmdPipelineBarrier(
-                command_buffer,
-                transition.source.stage,
-                transition.destination.stage,
-                0,
-                0,
-                nullptr,
-                0,
-                nullptr,
-                1,
-                &barrier);
+            VkDependencyInfo dependency_info{};
+            dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dependency_info.imageMemoryBarrierCount = 1;
+            dependency_info.pImageMemoryBarriers = &barrier;
+            vkCmdPipelineBarrier2(command_buffer, &dependency_info);
         }
 
         image->state = transition.destination;

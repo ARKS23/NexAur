@@ -3613,8 +3613,8 @@ int runRenderGraphStatePlannerSmoke() {
         NexAur::VulkanGraphImageUsage usage;
         NexAur::VulkanGraphAccessType access_type;
         VkImageLayout layout;
-        VkAccessFlags access;
-        VkPipelineStageFlags stage;
+        VkAccessFlags2 access;
+        VkPipelineStageFlags2 stage;
     };
 
     constexpr std::array<UsageExpectation, 5> kUsageExpectations{
@@ -3622,36 +3622,38 @@ int runRenderGraphStatePlannerSmoke() {
             NexAur::VulkanGraphImageUsage::ColorAttachment,
             NexAur::VulkanGraphAccessType::Write,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
         },
         UsageExpectation{
             NexAur::VulkanGraphImageUsage::DepthStencilAttachment,
             NexAur::VulkanGraphAccessType::Write,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
         },
         UsageExpectation{
             NexAur::VulkanGraphImageUsage::ShaderRead,
             NexAur::VulkanGraphAccessType::Read,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_ACCESS_SHADER_READ_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT
         },
         UsageExpectation{
             NexAur::VulkanGraphImageUsage::TransferSource,
             NexAur::VulkanGraphAccessType::Read,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VK_ACCESS_TRANSFER_READ_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT
+            VK_ACCESS_2_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT
         },
         UsageExpectation{
             NexAur::VulkanGraphImageUsage::Present,
             NexAur::VulkanGraphAccessType::Read,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-            0,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+            VK_ACCESS_2_NONE,
+            VK_PIPELINE_STAGE_2_NONE
         }
     };
 
@@ -3707,14 +3709,51 @@ int runRenderGraphStatePlannerSmoke() {
         expect(rangesEqual(state.subresource_range, color_range), "RenderGraph planner lost the subresource range.");
     }
 
+    const NexAur::VulkanGraphImageState undefined_state =
+        NexAur::VulkanGraphStatePlanner::stateForLayout(VK_IMAGE_LAYOUT_UNDEFINED, color_range);
+    expect(
+        undefined_state.access == VK_ACCESS_2_NONE &&
+            undefined_state.stage == VK_PIPELINE_STAGE_2_NONE,
+        "RenderGraph planner did not use synchronization2 NONE semantics for an undefined image.");
+    expect(
+        undefined_state.last_access == NexAur::VulkanGraphAccessType::None,
+        "RenderGraph planner assigned an access type to an undefined image.");
+
+    const NexAur::VulkanGraphImageState acquired_undefined_state =
+        NexAur::VulkanGraphStatePlanner::stateForImport(
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            color_range,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    expect(
+        acquired_undefined_state.access == VK_ACCESS_2_NONE &&
+            acquired_undefined_state.stage == VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        "RenderGraph planner lost the external acquire scope for an imported image.");
+
+    const NexAur::VulkanGraphImageState present_layout_state =
+        NexAur::VulkanGraphStatePlanner::stateForLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, color_range);
+    expect(
+        present_layout_state.access == VK_ACCESS_2_NONE &&
+            present_layout_state.stage == VK_PIPELINE_STAGE_2_NONE,
+        "RenderGraph planner did not use synchronization2 NONE semantics for a presentation layout.");
+
+    const NexAur::VulkanGraphImageState acquired_present_state =
+        NexAur::VulkanGraphStatePlanner::stateForImport(
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            color_range,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+    expect(
+        acquired_present_state.access == VK_ACCESS_2_NONE &&
+            acquired_present_state.stage == VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        "RenderGraph planner did not align imported presentation state with the acquire wait scope.");
+
     const NexAur::VulkanGraphImageState conservative_state =
         NexAur::VulkanGraphStatePlanner::stateForLayout(VK_IMAGE_LAYOUT_GENERAL, color_range);
     expect(conservative_state.layout == VK_IMAGE_LAYOUT_GENERAL, "RenderGraph planner did not preserve an unknown layout.");
     expect(
-        conservative_state.access == (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT),
+        conservative_state.access == (VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT),
         "RenderGraph planner did not use conservative access for an unknown layout.");
     expect(
-        conservative_state.stage == VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        conservative_state.stage == VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         "RenderGraph planner did not use a conservative stage for an unknown layout.");
     expect(
         conservative_state.last_access == NexAur::VulkanGraphAccessType::ReadWrite,
@@ -3725,6 +3764,49 @@ int runRenderGraphStatePlannerSmoke() {
             NexAur::VulkanGraphImageUsage::ColorAttachment,
             NexAur::VulkanGraphAccessType::Write,
             color_range);
+    const NexAur::VulkanGraphImageTransitionPlan undefined_to_color_write =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(undefined_state, color_write);
+    expect(
+        undefined_to_color_write.requires_barrier,
+        "RenderGraph planner skipped Undefined -> ColorWrite.");
+    expect(
+        undefined_to_color_write.source.stage == VK_PIPELINE_STAGE_2_NONE &&
+            undefined_to_color_write.source.access == VK_ACCESS_2_NONE,
+        "RenderGraph planner produced an invalid synchronization2 source scope for an undefined image.");
+
+    const NexAur::VulkanGraphImageTransitionPlan acquired_undefined_to_color_write =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(acquired_undefined_state, color_write);
+    expect(
+        acquired_undefined_to_color_write.requires_barrier &&
+            acquired_undefined_to_color_write.source.stage ==
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        "RenderGraph planner did not preserve the acquire scope for first swapchain image use.");
+
+    const NexAur::VulkanGraphImageTransitionPlan present_to_color_write =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(acquired_present_state, color_write);
+    expect(
+        present_to_color_write.requires_barrier,
+        "RenderGraph planner skipped Present -> ColorWrite.");
+    expect(
+        present_to_color_write.source.stage == VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT &&
+            present_to_color_write.source.access == VK_ACCESS_2_NONE,
+        "RenderGraph planner produced an invalid source scope for an acquired swapchain image.");
+
+    const NexAur::VulkanGraphImageState present_destination =
+        NexAur::VulkanGraphStatePlanner::stateForUsage(
+            NexAur::VulkanGraphImageUsage::Present,
+            NexAur::VulkanGraphAccessType::Read,
+            color_range);
+    const NexAur::VulkanGraphImageTransitionPlan color_write_to_present =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(color_write, present_destination);
+    expect(
+        color_write_to_present.requires_barrier,
+        "RenderGraph planner skipped ColorWrite -> Present.");
+    expect(
+        color_write_to_present.destination.stage == VK_PIPELINE_STAGE_2_NONE &&
+            color_write_to_present.destination.access == VK_ACCESS_2_NONE,
+        "RenderGraph planner did not use synchronization2 NONE semantics when releasing for presentation.");
+
     const NexAur::VulkanGraphImageState color_read =
         NexAur::VulkanGraphStatePlanner::stateForUsage(
             NexAur::VulkanGraphImageUsage::ShaderRead,
@@ -3736,10 +3818,10 @@ int runRenderGraphStatePlannerSmoke() {
         color_write_to_read.requires_barrier,
         "RenderGraph planner skipped ColorWrite -> ShaderRead.");
     expect(
-        color_write_to_read.source.access == VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        color_write_to_read.source.access == VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         "RenderGraph planner produced an unexpected ColorWrite source access mask.");
     expect(
-        color_write_to_read.destination.access == VK_ACCESS_SHADER_READ_BIT,
+        color_write_to_read.destination.access == VK_ACCESS_2_SHADER_READ_BIT,
         "RenderGraph planner produced an unexpected ShaderRead destination access mask.");
     expect(
         rangesEqual(color_write_to_read.barrier_range, color_range),
@@ -3789,7 +3871,7 @@ int runRenderGraphStatePlannerSmoke() {
             color_range);
     expect(
         color_read_write.access ==
-            (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT),
+            (VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT),
         "RenderGraph planner produced an incomplete color attachment ReadWrite access mask.");
     const NexAur::VulkanGraphImageTransitionPlan shader_read_to_read_write =
         NexAur::VulkanGraphStatePlanner::planImageTransition(color_read, color_read_write);

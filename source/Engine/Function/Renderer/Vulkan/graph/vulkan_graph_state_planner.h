@@ -36,7 +36,7 @@ namespace NexAur {
                     return {
                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                         colorAttachmentAccess(access_type),
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                         access_type,
                         subresource_range
                     };
@@ -44,31 +44,32 @@ namespace NexAur {
                     return {
                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                         depthStencilAttachmentAccess(access_type),
-                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                            VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
                         access_type,
                         subresource_range
                     };
                 case VulkanGraphImageUsage::ShaderRead:
                     return {
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                         access_type,
                         subresource_range
                     };
                 case VulkanGraphImageUsage::TransferSource:
                     return {
                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_ACCESS_2_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                         access_type,
                         subresource_range
                     };
                 case VulkanGraphImageUsage::Present:
                     return {
                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                        0,
-                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        VK_ACCESS_2_NONE,
+                        VK_PIPELINE_STAGE_2_NONE,
                         access_type,
                         subresource_range
                     };
@@ -84,60 +85,73 @@ namespace NexAur {
                 case VK_IMAGE_LAYOUT_UNDEFINED:
                     return {
                         VK_IMAGE_LAYOUT_UNDEFINED,
-                        0,
-                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                        VK_ACCESS_2_NONE,
+                        VK_PIPELINE_STAGE_2_NONE,
                         VulkanGraphAccessType::None,
                         subresource_range
                     };
                 case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
                     return {
                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                         VulkanGraphAccessType::Write,
                         subresource_range
                     };
                 case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
                     return {
                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                            VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
                         VulkanGraphAccessType::ReadWrite,
                         subresource_range
                     };
                 case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
                     return {
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                         VulkanGraphAccessType::Read,
                         subresource_range
                     };
                 case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
                     return {
                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_ACCESS_2_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                         VulkanGraphAccessType::Read,
                         subresource_range
                     };
                 case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
                     return {
                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                        0,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_ACCESS_2_NONE,
+                        VK_PIPELINE_STAGE_2_NONE,
                         VulkanGraphAccessType::Read,
                         subresource_range
                     };
                 default:
                     return {
                         layout,
-                        VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                        VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                         VulkanGraphAccessType::ReadWrite,
                         subresource_range
                     };
             }
+        }
+
+        static constexpr VulkanGraphImageState stateForImport(
+            VkImageLayout layout,
+            VulkanGraphImageSubresourceRange subresource_range,
+            VkPipelineStageFlags2 external_acquire_stage) {
+            VulkanGraphImageState state = stateForLayout(layout, subresource_range);
+            if (external_acquire_stage != VK_PIPELINE_STAGE_2_NONE) {
+                state.stage = external_acquire_stage;
+            }
+            return state;
         }
 
         static constexpr bool subresourcesOverlap(
@@ -147,31 +161,32 @@ namespace NexAur {
         }
 
     private:
-        static constexpr VkAccessFlags colorAttachmentAccess(VulkanGraphAccessType access_type) {
+        static constexpr VkAccessFlags2 colorAttachmentAccess(VulkanGraphAccessType access_type) {
             switch (access_type) {
                 case VulkanGraphAccessType::Read:
-                    return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+                    return VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
                 case VulkanGraphAccessType::Write:
-                    return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    return VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
                 case VulkanGraphAccessType::ReadWrite:
-                    return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    return VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                           VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
                 case VulkanGraphAccessType::None:
                 default:
-                    return 0;
+                    return VK_ACCESS_2_NONE;
             }
         }
 
-        static constexpr VkAccessFlags depthStencilAttachmentAccess(VulkanGraphAccessType access_type) {
+        static constexpr VkAccessFlags2 depthStencilAttachmentAccess(VulkanGraphAccessType access_type) {
             switch (access_type) {
                 case VulkanGraphAccessType::Read:
-                    return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+                    return VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
                 case VulkanGraphAccessType::Write:
                 case VulkanGraphAccessType::ReadWrite:
-                    return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                    return VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
                 case VulkanGraphAccessType::None:
                 default:
-                    return 0;
+                    return VK_ACCESS_2_NONE;
             }
         }
 
