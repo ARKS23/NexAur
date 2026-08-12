@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_render_target.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
@@ -33,14 +34,14 @@ namespace NexAur {
         uint32_t getResolution() const { return m_extent.width; }
         VkFormat getColorFormat() const { return m_color_format; }
         VkFormat getDepthFormat() const { return m_depth_format; }
-        VkImage getColorImage() const { return m_color_image; }
-        VkImage getDepthImage() const { return m_depth_image; }
-        VkBuffer getReadbackBuffer() const { return m_readback_buffer; }
+        VkImage getColorImage() const { return m_color_image.getImage(); }
+        VkImage getDepthImage() const { return m_depth_image.getImage(); }
+        VkBuffer getReadbackBuffer() const { return m_readback_buffer.get(); }
         VkDeviceSize getReadbackBufferSize() const { return m_readback_size; }
-        VkImageLayout getColorLayout() const { return m_color_layout; }
-        VkImageLayout getDepthLayout() const { return m_depth_layout; }
-        void setColorLayout(VkImageLayout layout) { m_color_layout = layout; }
-        void setDepthLayout(VkImageLayout layout) { m_depth_layout = layout; }
+        VkImageLayout getColorLayout() const { return m_color_image.getLayout(); }
+        VkImageLayout getDepthLayout() const { return m_depth_image.getLayout(); }
+        void setColorLayout(VkImageLayout layout) { m_color_image.setLayout(layout); }
+        void setDepthLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
 
         VulkanRenderTarget getFaceRenderTarget(uint32_t face_index) const;
         bool recordCopyToReadback(VkCommandBuffer command_buffer) const;
@@ -54,7 +55,6 @@ namespace NexAur {
         void cleanupImages();
         void cleanupReadbackBuffer();
 
-        uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
         VkDeviceSize colorBytesPerTexel() const;
         bool decodeReadback(const void* data, std::vector<float>& pixels) const;
 
@@ -65,21 +65,15 @@ namespace NexAur {
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
 
-        VkImage m_color_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_color_memory = VK_NULL_HANDLE;
-        VkImageView m_color_cube_view = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
+        VulkanOwnedImage m_color_image;
         std::vector<VkImageView> m_color_face_views;
-        VkImageLayout m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VkImage m_depth_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_depth_memory = VK_NULL_HANDLE;
+        VulkanOwnedImage m_depth_image;
         VkImageView m_depth_view = VK_NULL_HANDLE;
-        VkImageLayout m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VkBuffer m_readback_buffer = VK_NULL_HANDLE;
-        VkDeviceMemory m_readback_memory = VK_NULL_HANDLE;
+        VulkanOwnedBuffer m_readback_buffer;
         VkDeviceSize m_readback_size = 0;
-        bool m_readback_memory_coherent = false;
         bool m_ready = false;
     };
 } // namespace NexAur

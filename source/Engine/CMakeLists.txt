@@ -256,6 +256,16 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/frontend/vulkan_prepared_frame.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
+    Function/Renderer/Vulkan/core/vulkan_device_context.h
+    Function/Renderer/Vulkan/core/vulkan_device_context.cpp
+    Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h
+    Function/Renderer/Vulkan/core/vulkan_gpu_allocator.cpp
+    Function/Renderer/Vulkan/core/vulkan_owned_resources.h
+    Function/Renderer/Vulkan/core/vulkan_owned_resources.cpp
+    Function/Renderer/Vulkan/core/vulkan_swapchain_manager.h
+    Function/Renderer/Vulkan/core/vulkan_swapchain_manager.cpp
+    Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h
+    Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.cpp
     Function/Renderer/Vulkan/frontend/vulkan_render_view.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp
@@ -327,7 +337,7 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h
     Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.cpp
     Function/Renderer/Vulkan/vulkan_renderer_system.h
-    Function/Renderer/Vulkan/vulkan_renderer_system.cpp
+    Function/Renderer/Vulkan/vulkan_renderer_backend.cpp
     Function/Renderer/Vulkan/vulkan_render_resource_cache.h
     Function/Renderer/Vulkan/vulkan_render_resource_cache.cpp
 )

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "vulkan_forward_pass.h"
 
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
 #include "Function/Resource/mesh.h"
 #include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_material_resource.h"
@@ -36,24 +37,6 @@ namespace NexAur {
 
             NX_CORE_ERROR("{} failed: {}", operation, static_cast<int>(result));
             return false;
-        }
-
-        uint32_t findMemoryType(
-            VkPhysicalDevice physical_device,
-            uint32_t type_filter,
-            VkMemoryPropertyFlags properties) {
-            VkPhysicalDeviceMemoryProperties memory_properties{};
-            vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
-
-            for (uint32_t index = 0; index < memory_properties.memoryTypeCount; ++index) {
-                const bool type_matches = (type_filter & (1u << index)) != 0;
-                const bool properties_match = (memory_properties.memoryTypes[index].propertyFlags & properties) == properties;
-                if (type_matches && properties_match) {
-                    return index;
-                }
-            }
-
-            return UINT32_MAX;
         }
 
         VkFormat findDepthFormat(VkPhysicalDevice physical_device) {
@@ -215,15 +198,15 @@ namespace NexAur {
 
         transitionDepthImageToAttachment(
             command_buffer,
-            m_depth_image,
-            m_depth_image_layout,
+            m_depth_image.getImage(),
+            m_depth_image.getLayout(),
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        m_depth_image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        m_depth_image.setLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
         VulkanRenderTarget target;
         target.color_view = m_color_image_views[image_index];
         target.color_format = m_color_format;
-        target.depth_view = m_depth_image_view;
+        target.depth_view = m_depth_image.getImageView();
         target.depth_format = m_depth_format;
         target.extent = m_extent;
         return record(
@@ -401,7 +384,7 @@ namespace NexAur {
         VulkanRenderTarget target;
         target.color_view = getSwapchainColorImageView(image_index);
         target.color_format = m_swapchain_color_format;
-        target.depth_view = m_depth_image_view;
+        target.depth_view = m_depth_image.getImageView();
         target.depth_format = m_depth_format;
         target.extent = m_extent;
         return target;
@@ -414,63 +397,16 @@ namespace NexAur {
             return false;
         }
 
-        VkImageCreateInfo image_info{};
-        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_info.imageType = VK_IMAGE_TYPE_2D;
-        image_info.extent.width = context.extent.width;
-        image_info.extent.height = context.extent.height;
-        image_info.extent.depth = 1;
-        image_info.mipLevels = 1;
-        image_info.arrayLayers = 1;
-        image_info.format = m_depth_format;
-        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        if (!checkVk(vkCreateImage(context.device, &image_info, nullptr, &m_depth_image), "vkCreateImage(depth)")) {
+        VulkanOwnedImageCreateInfo create_info;
+        create_info.extent = { context.extent.width, context.extent.height, 1 };
+        create_info.format = m_depth_format;
+        create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        create_info.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        create_info.debug_name = "VulkanForwardPass depth image";
+        if (!m_depth_image.create(*context.gpu_allocator, create_info)) {
             return false;
         }
 
-        VkMemoryRequirements memory_requirements{};
-        vkGetImageMemoryRequirements(context.device, m_depth_image, &memory_requirements);
-
-        const uint32_t memory_type = findMemoryType(
-            context.physical_device,
-            memory_requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        if (memory_type == UINT32_MAX) {
-            NX_CORE_ERROR("VulkanForwardPass failed to find device-local depth image memory.");
-            return false;
-        }
-
-        VkMemoryAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocate_info.allocationSize = memory_requirements.size;
-        allocate_info.memoryTypeIndex = memory_type;
-
-        if (!checkVk(vkAllocateMemory(context.device, &allocate_info, nullptr, &m_depth_memory), "vkAllocateMemory(depth)") ||
-            !checkVk(vkBindImageMemory(context.device, m_depth_image, m_depth_memory, 0), "vkBindImageMemory(depth)")) {
-            return false;
-        }
-
-        VkImageViewCreateInfo view_info{};
-        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        view_info.image = m_depth_image;
-        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view_info.format = m_depth_format;
-        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        view_info.subresourceRange.baseMipLevel = 0;
-        view_info.subresourceRange.levelCount = 1;
-        view_info.subresourceRange.baseArrayLayer = 0;
-        view_info.subresourceRange.layerCount = 1;
-
-        if (!checkVk(vkCreateImageView(context.device, &view_info, nullptr, &m_depth_image_view), "vkCreateImageView(depth)")) {
-            return false;
-        }
-
-        m_depth_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         return true;
     }
 
@@ -535,22 +471,7 @@ namespace NexAur {
     }
 
     void VulkanForwardPass::cleanupDepthResources() {
-        if (m_depth_image_view != VK_NULL_HANDLE) {
-            vkDestroyImageView(m_device, m_depth_image_view, nullptr);
-            m_depth_image_view = VK_NULL_HANDLE;
-        }
-
-        if (m_depth_image != VK_NULL_HANDLE) {
-            vkDestroyImage(m_device, m_depth_image, nullptr);
-            m_depth_image = VK_NULL_HANDLE;
-        }
-
-        if (m_depth_memory != VK_NULL_HANDLE) {
-            vkFreeMemory(m_device, m_depth_memory, nullptr);
-            m_depth_memory = VK_NULL_HANDLE;
-        }
-
-        m_depth_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        m_depth_image.reset();
     }
 
     void VulkanForwardPass::cleanupPipeline() {

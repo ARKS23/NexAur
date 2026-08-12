@@ -18,6 +18,10 @@
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_executor.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
+#include "Function/Renderer/Vulkan/core/vulkan_device_context.h"
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/core/vulkan_swapchain_manager.h"
+#include "Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_ao_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_bloom_pass.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_debug_draw_pass.h"
@@ -46,17 +50,8 @@
 #include "Function/Renderer/Vulkan/ui/vulkan_imgui_renderer.h"
 #include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
 
-#ifdef NX_PLATFORM_WINDOWS
-    #define VK_USE_PLATFORM_WIN32_KHR
-    #define GLFW_EXPOSE_NATIVE_WIN32
-#endif
-
 #include <VkBootstrap.h>
-#include <GLFW/glfw3native.h>
 #include <vulkan/vulkan.h>
-#ifdef NX_PLATFORM_WINDOWS
-    #include <vulkan/vulkan_win32.h>
-#endif
 
 #include <algorithm>
 #include <array>
@@ -71,10 +66,7 @@
 
 namespace NexAur {
     namespace {
-        constexpr uint32_t kDefaultViewportWidth = 1280;
-        constexpr uint32_t kDefaultViewportHeight = 720;
         constexpr uint32_t kDefaultShadowMapResolution = 2048;
-        constexpr uint32_t kRequiredVulkanApiVersion = VK_API_VERSION_1_3;
         constexpr uint32_t kReflectionProbeCaptureBudgetPerFrame = 1;
         constexpr uint32_t kMaxRuntimeReflectionProbeCaptures = 8;
 
@@ -318,182 +310,6 @@ namespace NexAur {
             return view;
         }
 
-        const char* vkResultToString(VkResult result) {
-            switch (result) {
-            case VK_SUCCESS:
-                return "VK_SUCCESS";
-            case VK_NOT_READY:
-                return "VK_NOT_READY";
-            case VK_TIMEOUT:
-                return "VK_TIMEOUT";
-            case VK_EVENT_SET:
-                return "VK_EVENT_SET";
-            case VK_EVENT_RESET:
-                return "VK_EVENT_RESET";
-            case VK_INCOMPLETE:
-                return "VK_INCOMPLETE";
-            case VK_ERROR_OUT_OF_HOST_MEMORY:
-                return "VK_ERROR_OUT_OF_HOST_MEMORY";
-            case VK_ERROR_OUT_OF_DEVICE_MEMORY:
-                return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
-            case VK_ERROR_INITIALIZATION_FAILED:
-                return "VK_ERROR_INITIALIZATION_FAILED";
-            case VK_ERROR_DEVICE_LOST:
-                return "VK_ERROR_DEVICE_LOST";
-            case VK_ERROR_MEMORY_MAP_FAILED:
-                return "VK_ERROR_MEMORY_MAP_FAILED";
-            case VK_ERROR_LAYER_NOT_PRESENT:
-                return "VK_ERROR_LAYER_NOT_PRESENT";
-            case VK_ERROR_EXTENSION_NOT_PRESENT:
-                return "VK_ERROR_EXTENSION_NOT_PRESENT";
-            case VK_ERROR_FEATURE_NOT_PRESENT:
-                return "VK_ERROR_FEATURE_NOT_PRESENT";
-            case VK_ERROR_INCOMPATIBLE_DRIVER:
-                return "VK_ERROR_INCOMPATIBLE_DRIVER";
-            case VK_ERROR_TOO_MANY_OBJECTS:
-                return "VK_ERROR_TOO_MANY_OBJECTS";
-            case VK_ERROR_FORMAT_NOT_SUPPORTED:
-                return "VK_ERROR_FORMAT_NOT_SUPPORTED";
-            case VK_ERROR_SURFACE_LOST_KHR:
-                return "VK_ERROR_SURFACE_LOST_KHR";
-            case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR:
-                return "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR";
-            case VK_SUBOPTIMAL_KHR:
-                return "VK_SUBOPTIMAL_KHR";
-            case VK_ERROR_OUT_OF_DATE_KHR:
-                return "VK_ERROR_OUT_OF_DATE_KHR";
-            default:
-                return "Unknown VkResult";
-            }
-        }
-
-        std::string vkFormatToString(VkFormat format) {
-            switch (format) {
-            case VK_FORMAT_UNDEFINED:
-                return "Undefined";
-            case VK_FORMAT_B8G8R8A8_SRGB:
-                return "B8G8R8A8_SRGB";
-            case VK_FORMAT_B8G8R8A8_UNORM:
-                return "B8G8R8A8_UNORM";
-            case VK_FORMAT_R16G16B16A16_SFLOAT:
-                return "R16G16B16A16_SFLOAT";
-            case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
-                return "B10G11R11_UFLOAT_PACK32";
-            case VK_FORMAT_R8_UNORM:
-                return "R8_UNORM";
-            case VK_FORMAT_R16_SFLOAT:
-                return "R16_SFLOAT";
-            case VK_FORMAT_R32_SINT:
-                return "R32_SINT";
-            case VK_FORMAT_D16_UNORM:
-                return "D16_UNORM";
-            case VK_FORMAT_D24_UNORM_S8_UINT:
-                return "D24_UNORM_S8_UINT";
-            case VK_FORMAT_D32_SFLOAT:
-                return "D32_SFLOAT";
-            case VK_FORMAT_D32_SFLOAT_S8_UINT:
-                return "D32_SFLOAT_S8_UINT";
-            default:
-                return "VkFormat(" + std::to_string(static_cast<int>(format)) + ")";
-            }
-        }
-
-        std::string apiVersionToString(uint32_t api_version) {
-            return std::to_string(VK_API_VERSION_MAJOR(api_version)) + "." +
-                   std::to_string(VK_API_VERSION_MINOR(api_version)) + "." +
-                   std::to_string(VK_API_VERSION_PATCH(api_version));
-        }
-
-        bool checkVk(VkResult result, const char* operation) {
-            if (result == VK_SUCCESS) {
-                return true;
-            }
-
-            NX_CORE_ERROR("{} failed: {} ({})", operation, vkResultToString(result), static_cast<int>(result));
-            return false;
-        }
-
-        template<typename T>
-        void logVkbFailure(const char* operation, const vkb::Result<T>& result) {
-            if (result) {
-                return;
-            }
-
-            NX_CORE_ERROR("{} failed: {} ({})", operation, result.error().message(), vkResultToString(result.vk_result()));
-            for (const std::string& reason : result.detailed_failure_reasons()) {
-                NX_CORE_ERROR("{} detail: {}", operation, reason);
-            }
-        }
-
-        bool requireFeature(VkBool32 supported, const char* feature_name) {
-            if (supported == VK_TRUE) {
-                return true;
-            }
-
-            NX_CORE_ERROR("Vulkan 1.3 feature is required but not supported: {}", feature_name);
-            return false;
-        }
-
-        VkFormat findHdrSceneColorFormat(VkPhysicalDevice physical_device) {
-            constexpr VkFormatFeatureFlags required_features =
-                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
-                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-            const std::array<VkFormat, 2> candidates{
-                VK_FORMAT_R16G16B16A16_SFLOAT,
-                VK_FORMAT_B10G11R11_UFLOAT_PACK32
-            };
-
-            for (VkFormat format : candidates) {
-                VkFormatProperties properties{};
-                vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
-                if ((properties.optimalTilingFeatures & required_features) == required_features) {
-                    return format;
-                }
-            }
-
-            return VK_FORMAT_UNDEFINED;
-        }
-
-        VkFormat findAoFormat(VkPhysicalDevice physical_device) {
-            constexpr VkFormatFeatureFlags required_features =
-                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
-                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-            const std::array<VkFormat, 2> candidates{
-                VK_FORMAT_R8_UNORM,
-                VK_FORMAT_R16_SFLOAT
-            };
-
-            for (VkFormat format : candidates) {
-                VkFormatProperties properties{};
-                vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
-                if ((properties.optimalTilingFeatures & required_features) == required_features) {
-                    return format;
-                }
-            }
-
-            return VK_FORMAT_UNDEFINED;
-        }
-
-        VkFormat findSmaaMaskFormat(VkPhysicalDevice physical_device) {
-            constexpr VkFormatFeatureFlags required_features =
-                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
-                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-            const std::array<VkFormat, 3> candidates{
-                VK_FORMAT_R8G8B8A8_UNORM,
-                VK_FORMAT_B8G8R8A8_UNORM,
-                VK_FORMAT_R16G16B16A16_SFLOAT
-            };
-
-            for (VkFormat format : candidates) {
-                VkFormatProperties properties{};
-                vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
-                if ((properties.optimalTilingFeatures & required_features) == required_features) {
-                    return format;
-                }
-            }
-
-            return VK_FORMAT_UNDEFINED;
-        }
     } // namespace
 
     struct VulkanRendererSystem::Backend {
@@ -516,19 +332,19 @@ namespace NexAur {
                 return false;
             }
 
-            window = static_cast<GLFWwindow*>(service.getNativeWindow());
-            if (!window) {
+            GLFWwindow* native_window = static_cast<GLFWwindow*>(service.getNativeWindow());
+            if (!native_window) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to initialize: WindowService returned null native window.");
                 return false;
             }
 
             auto [window_width, window_height] = service.getSize();
-            surface_width = std::max(1u, window_width);
-            surface_height = std::max(1u, window_height);
+            swapchain_manager.setSurfaceSize(
+                std::max(1u, window_width),
+                std::max(1u, window_height));
 
-            if (!createInstance(service.getRequiredVulkanInstanceExtensions()) ||
-                !createSurface() ||
-                !createDevice() ||
+            if (!device_context.init(native_window, service.getRequiredVulkanInstanceExtensions()) ||
+                !gpu_allocator.init(createResourceContext()) ||
                 !shader_library.init(device.device) ||
                 !descriptor_layout_cache.init(device.device) ||
                 !descriptor_allocator.init(device.device) ||
@@ -543,14 +359,14 @@ namespace NexAur {
                 return false;
             }
 
-            ao_format = findAoFormat(physical_device.physical_device);
+            ao_format = VulkanDiagnosticsCollector::findAoFormat(physical_device.physical_device);
             if (ao_format == VK_FORMAT_UNDEFINED) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to find a supported AO target format.");
                 shutdown();
                 return false;
             }
             ssr_hit_mask_format = ao_format;
-            smaa_mask_format = findSmaaMaskFormat(physical_device.physical_device);
+            smaa_mask_format = VulkanDiagnosticsCollector::findSmaaMaskFormat(physical_device.physical_device);
             if (smaa_mask_format == VK_FORMAT_UNDEFINED) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to find a supported SMAA mask target format.");
                 shutdown();
@@ -664,25 +480,8 @@ namespace NexAur {
             cleanupSyncObjects();
             cleanupCommandResources();
 
-            if (device.device != VK_NULL_HANDLE) {
-                vkb::destroy_device(device);
-                device = {};
-            }
-
-            if (surface != VK_NULL_HANDLE && instance.instance != VK_NULL_HANDLE) {
-                vkb::destroy_surface(instance, surface);
-                surface = VK_NULL_HANDLE;
-            }
-
-            if (instance.instance != VK_NULL_HANDLE) {
-                vkb::destroy_instance(instance);
-                instance = {};
-            }
-
-            physical_device = {};
-            graphics_queue = VK_NULL_HANDLE;
-            present_queue = VK_NULL_HANDLE;
-            device_api_version = kRequiredVulkanApiVersion;
+            gpu_allocator.shutdown();
+            device_context.shutdown();
             scene_color_format = VK_FORMAT_UNDEFINED;
             ao_format = VK_FORMAT_UNDEFINED;
             ssr_hit_mask_format = VK_FORMAT_UNDEFINED;
@@ -839,8 +638,7 @@ namespace NexAur {
         }
 
         void resizeSurface(uint32_t width, uint32_t height) {
-            surface_width = width;
-            surface_height = height;
+            swapchain_manager.setSurfaceSize(width, height);
 
             if (width == 0 || height == 0) {
                 return;
@@ -938,6 +736,7 @@ namespace NexAur {
             context.graphics_queue = graphics_queue;
             context.graphics_queue_family = graphics_queue_family;
             context.api_version = device_api_version;
+            context.gpu_allocator = &gpu_allocator;
             return context;
         }
 
@@ -1230,7 +1029,7 @@ namespace NexAur {
             allocate_info.commandPool = command_pool;
             allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocate_info.commandBufferCount = 1;
-            if (!checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &immediate_command_buffer), "vkAllocateCommandBuffers(immediate)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &immediate_command_buffer), "vkAllocateCommandBuffers(immediate)")) {
                 cleanup();
                 return false;
             }
@@ -1238,20 +1037,20 @@ namespace NexAur {
             VkCommandBufferBeginInfo begin_info{};
             begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            if (!checkVk(vkBeginCommandBuffer(immediate_command_buffer, &begin_info), "vkBeginCommandBuffer(immediate)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkBeginCommandBuffer(immediate_command_buffer, &begin_info), "vkBeginCommandBuffer(immediate)")) {
                 cleanup();
                 return false;
             }
 
             if (!record_commands(immediate_command_buffer) ||
-                !checkVk(vkEndCommandBuffer(immediate_command_buffer), "vkEndCommandBuffer(immediate)")) {
+                !VulkanDiagnosticsCollector::checkVk(vkEndCommandBuffer(immediate_command_buffer), "vkEndCommandBuffer(immediate)")) {
                 cleanup();
                 return false;
             }
 
             VkFenceCreateInfo fence_info{};
             fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            if (!checkVk(vkCreateFence(device.device, &fence_info, nullptr, &immediate_fence), "vkCreateFence(immediate)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkCreateFence(device.device, &fence_info, nullptr, &immediate_fence), "vkCreateFence(immediate)")) {
                 cleanup();
                 return false;
             }
@@ -1260,8 +1059,8 @@ namespace NexAur {
             submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submit_info.commandBufferCount = 1;
             submit_info.pCommandBuffers = &immediate_command_buffer;
-            if (!checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, immediate_fence), operation) ||
-                !checkVk(vkWaitForFences(device.device, 1, &immediate_fence, VK_TRUE, UINT64_MAX), "vkWaitForFences(immediate)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, immediate_fence), operation) ||
+                !VulkanDiagnosticsCollector::checkVk(vkWaitForFences(device.device, 1, &immediate_fence, VK_TRUE, UINT64_MAX), "vkWaitForFences(immediate)")) {
                 cleanup();
                 return false;
             }
@@ -1851,12 +1650,12 @@ namespace NexAur {
             RendererDebugBackendStats stats;
             stats.backend = RendererBackendType::Vulkan;
             stats.initialized = initialized;
-            stats.device_api_version = apiVersionToString(device_api_version);
+            stats.device_api_version = VulkanDiagnosticsCollector::apiVersionToString(device_api_version);
             stats.swapchain_ready = swapchain.swapchain != VK_NULL_HANDLE && !swapchain_images.empty();
             stats.swapchain_width = swapchain.extent.width;
             stats.swapchain_height = swapchain.extent.height;
             stats.swapchain_image_count = static_cast<uint32_t>(swapchain_images.size());
-            stats.swapchain_format = vkFormatToString(swapchain.image_format);
+            stats.swapchain_format = VulkanDiagnosticsCollector::vkFormatToString(swapchain.image_format);
             stats.viewport_output_kind = getViewportOutput().kind;
             return stats;
         }
@@ -1948,8 +1747,8 @@ namespace NexAur {
             const VkExtent2D extent = viewport_target.getExtent();
             stats.width = extent.width;
             stats.height = extent.height;
-            stats.color_format = vkFormatToString(viewport_target.getColorFormat());
-            stats.depth_format = vkFormatToString(viewport_target.getDepthFormat());
+            stats.color_format = VulkanDiagnosticsCollector::vkFormatToString(viewport_target.getColorFormat());
+            stats.depth_format = VulkanDiagnosticsCollector::vkFormatToString(viewport_target.getDepthFormat());
             return stats;
         }
 
@@ -1963,7 +1762,7 @@ namespace NexAur {
             const VkExtent2D extent = scene_color_target.getExtent();
             stats.width = extent.width;
             stats.height = extent.height;
-            stats.color_format = vkFormatToString(scene_color_target.getColorFormat());
+            stats.color_format = VulkanDiagnosticsCollector::vkFormatToString(scene_color_target.getColorFormat());
             stats.depth_format = "Shared";
             return stats;
         }
@@ -1979,8 +1778,8 @@ namespace NexAur {
             const VkExtent2D extent = picking_target.getExtent();
             stats.width = extent.width;
             stats.height = extent.height;
-            stats.object_id_format = vkFormatToString(picking_target.getObjectIdFormat());
-            stats.depth_format = vkFormatToString(picking_target.getDepthFormat());
+            stats.object_id_format = VulkanDiagnosticsCollector::vkFormatToString(picking_target.getObjectIdFormat());
+            stats.depth_format = VulkanDiagnosticsCollector::vkFormatToString(picking_target.getDepthFormat());
             return stats;
         }
 
@@ -1995,7 +1794,7 @@ namespace NexAur {
             stats.width = extent.width;
             stats.height = extent.height;
             stats.layer_count = shadow_target.getLayerCount();
-            stats.depth_format = vkFormatToString(shadow_target.getDepthFormat());
+            stats.depth_format = VulkanDiagnosticsCollector::vkFormatToString(shadow_target.getDepthFormat());
             return stats;
         }
 
@@ -2010,7 +1809,7 @@ namespace NexAur {
             stats.width = extent.width;
             stats.height = extent.height;
             stats.layer_count = point_shadow_target.getLayerCount();
-            stats.depth_format = vkFormatToString(point_shadow_target.getDepthFormat());
+            stats.depth_format = VulkanDiagnosticsCollector::vkFormatToString(point_shadow_target.getDepthFormat());
             return stats;
         }
 
@@ -2025,7 +1824,7 @@ namespace NexAur {
             stats.width = extent.width;
             stats.height = extent.height;
             stats.layer_count = rect_shadow_target.getLayerCount();
-            stats.depth_format = vkFormatToString(rect_shadow_target.getDepthFormat());
+            stats.depth_format = VulkanDiagnosticsCollector::vkFormatToString(rect_shadow_target.getDepthFormat());
             return stats;
         }
 
@@ -2034,7 +1833,7 @@ namespace NexAur {
             stats.enabled = true;
             stats.ready = post_process_pass.isReady();
             if (post_process_pass.getOutputColorFormat() != VK_FORMAT_UNDEFINED) {
-                stats.output_format = vkFormatToString(post_process_pass.getOutputColorFormat());
+                stats.output_format = VulkanDiagnosticsCollector::vkFormatToString(post_process_pass.getOutputColorFormat());
             }
             stats.tone_mapping = toneMappingModeToText(render_settings.post_process.tone_mapping_mode);
             stats.exposure = render_settings.post_process.exposure;
@@ -2064,7 +1863,7 @@ namespace NexAur {
             stats.width = extent.width;
             stats.height = extent.height;
             stats.mip_count = bloom_target.getMipCount();
-            stats.color_format = vkFormatToString(bloom_target.getColorFormat());
+            stats.color_format = VulkanDiagnosticsCollector::vkFormatToString(bloom_target.getColorFormat());
             return stats;
         }
 
@@ -2078,7 +1877,7 @@ namespace NexAur {
             const VkExtent2D extent = ao_target.getExtent();
             stats.width = extent.width;
             stats.height = extent.height;
-            stats.color_format = vkFormatToString(ao_target.getColorFormat());
+            stats.color_format = VulkanDiagnosticsCollector::vkFormatToString(ao_target.getColorFormat());
             stats.half_resolution = ao_target.isHalfResolution();
             return stats;
         }
@@ -2101,8 +1900,8 @@ namespace NexAur {
             const VkExtent2D extent = ssr_target.getExtent();
             stats.width = extent.width;
             stats.height = extent.height;
-            stats.reflection_format = vkFormatToString(ssr_target.getReflectionFormat());
-            stats.hit_mask_format = vkFormatToString(ssr_target.getHitMaskFormat());
+            stats.reflection_format = VulkanDiagnosticsCollector::vkFormatToString(ssr_target.getReflectionFormat());
+            stats.hit_mask_format = VulkanDiagnosticsCollector::vkFormatToString(ssr_target.getHitMaskFormat());
             return stats;
         }
 
@@ -2121,9 +1920,9 @@ namespace NexAur {
             const VkExtent2D extent = smaa_target.getExtent();
             stats.width = extent.width;
             stats.height = extent.height;
-            stats.source_format = vkFormatToString(smaa_target.getSourceFormat());
-            stats.edge_format = vkFormatToString(smaa_target.getMaskFormat());
-            stats.blend_format = vkFormatToString(smaa_target.getMaskFormat());
+            stats.source_format = VulkanDiagnosticsCollector::vkFormatToString(smaa_target.getSourceFormat());
+            stats.edge_format = VulkanDiagnosticsCollector::vkFormatToString(smaa_target.getMaskFormat());
+            stats.blend_format = VulkanDiagnosticsCollector::vkFormatToString(smaa_target.getMaskFormat());
             return stats;
         }
 
@@ -2688,221 +2487,27 @@ namespace NexAur {
             return debug_settings;
         }
 
-        bool createInstance(const std::vector<const char*>& required_extensions) {
-            if (required_extensions.empty()) {
-                NX_CORE_ERROR("VulkanRendererSystem failed to initialize: no Vulkan instance extensions were provided by WindowService.");
-                return false;
-            }
-
-            vkb::InstanceBuilder builder;
-            builder
-                .set_app_name("NexAur")
-                .set_engine_name("NexAur")
-                .require_api_version(1, 3, 0)
-                .set_headless(true)
-                .enable_extensions(required_extensions);
-
-#if !defined(NDEBUG)
-            bool validation_layers_available = false;
-            auto system_info_result = vkb::SystemInfo::get_system_info();
-            if (system_info_result) {
-                validation_layers_available = system_info_result.value().validation_layers_available;
-            } else {
-                NX_CORE_WARN(
-                    "Vulkan validation availability query failed: {} ({}).",
-                    system_info_result.error().message(),
-                    vkResultToString(system_info_result.vk_result()));
-            }
-
-            if (!validation_layers_available) {
-                NX_CORE_WARN(
-                    "Vulkan validation was requested for this Debug build, but the standard validation layer is unavailable.");
-            }
-
-            builder.request_validation_layers().use_default_debug_messenger();
-#endif
-
-            auto instance_result = builder.build();
-            if (!instance_result) {
-                logVkbFailure("Vulkan instance creation", instance_result);
-                return false;
-            }
-
-            instance = instance_result.value();
-#if !defined(NDEBUG)
-            if (validation_layers_available && instance.debug_messenger != VK_NULL_HANDLE) {
-                NX_CORE_INFO("Vulkan validation enabled for Debug build; debug messenger active.");
-            } else if (validation_layers_available) {
-                NX_CORE_WARN(
-                    "Vulkan validation layer is available, but the debug messenger is inactive.");
-            }
-#endif
-            return true;
-        }
-
-        bool createSurface() {
-#ifdef NX_PLATFORM_WINDOWS
-            HWND hwnd = glfwGetWin32Window(window);
-            if (!hwnd) {
-                NX_CORE_ERROR("Vulkan surface creation failed: GLFW returned null Win32 window handle.");
-                return false;
-            }
-
-            VkWin32SurfaceCreateInfoKHR create_info{};
-            create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-            create_info.hinstance = GetModuleHandle(nullptr);
-            create_info.hwnd = hwnd;
-
-            return checkVk(
-                vkCreateWin32SurfaceKHR(instance.instance, &create_info, nullptr, &surface),
-                "vkCreateWin32SurfaceKHR");
-#else
-            NX_CORE_ERROR("Vulkan surface creation is currently implemented only for Windows.");
-            return false;
-#endif
-        }
-
-        bool createDevice() {
-            auto physical_device_result = vkb::PhysicalDeviceSelector(instance)
-                .set_surface(surface)
-                .require_present(true)
-                .set_minimum_version(1, 3)
-                .add_required_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
-                .select();
-
-            if (!physical_device_result) {
-                logVkbFailure("Vulkan physical device selection", physical_device_result);
-                return false;
-            }
-
-            physical_device = physical_device_result.value();
-            cachePhysicalDeviceProperties();
-
-            VkPhysicalDeviceFeatures optional_core_features{};
-            optional_core_features.samplerAnisotropy = VK_TRUE;
-            const bool sampler_anisotropy_enabled =
-                physical_device.enable_features_if_present(optional_core_features);
-            if (!sampler_anisotropy_enabled) {
-                NX_CORE_WARN("Vulkan samplerAnisotropy is not available; material textures will use trilinear mip sampling.");
-            }
-
-            VkPhysicalDeviceVulkan13Features vulkan13_features{};
-            if (!buildRequiredVulkan13Features(vulkan13_features)) {
-                return false;
-            }
-
-            auto device_result = vkb::DeviceBuilder(physical_device)
-                .add_pNext(&vulkan13_features)
-                .build();
-            if (!device_result) {
-                logVkbFailure("Vulkan logical device creation", device_result);
-                return false;
-            }
-
-            device = device_result.value();
-
-            auto graphics_queue_result = device.get_queue(vkb::QueueType::graphics);
-            if (!graphics_queue_result) {
-                logVkbFailure("Vulkan graphics queue lookup", graphics_queue_result);
-                return false;
-            }
-            graphics_queue = graphics_queue_result.value();
-
-            auto present_queue_result = device.get_queue(vkb::QueueType::present);
-            if (!present_queue_result) {
-                logVkbFailure("Vulkan present queue lookup", present_queue_result);
-                return false;
-            }
-            present_queue = present_queue_result.value();
-
-            auto graphics_queue_index_result = device.get_queue_index(vkb::QueueType::graphics);
-            if (!graphics_queue_index_result) {
-                logVkbFailure("Vulkan graphics queue family lookup", graphics_queue_index_result);
-                return false;
-            }
-            graphics_queue_family = graphics_queue_index_result.value();
-
-            return true;
-        }
-
-        void cachePhysicalDeviceProperties() {
-            VkPhysicalDeviceProperties properties{};
-            vkGetPhysicalDeviceProperties(physical_device.physical_device, &properties);
-            device_api_version = properties.apiVersion;
-        }
-
-        bool buildRequiredVulkan13Features(VkPhysicalDeviceVulkan13Features& enabled_features) const {
-            VkPhysicalDeviceVulkan13Features supported_features{};
-            supported_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-
-            VkPhysicalDeviceFeatures2 supported_features2{};
-            supported_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-            supported_features2.pNext = &supported_features;
-            vkGetPhysicalDeviceFeatures2(physical_device.physical_device, &supported_features2);
-
-            if (!requireFeature(supported_features.dynamicRendering, "dynamicRendering") ||
-                !requireFeature(supported_features.synchronization2, "synchronization2") ||
-                !requireFeature(supported_features.shaderDemoteToHelperInvocation, "shaderDemoteToHelperInvocation")) {
-                return false;
-            }
-
-            enabled_features = {};
-            enabled_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-            enabled_features.dynamicRendering = VK_TRUE;
-            enabled_features.synchronization2 = VK_TRUE;
-            enabled_features.shaderDemoteToHelperInvocation = VK_TRUE;
-            return true;
-        }
-
         bool createSwapchain() {
             if (surface_width == 0 || surface_height == 0) {
                 return false;
             }
 
             if (scene_color_format == VK_FORMAT_UNDEFINED) {
-                scene_color_format = findHdrSceneColorFormat(physical_device.physical_device);
+                scene_color_format = VulkanDiagnosticsCollector::findHdrSceneColorFormat(physical_device.physical_device);
                 if (scene_color_format == VK_FORMAT_UNDEFINED) {
                     NX_CORE_ERROR("VulkanRendererSystem failed to find a supported HDR scene color format.");
                     return false;
                 }
             }
-
-            VkSurfaceFormatKHR preferred_format{};
-            preferred_format.format = VK_FORMAT_B8G8R8A8_SRGB;
-            preferred_format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-
-            VkSurfaceFormatKHR fallback_format{};
-            fallback_format.format = VK_FORMAT_B8G8R8A8_UNORM;
-            fallback_format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-
-            auto swapchain_result = vkb::SwapchainBuilder(device, surface)
-                .set_desired_extent(surface_width, surface_height)
-                .set_desired_format(preferred_format)
-                .add_fallback_format(fallback_format)
-                .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
-                .set_image_usage_flags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-                .build();
-
-            if (!swapchain_result) {
-                logVkbFailure("Vulkan swapchain creation", swapchain_result);
+            swapchain_manager.setSurfaceSize(surface_width, surface_height);
+            if (!swapchain_manager.create(device_context)) {
                 return false;
             }
-
-            swapchain = swapchain_result.value();
-
-            auto images_result = swapchain.get_images();
-            if (!images_result) {
-                logVkbFailure("Vulkan swapchain image query", images_result);
-                return false;
-            }
-
-            swapchain_images = images_result.value();
-            swapchain_image_layouts.assign(swapchain_images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
-            swapchain_dirty = false;
 
             VulkanForwardPassSwapchainContext pass_context;
             pass_context.physical_device = physical_device.physical_device;
             pass_context.device = device.device;
+            pass_context.gpu_allocator = &gpu_allocator;
             pass_context.color_format = scene_color_format;
             pass_context.swapchain_color_format = swapchain.image_format;
             pass_context.extent = swapchain.extent;
@@ -2981,13 +2586,7 @@ namespace NexAur {
             debug_draw_pass.cleanupResources();
             skybox_pass.cleanupResources();
             forward_pass.cleanupSwapchainResources();
-            swapchain_images.clear();
-            swapchain_image_layouts.clear();
-
-            if (swapchain.swapchain != VK_NULL_HANDLE) {
-                vkb::destroy_swapchain(swapchain);
-                swapchain = {};
-            }
+            swapchain_manager.shutdown();
         }
 
         bool createCommandResources() {
@@ -2996,7 +2595,7 @@ namespace NexAur {
             pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             pool_info.queueFamilyIndex = graphics_queue_family;
 
-            if (!checkVk(vkCreateCommandPool(device.device, &pool_info, nullptr, &command_pool), "vkCreateCommandPool")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkCreateCommandPool(device.device, &pool_info, nullptr, &command_pool), "vkCreateCommandPool")) {
                 return false;
             }
 
@@ -3006,7 +2605,7 @@ namespace NexAur {
             allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocate_info.commandBufferCount = 1;
 
-            return checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &command_buffer), "vkAllocateCommandBuffers");
+            return VulkanDiagnosticsCollector::checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &command_buffer), "vkAllocateCommandBuffers");
         }
 
         void cleanupCommandResources() {
@@ -3021,7 +2620,7 @@ namespace NexAur {
             VkSemaphoreCreateInfo semaphore_info{};
             semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-            if (!checkVk(
+            if (!VulkanDiagnosticsCollector::checkVk(
                     vkCreateSemaphore(device.device, &semaphore_info, nullptr, &image_available),
                     "vkCreateSemaphore(image_available)")) {
                 return false;
@@ -3031,7 +2630,7 @@ namespace NexAur {
             fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-            return checkVk(vkCreateFence(device.device, &fence_info, nullptr, &in_flight), "vkCreateFence");
+            return VulkanDiagnosticsCollector::checkVk(vkCreateFence(device.device, &fence_info, nullptr, &in_flight), "vkCreateFence");
         }
 
         bool createRenderFinishedSemaphores() {
@@ -3040,7 +2639,7 @@ namespace NexAur {
             VkSemaphoreCreateInfo semaphore_info{};
             semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
             for (VkSemaphore& semaphore : render_finished_semaphores) {
-                if (!checkVk(
+                if (!VulkanDiagnosticsCollector::checkVk(
                         vkCreateSemaphore(device.device, &semaphore_info, nullptr, &semaphore),
                         "vkCreateSemaphore(render_finished)")) {
                     cleanupRenderFinishedSemaphores();
@@ -3141,7 +2740,7 @@ namespace NexAur {
                 return;
             }
             if (acquire_result != VK_SUCCESS && acquire_result != VK_SUBOPTIMAL_KHR) {
-                NX_CORE_ERROR("vkAcquireNextImageKHR failed: {}", vkResultToString(acquire_result));
+                NX_CORE_ERROR("vkAcquireNextImageKHR failed: {}", VulkanDiagnosticsCollector::vkResultToString(acquire_result));
                 return;
             }
             if (image_index >= render_finished_semaphores.size()) {
@@ -3169,7 +2768,7 @@ namespace NexAur {
             submit_info.signalSemaphoreCount = 1;
             submit_info.pSignalSemaphores = &render_finished;
 
-            if (!checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight), "vkQueueSubmit")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight), "vkQueueSubmit")) {
                 return;
             }
             if (picking_recorded_this_frame) {
@@ -3190,7 +2789,7 @@ namespace NexAur {
                 return;
             }
 
-            checkVk(present_result, "vkQueuePresentKHR");
+            VulkanDiagnosticsCollector::checkVk(present_result, "vkQueuePresentKHR");
         }
 
         VkDescriptorSet resolveEnvironmentDescriptorSet(const VulkanDrawList& draw_list) const {
@@ -3230,14 +2829,14 @@ namespace NexAur {
             }
             picking_recorded_this_frame = false;
 
-            if (!checkVk(vkResetCommandBuffer(command_buffer, 0), "vkResetCommandBuffer")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkResetCommandBuffer(command_buffer, 0), "vkResetCommandBuffer")) {
                 return false;
             }
 
             VkCommandBufferBeginInfo begin_info{};
             begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            if (!checkVk(vkBeginCommandBuffer(command_buffer, &begin_info), "vkBeginCommandBuffer")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkBeginCommandBuffer(command_buffer, &begin_info), "vkBeginCommandBuffer")) {
                 return false;
             }
 
@@ -3254,7 +2853,7 @@ namespace NexAur {
                 return false;
             }
 
-            if (!checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer")) {
                 return false;
             }
 
@@ -4605,7 +4204,7 @@ namespace NexAur {
                 return false;
             }
 
-            if (!checkVk(vkDeviceWaitIdle(device.device), "vkDeviceWaitIdle(before picking readback)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkDeviceWaitIdle(device.device), "vkDeviceWaitIdle(before picking readback)")) {
                 return false;
             }
 
@@ -4615,7 +4214,7 @@ namespace NexAur {
             allocate_info.commandPool = command_pool;
             allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocate_info.commandBufferCount = 1;
-            if (!checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &readback_command_buffer), "vkAllocateCommandBuffers(picking readback)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkAllocateCommandBuffers(device.device, &allocate_info, &readback_command_buffer), "vkAllocateCommandBuffers(picking readback)")) {
                 return false;
             }
 
@@ -4629,7 +4228,7 @@ namespace NexAur {
             VkCommandBufferBeginInfo begin_info{};
             begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            if (!checkVk(vkBeginCommandBuffer(readback_command_buffer, &begin_info), "vkBeginCommandBuffer(picking readback)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkBeginCommandBuffer(readback_command_buffer, &begin_info), "vkBeginCommandBuffer(picking readback)")) {
                 free_readback_command_buffer();
                 return false;
             }
@@ -4677,7 +4276,7 @@ namespace NexAur {
                 1,
                 &copy_region);
 
-            if (!checkVk(vkEndCommandBuffer(readback_command_buffer), "vkEndCommandBuffer(picking readback)")) {
+            if (!VulkanDiagnosticsCollector::checkVk(vkEndCommandBuffer(readback_command_buffer), "vkEndCommandBuffer(picking readback)")) {
                 free_readback_command_buffer();
                 return false;
             }
@@ -4687,8 +4286,8 @@ namespace NexAur {
             submit_info.commandBufferCount = 1;
             submit_info.pCommandBuffers = &readback_command_buffer;
 
-            const bool submitted = checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE), "vkQueueSubmit(picking readback)");
-            const bool waited = submitted && checkVk(vkQueueWaitIdle(graphics_queue), "vkQueueWaitIdle(picking readback)");
+            const bool submitted = VulkanDiagnosticsCollector::checkVk(vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE), "vkQueueSubmit(picking readback)");
+            const bool waited = submitted && VulkanDiagnosticsCollector::checkVk(vkQueueWaitIdle(graphics_queue), "vkQueueWaitIdle(picking readback)");
             free_readback_command_buffer();
             if (!waited) {
                 return false;
@@ -4699,28 +4298,30 @@ namespace NexAur {
         }
 
     private:
-        GLFWwindow* window = nullptr;
+        VulkanDeviceContext device_context;
+        VulkanGpuAllocator gpu_allocator;
+        VulkanSwapchainManager swapchain_manager;
 
-        uint32_t surface_width = kDefaultViewportWidth;
-        uint32_t surface_height = kDefaultViewportHeight;
+        // Transitional aliases keep the existing pass code readable while the
+        // owning Vulkan state lives in the dedicated backend contexts.
+        vkb::Instance& instance = device_context.getInstanceBundle();
+        VkSurfaceKHR& surface = device_context.getSurfaceHandle();
+        vkb::PhysicalDevice& physical_device = device_context.getPhysicalDeviceBundle();
+        vkb::Device& device = device_context.getDeviceBundle();
+        vkb::Swapchain& swapchain = swapchain_manager.getSwapchain();
+        std::vector<VkImage>& swapchain_images = swapchain_manager.getImagesValue();
+        std::vector<VkImageLayout>& swapchain_image_layouts = swapchain_manager.getImageLayoutsValue();
+        VkQueue& graphics_queue = device_context.getGraphicsQueueHandle();
+        VkQueue& present_queue = device_context.getPresentQueueHandle();
+        uint32_t& graphics_queue_family = device_context.getGraphicsQueueFamilyValue();
+        uint32_t& device_api_version = device_context.getApiVersionValue();
+        uint32_t& surface_width = swapchain_manager.getSurfaceWidthValue();
+        uint32_t& surface_height = swapchain_manager.getSurfaceHeightValue();
+        bool& swapchain_dirty = swapchain_manager.getDirtyValue();
 
         bool initialized = false;
-        bool swapchain_dirty = false;
         bool picking_frame_ready = false;
         bool picking_recorded_this_frame = false;
-
-        vkb::Instance instance;
-        VkSurfaceKHR surface = VK_NULL_HANDLE;
-        vkb::PhysicalDevice physical_device;
-        vkb::Device device;
-        vkb::Swapchain swapchain;
-        std::vector<VkImage> swapchain_images;
-        std::vector<VkImageLayout> swapchain_image_layouts;
-
-        VkQueue graphics_queue = VK_NULL_HANDLE;
-        VkQueue present_queue = VK_NULL_HANDLE;
-        uint32_t graphics_queue_family = 0;
-        uint32_t device_api_version = kRequiredVulkanApiVersion;
         VkFormat scene_color_format = VK_FORMAT_UNDEFINED;
         VkFormat ao_format = VK_FORMAT_UNDEFINED;
         VkFormat ssr_hit_mask_format = VK_FORMAT_UNDEFINED;

@@ -6,24 +6,11 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
-    struct VulkanBloomImageView {
-        VkImage image = VK_NULL_HANDLE;
-        VkImageView view = VK_NULL_HANDLE;
-        VkFormat format = VK_FORMAT_UNDEFINED;
-        VkExtent2D extent{};
-        VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        bool valid() const {
-            return image != VK_NULL_HANDLE &&
-                   view != VK_NULL_HANDLE &&
-                   format != VK_FORMAT_UNDEFINED &&
-                   extent.width > 0 &&
-                   extent.height > 0;
-        }
-    };
+    using VulkanBloomImageView = VulkanImageViewState;
 
     struct VulkanBloomRenderTarget {
         VkImageView color_view = VK_NULL_HANDLE;
@@ -54,11 +41,11 @@ namespace NexAur {
         uint32_t getMipCount() const { return static_cast<uint32_t>(m_downsample_images.size()); }
         VkFormat getColorFormat() const { return m_color_format; }
         VkExtent2D getExtent() const { return m_extent; }
-        VkSampler getSampler() const { return m_sampler; }
+        VkSampler getSampler() const { return m_sampler.get(); }
 
         const VulkanBloomImageView& getDownsampleImage(uint32_t index) const;
         const VulkanBloomImageView& getUpsampleImage(uint32_t index) const;
-        const VulkanBloomImageView& getCompositeImage() const { return m_composite_image.view; }
+        const VulkanBloomImageView& getCompositeImage() const { return m_composite_image.getView(); }
 
         VulkanBloomRenderTarget getDownsampleRenderTarget(uint32_t index) const;
         VulkanBloomRenderTarget getUpsampleRenderTarget(uint32_t index) const;
@@ -66,31 +53,26 @@ namespace NexAur {
 
         void setDownsampleLayout(uint32_t index, VkImageLayout layout);
         void setUpsampleLayout(uint32_t index, VkImageLayout layout);
-        void setCompositeLayout(VkImageLayout layout) { m_composite_image.view.layout = layout; }
+        void setCompositeLayout(VkImageLayout layout) { m_composite_image.setLayout(layout); }
 
     private:
-        struct OwnedImage {
-            VulkanBloomImageView view;
-            VkDeviceMemory memory = VK_NULL_HANDLE;
-        };
-
         bool recreateImages(uint32_t width, uint32_t height);
-        bool createImage(uint32_t width, uint32_t height, OwnedImage& image);
+        bool createImage(uint32_t width, uint32_t height, VulkanOwnedImage& image);
         bool createSampler();
         void cleanupImages();
         void cleanupSampler();
         uint32_t computeMipCount(uint32_t width, uint32_t height) const;
 
     private:
-        VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
 
-        std::vector<OwnedImage> m_downsample_images;
-        std::vector<OwnedImage> m_upsample_images;
-        OwnedImage m_composite_image;
-        VkSampler m_sampler = VK_NULL_HANDLE;
+        std::vector<VulkanOwnedImage> m_downsample_images;
+        std::vector<VulkanOwnedImage> m_upsample_images;
+        VulkanOwnedImage m_composite_image;
+        VulkanOwnedSampler m_sampler;
         bool m_ready = false;
     };
 } // namespace NexAur

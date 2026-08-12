@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
 #include "vulkan_render_resource_cache.h"
@@ -15,6 +14,7 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
 
 #include <string>
@@ -42,18 +42,20 @@ namespace NexAur {
         if (m_initialized) {
             return true;
         }
-        if (!context.valid()) {
+        if (!context.valid() ||
+            context.gpu_allocator == nullptr ||
+            !context.gpu_allocator->isInitialized()) {
             NX_CORE_ERROR("VulkanRenderResourceCache init failed: invalid VulkanResourceContext.");
             return false;
         }
 
+        m_gpu_allocator = context.gpu_allocator;
         m_device = context.device;
         m_physical_device = context.physical_device;
         m_graphics_queue = context.graphics_queue;
         m_descriptor_layout_cache = &descriptor_layout_cache;
         m_descriptor_allocator = &descriptor_allocator;
-        if (!createAllocator(context) ||
-            !createUploadCommandPool(context) ||
+        if (!createUploadCommandPool(context) ||
             !resolveDescriptorLayouts()) {
             shutdown();
             return false;
@@ -80,7 +82,7 @@ namespace NexAur {
 
     void VulkanRenderResourceCache::shutdown() {
         if (!m_initialized &&
-            m_allocator == VK_NULL_HANDLE &&
+            m_gpu_allocator == nullptr &&
             m_upload_command_pool == VK_NULL_HANDLE) {
             return;
         }
@@ -93,11 +95,7 @@ namespace NexAur {
             vkDestroyCommandPool(m_device, m_upload_command_pool, nullptr);
             m_upload_command_pool = VK_NULL_HANDLE;
         }
-        if (m_allocator != VK_NULL_HANDLE) {
-            vmaDestroyAllocator(m_allocator);
-            m_allocator = VK_NULL_HANDLE;
-        }
-
+        m_gpu_allocator = nullptr;
         m_device = VK_NULL_HANDLE;
         m_physical_device = VK_NULL_HANDLE;
         m_graphics_queue = VK_NULL_HANDLE;
@@ -110,7 +108,7 @@ namespace NexAur {
     }
 
     VulkanModelResource* VulkanRenderResourceCache::getOrCreateModel(AssetHandle model_asset, AssetManager& asset_manager) {
-        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+        if (!m_initialized || m_gpu_allocator == nullptr || !m_gpu_allocator->isInitialized()) {
             NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
             return nullptr;
         }
@@ -164,7 +162,7 @@ namespace NexAur {
     }
 
     VulkanTextureResource* VulkanRenderResourceCache::getOrCreateTexture(AssetHandle texture_asset, AssetManager& asset_manager) {
-        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+        if (!m_initialized || m_gpu_allocator == nullptr || !m_gpu_allocator->isInitialized()) {
             NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
             return nullptr;
         }
@@ -215,7 +213,7 @@ namespace NexAur {
     VulkanMaterialResource* VulkanRenderResourceCache::getOrCreateMaterial(
         AssetHandle material_asset,
         AssetManager& asset_manager) {
-        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+        if (!m_initialized || m_gpu_allocator == nullptr || !m_gpu_allocator->isInitialized()) {
             NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
             return getFallbackMaterial();
         }
@@ -276,7 +274,7 @@ namespace NexAur {
     VulkanEnvironmentResource* VulkanRenderResourceCache::getOrCreateEnvironment(
         AssetHandle environment_asset,
         AssetManager& asset_manager) {
-        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+        if (!m_initialized || m_gpu_allocator == nullptr || !m_gpu_allocator->isInitialized()) {
             NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
             return getFallbackEnvironment();
         }
@@ -328,7 +326,7 @@ namespace NexAur {
         AssetManager& asset_manager,
         const glm::vec3& fallback_color,
         const VulkanEnvironmentResourceBuildSettings& settings) {
-        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+        if (!m_initialized || m_gpu_allocator == nullptr || !m_gpu_allocator->isInitialized()) {
             NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
             return nullptr;
         }
@@ -361,7 +359,7 @@ namespace NexAur {
         uint32_t cube_size,
         const std::vector<float>& rgba_pixels,
         const VulkanEnvironmentResourceBuildSettings& settings) {
-        if (!m_initialized || m_allocator == VK_NULL_HANDLE) {
+        if (!m_initialized || m_gpu_allocator == nullptr || !m_gpu_allocator->isInitialized()) {
             NX_CORE_WARN("VulkanRenderResourceCache is not initialized.");
             return nullptr;
         }
@@ -455,23 +453,6 @@ namespace NexAur {
         return material_resource.create(createMaterialContext(), material_asset, textures);
     }
 
-    bool VulkanRenderResourceCache::createAllocator(const VulkanResourceContext& context) {
-        VmaAllocatorCreateInfo allocator_info{};
-        allocator_info.vulkanApiVersion = context.api_version;
-        allocator_info.instance = context.instance;
-        allocator_info.physicalDevice = context.physical_device;
-        allocator_info.device = context.device;
-
-        const VkResult result = vmaCreateAllocator(&allocator_info, &m_allocator);
-        if (result != VK_SUCCESS) {
-            NX_CORE_ERROR("Failed to create VMA allocator: {}", static_cast<int>(result));
-            m_allocator = VK_NULL_HANDLE;
-            return false;
-        }
-
-        return true;
-    }
-
     bool VulkanRenderResourceCache::createUploadCommandPool(const VulkanResourceContext& context) {
         VkCommandPoolCreateInfo pool_info{};
         pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -559,7 +540,7 @@ namespace NexAur {
 
     VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() const {
         VulkanResourceUploadContext context;
-        context.allocator = m_allocator;
+        context.allocator = m_gpu_allocator ? m_gpu_allocator->getHandle() : VK_NULL_HANDLE;
         context.physical_device = m_physical_device;
         context.device = m_device;
         context.graphics_queue = m_graphics_queue;

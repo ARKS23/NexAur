@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_render_target.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
@@ -26,17 +27,17 @@ namespace NexAur {
         VkFormat getObjectIdFormat() const { return m_object_id_format; }
         VkFormat getDepthFormat() const { return m_depth_format; }
 
-        VkImage getObjectIdImage() const { return m_object_id_image; }
-        VkImageView getObjectIdImageView() const { return m_object_id_image_view; }
-        VkImage getDepthImage() const { return m_depth_image; }
-        VkImageView getDepthImageView() const { return m_depth_image_view; }
+        VkImage getObjectIdImage() const { return m_object_id_image.getImage(); }
+        VkImageView getObjectIdImageView() const { return m_object_id_image.getImageView(); }
+        VkImage getDepthImage() const { return m_depth_image.getImage(); }
+        VkImageView getDepthImageView() const { return m_depth_image.getImageView(); }
 
-        VkImageLayout getObjectIdLayout() const { return m_object_id_layout; }
-        VkImageLayout getDepthLayout() const { return m_depth_layout; }
-        void setObjectIdLayout(VkImageLayout layout) { m_object_id_layout = layout; }
-        void setDepthLayout(VkImageLayout layout) { m_depth_layout = layout; }
+        VkImageLayout getObjectIdLayout() const { return m_object_id_image.getLayout(); }
+        VkImageLayout getDepthLayout() const { return m_depth_image.getLayout(); }
+        void setObjectIdLayout(VkImageLayout layout) { m_object_id_image.setLayout(layout); }
+        void setDepthLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
 
-        VkBuffer getReadbackBuffer() const { return m_readback_buffer; }
+        VkBuffer getReadbackBuffer() const { return m_readback_buffer.get(); }
         int32_t readbackEntityId() const;
 
         VulkanRenderTarget getRenderTarget() const;
@@ -49,9 +50,7 @@ namespace NexAur {
             VkFormat format,
             VkImageUsageFlags usage,
             VkImageAspectFlags aspect,
-            VkImage& image,
-            VkDeviceMemory& memory,
-            VkImageView& image_view);
+            VulkanOwnedImage& image);
         bool createReadbackBuffer();
         void cleanupImages();
         void cleanupReadbackBuffer();
@@ -63,18 +62,12 @@ namespace NexAur {
         VkFormat m_object_id_format = VK_FORMAT_R32_SINT;
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
 
-        VkImage m_object_id_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_object_id_memory = VK_NULL_HANDLE;
-        VkImageView m_object_id_image_view = VK_NULL_HANDLE;
-        VkImageLayout m_object_id_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
+        VulkanOwnedImage m_object_id_image;
 
-        VkImage m_depth_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_depth_memory = VK_NULL_HANDLE;
-        VkImageView m_depth_image_view = VK_NULL_HANDLE;
-        VkImageLayout m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VulkanOwnedImage m_depth_image;
 
-        VkBuffer m_readback_buffer = VK_NULL_HANDLE;
-        VkDeviceMemory m_readback_memory = VK_NULL_HANDLE;
+        VulkanOwnedBuffer m_readback_buffer;
 
         bool m_ready = false;
     };

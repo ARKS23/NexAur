@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
@@ -23,12 +24,12 @@ namespace NexAur {
         bool isReady() const { return m_ready; }
         VkExtent2D getExtent() const { return m_extent; }
         VkFormat getColorFormat() const { return m_color_format; }
-        VkImage getColorImage() const { return m_color_image; }
-        VkImageView getColorImageView() const { return m_color_image_view; }
-        VkSampler getSampler() const { return m_sampler; }
+        VkImage getColorImage() const { return m_color_image.getImage(); }
+        VkImageView getColorImageView() const { return m_color_image.getImageView(); }
+        VkSampler getSampler() const { return m_sampler.get(); }
 
-        VkImageLayout getColorLayout() const { return m_color_layout; }
-        void setColorLayout(VkImageLayout layout) { m_color_layout = layout; }
+        VkImageLayout getColorLayout() const { return m_color_image.getLayout(); }
+        void setColorLayout(VkImageLayout layout) { m_color_image.setLayout(layout); }
 
     private:
         bool recreateImage(uint32_t width, uint32_t height);
@@ -38,17 +39,13 @@ namespace NexAur {
         void cleanupSampler();
 
     private:
-        VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
 
-        VkImage m_color_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_color_memory = VK_NULL_HANDLE;
-        VkImageView m_color_image_view = VK_NULL_HANDLE;
-        VkImageLayout m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        VkSampler m_sampler = VK_NULL_HANDLE;
+        VulkanOwnedImage m_color_image;
+        VulkanOwnedSampler m_sampler;
         bool m_ready = false;
     };
 } // namespace NexAur

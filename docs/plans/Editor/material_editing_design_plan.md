@@ -451,7 +451,7 @@ std::shared_ptr<MaterialAsset> loadMaterialCPU(AssetHandle handle);
 
 ## 11. PR 拆分建议
 
-### PR-EP1：Editor Procedural Primitive Creation
+### PR-EP1：Editor Procedural Primitive Creation（完成）
 
 目标：
 
@@ -513,7 +513,7 @@ Editor Command: Create Primitive
 - 新建 primitive 走普通 MeshRenderer 渲染路径，不引入 renderer 特判。
 - Debug 构建通过，SceneSerializer smoke 覆盖 primitive component round-trip。
 
-### PR-EM1：Material Slot Override Foundation
+### PR-EM1：Material Slot Override Foundation （完成）
 
 目标：
 
@@ -530,7 +530,7 @@ Editor Command: Create Primitive
 - 场景保存 / 加载后 override 仍存在。
 - Debug 构建通过，SceneSerializer smoke 覆盖 material override。
 
-### PR-EM2：Runtime Material Instance Editing
+### PR-EM2：Runtime Material Instance Editing （完成）
 
 目标：
 

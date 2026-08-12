@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_render_target.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
@@ -25,15 +26,15 @@ namespace NexAur {
         VkExtent2D getExtent() const { return m_extent; }
         VkFormat getColorFormat() const { return m_color_format; }
         VkFormat getDepthFormat() const { return m_depth_format; }
-        VkImage getColorImage() const { return m_color_image; }
-        VkImage getDepthImage() const { return m_depth_image; }
-        VkImageView getColorImageView() const { return m_color_image_view; }
-        VkSampler getSampler() const { return m_sampler; }
+        VkImage getColorImage() const { return m_color_image.getImage(); }
+        VkImage getDepthImage() const { return m_depth_image.getImage(); }
+        VkImageView getColorImageView() const { return m_color_image.getImageView(); }
+        VkSampler getSampler() const { return m_sampler.get(); }
 
-        VkImageLayout getColorLayout() const { return m_color_layout; }
-        VkImageLayout getDepthLayout() const { return m_depth_layout; }
-        void setColorLayout(VkImageLayout layout) { m_color_layout = layout; }
-        void setDepthLayout(VkImageLayout layout) { m_depth_layout = layout; }
+        VkImageLayout getColorLayout() const { return m_color_image.getLayout(); }
+        VkImageLayout getDepthLayout() const { return m_depth_image.getLayout(); }
+        void setColorLayout(VkImageLayout layout) { m_color_image.setLayout(layout); }
+        void setDepthLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
 
         VulkanRenderTarget getRenderTarget() const;
 
@@ -45,31 +46,23 @@ namespace NexAur {
             VkFormat format,
             VkImageUsageFlags usage,
             VkImageAspectFlags aspect,
-            VkImage& image,
-            VkDeviceMemory& memory,
-            VkImageView& image_view);
+            VulkanOwnedImage& image);
         bool createSampler();
         void cleanupImages();
         void cleanupSampler();
 
     private:
         VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
 
-        VkImage m_color_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_color_memory = VK_NULL_HANDLE;
-        VkImageView m_color_image_view = VK_NULL_HANDLE;
-        VkImageLayout m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VulkanOwnedImage m_color_image;
+        VulkanOwnedImage m_depth_image;
 
-        VkImage m_depth_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_depth_memory = VK_NULL_HANDLE;
-        VkImageView m_depth_image_view = VK_NULL_HANDLE;
-        VkImageLayout m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        VkSampler m_sampler = VK_NULL_HANDLE;
+        VulkanOwnedSampler m_sampler;
         bool m_ready = false;
     };
 } // namespace NexAur

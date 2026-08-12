@@ -21,6 +21,7 @@ namespace NexAur {
     class MaterialAsset;
     class VulkanDescriptorAllocator;
     class VulkanDescriptorLayoutCache;
+    class VulkanGpuAllocator;
 
     class NEXAUR_API VulkanRenderResourceCache {
     public:
@@ -75,7 +76,6 @@ namespace NexAur {
         bool isInitialized() const { return m_initialized; }
 
     private:
-        bool createAllocator(const VulkanResourceContext& context);
         bool createUploadCommandPool(const VulkanResourceContext& context);
         bool resolveDescriptorLayouts();
         bool createFallbackTexture();
@@ -91,7 +91,7 @@ namespace NexAur {
             uint64_t generation = 0;
         };
 
-        VmaAllocator m_allocator = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
         VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VkQueue m_graphics_queue = VK_NULL_HANDLE;

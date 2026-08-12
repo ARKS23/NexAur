@@ -9,6 +9,7 @@
 #include "Function/Renderer/data/render_settings.h"
 #include "Function/Renderer/data/render_shadow_cascade.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
@@ -46,31 +47,19 @@ namespace NexAur {
         VkDescriptorSet getDescriptorSet() const { return m_descriptor_set; }
 
     private:
-        struct Buffer {
-            VkBuffer buffer = VK_NULL_HANDLE;
-            VkDeviceMemory memory = VK_NULL_HANDLE;
-            VkDeviceSize size = 0;
-
-            bool valid() const {
-                return buffer != VK_NULL_HANDLE && memory != VK_NULL_HANDLE && size > 0;
-            }
-        };
-
-        bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, Buffer& buffer) const;
-        void destroyBuffer(Buffer& buffer);
-        bool writeBuffer(const Buffer& buffer, const void* data, VkDeviceSize size) const;
+        bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VulkanOwnedBuffer& buffer) const;
+        bool writeBuffer(const VulkanOwnedBuffer& buffer, const void* data, VkDeviceSize size) const;
         bool updateDescriptorSet(VkDescriptorSetLayout layout);
-        uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
 
     private:
-        VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* m_gpu_allocator = nullptr;
         VkDevice m_device = VK_NULL_HANDLE;
         VulkanDescriptorAllocator* m_descriptor_allocator = nullptr;
         VulkanDescriptorSetAllocation m_descriptor_allocation;
         VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
-        Buffer m_frame_buffer;
-        Buffer m_point_light_buffer;
-        Buffer m_rect_light_buffer;
+        VulkanOwnedBuffer m_frame_buffer;
+        VulkanOwnedBuffer m_point_light_buffer;
+        VulkanOwnedBuffer m_rect_light_buffer;
         bool m_ready = false;
     };
 } // namespace NexAur

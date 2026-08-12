@@ -5,6 +5,8 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/vulkan_render_target.h"
 
 namespace NexAur {
@@ -14,6 +16,7 @@ namespace NexAur {
     struct VulkanForwardPassSwapchainContext {
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
+        const VulkanGpuAllocator* gpu_allocator = nullptr;
         VkFormat color_format = VK_FORMAT_UNDEFINED;
         VkFormat swapchain_color_format = VK_FORMAT_UNDEFINED;
         VkExtent2D extent{};
@@ -26,6 +29,8 @@ namespace NexAur {
         bool valid() const {
             return physical_device != VK_NULL_HANDLE &&
                    device != VK_NULL_HANDLE &&
+                   gpu_allocator != nullptr &&
+                   gpu_allocator->isInitialized() &&
                    color_format != VK_FORMAT_UNDEFINED &&
                    swapchain_color_format != VK_FORMAT_UNDEFINED &&
                    extent.width > 0 &&
@@ -89,9 +94,9 @@ namespace NexAur {
             const VulkanForwardPassRenderOptions& options);
         VkImageView getSwapchainColorImageView(uint32_t image_index) const;
         VulkanRenderTarget getSwapchainRenderTarget(uint32_t image_index) const;
-        VkImage getDepthImage() const { return m_depth_image; }
-        VkImageLayout getDepthImageLayout() const { return m_depth_image_layout; }
-        void setDepthImageLayout(VkImageLayout layout) { m_depth_image_layout = layout; }
+        VkImage getDepthImage() const { return m_depth_image.getImage(); }
+        VkImageLayout getDepthImageLayout() const { return m_depth_image.getLayout(); }
+        void setDepthImageLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
         VkFormat getDepthFormat() const { return m_depth_format; }
 
     private:
@@ -109,10 +114,7 @@ namespace NexAur {
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
         std::vector<VkImageView> m_color_image_views;
-        VkImage m_depth_image = VK_NULL_HANDLE;
-        VkDeviceMemory m_depth_memory = VK_NULL_HANDLE;
-        VkImageView m_depth_image_view = VK_NULL_HANDLE;
-        VkImageLayout m_depth_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VulkanOwnedImage m_depth_image;
         VkDescriptorSetLayout m_frame_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_environment_descriptor_set_layout = VK_NULL_HANDLE;

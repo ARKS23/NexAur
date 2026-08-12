@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "vulkan_reflection_probe_capture_target.h"
 
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -8,15 +11,6 @@
 
 namespace NexAur {
     namespace {
-        bool checkVk(VkResult result, const char* operation) {
-            if (result == VK_SUCCESS) {
-                return true;
-            }
-
-            NX_CORE_ERROR("{} failed: {}", operation, static_cast<int>(result));
-            return false;
-        }
-
         float halfToFloat(uint16_t value) {
             const uint32_t sign = static_cast<uint32_t>(value & 0x8000u) << 16u;
             uint32_t exponent = (value >> 10u) & 0x1fu;
@@ -77,6 +71,8 @@ namespace NexAur {
         shutdown();
 
         if (!context.valid() ||
+            context.gpu_allocator == nullptr ||
+            !context.gpu_allocator->isInitialized() ||
             color_format == VK_FORMAT_UNDEFINED ||
             depth_format == VK_FORMAT_UNDEFINED) {
             NX_CORE_ERROR("VulkanReflectionProbeCaptureTarget requires a valid Vulkan context and formats.");
@@ -84,6 +80,7 @@ namespace NexAur {
         }
 
         m_physical_device = context.physical_device;
+        m_gpu_allocator = context.gpu_allocator;
         m_device = context.device;
         m_color_format = color_format;
         m_depth_format = depth_format;
@@ -127,6 +124,7 @@ namespace NexAur {
         cleanupImages();
         cleanupReadbackBuffer();
         m_physical_device = VK_NULL_HANDLE;
+        m_gpu_allocator = nullptr;
         m_device = VK_NULL_HANDLE;
         m_color_format = VK_FORMAT_UNDEFINED;
         m_depth_format = VK_FORMAT_UNDEFINED;
@@ -150,8 +148,8 @@ namespace NexAur {
 
     bool VulkanReflectionProbeCaptureTarget::recordCopyToReadback(VkCommandBuffer command_buffer) const {
         if (command_buffer == VK_NULL_HANDLE ||
-            m_color_image == VK_NULL_HANDLE ||
-            m_readback_buffer == VK_NULL_HANDLE) {
+            !m_color_image.isReady() ||
+            !m_readback_buffer.isReady()) {
             return false;
         }
 
@@ -175,9 +173,9 @@ namespace NexAur {
 
         vkCmdCopyImageToBuffer(
             command_buffer,
-            m_color_image,
+            m_color_image.getImage(),
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            m_readback_buffer,
+            m_readback_buffer.get(),
             static_cast<uint32_t>(copy_regions.size()),
             copy_regions.data());
         return true;
@@ -185,29 +183,22 @@ namespace NexAur {
 
     bool VulkanReflectionProbeCaptureTarget::readColorPixels(std::vector<float>& pixels) const {
         pixels.clear();
-        if (!m_ready || m_readback_memory == VK_NULL_HANDLE || m_readback_size == 0) {
+        if (!m_ready || !m_readback_buffer.isReady() || m_readback_size == 0) {
             return false;
         }
 
         void* mapped_data = nullptr;
-        if (!checkVk(vkMapMemory(m_device, m_readback_memory, 0, m_readback_size, 0, &mapped_data), "vkMapMemory(reflection probe capture)")) {
+        if (!m_readback_buffer.map(mapped_data)) {
             return false;
         }
 
-        if (!m_readback_memory_coherent) {
-            VkMappedMemoryRange range{};
-            range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-            range.memory = m_readback_memory;
-            range.offset = 0;
-            range.size = VK_WHOLE_SIZE;
-            if (!checkVk(vkInvalidateMappedMemoryRanges(m_device, 1, &range), "vkInvalidateMappedMemoryRanges(reflection probe capture)")) {
-                vkUnmapMemory(m_device, m_readback_memory);
+        if (!m_readback_buffer.isHostCoherent() && !m_readback_buffer.invalidate()) {
+                m_readback_buffer.unmap();
                 return false;
-            }
         }
 
         const bool decoded = decodeReadback(mapped_data, pixels);
-        vkUnmapMemory(m_device, m_readback_memory);
+        m_readback_buffer.unmap();
         return decoded;
     }
 
@@ -224,71 +215,39 @@ namespace NexAur {
         }
 
         m_extent = { resolution, resolution };
-        m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         return true;
     }
 
     bool VulkanReflectionProbeCaptureTarget::createColorImage(uint32_t resolution) {
-        VkImageCreateInfo image_info{};
-        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-        image_info.imageType = VK_IMAGE_TYPE_2D;
-        image_info.extent = { resolution, resolution, 1 };
-        image_info.mipLevels = 1;
-        image_info.arrayLayers = kFaceCount;
-        image_info.format = m_color_format;
-        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        image_info.usage =
+        VulkanOwnedImageCreateInfo create_info;
+        create_info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        create_info.extent = { resolution, resolution, 1 };
+        create_info.format = m_color_format;
+        create_info.usage =
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
             VK_IMAGE_USAGE_SAMPLED_BIT |
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        if (!checkVk(vkCreateImage(m_device, &image_info, nullptr, &m_color_image), "vkCreateImage(reflection probe capture color)")) {
-            return false;
-        }
-
-        VkMemoryRequirements memory_requirements{};
-        vkGetImageMemoryRequirements(m_device, m_color_image, &memory_requirements);
-        const uint32_t memory_type = findMemoryType(
-            memory_requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        if (memory_type == UINT32_MAX) {
-            NX_CORE_ERROR("VulkanReflectionProbeCaptureTarget failed to find color image memory.");
-            return false;
-        }
-
-        VkMemoryAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocate_info.allocationSize = memory_requirements.size;
-        allocate_info.memoryTypeIndex = memory_type;
-        if (!checkVk(vkAllocateMemory(m_device, &allocate_info, nullptr, &m_color_memory), "vkAllocateMemory(reflection probe capture color)") ||
-            !checkVk(vkBindImageMemory(m_device, m_color_image, m_color_memory, 0), "vkBindImageMemory(reflection probe capture color)")) {
-            return false;
-        }
-
-        VkImageViewCreateInfo cube_view_info{};
-        cube_view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        cube_view_info.image = m_color_image;
-        cube_view_info.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-        cube_view_info.format = m_color_format;
-        cube_view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        cube_view_info.subresourceRange.levelCount = 1;
-        cube_view_info.subresourceRange.layerCount = kFaceCount;
-        if (!checkVk(vkCreateImageView(m_device, &cube_view_info, nullptr, &m_color_cube_view), "vkCreateImageView(reflection probe capture cube)")) {
+        create_info.aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+        create_info.array_layers = kFaceCount;
+        create_info.view_layer_count = kFaceCount;
+        create_info.debug_name = "VulkanReflectionProbeCaptureTarget color image";
+        if (!m_color_image.create(*m_gpu_allocator, create_info)) {
             return false;
         }
 
         m_color_face_views.resize(kFaceCount, VK_NULL_HANDLE);
+        VkImageViewCreateInfo face_view_info{};
+        face_view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        face_view_info.image = m_color_image.getImage();
+        face_view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        face_view_info.format = m_color_format;
+        face_view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        face_view_info.subresourceRange.levelCount = 1;
+        face_view_info.subresourceRange.layerCount = 1;
         for (uint32_t face = 0; face < kFaceCount; ++face) {
-            VkImageViewCreateInfo face_view_info = cube_view_info;
-            face_view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
             face_view_info.subresourceRange.baseArrayLayer = face;
-            face_view_info.subresourceRange.layerCount = 1;
-            if (!checkVk(
+            if (!VulkanDiagnosticsCollector::checkVk(
                     vkCreateImageView(m_device, &face_view_info, nullptr, &m_color_face_views[face]),
                     "vkCreateImageView(reflection probe capture face)")) {
                 return false;
@@ -299,51 +258,27 @@ namespace NexAur {
     }
 
     bool VulkanReflectionProbeCaptureTarget::createDepthImage(uint32_t resolution) {
-        VkImageCreateInfo image_info{};
-        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_info.imageType = VK_IMAGE_TYPE_2D;
-        image_info.extent = { resolution, resolution, 1 };
-        image_info.mipLevels = 1;
-        image_info.arrayLayers = 1;
-        image_info.format = m_depth_format;
-        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        if (!checkVk(vkCreateImage(m_device, &image_info, nullptr, &m_depth_image), "vkCreateImage(reflection probe capture depth)")) {
-            return false;
-        }
-
-        VkMemoryRequirements memory_requirements{};
-        vkGetImageMemoryRequirements(m_device, m_depth_image, &memory_requirements);
-        const uint32_t memory_type = findMemoryType(
-            memory_requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        if (memory_type == UINT32_MAX) {
-            NX_CORE_ERROR("VulkanReflectionProbeCaptureTarget failed to find depth image memory.");
-            return false;
-        }
-
-        VkMemoryAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocate_info.allocationSize = memory_requirements.size;
-        allocate_info.memoryTypeIndex = memory_type;
-        if (!checkVk(vkAllocateMemory(m_device, &allocate_info, nullptr, &m_depth_memory), "vkAllocateMemory(reflection probe capture depth)") ||
-            !checkVk(vkBindImageMemory(m_device, m_depth_image, m_depth_memory, 0), "vkBindImageMemory(reflection probe capture depth)")) {
+        VulkanOwnedImageCreateInfo create_info;
+        create_info.extent = { resolution, resolution, 1 };
+        create_info.format = m_depth_format;
+        create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        create_info.aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        create_info.debug_name = "VulkanReflectionProbeCaptureTarget depth image";
+        if (!m_depth_image.create(*m_gpu_allocator, create_info)) {
             return false;
         }
 
         VkImageViewCreateInfo view_info{};
         view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        view_info.image = m_depth_image;
+        view_info.image = m_depth_image.getImage();
         view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
         view_info.format = m_depth_format;
         view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         view_info.subresourceRange.levelCount = 1;
         view_info.subresourceRange.layerCount = 1;
-        return checkVk(vkCreateImageView(m_device, &view_info, nullptr, &m_depth_view), "vkCreateImageView(reflection probe capture depth)");
+        return VulkanDiagnosticsCollector::checkVk(
+            vkCreateImageView(m_device, &view_info, nullptr, &m_depth_view),
+            "vkCreateImageView(reflection probe capture depth)");
     }
 
     bool VulkanReflectionProbeCaptureTarget::createReadbackBuffer(uint32_t resolution) {
@@ -353,42 +288,13 @@ namespace NexAur {
             colorBytesPerTexel() *
             kFaceCount;
 
-        VkBufferCreateInfo buffer_info{};
-        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size = m_readback_size;
-        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (!checkVk(vkCreateBuffer(m_device, &buffer_info, nullptr, &m_readback_buffer), "vkCreateBuffer(reflection probe capture readback)")) {
-            return false;
-        }
-
-        VkMemoryRequirements memory_requirements{};
-        vkGetBufferMemoryRequirements(m_device, m_readback_buffer, &memory_requirements);
-
-        VkMemoryPropertyFlags properties =
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        uint32_t memory_type = findMemoryType(memory_requirements.memoryTypeBits, properties);
-        m_readback_memory_coherent = memory_type != UINT32_MAX;
-        if (memory_type == UINT32_MAX) {
-            properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-            memory_type = findMemoryType(memory_requirements.memoryTypeBits, properties);
-        }
-        if (memory_type == UINT32_MAX) {
-            NX_CORE_ERROR("VulkanReflectionProbeCaptureTarget failed to find readback buffer memory.");
-            return false;
-        }
-
-        VkMemoryAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocate_info.allocationSize = memory_requirements.size;
-        allocate_info.memoryTypeIndex = memory_type;
-        if (!checkVk(vkAllocateMemory(m_device, &allocate_info, nullptr, &m_readback_memory), "vkAllocateMemory(reflection probe capture readback)") ||
-            !checkVk(vkBindBufferMemory(m_device, m_readback_buffer, m_readback_memory, 0), "vkBindBufferMemory(reflection probe capture readback)")) {
-            return false;
-        }
-
-        return true;
+        return m_readback_buffer.create(
+            *m_gpu_allocator,
+            m_readback_size,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+            "VulkanReflectionProbeCaptureTarget readback buffer");
     }
 
     void VulkanReflectionProbeCaptureTarget::cleanupImages() {
@@ -401,66 +307,20 @@ namespace NexAur {
         }
         m_color_face_views.clear();
 
-        if (m_color_cube_view != VK_NULL_HANDLE) {
-            vkDestroyImageView(m_device, m_color_cube_view, nullptr);
-            m_color_cube_view = VK_NULL_HANDLE;
-        }
-        if (m_color_image != VK_NULL_HANDLE) {
-            vkDestroyImage(m_device, m_color_image, nullptr);
-            m_color_image = VK_NULL_HANDLE;
-        }
-        if (m_color_memory != VK_NULL_HANDLE) {
-            vkFreeMemory(m_device, m_color_memory, nullptr);
-            m_color_memory = VK_NULL_HANDLE;
-        }
+        m_color_image.reset();
 
         if (m_depth_view != VK_NULL_HANDLE) {
             vkDestroyImageView(m_device, m_depth_view, nullptr);
             m_depth_view = VK_NULL_HANDLE;
         }
-        if (m_depth_image != VK_NULL_HANDLE) {
-            vkDestroyImage(m_device, m_depth_image, nullptr);
-            m_depth_image = VK_NULL_HANDLE;
-        }
-        if (m_depth_memory != VK_NULL_HANDLE) {
-            vkFreeMemory(m_device, m_depth_memory, nullptr);
-            m_depth_memory = VK_NULL_HANDLE;
-        }
+        m_depth_image.reset();
 
-        m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        m_depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         m_extent = {};
     }
 
     void VulkanReflectionProbeCaptureTarget::cleanupReadbackBuffer() {
-        if (m_readback_buffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(m_device, m_readback_buffer, nullptr);
-            m_readback_buffer = VK_NULL_HANDLE;
-        }
-        if (m_readback_memory != VK_NULL_HANDLE) {
-            vkFreeMemory(m_device, m_readback_memory, nullptr);
-            m_readback_memory = VK_NULL_HANDLE;
-        }
+        m_readback_buffer.reset();
         m_readback_size = 0;
-        m_readback_memory_coherent = false;
-    }
-
-    uint32_t VulkanReflectionProbeCaptureTarget::findMemoryType(
-        uint32_t type_filter,
-        VkMemoryPropertyFlags properties) const {
-        VkPhysicalDeviceMemoryProperties memory_properties{};
-        vkGetPhysicalDeviceMemoryProperties(m_physical_device, &memory_properties);
-
-        for (uint32_t index = 0; index < memory_properties.memoryTypeCount; ++index) {
-            const bool type_matches = (type_filter & (1u << index)) != 0;
-            const bool properties_match =
-                (memory_properties.memoryTypes[index].propertyFlags & properties) == properties;
-            if (type_matches && properties_match) {
-                return index;
-            }
-        }
-
-        return UINT32_MAX;
     }
 
     VkDeviceSize VulkanReflectionProbeCaptureTarget::colorBytesPerTexel() const {

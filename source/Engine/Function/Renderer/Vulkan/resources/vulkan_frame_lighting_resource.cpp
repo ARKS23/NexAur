@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "vulkan_frame_lighting_resource.h"
 
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_writer.h"
@@ -128,12 +129,14 @@ namespace NexAur {
         VulkanDescriptorAllocator& descriptor_allocator) {
         shutdown();
 
-        if (!context.valid()) {
+        if (!context.valid() ||
+            context.gpu_allocator == nullptr ||
+            !context.gpu_allocator->isInitialized()) {
             NX_CORE_ERROR("VulkanFrameLightingResource requires a valid Vulkan context.");
             return false;
         }
 
-        m_physical_device = context.physical_device;
+        m_gpu_allocator = context.gpu_allocator;
         m_device = context.device;
         m_descriptor_allocator = &descriptor_allocator;
 
@@ -156,11 +159,11 @@ namespace NexAur {
             m_descriptor_allocator->free(m_descriptor_allocation);
         }
 
-        destroyBuffer(m_rect_light_buffer);
-        destroyBuffer(m_point_light_buffer);
-        destroyBuffer(m_frame_buffer);
+        m_rect_light_buffer.reset();
+        m_point_light_buffer.reset();
+        m_frame_buffer.reset();
 
-        m_physical_device = VK_NULL_HANDLE;
+        m_gpu_allocator = nullptr;
         m_device = VK_NULL_HANDLE;
         m_descriptor_allocator = nullptr;
         m_descriptor_allocation = {};
@@ -442,66 +445,33 @@ namespace NexAur {
     bool VulkanFrameLightingResource::createBuffer(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        Buffer& buffer) const {
-        VkBufferCreateInfo buffer_info{};
-        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size = size;
-        buffer_info.usage = usage;
-        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        if (!checkVk(vkCreateBuffer(m_device, &buffer_info, nullptr, &buffer.buffer), "vkCreateBuffer(frame lighting)")) {
-            return false;
-        }
-
-        VkMemoryRequirements memory_requirements{};
-        vkGetBufferMemoryRequirements(m_device, buffer.buffer, &memory_requirements);
-
-        const uint32_t memory_type = findMemoryType(
-            memory_requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        if (memory_type == UINT32_MAX) {
-            NX_CORE_ERROR("VulkanFrameLightingResource failed to find host-visible buffer memory.");
-            return false;
-        }
-
-        VkMemoryAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocate_info.allocationSize = memory_requirements.size;
-        allocate_info.memoryTypeIndex = memory_type;
-
-        if (!checkVk(vkAllocateMemory(m_device, &allocate_info, nullptr, &buffer.memory), "vkAllocateMemory(frame lighting)") ||
-            !checkVk(vkBindBufferMemory(m_device, buffer.buffer, buffer.memory, 0), "vkBindBufferMemory(frame lighting)")) {
-            return false;
-        }
-
-        buffer.size = size;
-        return true;
+        VulkanOwnedBuffer& buffer) const {
+        return buffer.create(
+            *m_gpu_allocator,
+            size,
+            usage,
+            VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+            "VulkanFrameLightingResource buffer");
     }
 
-    void VulkanFrameLightingResource::destroyBuffer(Buffer& buffer) {
-        if (m_device != VK_NULL_HANDLE && buffer.buffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(m_device, buffer.buffer, nullptr);
-        }
-        if (m_device != VK_NULL_HANDLE && buffer.memory != VK_NULL_HANDLE) {
-            vkFreeMemory(m_device, buffer.memory, nullptr);
-        }
-
-        buffer = {};
-    }
-
-    bool VulkanFrameLightingResource::writeBuffer(const Buffer& buffer, const void* data, VkDeviceSize size) const {
-        if (!buffer.valid() || !data || size > buffer.size) {
+    bool VulkanFrameLightingResource::writeBuffer(
+        const VulkanOwnedBuffer& buffer,
+        const void* data,
+        VkDeviceSize size) const {
+        if (!buffer.isReady() || !data || size > buffer.getSize()) {
             return false;
         }
 
         void* mapped_data = nullptr;
-        if (!checkVk(vkMapMemory(m_device, buffer.memory, 0, size, 0, &mapped_data), "vkMapMemory(frame lighting)")) {
+        if (!buffer.map(mapped_data)) {
             return false;
         }
 
         std::memcpy(mapped_data, data, static_cast<size_t>(size));
-        vkUnmapMemory(m_device, buffer.memory);
-        return true;
+        const bool flushed = buffer.isHostCoherent() || buffer.flush(0, size);
+        buffer.unmap();
+        return flushed;
     }
 
     bool VulkanFrameLightingResource::updateDescriptorSet(VkDescriptorSetLayout layout) {
@@ -518,19 +488,19 @@ namespace NexAur {
         m_descriptor_set = m_descriptor_allocation.set;
 
         VkDescriptorBufferInfo frame_buffer_info{};
-        frame_buffer_info.buffer = m_frame_buffer.buffer;
+        frame_buffer_info.buffer = m_frame_buffer.get();
         frame_buffer_info.offset = 0;
-        frame_buffer_info.range = m_frame_buffer.size;
+        frame_buffer_info.range = m_frame_buffer.getSize();
 
         VkDescriptorBufferInfo point_light_buffer_info{};
-        point_light_buffer_info.buffer = m_point_light_buffer.buffer;
+        point_light_buffer_info.buffer = m_point_light_buffer.get();
         point_light_buffer_info.offset = 0;
-        point_light_buffer_info.range = m_point_light_buffer.size;
+        point_light_buffer_info.range = m_point_light_buffer.getSize();
 
         VkDescriptorBufferInfo rect_light_buffer_info{};
-        rect_light_buffer_info.buffer = m_rect_light_buffer.buffer;
+        rect_light_buffer_info.buffer = m_rect_light_buffer.get();
         rect_light_buffer_info.offset = 0;
-        rect_light_buffer_info.range = m_rect_light_buffer.size;
+        rect_light_buffer_info.range = m_rect_light_buffer.getSize();
 
         VulkanDescriptorWriter()
             .writeBuffer(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_buffer_info)
@@ -540,20 +510,4 @@ namespace NexAur {
         return true;
     }
 
-    uint32_t VulkanFrameLightingResource::findMemoryType(
-        uint32_t type_filter,
-        VkMemoryPropertyFlags properties) const {
-        VkPhysicalDeviceMemoryProperties memory_properties{};
-        vkGetPhysicalDeviceMemoryProperties(m_physical_device, &memory_properties);
-
-        for (uint32_t index = 0; index < memory_properties.memoryTypeCount; ++index) {
-            const bool type_matches = (type_filter & (1u << index)) != 0;
-            const bool properties_match = (memory_properties.memoryTypes[index].propertyFlags & properties) == properties;
-            if (type_matches && properties_match) {
-                return index;
-            }
-        }
-
-        return UINT32_MAX;
-    }
 } // namespace NexAur
