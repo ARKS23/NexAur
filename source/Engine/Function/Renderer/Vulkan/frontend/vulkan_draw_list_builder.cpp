@@ -190,10 +190,11 @@ namespace NexAur {
 
     VulkanDrawList VulkanDrawListBuilder::buildDrawList(
         const RenderSceneFrame& scene_frame,
+        const VulkanRenderView& render_view,
         VulkanRenderResourceCache& resource_cache,
         AssetManager& asset_manager) const {
         VulkanDrawList draw_list;
-        draw_list.view = scene_frame.view;
+        draw_list.view = render_view;
         draw_list.directional_light = scene_frame.directional_light;
         draw_list.point_lights = scene_frame.point_lights;
         draw_list.rect_lights = scene_frame.rect_lights;

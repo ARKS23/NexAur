@@ -9,6 +9,9 @@
 #include <sstream>
 #include <string_view>
 #include <vector>
+
+#include <glm/gtc/matrix_transform.hpp>
+
 #include "NexAur.h"
 #include "Core/Module/engine_module.h"
 #include "Editor/Commands/editor_command.h"
@@ -26,6 +29,7 @@
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
+#include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Resource/asset_manager.h"
@@ -1302,6 +1306,224 @@ int runInputActionSmoke() {
     return 0;
 }
 
+int runRenderFrameContractSmoke() {
+    bool success = true;
+    std::string failure;
+
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+    auto matrixExactlyEqual = [](const glm::mat4& lhs, const glm::mat4& rhs) {
+        for (int column = 0; column < 4; ++column) {
+            for (int row = 0; row < 4; ++row) {
+                if (lhs[column][row] != rhs[column][row]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    auto projectNdc = [](const glm::mat4& projection, const glm::vec3& view_position) {
+        const glm::vec4 clip = projection * glm::vec4{ view_position, 1.0f };
+        return glm::vec3{ clip } / clip.w;
+    };
+
+    NexAur::RenderContext render_context;
+    render_context.swapBuffers();
+    const uint64_t first_frame_serial = render_context.getReadData().frame_serial;
+    render_context.swapBuffers();
+    const uint64_t second_frame_serial = render_context.getReadData().frame_serial;
+    expect(
+        first_frame_serial == 1u && second_frame_serial == 2u,
+        "Render frame contract smoke failed: RenderContext frame serial did not advance per swap.");
+
+    constexpr uint32_t viewport_width = 1280u;
+    constexpr uint32_t viewport_height = 720u;
+    constexpr float near_clip = 0.1f;
+    constexpr float far_clip = 120.0f;
+
+    NexAur::RenderDataPacket render_data;
+    render_data.frame_serial = 37u;
+    render_data.scene_id = 91u;
+    render_data.render_settings.ssr.enabled = true;
+    render_data.render_settings.ssr.max_steps = 47u;
+    render_data.debug_visualization_options.enabled = true;
+    render_data.debug_visualization_options.camera_frustum = false;
+    render_data.camera_data.position = glm::vec3{ 3.0f, 2.0f, 5.0f };
+    render_data.camera_data.near_clip = near_clip;
+    render_data.camera_data.far_clip = far_clip;
+    render_data.camera_data.view_matrix = glm::lookAt(
+        render_data.camera_data.position,
+        glm::vec3{ 0.0f },
+        glm::vec3{ 0.0f, 1.0f, 0.0f });
+    render_data.camera_data.projection_matrix = glm::perspective(
+        glm::radians(60.0f),
+        static_cast<float>(viewport_width) / static_cast<float>(viewport_height),
+        near_clip,
+        far_clip);
+
+    NexAur::RenderObjectData opaque_object;
+    opaque_object.model_asset = NexAur::AssetHandle{ NexAur::UUID{ 1001u } };
+    render_data.opaque_objects.push_back(opaque_object);
+    NexAur::RenderObjectData transparent_object = opaque_object;
+    transparent_object.model_asset = NexAur::AssetHandle{ NexAur::UUID{ 1002u } };
+    render_data.transparent_objects.push_back(transparent_object);
+
+    NexAur::RendererPointLightData point_light;
+    point_light.cast_shadow = true;
+    render_data.point_lights_data.push_back(point_light);
+    point_light.cast_shadow = false;
+    render_data.point_lights_data.push_back(point_light);
+
+    NexAur::RendererRectLightData rect_light;
+    rect_light.cast_shadow = true;
+    render_data.rect_lights_data.push_back(rect_light);
+
+    NexAur::RendererReflectionProbeData active_probe;
+    active_probe.entity_id = 201;
+    active_probe.baked_environment_asset = NexAur::AssetHandle{ NexAur::UUID{ 2001u } };
+    render_data.reflection_probes_data.push_back(active_probe);
+    NexAur::RendererReflectionProbeData disabled_probe = active_probe;
+    disabled_probe.entity_id = 202;
+    disabled_probe.enabled = false;
+    disabled_probe.baked_environment_asset = NexAur::AssetHandle{ NexAur::UUID{ 2002u } };
+    render_data.reflection_probes_data.push_back(disabled_probe);
+    NexAur::RendererReflectionProbeData zero_intensity_probe = active_probe;
+    zero_intensity_probe.entity_id = 203;
+    zero_intensity_probe.intensity = 0.0f;
+    zero_intensity_probe.diffuse_intensity = 0.0f;
+    zero_intensity_probe.baked_environment_asset = NexAur::AssetHandle{ NexAur::UUID{ 2003u } };
+    render_data.reflection_probes_data.push_back(zero_intensity_probe);
+
+    NexAur::RenderDebugLine debug_line;
+    debug_line.end = glm::vec3{ 1.0f, 0.0f, 0.0f };
+    render_data.debug_draw.lines.push_back(debug_line);
+
+    NexAur::RenderSceneFrameBuilder frame_builder;
+    const NexAur::RenderSceneFrame scene_frame = frame_builder.buildRenderSceneFrame(
+        render_data,
+        viewport_width,
+        viewport_height);
+
+    expect(
+        scene_frame.frame_serial == render_data.frame_serial &&
+        scene_frame.scene_id == render_data.scene_id &&
+        scene_frame.render_settings.ssr.enabled &&
+        scene_frame.render_settings.ssr.max_steps == 47u &&
+        scene_frame.debug_visualization_options.enabled &&
+        !scene_frame.debug_visualization_options.camera_frustum,
+        "Render frame contract smoke failed: frame metadata did not survive canonical frame construction.");
+    expect(
+        scene_frame.source_counts.opaque_object_count == 1u &&
+        scene_frame.source_counts.transparent_object_count == 1u &&
+        scene_frame.source_counts.point_light_count == 2u &&
+        scene_frame.source_counts.point_shadow_request_count == 1u &&
+        scene_frame.source_counts.rect_light_count == 1u &&
+        scene_frame.source_counts.rect_shadow_request_count == 1u &&
+        scene_frame.source_counts.reflection_probe_count == 3u &&
+        scene_frame.source_counts.debug_line_count == 1u,
+        "Render frame contract smoke failed: source diagnostics counts were not preserved.");
+    expect(
+        scene_frame.reflection_probes.size() == 1u &&
+        scene_frame.reflection_probe_references.size() == 3u &&
+        scene_frame.reflection_probe_references[0].entity_id == 201 &&
+        scene_frame.reflection_probe_references[1].entity_id == 202 &&
+        scene_frame.reflection_probe_references[2].entity_id == 203 &&
+        scene_frame.reflection_probe_references[1].baked_environment_asset ==
+            disabled_probe.baked_environment_asset &&
+        scene_frame.reflection_probe_references[2].baked_environment_asset ==
+            zero_intensity_probe.baked_environment_asset,
+        "Render frame contract smoke failed: complete reflection probe references were not preserved.");
+
+    const glm::vec3 canonical_near = projectNdc(
+        scene_frame.view.projection_matrix,
+        glm::vec3{ 0.0f, 0.0f, -near_clip });
+    const glm::vec3 canonical_far = projectNdc(
+        scene_frame.view.projection_matrix,
+        glm::vec3{ 0.0f, 0.0f, -far_clip });
+    expect(
+        nearlyEqual(canonical_near.z, -1.0f) && nearlyEqual(canonical_far.z, 1.0f),
+        "Render frame contract smoke failed: canonical projection depth is not [-1, 1].");
+
+    NexAur::VulkanRenderDataTranslator translator;
+    const NexAur::VulkanRenderView vulkan_view = translator.buildRenderView(scene_frame.view);
+    glm::mat4 legacy_clip_transform{ 1.0f };
+    legacy_clip_transform[1][1] = -1.0f;
+    legacy_clip_transform[2][2] = 0.5f;
+    legacy_clip_transform[3][2] = 0.5f;
+    const glm::mat4 legacy_vulkan_projection =
+        legacy_clip_transform * render_data.camera_data.projection_matrix;
+    expect(
+        matrixExactlyEqual(vulkan_view.projection_matrix, legacy_vulkan_projection),
+        "Render frame contract smoke failed: Vulkan projection changed from the renderer baseline.");
+
+    const glm::vec3 vulkan_near = projectNdc(
+        vulkan_view.projection_matrix,
+        glm::vec3{ 0.0f, 0.0f, -near_clip });
+    const glm::vec3 vulkan_far = projectNdc(
+        vulkan_view.projection_matrix,
+        glm::vec3{ 0.0f, 0.0f, -far_clip });
+    const glm::vec3 canonical_y = projectNdc(
+        scene_frame.view.projection_matrix,
+        glm::vec3{ 0.0f, 0.5f, -2.0f });
+    const glm::vec3 vulkan_y = projectNdc(
+        vulkan_view.projection_matrix,
+        glm::vec3{ 0.0f, 0.5f, -2.0f });
+    expect(
+        nearlyEqual(vulkan_near.z, 0.0f) &&
+        nearlyEqual(vulkan_far.z, 1.0f) &&
+        vulkan_view.projection_matrix[1][1] == -scene_frame.view.projection_matrix[1][1] &&
+        nearlyEqual(vulkan_y.y, -canonical_y.y),
+        "Render frame contract smoke failed: Vulkan depth remap or clip Y conversion is incorrect.");
+
+    const glm::vec3 expected_view_position{ 0.7f, -0.4f, -6.0f };
+    const glm::vec3 projected_view_position = projectNdc(
+        vulkan_view.projection_matrix,
+        expected_view_position);
+    const glm::vec2 ssr_uv = glm::vec2{ projected_view_position } * 0.5f + 0.5f;
+    glm::vec4 reconstructed_view_position =
+        vulkan_view.inverse_projection_matrix *
+        glm::vec4{ ssr_uv * 2.0f - 1.0f, projected_view_position.z, 1.0f };
+    reconstructed_view_position /= reconstructed_view_position.w;
+    expect(
+        nearlyEqualVec3(glm::vec3{ reconstructed_view_position }, expected_view_position),
+        "Render frame contract smoke failed: SSR depth reconstruction did not recover view space.");
+
+    const glm::vec4 expected_world_position =
+        vulkan_view.inverse_view_matrix * glm::vec4{ 0.45f, 0.3f, -4.0f, 1.0f };
+    const glm::vec4 pick_clip = vulkan_view.view_projection_matrix * expected_world_position;
+    const glm::vec3 pick_ndc = glm::vec3{ pick_clip } / pick_clip.w;
+    const glm::vec2 pick_pixel = glm::vec2{
+        (pick_ndc.x * 0.5f + 0.5f) * static_cast<float>(viewport_width),
+        (pick_ndc.y * 0.5f + 0.5f) * static_cast<float>(viewport_height)
+    };
+    const glm::vec2 picking_ndc_xy{
+        pick_pixel.x / static_cast<float>(viewport_width) * 2.0f - 1.0f,
+        pick_pixel.y / static_cast<float>(viewport_height) * 2.0f - 1.0f
+    };
+    glm::vec4 reconstructed_world_position =
+        glm::inverse(vulkan_view.view_projection_matrix) *
+        glm::vec4{ picking_ndc_xy, pick_ndc.z, 1.0f };
+    reconstructed_world_position /= reconstructed_world_position.w;
+    expect(
+        pick_pixel.y < static_cast<float>(viewport_height) * 0.5f &&
+        nearlyEqualVec3(
+            glm::vec3{ reconstructed_world_position },
+            glm::vec3{ expected_world_position }),
+        "Render frame contract smoke failed: top-left picking projection did not round-trip.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Render frame contract smoke passed." << std::endl;
+    return 0;
+}
+
 int runRenderSettingsSmoke() {
     NexAur::RenderContext render_context;
 
@@ -1890,13 +2112,9 @@ int runRenderSettingsSmoke() {
     disabled_probe.position = glm::vec3{ 8.0f, 0.0f, 0.0f };
     render_data.reflection_probes_data.push_back(disabled_probe);
 
-    NexAur::RenderView render_view;
-    render_view.viewport_width = 1280u;
-    render_view.viewport_height = 720u;
-
     NexAur::RenderSceneFrameBuilder frame_builder;
     const NexAur::RenderSceneFrame cornell_frame =
-        frame_builder.buildRenderSceneFrame(render_data, render_view);
+        frame_builder.buildRenderSceneFrame(render_data, 1280u, 720u);
     expect(
         nearlyEqual(cornell_frame.directional_light.intensity, 0.0f) &&
         !cornell_frame.directional_light.cast_shadow,
@@ -3945,6 +4163,7 @@ namespace {
         { "--scene-serializer-smoke", "SceneSerializer", runSceneSerializerSmoke },
         { "--audio-smoke", "Audio", runAudioSmoke },
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
+        { "--render-frame-contract-smoke", "RenderFrameContract", runRenderFrameContractSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--render-graph-state-planner-smoke", "RenderGraphStatePlanner", runRenderGraphStatePlannerSmoke },
         { "--editor-config-smoke", "EditorConfig", runEditorConfigSmoke },

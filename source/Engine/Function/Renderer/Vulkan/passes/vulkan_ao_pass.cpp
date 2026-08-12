@@ -117,7 +117,7 @@ namespace NexAur {
     bool VulkanAoPass::recordSsao(
         VkCommandBuffer command_buffer,
         const VulkanAoRenderTarget& target,
-        const RenderView& view,
+        const VulkanRenderView& view,
         const RenderAoSettings& settings) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid() || !isReady()) {
             return false;

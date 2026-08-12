@@ -4,16 +4,11 @@
 
 #include <glm/glm.hpp>
 
-#include "Core/Base.h"
-
 namespace NexAur {
-    // Backend-neutral camera contract:
-    // - right-handed view space, forward -Z, up +Y;
-    // - clip-space Y points up and NDC depth is [-1, 1];
-    // - GLM column-major matrices transform as projection * view * position.
-    // RenderSceneFrameBuilder owns validation and all derived matrices. Backends
-    // convert this view to their native clip convention at their boundary.
-    struct NEXAUR_API RenderView {
+    // Vulkan-native camera contract. View space remains right-handed with
+    // forward -Z, while projection matrices use flipped clip Y and [0, 1]
+    // NDC depth. All derived matrices are owned by the Vulkan translator.
+    struct VulkanRenderView {
         glm::mat4 view_matrix{ 1.0f };
         glm::mat4 projection_matrix{ 1.0f };
         glm::mat4 view_projection_matrix{ 1.0f };

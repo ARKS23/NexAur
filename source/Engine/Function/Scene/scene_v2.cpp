@@ -16,7 +16,6 @@ namespace NexAur {
         void writeCameraData(RenderDataPacket& render_packet, const CameraComponent& camera) {
             render_packet.camera_data.view_matrix = camera.viewMatrix;
             render_packet.camera_data.projection_matrix = camera.projectionMatrix;
-            render_packet.camera_data.view_projection_matrix = camera.viewProjectionMatrix;
             render_packet.camera_data.position = camera.position;
             render_packet.camera_data.near_clip = camera.nearClip;
             render_packet.camera_data.far_clip = camera.farClip;
@@ -168,7 +167,7 @@ namespace NexAur {
         if (camera_written && debug_options.enabled && debug_options.camera_frustum) {
             RenderDebugDrawBuilder::addFrustum(
                 render_packet->debug_draw,
-                render_packet->camera_data.view_projection_matrix,
+                render_packet->camera_data.projection_matrix * render_packet->camera_data.view_matrix,
                 glm::vec4{ 0.35f, 0.65f, 1.0f, 1.0f });
         }
 

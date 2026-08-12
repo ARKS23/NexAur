@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -71,6 +72,22 @@ namespace NexAur {
         bool capture_dirty = true;
     };
 
+    struct RenderFrameReflectionProbeReference {
+        AssetHandle baked_environment_asset;
+        int entity_id = -1;
+    };
+
+    struct RenderSceneFrameSourceCounts {
+        size_t opaque_object_count = 0;
+        size_t transparent_object_count = 0;
+        size_t point_light_count = 0;
+        size_t point_shadow_request_count = 0;
+        size_t rect_light_count = 0;
+        size_t rect_shadow_request_count = 0;
+        size_t reflection_probe_count = 0;
+        size_t debug_line_count = 0;
+    };
+
     struct RenderSceneFrameObject {
         AssetHandle model_asset;
         std::vector<AssetHandle> material_overrides;
@@ -79,7 +96,12 @@ namespace NexAur {
     };
 
     struct RenderSceneFrame {
+        uint64_t frame_serial = 0;
+        uint64_t scene_id = 0;
         RenderView view;
+        RenderSettings render_settings;
+        RenderDebugVisualizationOptions debug_visualization_options;
+        RenderSceneFrameSourceCounts source_counts;
 
         std::vector<RenderSceneFrameObject> opaque_objects;
         std::vector<RenderSceneFrameObject> transparent_objects;
@@ -88,6 +110,7 @@ namespace NexAur {
         std::vector<RenderFramePointLight> point_lights;
         std::vector<RenderFrameRectLight> rect_lights;
         std::vector<RenderFrameReflectionProbe> reflection_probes;
+        std::vector<RenderFrameReflectionProbeReference> reflection_probe_references;
 
         AssetHandle environment_asset;
         glm::vec3 environment_color{ 0.08f, 0.10f, 0.14f };

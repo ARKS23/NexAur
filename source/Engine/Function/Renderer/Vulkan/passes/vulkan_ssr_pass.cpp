@@ -106,7 +106,7 @@ namespace NexAur {
     bool VulkanSsrPass::recordTrace(
         VkCommandBuffer command_buffer,
         const VulkanSsrRenderTarget& target,
-        const RenderView& view,
+        const VulkanRenderView& view,
         const RenderSsrSettings& settings,
         VulkanSsrOutputMode output_mode) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid() || !isReady()) {

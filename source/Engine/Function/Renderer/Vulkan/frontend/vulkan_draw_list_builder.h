@@ -11,6 +11,7 @@ namespace NexAur {
     public:
         VulkanDrawList buildDrawList(
             const RenderSceneFrame& scene_frame,
+            const VulkanRenderView& render_view,
             VulkanRenderResourceCache& resource_cache,
             AssetManager& asset_manager) const;
     };

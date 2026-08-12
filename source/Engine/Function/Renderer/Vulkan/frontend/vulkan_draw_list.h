@@ -7,7 +7,7 @@
 
 #include "Core/Base.h"
 #include "Function/Renderer/data/render_scene_frame.h"
-#include "Function/Renderer/data/render_view.h"
+#include "Function/Renderer/Vulkan/frontend/vulkan_render_view.h"
 
 namespace NexAur {
     class VulkanEnvironmentResource;
@@ -39,7 +39,7 @@ namespace NexAur {
     };
 
     struct VulkanDrawList {
-        RenderView view;
+        VulkanRenderView view;
 
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;

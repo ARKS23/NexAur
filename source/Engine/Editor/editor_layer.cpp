@@ -1269,7 +1269,6 @@ namespace NexAur {
 
         camera_data.view_matrix = viewport_camera.getView();
         camera_data.projection_matrix = viewport_camera.getProjection();
-        camera_data.view_projection_matrix = viewport_camera.getViewProjection();
         camera_data.position = viewport_camera.getPosition();
         camera_data.near_clip = viewport_camera.getNearClip();
         camera_data.far_clip = viewport_camera.getFarClip();

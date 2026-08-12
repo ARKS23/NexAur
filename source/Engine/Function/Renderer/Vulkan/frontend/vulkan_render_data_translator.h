@@ -1,21 +1,13 @@
 #pragma once
 
-#include <cstdint>
-
 #include "Core/Base.h"
 #include "Function/Renderer/data/render_view.h"
+#include "Function/Renderer/Vulkan/frontend/vulkan_render_view.h"
 
 namespace NexAur {
-    struct RenderDataPacket;
-
-    // Converts engine-facing frame data into Vulkan renderer CPU-side descriptions.
+    // Converts canonical renderer data into Vulkan-native CPU descriptions.
     class NEXAUR_API VulkanRenderDataTranslator {
     public:
-        void resetFrame();
-
-        RenderView buildRenderView(
-            const RenderDataPacket& render_data,
-            uint32_t viewport_width,
-            uint32_t viewport_height) const;
+        VulkanRenderView buildRenderView(const RenderView& render_view) const;
     };
 } // namespace NexAur

@@ -6,6 +6,7 @@ namespace NexAur {
     class RenderContext {
     public:
         void swapBuffers() {
+            render_data[m_write_index].frame_serial = ++m_frame_serial;
             m_write_index = 1 - m_write_index;
             getWriteData().clear();
         }
@@ -33,6 +34,7 @@ namespace NexAur {
         RenderDataPacket render_data[2]; // 双缓冲渲染数据包
         RenderSettings m_render_settings;
         RenderDebugVisualizationOptions m_debug_visualization_options;
+        uint64_t m_frame_serial = 0;
         int m_write_index = 0;
     };
 } // namespace NexAur

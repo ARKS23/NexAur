@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 namespace NexAur {
     namespace {
@@ -13,6 +14,9 @@ namespace NexAur {
         constexpr float kDefaultEnvironmentIntensity = 0.65f;
         constexpr float kDefaultSkyboxIntensity = 0.75f;
         constexpr float kDefaultIblIntensity = 0.65f;
+        constexpr float kDefaultNearClip = 0.1f;
+        constexpr float kDefaultFarClip = 1000.0f;
+        constexpr float kMinClipDistance = 0.001f;
         constexpr glm::vec3 kDefaultLightDirection{ -0.2f, -1.0f, -0.3f };
 
         bool isFinite(float value) {
@@ -84,6 +88,41 @@ namespace NexAur {
 
         glm::mat4 sanitizeTransform(const glm::mat4& transform) {
             return isFinite(transform) ? transform : glm::mat4{ 1.0f };
+        }
+
+        glm::mat4 safeInverse(const glm::mat4& value) {
+            const glm::mat4 inverse = glm::inverse(value);
+            return isFinite(inverse) ? inverse : glm::mat4{ 1.0f };
+        }
+
+        RenderView buildRenderView(
+            const RendererCameraData& camera,
+            uint32_t viewport_width,
+            uint32_t viewport_height) {
+            RenderView view;
+            view.viewport_width = std::max(1u, viewport_width);
+            view.viewport_height = std::max(1u, viewport_height);
+            view.near_clip = isFinite(camera.near_clip) && camera.near_clip > 0.0f
+                ? camera.near_clip
+                : kDefaultNearClip;
+            view.far_clip = isFinite(camera.far_clip) &&
+                    camera.far_clip > view.near_clip + kMinClipDistance
+                ? camera.far_clip
+                : std::max(kDefaultFarClip, view.near_clip + kMinClipDistance);
+
+            view.view_matrix = isFinite(camera.view_matrix)
+                ? camera.view_matrix
+                : glm::mat4{ 1.0f };
+            view.projection_matrix = isFinite(camera.projection_matrix)
+                ? camera.projection_matrix
+                : glm::mat4{ 1.0f };
+            view.view_projection_matrix = view.projection_matrix * view.view_matrix;
+            view.inverse_view_matrix = safeInverse(view.view_matrix);
+            view.inverse_projection_matrix = safeInverse(view.projection_matrix);
+            view.camera_position = isFinite(camera.position)
+                ? camera.position
+                : glm::vec3{ 0.0f };
+            return view;
         }
 
         RenderFrameDirectionalLight buildDirectionalLight(
@@ -270,9 +309,28 @@ namespace NexAur {
 
     RenderSceneFrame RenderSceneFrameBuilder::buildRenderSceneFrame(
         const RenderDataPacket& render_data,
-        const RenderView& render_view) const {
+        uint32_t viewport_width,
+        uint32_t viewport_height) const {
         RenderSceneFrame frame;
-        frame.view = render_view;
+        frame.frame_serial = render_data.frame_serial;
+        frame.scene_id = render_data.scene_id;
+        frame.view = buildRenderView(render_data.camera_data, viewport_width, viewport_height);
+        frame.render_settings = render_data.render_settings;
+        frame.debug_visualization_options = render_data.debug_visualization_options;
+        frame.source_counts.opaque_object_count = render_data.opaque_objects.size();
+        frame.source_counts.transparent_object_count = render_data.transparent_objects.size();
+        frame.source_counts.point_light_count = render_data.point_lights_data.size();
+        frame.source_counts.point_shadow_request_count = std::count_if(
+            render_data.point_lights_data.begin(),
+            render_data.point_lights_data.end(),
+            [](const RendererPointLightData& light) { return light.cast_shadow; });
+        frame.source_counts.rect_light_count = render_data.rect_lights_data.size();
+        frame.source_counts.rect_shadow_request_count = std::count_if(
+            render_data.rect_lights_data.begin(),
+            render_data.rect_lights_data.end(),
+            [](const RendererRectLightData& light) { return light.cast_shadow; });
+        frame.source_counts.reflection_probe_count = render_data.reflection_probes_data.size();
+        frame.source_counts.debug_line_count = render_data.debug_draw.lines.size();
         const RenderLightingCalibrationSettings& lighting = render_data.render_settings.lighting;
 
         appendObjects(render_data.opaque_objects, frame.opaque_objects, "opaque");
@@ -327,6 +385,14 @@ namespace NexAur {
         const size_t probe_count = std::min<size_t>(
             render_data.reflection_probes_data.size(),
             kMaxRenderReflectionProbes);
+        frame.reflection_probe_references.reserve(render_data.reflection_probes_data.size());
+        for (const RendererReflectionProbeData& source : render_data.reflection_probes_data) {
+            RenderFrameReflectionProbeReference reference;
+            reference.baked_environment_asset = source.baked_environment_asset;
+            reference.entity_id = source.entity_id;
+            frame.reflection_probe_references.push_back(reference);
+        }
+
         frame.reflection_probes.reserve(probe_count);
         for (size_t index = 0; index < probe_count; ++index) {
             const RendererReflectionProbeData& source = render_data.reflection_probes_data[index];

@@ -251,8 +251,10 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.h
     Function/Renderer/Vulkan/frontend/vulkan_draw_list_builder.cpp
     Function/Renderer/Vulkan/frontend/vulkan_debug_draw_types.h
+    Function/Renderer/Vulkan/frontend/vulkan_prepared_frame.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
+    Function/Renderer/Vulkan/frontend/vulkan_render_view.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp
     Function/Renderer/Vulkan/graph/vulkan_graph_resource.h

@@ -4,8 +4,8 @@
 
 #include "Core/Base.h"
 #include "Function/Renderer/data/render_settings.h"
-#include "Function/Renderer/data/render_view.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
+#include "Function/Renderer/Vulkan/frontend/vulkan_render_view.h"
 #include "Function/Renderer/Vulkan/shaders/vulkan_shader_library.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_ssr_target.h"
 
@@ -70,7 +70,7 @@ namespace NexAur {
         bool recordTrace(
             VkCommandBuffer command_buffer,
             const VulkanSsrRenderTarget& target,
-            const RenderView& view,
+            const VulkanRenderView& view,
             const RenderSsrSettings& settings,
             VulkanSsrOutputMode output_mode);
 
