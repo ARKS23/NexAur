@@ -240,6 +240,8 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/data/render_view.h
     Function/Renderer/frontend/render_scene_frame_builder.h
     Function/Renderer/frontend/render_scene_frame_builder.cpp
+    Function/Renderer/frontend/render_shadow_frame_builder.h
+    Function/Renderer/frontend/render_shadow_frame_builder.cpp
     Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h
     Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.cpp
     Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h

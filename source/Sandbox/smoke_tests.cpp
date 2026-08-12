@@ -29,6 +29,7 @@
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
+#include "Function/Renderer/frontend/render_shadow_frame_builder.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
@@ -1521,6 +1522,223 @@ int runRenderFrameContractSmoke() {
     }
 
     std::cout << "Render frame contract smoke passed." << std::endl;
+    return 0;
+}
+
+int runShadowFrameBuilderSmoke() {
+    NexAur::RenderView view;
+    view.near_clip = 0.1f;
+    view.far_clip = 120.0f;
+    view.camera_position = glm::vec3{ 0.0f, 2.0f, 6.0f };
+    view.view_matrix = glm::lookAt(
+        view.camera_position,
+        glm::vec3{ 0.0f, 1.0f, 0.0f },
+        glm::vec3{ 0.0f, 1.0f, 0.0f });
+    view.projection_matrix = glm::perspective(
+        glm::radians(60.0f),
+        16.0f / 9.0f,
+        view.near_clip,
+        view.far_clip);
+    view.view_projection_matrix = view.projection_matrix * view.view_matrix;
+    view.inverse_view_matrix = glm::inverse(view.view_matrix);
+    view.inverse_projection_matrix = glm::inverse(view.projection_matrix);
+
+    NexAur::RenderSettings settings;
+    settings.shadow.cascade_count = NexAur::kMaxRenderShadowCascadeCount;
+    settings.shadow.cascades_enabled = true;
+    settings.shadow.distance = 64.0f;
+    settings.shadow.cascade_split_lambda = 0.65f;
+    settings.shadow.stabilize = true;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::ShadowCascades;
+
+    NexAur::RenderFrameDirectionalLight directional_light;
+    directional_light.direction = glm::normalize(glm::vec3{ -0.3f, -1.0f, -0.2f });
+
+    NexAur::RenderShadowFrameBuilder builder;
+    const NexAur::RenderShadowCascadeFrame cascade_frame = builder.buildDirectionalShadowFrame(
+        view,
+        directional_light,
+        settings.shadow,
+        settings.effects_debug,
+        2048.0f);
+
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+    auto matrixFinite = [](const glm::mat4& matrix) {
+        for (int column = 0; column < 4; ++column) {
+            for (int row = 0; row < 4; ++row) {
+                if (!std::isfinite(matrix[column][row])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    auto matrixIsIdentity = [&](const glm::mat4& matrix) {
+        return nearlyEqual(
+                   matrix[0][0],
+                   1.0f) && nearlyEqual(matrix[1][1], 1.0f) &&
+               nearlyEqual(matrix[2][2], 1.0f) && nearlyEqual(matrix[3][3], 1.0f) &&
+               nearlyEqual(matrix[0][1], 0.0f) && nearlyEqual(matrix[0][2], 0.0f) &&
+               nearlyEqual(matrix[0][3], 0.0f) && nearlyEqual(matrix[1][0], 0.0f) &&
+               nearlyEqual(matrix[1][2], 0.0f) && nearlyEqual(matrix[1][3], 0.0f) &&
+               nearlyEqual(matrix[2][0], 0.0f) && nearlyEqual(matrix[2][1], 0.0f) &&
+               nearlyEqual(matrix[2][3], 0.0f) && nearlyEqual(matrix[3][0], 0.0f) &&
+               nearlyEqual(matrix[3][1], 0.0f) && nearlyEqual(matrix[3][2], 0.0f);
+    };
+
+    expect(
+        cascade_frame.cascade_count == NexAur::kMaxRenderShadowCascadeCount &&
+        cascade_frame.cascades_enabled && cascade_frame.debug_overlay,
+        "Shadow frame builder smoke failed: cascade count or debug state is incorrect.");
+    for (uint32_t index = 0; index < cascade_frame.cascade_count; ++index) {
+        expect(
+            std::isfinite(cascade_frame.split_depths[index]) &&
+            matrixFinite(cascade_frame.light_view_projections[index]) &&
+            (index == 0u || cascade_frame.split_depths[index] > cascade_frame.split_depths[index - 1u]),
+            "Shadow frame builder smoke failed: cascade split or matrix is invalid.");
+    }
+    expect(
+        nearlyEqual(cascade_frame.split_depths.back(), settings.shadow.distance),
+        "Shadow frame builder smoke failed: final cascade does not reach shadow distance.");
+    const float split_ratio = 1.0f / static_cast<float>(NexAur::kMaxRenderShadowCascadeCount);
+    const float linear_split = view.near_clip +
+        (settings.shadow.distance - view.near_clip) * split_ratio;
+    const float logarithmic_split = view.near_clip *
+        std::pow(settings.shadow.distance / view.near_clip, split_ratio);
+    const float expected_split = linear_split * (1.0f - settings.shadow.cascade_split_lambda) +
+        logarithmic_split * settings.shadow.cascade_split_lambda;
+    expect(
+        nearlyEqual(cascade_frame.split_depths[0], expected_split),
+        "Shadow frame builder smoke failed: cascade split formula changed.");
+
+    settings.shadow.stabilize = false;
+    const NexAur::RenderShadowCascadeFrame unstable_frame = builder.buildDirectionalShadowFrame(
+        view,
+        directional_light,
+        settings.shadow,
+        settings.effects_debug,
+        2048.0f);
+    expect(
+        !nearlyEqual(
+            cascade_frame.light_view_projections[0][3][0],
+            unstable_frame.light_view_projections[0][3][0],
+            0.000001f) ||
+        !nearlyEqual(
+            cascade_frame.light_view_projections[0][3][1],
+            unstable_frame.light_view_projections[0][3][1],
+            0.000001f),
+        "Shadow frame builder smoke failed: stabilization did not affect cascade projection.");
+
+    NexAur::RenderFramePointLight point_light;
+    point_light.position = glm::vec3{ 1.0f, 2.0f, 3.0f };
+    point_light.shadow_slot = 0;
+    point_light.cast_shadow = true;
+    point_light.shadow_range = 12.0f;
+    const NexAur::RenderPointShadowFrame point_frame = builder.buildPointShadowFrame(
+        { point_light },
+        settings.point_shadow,
+        1u);
+    const std::array<glm::vec3, NexAur::kRenderPointShadowCubeFaceCount> face_directions{
+        glm::vec3{  1.0f,  0.0f,  0.0f },
+        glm::vec3{ -1.0f,  0.0f,  0.0f },
+        glm::vec3{  0.0f,  1.0f,  0.0f },
+        glm::vec3{  0.0f, -1.0f,  0.0f },
+        glm::vec3{  0.0f,  0.0f,  1.0f },
+        glm::vec3{  0.0f,  0.0f, -1.0f }
+    };
+    const std::array<glm::vec3, NexAur::kRenderPointShadowCubeFaceCount> face_ups{
+        glm::vec3{ 0.0f, -1.0f, 0.0f },
+        glm::vec3{ 0.0f, -1.0f, 0.0f },
+        glm::vec3{ 0.0f,  0.0f, 1.0f },
+        glm::vec3{ 0.0f,  0.0f, -1.0f },
+        glm::vec3{ 0.0f, -1.0f, 0.0f },
+        glm::vec3{ 0.0f, -1.0f, 0.0f }
+    };
+    for (uint32_t face = 0; face < NexAur::kRenderPointShadowCubeFaceCount; ++face) {
+        const glm::mat4& matrix = point_frame.light_view_projections[face];
+        const glm::vec4 projected_face_center = matrix * glm::vec4{
+            point_light.position + face_directions[face] * 2.0f,
+            1.0f
+        };
+        const glm::vec4 projected_face_up = matrix * glm::vec4{
+            point_light.position + face_ups[face] * 2.0f,
+            1.0f
+        };
+        const glm::vec3 projected_ndc = glm::vec3{ projected_face_center } / projected_face_center.w;
+        const glm::vec3 projected_up_ndc = glm::vec3{ projected_face_up } / projected_face_up.w;
+        expect(
+            point_frame.enabled && point_frame.face_count == NexAur::kRenderPointShadowCubeFaceCount &&
+            point_frame.shadowed_light_count == 1u && matrixFinite(matrix) &&
+            nearlyEqual(projected_ndc.x, 0.0f) && nearlyEqual(projected_ndc.y, 0.0f) &&
+            projected_up_ndc.y < -0.1f,
+            "Shadow frame builder smoke failed: point shadow cube face orientation is incorrect.");
+    }
+
+    NexAur::RenderFrameRectLight rect_light;
+    rect_light.position = glm::vec3{ 0.0f, 4.0f, 0.0f };
+    rect_light.size = glm::vec2{ 2.0f, 1.0f };
+    rect_light.normal = glm::vec3{ 0.0f, -1.0f, 0.0f };
+    rect_light.up = glm::vec3{ 0.0f, 0.0f, 1.0f };
+    rect_light.shadow_slot = 0;
+    rect_light.cast_shadow = true;
+    rect_light.range = 10.0f;
+    settings.rect_shadow.projection_margin = 0.0f;
+    const NexAur::RenderRectShadowFrame rect_frame_without_margin = builder.buildRectShadowFrame(
+        { rect_light },
+        settings.rect_shadow,
+        1u);
+    settings.rect_shadow.projection_margin = 0.5f;
+    const NexAur::RenderRectShadowFrame rect_frame = builder.buildRectShadowFrame(
+        { rect_light },
+        settings.rect_shadow,
+        1u);
+    const glm::vec4 rect_center = rect_frame.light_view_projections[0] * glm::vec4{ rect_light.position, 1.0f };
+    const glm::vec4 rect_edge_without_margin = rect_frame_without_margin.light_view_projections[0] *
+        glm::vec4{ rect_light.position + glm::vec3{ 1.0f, 0.0f, 0.0f }, 1.0f };
+    const glm::vec4 rect_edge_with_margin = rect_frame.light_view_projections[0] *
+        glm::vec4{ rect_light.position + glm::vec3{ 1.0f, 0.0f, 0.0f }, 1.0f };
+    const float rect_edge_without_margin_x =
+        std::abs(rect_edge_without_margin.x / rect_edge_without_margin.w);
+    const float rect_edge_with_margin_x =
+        std::abs(rect_edge_with_margin.x / rect_edge_with_margin.w);
+    expect(
+        rect_frame.enabled && rect_frame.shadowed_light_count == 1u && matrixFinite(rect_frame.light_view_projections[0]) &&
+        nearlyEqual(rect_center.x, 0.0f) && nearlyEqual(rect_center.y, 0.0f) &&
+        rect_edge_with_margin_x < rect_edge_without_margin_x,
+        "Shadow frame builder smoke failed: rect shadow projection is not centered.");
+
+    settings.shadow.enabled = false;
+    const NexAur::RenderShadowCascadeFrame disabled_directional_frame =
+        builder.buildDirectionalShadowFrame(
+            view,
+            directional_light,
+            settings.shadow,
+            settings.effects_debug,
+            2048.0f);
+    expect(
+        disabled_directional_frame.cascade_count == 1u &&
+        !disabled_directional_frame.cascades_enabled &&
+        matrixIsIdentity(disabled_directional_frame.light_view_projections[0]),
+        "Shadow frame builder smoke failed: disabled directional shadows produced an active frame.");
+    settings.shadow.enabled = true;
+    expect(
+        !builder.buildPointShadowFrame({ point_light }, settings.point_shadow, 0u).enabled &&
+        !builder.buildRectShadowFrame({ rect_light }, settings.rect_shadow, 0u).enabled,
+        "Shadow frame builder smoke failed: target capacity was not respected.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Shadow frame builder smoke passed." << std::endl;
     return 0;
 }
 
@@ -4164,6 +4382,7 @@ namespace {
         { "--audio-smoke", "Audio", runAudioSmoke },
         { "--input-action-smoke", "InputAction", runInputActionSmoke },
         { "--render-frame-contract-smoke", "RenderFrameContract", runRenderFrameContractSmoke },
+        { "--shadow-frame-builder-smoke", "ShadowFrameBuilder", runShadowFrameBuilderSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--render-graph-state-planner-smoke", "RenderGraphStatePlanner", runRenderGraphStatePlannerSmoke },
         { "--editor-config-smoke", "EditorConfig", runEditorConfigSmoke },
