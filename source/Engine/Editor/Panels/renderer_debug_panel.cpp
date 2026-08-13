@@ -226,6 +226,7 @@ namespace NexAur {
 
         ImGui::Spacing();
         ImGui::TextUnformatted("Bloom Target");
+        drawKeyValue("  Enabled", boolToText(snapshot.bloom.enabled));
         drawKeyValue("  Ready", boolToText(snapshot.bloom.ready));
         drawExtent("  Size", snapshot.bloom.width, snapshot.bloom.height);
         drawKeyValue("  Mip Count", snapshot.bloom.mip_count);
@@ -233,6 +234,7 @@ namespace NexAur {
 
         ImGui::Spacing();
         ImGui::TextUnformatted("AO Target");
+        drawKeyValue("  Enabled", boolToText(snapshot.ao.enabled));
         drawKeyValue("  Ready", boolToText(snapshot.ao.ready));
         drawExtent("  Size", snapshot.ao.width, snapshot.ao.height);
         drawKeyValue("  Color Format", snapshot.ao.color_format.c_str());
@@ -255,6 +257,7 @@ namespace NexAur {
 
         ImGui::Spacing();
         ImGui::TextUnformatted("SMAA Target");
+        drawKeyValue("  Enabled", boolToText(snapshot.smaa.enabled));
         drawKeyValue("  Ready", boolToText(snapshot.smaa.ready));
         drawExtent("  Size", snapshot.smaa.width, snapshot.smaa.height);
         drawKeyValue("  Source Format", snapshot.smaa.source_format.c_str());

@@ -256,6 +256,10 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/frontend/vulkan_prepared_frame.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
+    Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.h
+    Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.cpp
+    Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h
+    Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.cpp
     Function/Renderer/Vulkan/core/vulkan_device_context.h
     Function/Renderer/Vulkan/core/vulkan_device_context.cpp
     Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h
@@ -300,6 +304,10 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/shaders/vulkan_shader_library.cpp
     Function/Renderer/Vulkan/vulkan_render_target.h
     Function/Renderer/Vulkan/vulkan_resource_context.h
+    Function/Renderer/Vulkan/vulkan_picking_manager.h
+    Function/Renderer/Vulkan/vulkan_picking_manager.cpp
+    Function/Renderer/Vulkan/vulkan_reflection_probe_manager.h
+    Function/Renderer/Vulkan/vulkan_reflection_probe_manager.cpp
     Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h
     Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.cpp
     Function/Renderer/Vulkan/resources/vulkan_environment_resource.h

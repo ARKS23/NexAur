@@ -95,6 +95,7 @@ namespace NexAur {
     };
 
     struct RendererDebugBloomStats {
+        bool enabled = false;
         bool ready = false;
         uint32_t width = 0;
         uint32_t height = 0;
@@ -103,6 +104,7 @@ namespace NexAur {
     };
 
     struct RendererDebugAoStats {
+        bool enabled = false;
         bool ready = false;
         uint32_t width = 0;
         uint32_t height = 0;
@@ -127,6 +129,7 @@ namespace NexAur {
     };
 
     struct RendererDebugSmaaStats {
+        bool enabled = false;
         bool ready = false;
         uint32_t width = 0;
         uint32_t height = 0;

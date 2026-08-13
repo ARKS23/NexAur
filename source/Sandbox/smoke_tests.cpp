@@ -30,7 +30,10 @@
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
 #include "Function/Renderer/frontend/render_shadow_frame_builder.h"
+#include "Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h"
+#include "Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
+#include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Resource/asset_manager.h"
@@ -4370,6 +4373,263 @@ int runRenderGraphStatePlannerSmoke() {
     return 0;
 }
 
+int runFrameFeaturePlanSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!condition && success) {
+            failure = message;
+        }
+        success = success && condition;
+    };
+
+    NexAur::VulkanRenderFeatureAvailability available;
+    available.viewport_output = true;
+    available.post_process = true;
+    available.bloom = true;
+    available.ao = true;
+    available.ssr = true;
+    available.smaa = true;
+    available.directional_shadow = true;
+    available.point_shadow = true;
+    available.rect_shadow = true;
+
+    NexAur::RenderSettings settings;
+    const NexAur::VulkanRenderFeaturePlan default_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        default_plan.getOutputRoute() == NexAur::VulkanFrameOutputRoute::Viewport,
+        "Frame feature plan should select the available viewport output route.");
+    expect(
+        default_plan.rendersAo() &&
+            !default_plan.rendersSsr() &&
+            default_plan.rendersBloom() &&
+            default_plan.rendersSmaa(),
+        "Frame feature plan did not preserve default feature enable decisions.");
+
+    settings.ao.enabled = false;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::AoRaw;
+    const NexAur::VulkanRenderFeaturePlan ao_debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        ao_debug_plan.rendersAo() &&
+            !ao_debug_plan.rendersBloom() &&
+            !ao_debug_plan.rendersSmaa(),
+        "AO debug view should force only the AO feature path.");
+
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::SsrHitMask;
+    const NexAur::VulkanRenderFeaturePlan ssr_debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        ssr_debug_plan.rendersSsr(),
+        "SSR debug view should force SSR even when final-lit SSR is disabled.");
+
+    settings.post_process.bloom_enabled = false;
+    settings.post_process.bloom_intensity = 0.0f;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::BloomDownsampleMip;
+    const NexAur::VulkanRenderFeaturePlan bloom_debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        bloom_debug_plan.rendersBloom(),
+        "Bloom debug view should force bloom independently of final-lit settings.");
+
+    settings.anti_aliasing.mode = NexAur::RenderAntiAliasingMode::None;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::SmaaEdgeMask;
+    const NexAur::VulkanRenderFeaturePlan smaa_debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        smaa_debug_plan.rendersSmaa() &&
+            smaa_debug_plan.getPostProcessDebugSettings().view ==
+                NexAur::RenderEffectDebugView::ColorGraded,
+        "SMAA debug should force SMAA and resolve its post-process source view.");
+
+    settings = NexAur::RenderSettings{};
+    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::DiffuseIbl;
+    const NexAur::VulkanRenderFeaturePlan isolated_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        isolated_plan.isolatesForwardDebug() &&
+            !isolated_plan.rendersAo() &&
+            !isolated_plan.rendersSsr() &&
+            !isolated_plan.rendersBloom() &&
+            !isolated_plan.rendersSmaa(),
+        "Forward debug isolation should suppress screen-space and post-process features.");
+
+    settings = NexAur::RenderSettings{};
+    settings.ssr.enabled = true;
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::SsrRawReflection;
+    NexAur::VulkanRenderFeatureAvailability limited = available;
+    limited.viewport_output = false;
+    limited.ssr = false;
+    const NexAur::VulkanRenderFeaturePlan fallback_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, limited);
+    expect(
+        fallback_plan.getOutputRoute() == NexAur::VulkanFrameOutputRoute::DirectSwapchain &&
+            !fallback_plan.rendersSsr() &&
+            fallback_plan.getDebugSettings().view == NexAur::RenderEffectDebugView::FinalLit,
+        "Feature plan should resolve unavailable SSR debug output to direct final-lit output.");
+
+    auto makeResources = []() {
+        NexAur::VulkanFrameGraphResources resources;
+        uint32_t index = 0;
+        resources.directional_shadow_depth.index = index++;
+        resources.point_shadow_depth.index = index++;
+        resources.rect_shadow_depth.index = index++;
+        resources.scene_color.index = index++;
+        resources.scene_depth.index = index++;
+        resources.ao_raw.index = index++;
+        resources.ao_blurred.index = index++;
+        resources.ssr_raw_reflection.index = index++;
+        resources.ssr_hit_mask.index = index++;
+        resources.final_color.index = index++;
+        resources.swapchain_color.index = index++;
+        resources.smaa_source.index = index++;
+        return resources;
+    };
+    auto makeCallbacks = [](
+        int& ao_calls,
+        int& ssr_calls,
+        int& bloom_calls,
+        int& post_process_calls,
+        int& smaa_calls) {
+        NexAur::VulkanFrameGraphCallbacks callbacks;
+        auto add_single_image = [](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle) {
+            return true;
+        };
+        callbacks.add_directional_shadow = add_single_image;
+        callbacks.add_point_shadow = add_single_image;
+        callbacks.add_rect_shadow = add_single_image;
+        callbacks.add_skybox = add_single_image;
+        callbacks.record_forward = [](VkCommandBuffer) { return true; };
+        callbacks.add_ao = [&ao_calls](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle) {
+            ++ao_calls;
+            return true;
+        };
+        callbacks.add_ssr = [&ssr_calls](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle) {
+            ++ssr_calls;
+            return true;
+        };
+        callbacks.add_debug_draw = [](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle) {
+            return true;
+        };
+        callbacks.add_object_id = [](NexAur::VulkanPassGraph&) { return true; };
+        callbacks.add_bloom = [&bloom_calls](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle scene_color,
+            NexAur::VulkanGraphImageHandle& composite_color) {
+            ++bloom_calls;
+            composite_color = scene_color;
+            return true;
+        };
+        callbacks.add_post_process = [&post_process_calls](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle) {
+            ++post_process_calls;
+            return true;
+        };
+        callbacks.add_smaa = [&smaa_calls](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle) {
+            ++smaa_calls;
+            return true;
+        };
+        callbacks.record_imgui = [](VkCommandBuffer) { return true; };
+        return callbacks;
+    };
+
+    int ao_calls = 0;
+    int ssr_calls = 0;
+    int bloom_calls = 0;
+    int post_process_calls = 0;
+    int smaa_calls = 0;
+    NexAur::VulkanFrameGraphCallbacks viewport_callbacks = makeCallbacks(
+        ao_calls,
+        ssr_calls,
+        bloom_calls,
+        post_process_calls,
+        smaa_calls);
+    NexAur::VulkanPassGraph viewport_graph;
+    NexAur::VulkanFrameGraphBuilder graph_builder;
+    expect(
+        graph_builder.build(
+            viewport_graph,
+            default_plan,
+            makeResources(),
+            viewport_callbacks),
+        "Frame graph builder rejected a complete viewport graph context.");
+    expect(
+        ao_calls == 1 &&
+            ssr_calls == 0 &&
+            bloom_calls == 1 &&
+            post_process_calls == 1 &&
+            smaa_calls == 1,
+        "Frame graph builder did not follow the feature plan for viewport output.");
+
+    ao_calls = 0;
+    ssr_calls = 0;
+    bloom_calls = 0;
+    post_process_calls = 0;
+    smaa_calls = 0;
+    NexAur::VulkanFrameGraphCallbacks direct_callbacks = makeCallbacks(
+        ao_calls,
+        ssr_calls,
+        bloom_calls,
+        post_process_calls,
+        smaa_calls);
+    direct_callbacks.record_imgui = {};
+    NexAur::VulkanPassGraph direct_graph;
+    expect(
+        graph_builder.build(
+            direct_graph,
+            fallback_plan,
+            makeResources(),
+            direct_callbacks),
+        "Frame graph builder should accept direct output without an ImGui tail callback.");
+    expect(
+        ssr_calls == 0 && post_process_calls == 1,
+        "Frame graph builder did not use the resolved direct-output feature plan.");
+
+    NexAur::VulkanFrameGraphCallbacks incomplete_viewport_callbacks = viewport_callbacks;
+    incomplete_viewport_callbacks.record_imgui = {};
+    NexAur::VulkanPassGraph incomplete_viewport_graph;
+    expect(
+        !graph_builder.build(
+            incomplete_viewport_graph,
+            default_plan,
+            makeResources(),
+            incomplete_viewport_callbacks),
+        "Viewport graph should require its ImGui output tail callback.");
+
+    if (!success) {
+        std::cerr << "Frame feature plan smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Frame feature plan smoke passed." << std::endl;
+    return 0;
+}
+
 namespace {
     struct SmokeTestEntry {
         const char* argument = nullptr;
@@ -4385,6 +4645,7 @@ namespace {
         { "--shadow-frame-builder-smoke", "ShadowFrameBuilder", runShadowFrameBuilderSmoke },
         { "--render-settings-smoke", "RenderSettings", runRenderSettingsSmoke },
         { "--render-graph-state-planner-smoke", "RenderGraphStatePlanner", runRenderGraphStatePlannerSmoke },
+        { "--frame-feature-plan-smoke", "FrameFeaturePlan", runFrameFeaturePlanSmoke },
         { "--editor-config-smoke", "EditorConfig", runEditorConfigSmoke },
         { "--material-asset-smoke", "MaterialAsset", runMaterialAssetSmoke },
         { "--gltf-model-import-smoke", "GltfModelImport", runGltfModelImportSmoke },
