@@ -7,7 +7,7 @@ namespace NexAur {
     class AssetManager;
     class VulkanRenderResourceCache;
 
-    class NEXAUR_API VulkanDrawListBuilder {
+    class VulkanDrawListBuilder {
     public:
         VulkanDrawList buildDrawList(
             const RenderSceneFrame& scene_frame,

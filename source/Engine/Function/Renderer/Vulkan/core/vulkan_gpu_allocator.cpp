@@ -35,6 +35,7 @@ namespace NexAur {
         }
 
         m_device = context.device;
+        m_retirement_queue = context.retirement_queue;
         return true;
     }
 
@@ -45,6 +46,7 @@ namespace NexAur {
         }
 
         m_device = VK_NULL_HANDLE;
+        m_retirement_queue = nullptr;
     }
 
     bool VulkanGpuAllocator::createImage(

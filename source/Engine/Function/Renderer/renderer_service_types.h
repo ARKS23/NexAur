@@ -40,11 +40,22 @@ namespace NexAur {
     };
 
     struct NEXAUR_API ViewportPickRequest {
+        uint64_t request_id = 0;
         int x = 0;
         int y = 0;
     };
 
+    enum class ViewportPickStatus : uint8_t {
+        Unsupported = 0,
+        Pending,
+        Ready,
+        Failed,
+        Cancelled
+    };
+
     struct NEXAUR_API ViewportPickResult {
+        uint64_t request_id = 0;
+        ViewportPickStatus status = ViewportPickStatus::Unsupported;
         bool supported = false;
         bool ready = false;
         int entity_id = -1;

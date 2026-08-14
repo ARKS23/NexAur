@@ -1,50 +1,30 @@
 #include "pch.h"
 #include "vulkan_picking_manager.h"
 
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
 #include "Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 
+#include <algorithm>
+#include <cstring>
+#include <limits>
+
 namespace NexAur {
     namespace {
-        void transitionObjectIdToTransferSource(
-            VkCommandBuffer command_buffer,
-            VkImage image,
-            VkImageLayout old_layout) {
-            if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
-                return;
+        const char* pickStatusToText(ViewportPickStatus status) {
+            switch (status) {
+            case ViewportPickStatus::Pending:
+                return "Pending";
+            case ViewportPickStatus::Ready:
+                return "Ready";
+            case ViewportPickStatus::Failed:
+                return "Failed";
+            case ViewportPickStatus::Cancelled:
+                return "Cancelled";
+            case ViewportPickStatus::Unsupported:
+            default:
+                return "Unsupported";
             }
-
-            VkAccessFlags src_access = 0;
-            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            if (old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-                src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            }
-
-            VkImageMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.srcAccessMask = src_access;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            barrier.oldLayout = old_layout;
-            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = image;
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.levelCount = 1;
-            barrier.subresourceRange.layerCount = 1;
-
-            vkCmdPipelineBarrier(
-                command_buffer,
-                src_stage,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                0,
-                0,
-                nullptr,
-                0,
-                nullptr,
-                1,
-                &barrier);
         }
     } // namespace
 
@@ -54,28 +34,26 @@ namespace NexAur {
 
     bool VulkanPickingManager::init(
         const VulkanResourceContext& context,
-        VkCommandPool command_pool,
         uint32_t width,
         uint32_t height) {
         shutdown();
-
-        if (!context.valid() || command_pool == VK_NULL_HANDLE) {
-            NX_CORE_ERROR("VulkanPickingManager requires a valid Vulkan context and command pool.");
+        if (!context.valid() || context.gpu_allocator == nullptr ||
+            !context.gpu_allocator->isInitialized()) {
+            NX_CORE_ERROR("VulkanPickingManager requires a valid Vulkan context.");
             return false;
         }
 
-        m_device = context.device;
-        m_graphics_queue = context.graphics_queue;
-        m_command_pool = command_pool;
-        if (!m_target.init(context, width, height)) {
+        if (!createReadbackSlots(context) ||
+            !m_target.init(context, width, height)) {
             shutdown();
             return false;
         }
-
         return true;
     }
 
     bool VulkanPickingManager::resize(uint32_t width, uint32_t height) {
+        cancelPendingRequests();
+        releaseUnsubmittedRecording();
         if (!m_target.resize(width, height)) {
             return false;
         }
@@ -86,15 +64,39 @@ namespace NexAur {
     }
 
     void VulkanPickingManager::shutdown() {
+        cancelPendingRequests();
         m_target.shutdown();
-        m_device = VK_NULL_HANDLE;
-        m_graphics_queue = VK_NULL_HANDLE;
-        m_command_pool = VK_NULL_HANDLE;
+        for (ReadbackSlot& slot : m_readback_slots) {
+            slot.buffer.reset();
+            slot.clearTracking();
+        }
+        m_requests.clear();
+        m_next_request_id = 1;
+        m_recording_frame_index = 0;
         m_frame_ready = false;
         m_recorded_this_frame = false;
     }
 
-    VulkanGraphImageHandle VulkanPickingManager::addObjectIdImage(VulkanPassGraph& graph) {
+    bool VulkanPickingManager::createReadbackSlots(
+        const VulkanResourceContext& context) {
+        for (uint32_t frame_index = 0;
+             frame_index < static_cast<uint32_t>(m_readback_slots.size());
+             ++frame_index) {
+            if (!m_readback_slots[frame_index].buffer.create(
+                    *context.gpu_allocator,
+                    sizeof(int32_t),
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+                    "Vulkan picking frame readback")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    VulkanGraphImageHandle VulkanPickingManager::addObjectIdImage(
+        VulkanPassGraph& graph) {
         if (!m_target.isReady()) {
             return {};
         }
@@ -110,7 +112,8 @@ namespace NexAur {
         return graph.addImage(std::move(desc));
     }
 
-    VulkanGraphImageHandle VulkanPickingManager::addDepthImage(VulkanPassGraph& graph) {
+    VulkanGraphImageHandle VulkanPickingManager::addDepthImage(
+        VulkanPassGraph& graph) {
         if (!m_target.isReady()) {
             return {};
         }
@@ -126,7 +129,40 @@ namespace NexAur {
         return graph.addImage(std::move(desc));
     }
 
-    void VulkanPickingManager::beginFrameRecording() {
+    bool VulkanPickingManager::addReadbackPass(
+        VulkanPassGraph& graph,
+        VulkanGraphImageHandle object_id_image,
+        uint32_t frame_index) {
+        if (!object_id_image.valid() || frame_index >= m_readback_slots.size()) {
+            return false;
+        }
+
+        ReadbackSlot& slot = m_readback_slots[frame_index];
+        RequestState* request = findUnscheduledRequest();
+        if (request == nullptr || slot.inFlight()) {
+            return true;
+        }
+
+        request->scheduled = true;
+        request->frame_index = frame_index;
+        slot.request_id = request->id;
+        slot.recorded = false;
+        const uint64_t request_id = request->id;
+        graph.addPass("ObjectIdPickingReadback")
+            .readImage(object_id_image, VulkanGraphImageUsage::TransferSource)
+            .execute([this, frame_index, request_id](
+                VkCommandBuffer command_buffer) {
+                return recordReadback(
+                    command_buffer,
+                    frame_index,
+                    request_id);
+            });
+        return true;
+    }
+
+    void VulkanPickingManager::beginFrameRecording(uint32_t frame_index) {
+        releaseUnsubmittedRecording();
+        m_recording_frame_index = frame_index;
         m_recorded_this_frame = false;
     }
 
@@ -134,153 +170,249 @@ namespace NexAur {
         m_recorded_this_frame = true;
     }
 
-    void VulkanPickingManager::onFrameSubmitted() {
+    void VulkanPickingManager::onFrameSubmitted(
+        uint32_t frame_index,
+        uint64_t submission_serial) {
         if (m_recorded_this_frame) {
             m_frame_ready = true;
         }
+        if (frame_index >= m_readback_slots.size()) {
+            return;
+        }
+
+        ReadbackSlot& slot = m_readback_slots[frame_index];
+        if (slot.request_id == 0) {
+            return;
+        }
+        RequestState* request = findRequest(slot.request_id);
+        if (!slot.recorded || request == nullptr ||
+            request->status != ViewportPickStatus::Pending) {
+            if (request != nullptr &&
+                request->status == ViewportPickStatus::Pending) {
+                request->scheduled = false;
+            }
+            slot.clearTracking();
+            return;
+        }
+
+        slot.submission_serial = submission_serial;
+        request->submission_serial = submission_serial;
     }
 
-    ViewportPickResult VulkanPickingManager::pickViewport(const ViewportPickRequest& request) {
+    void VulkanPickingManager::onSubmissionsCompleted(
+        uint64_t completed_serial) {
+        for (ReadbackSlot& slot : m_readback_slots) {
+            if (slot.inFlight() &&
+                slot.submission_serial <= completed_serial) {
+                resolveReadback(slot);
+                slot.clearTracking();
+            }
+        }
+    }
+
+    ViewportPickResult VulkanPickingManager::pickViewport(
+        const ViewportPickRequest& request) {
         ViewportPickResult result;
         result.supported = true;
+        result.status = ViewportPickStatus::Pending;
 
-        if (!m_target.isReady() || !m_frame_ready) {
+        if (!m_target.isReady()) {
+            result.status = ViewportPickStatus::Failed;
             return result;
         }
 
+        if (request.request_id != 0) {
+            const RequestState* existing = findRequest(request.request_id);
+            if (existing == nullptr) {
+                result.request_id = request.request_id;
+                result.status = ViewportPickStatus::Failed;
+                return result;
+            }
+            return buildResult(*existing);
+        }
+
+        cancelPendingRequests();
+        pruneRequestHistory();
+
+        RequestState state;
+        state.id = m_next_request_id++;
+        state.x = request.x;
+        state.y = request.y;
         const VkExtent2D extent = m_target.getExtent();
         if (request.x < 0 || request.y < 0 ||
             request.x >= static_cast<int>(extent.width) ||
             request.y >= static_cast<int>(extent.height)) {
-            result.ready = true;
-            return result;
+            state.status = ViewportPickStatus::Ready;
         }
-
-        int32_t entity_id = -1;
-        if (!readPixel(
-                static_cast<uint32_t>(request.x),
-                static_cast<uint32_t>(request.y),
-                entity_id)) {
-            return result;
-        }
-
-        result.ready = true;
-        result.entity_id = entity_id;
-        return result;
+        m_requests.push_back(state);
+        return buildResult(m_requests.back());
     }
 
     RendererDebugPickingTargetStats VulkanPickingManager::buildDebugStats() const {
         RendererDebugPickingTargetStats stats;
         stats.ready = m_target.isReady();
         stats.frame_ready = m_frame_ready;
-        if (!stats.ready) {
-            return stats;
+        if (stats.ready) {
+            const VkExtent2D extent = m_target.getExtent();
+            stats.width = extent.width;
+            stats.height = extent.height;
+            stats.object_id_format =
+                VulkanDiagnosticsCollector::vkFormatToString(
+                    m_target.getObjectIdFormat());
+            stats.depth_format =
+                VulkanDiagnosticsCollector::vkFormatToString(
+                    m_target.getDepthFormat());
         }
 
-        const VkExtent2D extent = m_target.getExtent();
-        stats.width = extent.width;
-        stats.height = extent.height;
-        stats.object_id_format =
-            VulkanDiagnosticsCollector::vkFormatToString(m_target.getObjectIdFormat());
-        stats.depth_format =
-            VulkanDiagnosticsCollector::vkFormatToString(m_target.getDepthFormat());
+        for (const RequestState& request : m_requests) {
+            if (request.status == ViewportPickStatus::Pending) {
+                ++stats.pending_request_count;
+            }
+        }
+        for (const ReadbackSlot& slot : m_readback_slots) {
+            if (slot.inFlight()) {
+                ++stats.readback_in_flight_count;
+            }
+        }
+        if (!m_requests.empty()) {
+            stats.last_request_status =
+                pickStatusToText(m_requests.back().status);
+        }
         return stats;
     }
 
-    bool VulkanPickingManager::readPixel(uint32_t x, uint32_t y, int32_t& entity_id) {
-        if (!m_target.isReady() ||
-            m_target.getReadbackBuffer() == VK_NULL_HANDLE ||
-            m_device == VK_NULL_HANDLE ||
-            m_graphics_queue == VK_NULL_HANDLE ||
-            m_command_pool == VK_NULL_HANDLE) {
-            return false;
-        }
-
-        if (!VulkanDiagnosticsCollector::checkVk(
-                vkDeviceWaitIdle(m_device),
-                "vkDeviceWaitIdle(before picking readback)")) {
-            return false;
-        }
-
-        VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-        VkCommandBufferAllocateInfo allocate_info{};
-        allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocate_info.commandPool = m_command_pool;
-        allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocate_info.commandBufferCount = 1;
-        if (!VulkanDiagnosticsCollector::checkVk(
-                vkAllocateCommandBuffers(m_device, &allocate_info, &command_buffer),
-                "vkAllocateCommandBuffers(picking readback)")) {
-            return false;
-        }
-
-        auto free_command_buffer = [&]() {
-            if (command_buffer != VK_NULL_HANDLE) {
-                vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
-                command_buffer = VK_NULL_HANDLE;
+    void VulkanPickingManager::cancelPendingRequests() {
+        for (RequestState& request : m_requests) {
+            if (request.status == ViewportPickStatus::Pending) {
+                request.status = ViewportPickStatus::Cancelled;
             }
-        };
+        }
+    }
 
-        VkCommandBufferBeginInfo begin_info{};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        if (!VulkanDiagnosticsCollector::checkVk(
-                vkBeginCommandBuffer(command_buffer, &begin_info),
-                "vkBeginCommandBuffer(picking readback)")) {
-            free_command_buffer();
+    void VulkanPickingManager::releaseUnsubmittedRecording() {
+        if (m_recording_frame_index >= m_readback_slots.size()) {
+            return;
+        }
+
+        ReadbackSlot& slot = m_readback_slots[m_recording_frame_index];
+        if (slot.request_id == 0 || slot.inFlight()) {
+            return;
+        }
+        RequestState* request = findRequest(slot.request_id);
+        if (request != nullptr &&
+            request->status == ViewportPickStatus::Pending) {
+            request->scheduled = false;
+        }
+        slot.clearTracking();
+    }
+
+    bool VulkanPickingManager::recordReadback(
+        VkCommandBuffer command_buffer,
+        uint32_t frame_index,
+        uint64_t request_id) {
+        if (frame_index >= m_readback_slots.size() ||
+            command_buffer == VK_NULL_HANDLE) {
             return false;
         }
 
-        transitionObjectIdToTransferSource(
-            command_buffer,
-            m_target.getObjectIdImage(),
-            m_target.getObjectIdLayout());
-        m_target.setObjectIdLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        RequestState* request = findRequest(request_id);
+        ReadbackSlot& slot = m_readback_slots[frame_index];
+        if (request == nullptr ||
+            request->status != ViewportPickStatus::Pending ||
+            slot.request_id != request_id || !slot.buffer.isReady()) {
+            return false;
+        }
 
         VkBufferImageCopy copy_region{};
         copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        copy_region.imageSubresource.mipLevel = 0;
-        copy_region.imageSubresource.baseArrayLayer = 0;
         copy_region.imageSubresource.layerCount = 1;
-        copy_region.imageOffset = {
-            static_cast<int32_t>(x),
-            static_cast<int32_t>(y),
-            0
-        };
+        copy_region.imageOffset = { request->x, request->y, 0 };
         copy_region.imageExtent = { 1, 1, 1 };
-
         vkCmdCopyImageToBuffer(
             command_buffer,
             m_target.getObjectIdImage(),
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            m_target.getReadbackBuffer(),
+            slot.buffer.get(),
             1,
             &copy_region);
-
-        if (!VulkanDiagnosticsCollector::checkVk(
-                vkEndCommandBuffer(command_buffer),
-                "vkEndCommandBuffer(picking readback)")) {
-            free_command_buffer();
-            return false;
-        }
-
-        VkSubmitInfo submit_info{};
-        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &command_buffer;
-
-        const bool submitted = VulkanDiagnosticsCollector::checkVk(
-            vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE),
-            "vkQueueSubmit(picking readback)");
-        const bool waited = submitted && VulkanDiagnosticsCollector::checkVk(
-            vkQueueWaitIdle(m_graphics_queue),
-            "vkQueueWaitIdle(picking readback)");
-        free_command_buffer();
-        if (!waited) {
-            return false;
-        }
-
-        entity_id = m_target.readbackEntityId();
+        slot.recorded = true;
         return true;
+    }
+
+    bool VulkanPickingManager::resolveReadback(ReadbackSlot& slot) {
+        RequestState* request = findRequest(slot.request_id);
+        if (request == nullptr ||
+            request->status != ViewportPickStatus::Pending) {
+            return true;
+        }
+
+        void* mapped = nullptr;
+        if (!slot.buffer.map(mapped)) {
+            request->status = ViewportPickStatus::Failed;
+            return false;
+        }
+        if (!slot.buffer.isHostCoherent() && !slot.buffer.invalidate()) {
+            slot.buffer.unmap();
+            request->status = ViewportPickStatus::Failed;
+            return false;
+        }
+
+        std::memcpy(&request->entity_id, mapped, sizeof(request->entity_id));
+        slot.buffer.unmap();
+        request->status = ViewportPickStatus::Ready;
+        return true;
+    }
+
+    VulkanPickingManager::RequestState* VulkanPickingManager::findRequest(
+        uint64_t request_id) {
+        auto it = std::find_if(
+            m_requests.begin(),
+            m_requests.end(),
+            [request_id](const RequestState& request) {
+                return request.id == request_id;
+            });
+        return it != m_requests.end() ? &*it : nullptr;
+    }
+
+    const VulkanPickingManager::RequestState* VulkanPickingManager::findRequest(
+        uint64_t request_id) const {
+        auto it = std::find_if(
+            m_requests.begin(),
+            m_requests.end(),
+            [request_id](const RequestState& request) {
+                return request.id == request_id;
+            });
+        return it != m_requests.end() ? &*it : nullptr;
+    }
+
+    VulkanPickingManager::RequestState*
+    VulkanPickingManager::findUnscheduledRequest() {
+        auto it = std::find_if(
+            m_requests.rbegin(),
+            m_requests.rend(),
+            [](const RequestState& request) {
+                return request.status == ViewportPickStatus::Pending &&
+                       !request.scheduled;
+            });
+        return it != m_requests.rend() ? &*it : nullptr;
+    }
+
+    ViewportPickResult VulkanPickingManager::buildResult(
+        const RequestState& request) const {
+        ViewportPickResult result;
+        result.request_id = request.id;
+        result.status = request.status;
+        result.supported = true;
+        result.ready = request.status == ViewportPickStatus::Ready;
+        result.entity_id = request.entity_id;
+        return result;
+    }
+
+    void VulkanPickingManager::pruneRequestHistory() {
+        constexpr size_t kMaxRequestHistory = 16;
+        while (m_requests.size() >= kMaxRequestHistory &&
+               m_requests.front().status != ViewportPickStatus::Pending) {
+            m_requests.pop_front();
+        }
     }
 } // namespace NexAur

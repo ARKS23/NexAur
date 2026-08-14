@@ -2,16 +2,17 @@
 
 #include <cstdint>
 
-#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
+#include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
     class Mesh;
 
-    class NEXAUR_API VulkanMeshResource {
+    class VulkanMeshResource {
     public:
         VulkanMeshResource() = default;
         ~VulkanMeshResource();
@@ -26,13 +27,17 @@ namespace NexAur {
         void reset();
 
         bool isReady() const {
-            return m_vertex_buffer != VK_NULL_HANDLE &&
-                   m_index_buffer != VK_NULL_HANDLE &&
+            return m_upload_ticket.isReady() &&
+                   m_vertex_buffer.isReady() &&
+                   m_index_buffer.isReady() &&
                    m_index_count > 0;
         }
 
-        VkBuffer getVertexBuffer() const { return m_vertex_buffer; }
-        VkBuffer getIndexBuffer() const { return m_index_buffer; }
+        VulkanUploadStatus getUploadStatus() const {
+            return m_upload_ticket.getStatus();
+        }
+        VkBuffer getVertexBuffer() const { return m_vertex_buffer.get(); }
+        VkBuffer getIndexBuffer() const { return m_index_buffer.get(); }
         uint32_t getVertexCount() const { return m_vertex_count; }
         uint32_t getIndexCount() const { return m_index_count; }
 
@@ -40,11 +45,9 @@ namespace NexAur {
         void moveFrom(VulkanMeshResource&& other) noexcept;
 
     private:
-        VmaAllocator m_allocator = VK_NULL_HANDLE;
-        VkBuffer m_vertex_buffer = VK_NULL_HANDLE;
-        VmaAllocation m_vertex_allocation = VK_NULL_HANDLE;
-        VkBuffer m_index_buffer = VK_NULL_HANDLE;
-        VmaAllocation m_index_allocation = VK_NULL_HANDLE;
+        VulkanOwnedBuffer m_vertex_buffer;
+        VulkanOwnedBuffer m_index_buffer;
+        VulkanUploadTicket m_upload_ticket;
         uint32_t m_vertex_count = 0;
         uint32_t m_index_count = 0;
     };

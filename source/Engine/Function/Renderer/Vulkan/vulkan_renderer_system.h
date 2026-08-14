@@ -5,16 +5,33 @@
 
 #include "Core/Base.h"
 #include "Core/Events/event.h"
+#include "Function/Renderer/reflection_probe_capture_service.h"
 #include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
+#include "Function/Renderer/viewport_renderer_service.h"
 
 namespace NexAur {
+    class AssetManager;
     class WindowService;
     struct RenderDataPacket;
 
-    // Vulkan 后端。公开接口只实现 RendererService，
-    // Vulkan instance/device/swapchain 等细节隐藏在 Backend 中。
-    class NEXAUR_API VulkanRendererSystem final : public RendererService, public RendererDebugService {
+    // Non-owning services required for the lifetime of the Vulkan renderer.
+    struct VulkanRendererInitContext {
+        WindowService* window_service = nullptr;
+        AssetManager* asset_manager = nullptr;
+
+        bool valid() const {
+            return window_service != nullptr && asset_manager != nullptr;
+        }
+    };
+
+    // Vulkan backend behind the renderer facade contracts.
+    // Instance, device, and swapchain details remain private to Backend.
+    class VulkanRendererSystem final :
+        public RendererService,
+        public ViewportRendererService,
+        public ReflectionProbeCaptureService,
+        public RendererDebugService {
     public:
         VulkanRendererSystem();
         ~VulkanRendererSystem() override;
@@ -22,7 +39,7 @@ namespace NexAur {
         VulkanRendererSystem(const VulkanRendererSystem&) = delete;
         VulkanRendererSystem& operator=(const VulkanRendererSystem&) = delete;
 
-        bool init(WindowService& window_service);
+        bool init(const VulkanRendererInitContext& context);
         void shutdown();
 
         RendererBackendType getBackendType() const override { return RendererBackendType::Vulkan; }

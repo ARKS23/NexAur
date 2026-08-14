@@ -1,0 +1,18 @@
+# ProgramId|source|vertex profile|vertex entry|vertex output|fragment profile|fragment entry|fragment output
+set(NEXAUR_VULKAN_SHADER_PROGRAMS
+    "Forward|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward.vert.spv|ps_6_0|PSMain|vulkan_forward.frag.spv"
+    "ObjectId|vulkan_object_id.hlsl|vs_6_0|VSMain|vulkan_object_id.vert.spv|ps_6_0|PSMain|vulkan_object_id.frag.spv"
+    "Skybox|vulkan_skybox.hlsl|vs_6_0|VSMain|vulkan_skybox.vert.spv|ps_6_0|PSMain|vulkan_skybox.frag.spv"
+    "ShadowDepth|vulkan_shadow_depth.hlsl|vs_6_0|VSMain|vulkan_shadow_depth.vert.spv|NONE|NONE|NONE"
+    "DebugDraw|vulkan_debug_draw.hlsl|vs_6_0|VSMain|vulkan_debug_draw.vert.spv|ps_6_0|PSMain|vulkan_debug_draw.frag.spv"
+    "PostProcess|vulkan_post_process.hlsl|vs_6_0|VSMain|vulkan_post_process.vert.spv|ps_6_0|PSMain|vulkan_post_process.frag.spv"
+    "BloomDownsample|bloom/vulkan_bloom_downsample.hlsl|vs_6_0|VSMain|vulkan_bloom_downsample.vert.spv|ps_6_0|PSMain|vulkan_bloom_downsample.frag.spv"
+    "BloomUpsample|bloom/vulkan_bloom_upsample.hlsl|vs_6_0|VSMain|vulkan_bloom_upsample.vert.spv|ps_6_0|PSMain|vulkan_bloom_upsample.frag.spv"
+    "BloomComposite|bloom/vulkan_bloom_composite.hlsl|vs_6_0|VSMain|vulkan_bloom_composite.vert.spv|ps_6_0|PSMain|vulkan_bloom_composite.frag.spv"
+    "Ssao|ao/vulkan_ssao.hlsl|vs_6_0|VSMain|vulkan_ssao.vert.spv|ps_6_0|PSMain|vulkan_ssao.frag.spv"
+    "AoBlur|ao/vulkan_ao_blur.hlsl|vs_6_0|VSMain|vulkan_ao_blur.vert.spv|ps_6_0|PSMain|vulkan_ao_blur.frag.spv"
+    "SsrTrace|reflection/vulkan_ssr_trace.hlsl|vs_6_0|VSMain|vulkan_ssr_trace.vert.spv|ps_6_0|PSMain|vulkan_ssr_trace.frag.spv"
+    "SmaaEdge|post/vulkan_smaa_edge.hlsl|vs_6_0|VSMain|vulkan_smaa_edge.vert.spv|ps_6_0|PSMain|vulkan_smaa_edge.frag.spv"
+    "SmaaBlend|post/vulkan_smaa_blend.hlsl|vs_6_0|VSMain|vulkan_smaa_blend.vert.spv|ps_6_0|PSMain|vulkan_smaa_blend.frag.spv"
+    "SmaaNeighborhood|post/vulkan_smaa_neighborhood.hlsl|vs_6_0|VSMain|vulkan_smaa_neighborhood.vert.spv|ps_6_0|PSMain|vulkan_smaa_neighborhood.frag.spv"
+)

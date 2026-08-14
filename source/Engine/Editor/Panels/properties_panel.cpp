@@ -7,7 +7,7 @@
 #include "Function/Resource/asset_manager.h"
 #include "Function/Resource/material_asset.h"
 #include "Function/Resource/model.h"
-#include "Function/Renderer/renderer_service.h"
+#include "Function/Renderer/reflection_probe_capture_service.h"
 #include "Function/Scene/component.h"
 #include "Function/Scene/procedural_primitive_entity.h"
 
@@ -749,8 +749,8 @@ namespace NexAur {
 
         const int probe_entity_id = static_cast<int>(static_cast<uint32_t>(entity));
         const ReflectionProbeCaptureState capture_state =
-            m_context && m_context->renderer_service ?
-                m_context->renderer_service->getReflectionProbeCaptureState(probe_entity_id) :
+            m_context && m_context->reflection_probe_capture_service ?
+                m_context->reflection_probe_capture_service->getReflectionProbeCaptureState(probe_entity_id) :
                 ReflectionProbeCaptureState{};
         EditorPropertyDrawer::drawReadOnlyText(
             "Capture Status",
@@ -767,7 +767,7 @@ namespace NexAur {
 
         EditorWidgets::propertyRow("Capture", [&]() {
             auto request_capture = [&](ReflectionProbeCaptureKind kind) {
-                if (!m_context || !m_context->renderer_service) {
+                if (!m_context || !m_context->reflection_probe_capture_service) {
                     return;
                 }
 
@@ -781,11 +781,11 @@ namespace NexAur {
                 request.kind = kind;
                 request.input_hash = transform ? probe.computeCaptureInputHash(*transform) : 0;
                 probe.capture_dirty = true;
-                m_context->renderer_service->requestReflectionProbeCapture(request);
+                m_context->reflection_probe_capture_service->requestReflectionProbeCapture(request);
             };
 
             const bool can_capture =
-                probe.enabled && transform && m_context && m_context->renderer_service;
+                probe.enabled && transform && m_context && m_context->reflection_probe_capture_service;
             ImGui::BeginDisabled(!can_capture);
             if (ImGui::Button("Capture Probe")) {
                 request_capture(ReflectionProbeCaptureKind::Capture);
@@ -797,12 +797,12 @@ namespace NexAur {
             ImGui::SameLine();
             const bool can_clear =
                 m_context &&
-                m_context->renderer_service &&
+                m_context->reflection_probe_capture_service &&
                 (capture_state.runtime_resource_ready || probe.baked_environment_asset);
             ImGui::BeginDisabled(!can_clear);
             if (ImGui::Button("Clear Baked Data")) {
                 const bool cleared_runtime =
-                    m_context->renderer_service->clearReflectionProbeCapture(probe_entity_id);
+                    m_context->reflection_probe_capture_service->clearReflectionProbeCapture(probe_entity_id);
                 if (cleared_runtime || probe.baked_environment_asset) {
                     probe.baked_environment_asset = AssetHandle();
                     probe.capture_dirty = true;

@@ -15,6 +15,7 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 #include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
 
 #include <string>
@@ -29,6 +30,21 @@ namespace NexAur {
             NX_CORE_ERROR("{} failed: {}", operation, static_cast<int>(result));
             return false;
         }
+
+        template<typename T>
+        void retireResource(
+            VulkanRetirementQueue* retirement_queue,
+            std::unique_ptr<T>& resource) {
+            if (!resource) {
+                return;
+            }
+
+            if (retirement_queue != nullptr) {
+                retirement_queue->retire(std::move(resource));
+            } else {
+                resource.reset();
+            }
+        }
     } // namespace
 
     VulkanRenderResourceCache::~VulkanRenderResourceCache() {
@@ -38,7 +54,8 @@ namespace NexAur {
     bool VulkanRenderResourceCache::init(
         const VulkanResourceContext& context,
         VulkanDescriptorLayoutCache& descriptor_layout_cache,
-        VulkanDescriptorAllocator& descriptor_allocator) {
+        VulkanDescriptorAllocator& descriptor_allocator,
+        AssetManager& asset_manager) {
         if (m_initialized) {
             return true;
         }
@@ -55,7 +72,9 @@ namespace NexAur {
         m_graphics_queue = context.graphics_queue;
         m_descriptor_layout_cache = &descriptor_layout_cache;
         m_descriptor_allocator = &descriptor_allocator;
-        if (!createUploadCommandPool(context) ||
+        m_retirement_queue = context.retirement_queue;
+        if (!m_upload_manager.init(context) ||
+            !createUploadCommandPool(context) ||
             !resolveDescriptorLayouts()) {
             shutdown();
             return false;
@@ -63,7 +82,7 @@ namespace NexAur {
 
         m_initialized = true;
         if (!createFallbackTexture() ||
-            !createFallbackMaterial() ||
+            !createFallbackMaterial(asset_manager) ||
             !createFallbackEnvironment()) {
             shutdown();
             return false;
@@ -74,6 +93,22 @@ namespace NexAur {
     }
 
     void VulkanRenderResourceCache::clear() {
+        for (auto& [asset_handle, model] : m_model_cache) {
+            (void)asset_handle;
+            retireResource(m_retirement_queue, model);
+        }
+        for (auto& [asset_handle, material] : m_material_cache) {
+            (void)asset_handle;
+            retireResource(m_retirement_queue, material.resource);
+        }
+        for (auto& [asset_handle, texture] : m_texture_cache) {
+            (void)asset_handle;
+            retireResource(m_retirement_queue, texture);
+        }
+        for (auto& [asset_handle, environment] : m_environment_cache) {
+            (void)asset_handle;
+            retireResource(m_retirement_queue, environment);
+        }
         m_model_cache.clear();
         m_material_cache.clear();
         m_texture_cache.clear();
@@ -83,14 +118,16 @@ namespace NexAur {
     void VulkanRenderResourceCache::shutdown() {
         if (!m_initialized &&
             m_gpu_allocator == nullptr &&
-            m_upload_command_pool == VK_NULL_HANDLE) {
+            m_upload_command_pool == VK_NULL_HANDLE &&
+            !m_upload_manager.isInitialized()) {
             return;
         }
 
         clear();
-        m_fallback_environment.reset();
-        m_fallback_material.reset();
-        m_fallback_white_texture.reset();
+        retireResource(m_retirement_queue, m_fallback_environment);
+        retireResource(m_retirement_queue, m_fallback_material);
+        retireResource(m_retirement_queue, m_fallback_white_texture);
+        m_upload_manager.shutdown();
         if (m_upload_command_pool != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
             vkDestroyCommandPool(m_device, m_upload_command_pool, nullptr);
             m_upload_command_pool = VK_NULL_HANDLE;
@@ -101,10 +138,42 @@ namespace NexAur {
         m_graphics_queue = VK_NULL_HANDLE;
         m_descriptor_layout_cache = nullptr;
         m_descriptor_allocator = nullptr;
+        m_retirement_queue = nullptr;
         m_material_descriptor_set_layout = VK_NULL_HANDLE;
         m_environment_descriptor_set_layout = VK_NULL_HANDLE;
         m_initialized = false;
         NX_CORE_INFO("VulkanRenderResourceCache shutdown.");
+    }
+
+    bool VulkanRenderResourceCache::processUploads() {
+        return !m_initialized || m_upload_manager.processFrame();
+    }
+
+    void VulkanRenderResourceCache::refreshAsyncResources(
+        AssetManager& asset_manager) {
+        if (!m_initialized) {
+            return;
+        }
+
+        for (auto& [asset_handle, model] : m_model_cache) {
+            (void)asset_handle;
+            if (model) {
+                model->refreshMaterials(*this, asset_manager);
+            }
+        }
+    }
+
+    uint64_t VulkanRenderResourceCache::collectCompletedUploadSerial() const {
+        return m_upload_manager.collectCompletedSerial();
+    }
+
+    void VulkanRenderResourceCache::onSubmissionsCompleted(
+        uint64_t completed_serial) {
+        m_upload_manager.onSubmissionsCompleted(completed_serial);
+    }
+
+    VulkanUploadManagerStats VulkanRenderResourceCache::getUploadStats() const {
+        return m_upload_manager.getStats();
     }
 
     VulkanModelResource* VulkanRenderResourceCache::getOrCreateModel(AssetHandle model_asset, AssetManager& asset_manager) {
@@ -245,6 +314,10 @@ namespace NexAur {
             return cached_it->second.resource.get();
         }
 
+        if (!areMaterialTexturesReady(*cpu_material, asset_manager)) {
+            return getFallbackMaterial();
+        }
+
         auto material_resource = std::make_unique<VulkanMaterialResource>();
         if (!createMaterialResource(*material_resource, *cpu_material, asset_manager)) {
             NX_CORE_ERROR("Failed to create Vulkan material resource: {}", cpu_material->getDebugName());
@@ -252,10 +325,16 @@ namespace NexAur {
         }
 
         VulkanMaterialResource* material_resource_ptr = material_resource.get();
-        m_material_cache[material_asset] = CachedMaterialResource{
+        CachedMaterialResource replacement{
             std::move(material_resource),
             generation
         };
+        if (cached_it != m_material_cache.end()) {
+            retireResource(m_retirement_queue, cached_it->second.resource);
+            cached_it->second = std::move(replacement);
+        } else {
+            m_material_cache.emplace(material_asset, std::move(replacement));
+        }
         return material_resource_ptr;
     }
 
@@ -432,13 +511,13 @@ namespace NexAur {
             return false;
         }
 
-        auto resolve_texture = [&](AssetHandle texture_asset) {
+        auto resolve_texture = [&](AssetHandle texture_asset) -> VulkanTextureResource* {
             if (!texture_asset) {
                 return fallback_texture;
             }
 
             VulkanTextureResource* texture = getOrCreateTexture(texture_asset, asset_manager);
-            return texture && texture->isReady() ? texture : fallback_texture;
+            return texture && texture->isReady() ? texture : nullptr;
         };
 
         VulkanMaterialTextureSet textures;
@@ -450,7 +529,36 @@ namespace NexAur {
         textures.ao = resolve_texture(material_asset.getAOTexture());
         textures.emissive = resolve_texture(material_asset.getEmissiveTexture());
 
+        if (!textures.valid()) {
+            return false;
+        }
+
         return material_resource.create(createMaterialContext(), material_asset, textures);
+    }
+
+    bool VulkanRenderResourceCache::areMaterialTexturesReady(
+        const MaterialAsset& material_asset,
+        AssetManager& asset_manager) {
+        const AssetHandle texture_assets[] = {
+            material_asset.getBaseColorTexture(),
+            material_asset.getNormalTexture(),
+            material_asset.getMetallicTexture(),
+            material_asset.getRoughnessTexture(),
+            material_asset.getMetallicRoughnessTexture(),
+            material_asset.getAOTexture(),
+            material_asset.getEmissiveTexture()
+        };
+
+        bool ready = true;
+        for (AssetHandle texture_asset : texture_assets) {
+            if (!texture_asset) {
+                continue;
+            }
+            VulkanTextureResource* texture =
+                getOrCreateTexture(texture_asset, asset_manager);
+            ready = ready && texture != nullptr && texture->isReady();
+        }
+        return ready;
     }
 
     bool VulkanRenderResourceCache::createUploadCommandPool(const VulkanResourceContext& context) {
@@ -508,17 +616,23 @@ namespace NexAur {
             return false;
         }
 
+        if (!m_upload_manager.waitUntilReady(
+                fallback_resource->getUploadTicket())) {
+            NX_CORE_ERROR("Failed to complete Vulkan fallback white texture upload.");
+            return false;
+        }
+
         m_fallback_white_texture = std::move(fallback_resource);
         return true;
     }
 
-    bool VulkanRenderResourceCache::createFallbackMaterial() {
+    bool VulkanRenderResourceCache::createFallbackMaterial(AssetManager& asset_manager) {
         MaterialImportData import_data;
         import_data.name = "FallbackMaterial";
         MaterialAsset fallback_material(import_data, AssetHandle());
 
         auto material_resource = std::make_unique<VulkanMaterialResource>();
-        if (!createMaterialResource(*material_resource, fallback_material, AssetManager::getInstance())) {
+        if (!createMaterialResource(*material_resource, fallback_material, asset_manager)) {
             NX_CORE_ERROR("Failed to create Vulkan fallback material.");
             return false;
         }
@@ -538,8 +652,11 @@ namespace NexAur {
         return true;
     }
 
-    VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() const {
+    VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() {
         VulkanResourceUploadContext context;
+        context.gpu_allocator = m_gpu_allocator;
+        context.retirement_queue = m_retirement_queue;
+        context.upload_manager = &m_upload_manager;
         context.allocator = m_gpu_allocator ? m_gpu_allocator->getHandle() : VK_NULL_HANDLE;
         context.physical_device = m_physical_device;
         context.device = m_device;
@@ -548,7 +665,7 @@ namespace NexAur {
         return context;
     }
 
-    VulkanMaterialResourceCreateContext VulkanRenderResourceCache::createMaterialContext() const {
+    VulkanMaterialResourceCreateContext VulkanRenderResourceCache::createMaterialContext() {
         VulkanMaterialResourceCreateContext context;
         context.upload_context = createUploadContext();
         context.descriptor_allocator = m_descriptor_allocator;
@@ -556,7 +673,7 @@ namespace NexAur {
         return context;
     }
 
-    VulkanEnvironmentResourceCreateContext VulkanRenderResourceCache::createEnvironmentContext() const {
+    VulkanEnvironmentResourceCreateContext VulkanRenderResourceCache::createEnvironmentContext() {
         VulkanEnvironmentResourceCreateContext context;
         context.upload_context = createUploadContext();
         context.descriptor_allocator = m_descriptor_allocator;

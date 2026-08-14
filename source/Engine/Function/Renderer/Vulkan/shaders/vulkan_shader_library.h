@@ -6,26 +6,9 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "vulkan_shader_manifest.generated.h"
 
 namespace NexAur {
-    enum class VulkanShaderProgramId : uint8_t {
-        Forward = 0,
-        ObjectId,
-        Skybox,
-        ShadowDepth,
-        DebugDraw,
-        PostProcess,
-        BloomDownsample,
-        BloomUpsample,
-        BloomComposite,
-        Ssao,
-        AoBlur,
-        SsrTrace,
-        SmaaEdge,
-        SmaaBlend,
-        SmaaNeighborhood
-    };
-
     struct VulkanShaderProgram {
         VkShaderModule vertex_module = VK_NULL_HANDLE;
         VkShaderModule fragment_module = VK_NULL_HANDLE;
@@ -41,7 +24,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanShaderLibrary {
+    class VulkanShaderLibrary {
     public:
         VulkanShaderLibrary() = default;
         ~VulkanShaderLibrary();

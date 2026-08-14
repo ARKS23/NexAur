@@ -35,7 +35,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanSkyboxPass {
+    class VulkanSkyboxPass {
     public:
         VulkanSkyboxPass() = default;
         ~VulkanSkyboxPass();

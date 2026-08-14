@@ -10,7 +10,7 @@
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
-    class NEXAUR_API VulkanViewportTarget {
+    class VulkanViewportTarget {
     public:
         VulkanViewportTarget() = default;
         ~VulkanViewportTarget();

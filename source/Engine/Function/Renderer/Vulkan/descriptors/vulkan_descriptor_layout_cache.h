@@ -8,7 +8,7 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_types.h"
 
 namespace NexAur {
-    class NEXAUR_API VulkanDescriptorLayoutCache {
+    class VulkanDescriptorLayoutCache {
     public:
         VulkanDescriptorLayoutCache() = default;
         ~VulkanDescriptorLayoutCache();

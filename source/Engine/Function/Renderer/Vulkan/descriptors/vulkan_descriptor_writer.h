@@ -7,7 +7,7 @@
 #include "Core/Base.h"
 
 namespace NexAur {
-    class NEXAUR_API VulkanDescriptorWriter {
+    class VulkanDescriptorWriter {
     public:
         VulkanDescriptorWriter& writeBuffer(
             uint32_t binding,

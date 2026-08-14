@@ -23,7 +23,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanShadowPass {
+    class VulkanShadowPass {
     public:
         VulkanShadowPass() = default;
         ~VulkanShadowPass();
@@ -39,6 +39,11 @@ namespace NexAur {
             const VulkanDepthRenderTarget& target,
             const VulkanDrawList& draw_list,
             const glm::mat4& light_view_projection);
+
+        bool isReady() const {
+            return m_pipeline != VK_NULL_HANDLE &&
+                   m_pipeline_layout != VK_NULL_HANDLE;
+        }
 
     private:
         bool createPipeline();

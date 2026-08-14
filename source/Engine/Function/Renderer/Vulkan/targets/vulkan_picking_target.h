@@ -10,7 +10,7 @@
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
-    class NEXAUR_API VulkanPickingTarget {
+    class VulkanPickingTarget {
     public:
         VulkanPickingTarget() = default;
         ~VulkanPickingTarget();
@@ -37,9 +37,6 @@ namespace NexAur {
         void setObjectIdLayout(VkImageLayout layout) { m_object_id_image.setLayout(layout); }
         void setDepthLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
 
-        VkBuffer getReadbackBuffer() const { return m_readback_buffer.get(); }
-        int32_t readbackEntityId() const;
-
         VulkanRenderTarget getRenderTarget() const;
 
     private:
@@ -51,9 +48,7 @@ namespace NexAur {
             VkImageUsageFlags usage,
             VkImageAspectFlags aspect,
             VulkanOwnedImage& image);
-        bool createReadbackBuffer();
         void cleanupImages();
-        void cleanupReadbackBuffer();
 
     private:
         VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
@@ -66,8 +61,6 @@ namespace NexAur {
         VulkanOwnedImage m_object_id_image;
 
         VulkanOwnedImage m_depth_image;
-
-        VulkanOwnedBuffer m_readback_buffer;
 
         bool m_ready = false;
     };

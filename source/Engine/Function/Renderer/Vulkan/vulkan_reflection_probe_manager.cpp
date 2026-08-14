@@ -2,6 +2,7 @@
 #include "vulkan_reflection_probe_manager.h"
 
 #include "Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h"
+#include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
@@ -177,33 +178,43 @@ namespace NexAur {
 
     bool VulkanReflectionProbeManager::init(
         const VulkanResourceContext& context,
-        VkCommandPool command_pool,
         VkFormat color_format,
         VkFormat depth_format) {
         shutdown();
 
         if (!context.valid() ||
             context.gpu_allocator == nullptr ||
-            command_pool == VK_NULL_HANDLE ||
             color_format == VK_FORMAT_UNDEFINED ||
             depth_format == VK_FORMAT_UNDEFINED) {
-            NX_CORE_ERROR("VulkanReflectionProbeManager requires a valid Vulkan context, command pool, and formats.");
+            NX_CORE_ERROR("VulkanReflectionProbeManager requires a valid Vulkan context and formats.");
             return false;
         }
 
         m_resource_context = context;
-        m_command_pool = command_pool;
+        m_retirement_queue = context.retirement_queue;
         m_color_format = color_format;
         m_depth_format = depth_format;
+        if (!createCommandPool(context.graphics_queue_family)) {
+            shutdown();
+            return false;
+        }
         m_initialized = true;
         return true;
     }
 
     void VulkanReflectionProbeManager::shutdown() {
         m_pending_captures.clear();
-        m_captures.clear();
+        clearCaptures();
         m_capture_target.shutdown();
+        if (m_resource_context.device != VK_NULL_HANDLE &&
+            m_command_pool != VK_NULL_HANDLE) {
+            vkDestroyCommandPool(
+                m_resource_context.device,
+                m_command_pool,
+                nullptr);
+        }
         m_resource_context = {};
+        m_retirement_queue = nullptr;
         m_command_pool = VK_NULL_HANDLE;
         m_color_format = VK_FORMAT_UNDEFINED;
         m_depth_format = VK_FORMAT_UNDEFINED;
@@ -244,7 +255,12 @@ namespace NexAur {
         }
 
         const bool removed_pending = erasePendingCapture(entity_id);
-        const bool removed_capture = m_captures.erase(entity_id) > 0;
+        const auto capture_it = m_captures.find(entity_id);
+        const bool removed_capture = capture_it != m_captures.end();
+        if (removed_capture) {
+            retireEnvironment(capture_it->second);
+            m_captures.erase(capture_it);
+        }
         return removed_pending || removed_capture;
     }
 
@@ -338,7 +354,7 @@ namespace NexAur {
         }
 
         m_pending_captures.clear();
-        m_captures.clear();
+        clearCaptures();
         m_pinned_capture_count = 0;
         m_last_captured_entity_id = -1;
         m_active_scene_id = scene_id;
@@ -350,11 +366,31 @@ namespace NexAur {
             const int entity_id = capture_it->first;
             if (!hasPendingCapture(entity_id) &&
                 findProbeReference(scene_frame, entity_id) == nullptr) {
+                retireEnvironment(capture_it->second);
                 capture_it = m_captures.erase(capture_it);
                 continue;
             }
 
             ++capture_it;
+        }
+    }
+
+    void VulkanReflectionProbeManager::clearCaptures() {
+        for (auto& [entity_id, capture] : m_captures) {
+            (void)entity_id;
+            retireEnvironment(capture);
+        }
+        m_captures.clear();
+    }
+
+    void VulkanReflectionProbeManager::retireEnvironment(RuntimeCapture& capture) {
+        if (!capture.environment) {
+            return;
+        }
+        if (m_retirement_queue != nullptr) {
+            m_retirement_queue->retire(std::move(capture.environment));
+        } else {
+            capture.environment.reset();
         }
     }
 
@@ -469,7 +505,7 @@ namespace NexAur {
         }
 
         RuntimeCapture& capture = capture_it->second;
-        capture.environment.reset();
+        retireEnvironment(capture);
         capture.baked_asset = AssetHandle{};
         capture.bake_pin_until_frame = 0;
         capture.state.status = ReflectionProbeCaptureStatus::Failed;
@@ -619,6 +655,7 @@ namespace NexAur {
                 continue;
             }
 
+            retireEnvironment(capture);
             capture.environment = std::move(runtime_environment);
             capture.generation = ++m_capture_generation;
             capture.last_used_frame = scene_frame.frame_serial;
@@ -808,6 +845,23 @@ namespace NexAur {
             return false;
         }
         return true;
+    }
+
+    bool VulkanReflectionProbeManager::createCommandPool(
+        uint32_t queue_family_index) {
+        VkCommandPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool_info.flags =
+            VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+            VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        pool_info.queueFamilyIndex = queue_family_index;
+        return VulkanDiagnosticsCollector::checkVk(
+            vkCreateCommandPool(
+                m_resource_context.device,
+                &pool_info,
+                nullptr,
+                &m_command_pool),
+            "vkCreateCommandPool(reflection probe)");
     }
 
     bool VulkanReflectionProbeManager::submitImmediateCommands(

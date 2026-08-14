@@ -191,41 +191,83 @@ set(NEXAUR_ENGINE_FUNCTION_FILES
 set(NEXAUR_ENGINE_RENDERER_FILES
     Function/Renderer/renderer_module.h
     Function/Renderer/renderer_module.cpp
+    Function/Renderer/reflection_probe_capture_service.h
     Function/Renderer/renderer_debug_service.h
     Function/Renderer/data/render_context.h
     Function/Renderer/data/render_data.h
-    Function/Renderer/data/render_debug_draw_builder.h
-    Function/Renderer/data/render_debug_draw_builder.cpp
     Function/Renderer/data/render_debug_draw.h
     Function/Renderer/data/render_settings.h
     Function/Renderer/data/render_shadow_cascade.h
     Function/Renderer/renderer_service.h
     Function/Renderer/renderer_service_types.h
+    Function/Renderer/viewport_renderer_service.h
 )
 
-set(NEXAUR_ENGINE_VULKAN_SHADER_FILES
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_forward.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_object_id.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_skybox.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_shadow_depth.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_debug_draw.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/vulkan_post_process.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/color_grading.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_brdf.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_ibl.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_material.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/pbr_reflection_probe.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/shadow_sampling.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/common/vulkan_fullscreen_triangle.hlsli"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/ao/vulkan_ssao.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/ao/vulkan_ao_blur.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_downsample.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_upsample.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/bloom/vulkan_bloom_composite.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/reflection/vulkan_ssr_trace.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/post/vulkan_smaa_edge.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/post/vulkan_smaa_blend.hlsl"
-    "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan/post/vulkan_smaa_neighborhood.hlsl"
+set(NEXAUR_VULKAN_SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan")
+set(NEXAUR_VULKAN_SHADER_MANIFEST
+    "${CMAKE_CURRENT_SOURCE_DIR}/Function/Renderer/Vulkan/shaders/vulkan_shader_manifest.cmake")
+set(NEXAUR_VULKAN_SHADER_HEADER_TEMPLATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/Function/Renderer/Vulkan/shaders/vulkan_shader_manifest.generated.h.in")
+include("${NEXAUR_VULKAN_SHADER_MANIFEST}")
+
+set(NEXAUR_ENGINE_VULKAN_SHADER_FILES)
+set(NEXAUR_VULKAN_SHADER_ENUM_ENTRIES)
+set(NEXAUR_VULKAN_SHADER_TABLE_ENTRIES)
+foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
+    string(REPLACE "|" ";" shader_fields "${shader_program}")
+    list(LENGTH shader_fields shader_field_count)
+    if(NOT shader_field_count EQUAL 8)
+        message(FATAL_ERROR "Invalid Vulkan shader manifest record: ${shader_program}")
+    endif()
+
+    list(GET shader_fields 0 program_id)
+    list(GET shader_fields 1 source_file)
+    list(GET shader_fields 3 vertex_entry)
+    list(GET shader_fields 4 vertex_output)
+    list(GET shader_fields 5 fragment_profile)
+    list(GET shader_fields 6 fragment_entry)
+    list(GET shader_fields 7 fragment_output)
+
+    list(APPEND NEXAUR_ENGINE_VULKAN_SHADER_FILES
+        "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/${source_file}")
+    string(APPEND NEXAUR_VULKAN_SHADER_ENUM_ENTRIES "        ${program_id},\n")
+
+    if(fragment_profile STREQUAL "NONE")
+        set(fragment_file_literal "nullptr")
+        set(fragment_entry_literal "nullptr")
+        set(has_fragment_stage "false")
+    else()
+        set(fragment_file_literal "\"${fragment_output}\"")
+        set(fragment_entry_literal "\"${fragment_entry}\"")
+        set(has_fragment_stage "true")
+    endif()
+    string(APPEND NEXAUR_VULKAN_SHADER_TABLE_ENTRIES
+        "            VulkanShaderManifestEntry{ \"${vertex_output}\", ${fragment_file_literal}, \"${vertex_entry}\", ${fragment_entry_literal}, ${has_fragment_stage} },\n")
+endforeach()
+list(REMOVE_DUPLICATES NEXAUR_ENGINE_VULKAN_SHADER_FILES)
+
+file(GLOB_RECURSE NEXAUR_VULKAN_SHADER_INCLUDE_FILES CONFIGURE_DEPENDS
+    "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/*.hlsli")
+list(APPEND NEXAUR_ENGINE_VULKAN_SHADER_FILES ${NEXAUR_VULKAN_SHADER_INCLUDE_FILES})
+
+set(NEXAUR_RENDERER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${NEXAUR_RENDERER_GENERATED_DIR}")
+list(LENGTH NEXAUR_VULKAN_SHADER_PROGRAMS NEXAUR_VULKAN_SHADER_PROGRAM_COUNT)
+configure_file(
+    "${NEXAUR_VULKAN_SHADER_HEADER_TEMPLATE}"
+    "${NEXAUR_RENDERER_GENERATED_DIR}/vulkan_shader_manifest.generated.h"
+    @ONLY
+)
+
+set(NEXAUR_RENDERER_FRONTEND_FILES
+    Function/Renderer/data/render_debug_draw_builder.h
+    Function/Renderer/data/render_debug_draw_builder.cpp
+    Function/Renderer/data/render_scene_frame.h
+    Function/Renderer/data/render_view.h
+    Function/Renderer/frontend/render_scene_frame_builder.h
+    Function/Renderer/frontend/render_scene_frame_builder.cpp
+    Function/Renderer/frontend/render_shadow_frame_builder.h
+    Function/Renderer/frontend/render_shadow_frame_builder.cpp
 )
 
 set_source_files_properties(
@@ -235,13 +277,7 @@ set_source_files_properties(
         VS_TOOL_OVERRIDE "None"
 )
 
-set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
-    Function/Renderer/data/render_scene_frame.h
-    Function/Renderer/data/render_view.h
-    Function/Renderer/frontend/render_scene_frame_builder.h
-    Function/Renderer/frontend/render_scene_frame_builder.cpp
-    Function/Renderer/frontend/render_shadow_frame_builder.h
-    Function/Renderer/frontend/render_shadow_frame_builder.cpp
+set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h
     Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.cpp
     Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h
@@ -258,12 +294,32 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.cpp
     Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.h
     Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.cpp
+    Function/Renderer/Vulkan/frame/vulkan_frame_constants.h
+    Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.h
+    Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.cpp
+    Function/Renderer/Vulkan/frame/vulkan_frame_context.h
+    Function/Renderer/Vulkan/frame/vulkan_frame_context.cpp
     Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h
     Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.cpp
+    Function/Renderer/Vulkan/features/vulkan_render_feature_context.h
+    Function/Renderer/Vulkan/features/vulkan_ao_feature.h
+    Function/Renderer/Vulkan/features/vulkan_ao_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_ssr_feature.h
+    Function/Renderer/Vulkan/features/vulkan_ssr_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_bloom_feature.h
+    Function/Renderer/Vulkan/features/vulkan_bloom_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_smaa_feature.h
+    Function/Renderer/Vulkan/features/vulkan_smaa_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_shadow_feature.h
+    Function/Renderer/Vulkan/features/vulkan_shadow_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_post_process_feature.h
+    Function/Renderer/Vulkan/features/vulkan_post_process_feature.cpp
     Function/Renderer/Vulkan/core/vulkan_device_context.h
     Function/Renderer/Vulkan/core/vulkan_device_context.cpp
     Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h
     Function/Renderer/Vulkan/core/vulkan_gpu_allocator.cpp
+    Function/Renderer/Vulkan/core/vulkan_retirement_queue.h
+    Function/Renderer/Vulkan/core/vulkan_retirement_queue.cpp
     Function/Renderer/Vulkan/core/vulkan_owned_resources.h
     Function/Renderer/Vulkan/core/vulkan_owned_resources.cpp
     Function/Renderer/Vulkan/core/vulkan_swapchain_manager.h
@@ -302,12 +358,16 @@ set(NEXAUR_ENGINE_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/pipeline/vulkan_pipeline_cache.cpp
     Function/Renderer/Vulkan/shaders/vulkan_shader_library.h
     Function/Renderer/Vulkan/shaders/vulkan_shader_library.cpp
+    Function/Renderer/Vulkan/shaders/vulkan_shader_manifest.cmake
+    Function/Renderer/Vulkan/shaders/vulkan_shader_manifest.generated.h.in
     Function/Renderer/Vulkan/vulkan_render_target.h
     Function/Renderer/Vulkan/vulkan_resource_context.h
     Function/Renderer/Vulkan/vulkan_picking_manager.h
     Function/Renderer/Vulkan/vulkan_picking_manager.cpp
     Function/Renderer/Vulkan/vulkan_reflection_probe_manager.h
     Function/Renderer/Vulkan/vulkan_reflection_probe_manager.cpp
+    Function/Renderer/Vulkan/upload/vulkan_upload_manager.h
+    Function/Renderer/Vulkan/upload/vulkan_upload_manager.cpp
     Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h
     Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.cpp
     Function/Renderer/Vulkan/resources/vulkan_environment_resource.h
@@ -360,13 +420,20 @@ set(NEXAUR_ENGINE_CODE_FILES
     ${NEXAUR_ENGINE_EDITOR_FILES}
     ${NEXAUR_ENGINE_FUNCTION_FILES}
     ${NEXAUR_ENGINE_RENDERER_FILES}
-    ${NEXAUR_ENGINE_RENDERER_VULKAN_FILES}
     ${NEXAUR_ENGINE_THIRD_PARTY_FILES}
 )
 
 set(NEXAUR_ENGINE_FILES
     ${NEXAUR_ENGINE_CODE_FILES}
     ${NEXAUR_ENGINE_VULKAN_SHADER_FILES}
+)
+
+add_library(NexAurRendererFrontend STATIC ${NEXAUR_RENDERER_FRONTEND_FILES})
+add_library(NexAurRendererVulkan STATIC ${NEXAUR_RENDERER_VULKAN_FILES})
+set_target_properties(
+    NexAurRendererFrontend
+    NexAurRendererVulkan
+    PROPERTIES POSITION_INDEPENDENT_CODE ON
 )
 
 # 创建对应的库类型
@@ -382,16 +449,29 @@ else()
 endif()
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${NEXAUR_ENGINE_CODE_FILES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${NEXAUR_RENDERER_FRONTEND_FILES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${NEXAUR_RENDERER_VULKAN_FILES})
 source_group(TREE "${CMAKE_SOURCE_DIR}/assets" PREFIX "Assets" FILES ${NEXAUR_ENGINE_VULKAN_SHADER_FILES})
 
 target_compile_features(NexAurEngine PUBLIC cxx_std_20)
+target_compile_features(NexAurRendererFrontend PUBLIC cxx_std_20)
+target_compile_features(NexAurRendererVulkan PUBLIC cxx_std_20)
 
 # 预编译头
 target_precompile_headers(NexAurEngine PRIVATE pch.h)
+target_precompile_headers(NexAurRendererFrontend PRIVATE pch.h)
+target_precompile_headers(NexAurRendererVulkan PRIVATE pch.h)
 
 # 设置头文件路径
 target_include_directories(NexAurEngine PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_include_directories(NexAurRendererFrontend PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_include_directories(NexAurRendererVulkan PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${NEXAUR_RENDERER_GENERATED_DIR}"
 )
 
 # 链接第三方库
@@ -442,60 +522,94 @@ target_link_libraries(NexAurEngine PUBLIC
 
 target_link_libraries(NexAurEngine PRIVATE
     ${NEXAUR_ASSIMP_TARGET}
-    Vulkan::Vulkan
-    vk-bootstrap::vk-bootstrap
-    volk::volk
-    GPUOpen::VulkanMemoryAllocator
+    NexAurRendererFrontend
+    NexAurRendererVulkan
 )
 
-set(NEXAUR_VULKAN_SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets/shaders/Renderer/Vulkan")
-set(NEXAUR_VULKAN_SHADER_OUTPUT_DIR "$<TARGET_FILE_DIR:NexAurEngine>/shaders/Renderer/Vulkan")
+target_link_libraries(NexAurRendererFrontend
+    PUBLIC
+        ${NEXAUR_GLM_TARGET}
+    PRIVATE
+        ${NEXAUR_ENTT_TARGET}
+        ${NEXAUR_GLFW_TARGET}
+        ${NEXAUR_SPDLOG_TARGET}
+)
 
-function(nexaur_add_vulkan_hlsl_compile output_var source_file target_profile entry_point output_file)
-    list(APPEND ${output_var}
+target_link_libraries(NexAurRendererVulkan
+    PUBLIC
+        NexAurRendererFrontend
+        Vulkan::Vulkan
+    PRIVATE
+        ${NEXAUR_ENTT_TARGET}
+        ${NEXAUR_GLFW_TARGET}
+        ${NEXAUR_GLM_TARGET}
+        ${NEXAUR_IMGUI_TARGET}
+        ${NEXAUR_SPDLOG_TARGET}
+        vk-bootstrap::vk-bootstrap
+        volk::volk
+        GPUOpen::VulkanMemoryAllocator
+)
+
+target_include_directories(NexAurRendererVulkan PRIVATE
+    "${Stb_INCLUDE_DIR}"
+)
+
+if(CMAKE_CONFIGURATION_TYPES)
+    set(NEXAUR_VULKAN_SHADER_OUTPUT_DIR
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/Renderer/Vulkan")
+else()
+    set(NEXAUR_VULKAN_SHADER_OUTPUT_DIR
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders/Renderer/Vulkan")
+endif()
+
+function(nexaur_add_vulkan_hlsl_output output_var source_file target_profile entry_point output_file)
+    set(source_path "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/${source_file}")
+    set(output_path "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/${output_file}")
+    add_custom_command(
+        OUTPUT "${output_path}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}"
         COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021
+                -I "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}"
                 -T ${target_profile}
                 -E ${entry_point}
-                -Fo "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/${output_file}"
-                "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/${source_file}"
+                -Fo "${output_path}"
+                "${source_path}"
+        DEPENDS
+            "${source_path}"
+            "${NEXAUR_VULKAN_SHADER_MANIFEST}"
+            ${NEXAUR_VULKAN_SHADER_INCLUDE_FILES}
+        COMMENT "Compiling Vulkan shader ${output_file}"
+        VERBATIM
     )
-    set(${output_var} "${${output_var}}" PARENT_SCOPE)
+    set(${output_var} ${${output_var}} "${output_path}" PARENT_SCOPE)
 endfunction()
 
-set(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_forward.hlsl vs_6_0 VSMain vulkan_forward.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_forward.hlsl ps_6_0 PSMain vulkan_forward.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_object_id.hlsl vs_6_0 VSMain vulkan_object_id.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_object_id.hlsl ps_6_0 PSMain vulkan_object_id.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_skybox.hlsl vs_6_0 VSMain vulkan_skybox.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_skybox.hlsl ps_6_0 PSMain vulkan_skybox.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_shadow_depth.hlsl vs_6_0 VSMain vulkan_shadow_depth.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_debug_draw.hlsl vs_6_0 VSMain vulkan_debug_draw.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_debug_draw.hlsl ps_6_0 PSMain vulkan_debug_draw.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_post_process.hlsl vs_6_0 VSMain vulkan_post_process.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS vulkan_post_process.hlsl ps_6_0 PSMain vulkan_post_process.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ssao.hlsl vs_6_0 VSMain vulkan_ssao.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ssao.hlsl ps_6_0 PSMain vulkan_ssao.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ao_blur.hlsl vs_6_0 VSMain vulkan_ao_blur.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS ao/vulkan_ao_blur.hlsl ps_6_0 PSMain vulkan_ao_blur.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_downsample.hlsl vs_6_0 VSMain vulkan_bloom_downsample.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_downsample.hlsl ps_6_0 PSMain vulkan_bloom_downsample.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_upsample.hlsl vs_6_0 VSMain vulkan_bloom_upsample.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_upsample.hlsl ps_6_0 PSMain vulkan_bloom_upsample.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_composite.hlsl vs_6_0 VSMain vulkan_bloom_composite.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS bloom/vulkan_bloom_composite.hlsl ps_6_0 PSMain vulkan_bloom_composite.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS reflection/vulkan_ssr_trace.hlsl vs_6_0 VSMain vulkan_ssr_trace.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS reflection/vulkan_ssr_trace.hlsl ps_6_0 PSMain vulkan_ssr_trace.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_edge.hlsl vs_6_0 VSMain vulkan_smaa_edge.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_edge.hlsl ps_6_0 PSMain vulkan_smaa_edge.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_blend.hlsl vs_6_0 VSMain vulkan_smaa_blend.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_blend.hlsl ps_6_0 PSMain vulkan_smaa_blend.frag.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_neighborhood.hlsl vs_6_0 VSMain vulkan_smaa_neighborhood.vert.spv)
-nexaur_add_vulkan_hlsl_compile(NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS post/vulkan_smaa_neighborhood.hlsl ps_6_0 PSMain vulkan_smaa_neighborhood.frag.spv)
+set(NEXAUR_VULKAN_SHADER_OUTPUTS)
+foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
+    string(REPLACE "|" ";" shader_fields "${shader_program}")
+    list(GET shader_fields 1 source_file)
+    list(GET shader_fields 2 vertex_profile)
+    list(GET shader_fields 3 vertex_entry)
+    list(GET shader_fields 4 vertex_output)
+    list(GET shader_fields 5 fragment_profile)
+    list(GET shader_fields 6 fragment_entry)
+    list(GET shader_fields 7 fragment_output)
 
-add_custom_command(TARGET NexAurEngine POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}"
-    ${NEXAUR_VULKAN_SHADER_COMPILE_COMMANDS}
-    COMMENT "Compiling Vulkan renderer HLSL shaders"
-    VERBATIM
-)
+    nexaur_add_vulkan_hlsl_output(
+        NEXAUR_VULKAN_SHADER_OUTPUTS
+        "${source_file}"
+        "${vertex_profile}"
+        "${vertex_entry}"
+        "${vertex_output}")
+    if(NOT fragment_profile STREQUAL "NONE")
+        nexaur_add_vulkan_hlsl_output(
+            NEXAUR_VULKAN_SHADER_OUTPUTS
+            "${source_file}"
+            "${fragment_profile}"
+            "${fragment_entry}"
+            "${fragment_output}")
+    endif()
+endforeach()
+
+add_custom_target(NexAurVulkanShaders DEPENDS ${NEXAUR_VULKAN_SHADER_OUTPUTS})
+add_dependencies(NexAurEngine NexAurVulkanShaders)

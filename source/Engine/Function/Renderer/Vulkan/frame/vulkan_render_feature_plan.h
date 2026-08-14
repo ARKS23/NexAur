@@ -23,7 +23,7 @@ namespace NexAur {
 
     // A frame plan is a value snapshot. It has no mutating API so graph
     // construction, diagnostics, and output routing consume identical choices.
-    class NEXAUR_API VulkanRenderFeaturePlan final {
+    class VulkanRenderFeaturePlan final {
     public:
         static VulkanRenderFeaturePlan build(
             const RenderSettings& settings,

@@ -54,7 +54,7 @@ namespace NexAur {
         HitMask = 1
     };
 
-    class NEXAUR_API VulkanSsrPass {
+    class VulkanSsrPass {
     public:
         VulkanSsrPass() = default;
         ~VulkanSsrPass();

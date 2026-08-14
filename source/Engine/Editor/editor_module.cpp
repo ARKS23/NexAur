@@ -10,9 +10,10 @@
 #include "Function/Input/input_system.h"
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
+#include "Function/Renderer/reflection_probe_capture_service.h"
 #include "Function/Renderer/renderer_debug_service.h"
-#include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
+#include "Function/Renderer/viewport_renderer_service.h"
 #include "Function/Scene/scene_service.h"
 #include "Function/UI/ui_system.h"
 
@@ -40,7 +41,10 @@ namespace NexAur {
                 m_context = std::make_shared<EditorContext>();
                 m_context->scene_service = context.registry.getService<SceneService>();
                 m_context->asset_manager = context.registry.getService<AssetManager>();
-                m_context->renderer_service = context.registry.getService<RendererService>();
+                m_context->viewport_renderer_service =
+                    context.registry.getService<ViewportRendererService>();
+                m_context->reflection_probe_capture_service =
+                    context.registry.getService<ReflectionProbeCaptureService>();
                 m_context->renderer_debug_service = context.registry.getService<RendererDebugService>();
                 m_context->input_service = context.registry.getService<InputService>();
                 m_context->render_context = context.registry.getService<RenderContext>();

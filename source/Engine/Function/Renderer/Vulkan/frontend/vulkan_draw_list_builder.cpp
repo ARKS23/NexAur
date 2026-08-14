@@ -41,9 +41,13 @@ namespace NexAur {
                 }
             }
 
-            return mesh_index < model_materials.size()
-                ? &model_materials[mesh_index]
-                : resource_cache.getFallbackMaterial();
+            const VulkanMaterialResource* model_material =
+                mesh_index < model_materials.size() ?
+                    &model_materials[mesh_index] :
+                    nullptr;
+            return model_material && model_material->isReady() ?
+                model_material :
+                resource_cache.getFallbackMaterial();
         }
 
         void appendModelObjects(
@@ -52,12 +56,14 @@ namespace NexAur {
             VulkanRenderResourceCache& resource_cache,
             AssetManager& asset_manager,
             const char* list_name) {
-            size_t skipped_count = 0;
+            size_t failed_count = 0;
 
             for (const RenderSceneFrameObject& object : scene_objects) {
                 VulkanModelResource* model = resource_cache.getOrCreateModel(object.model_asset, asset_manager);
                 if (!model || !model->isReady()) {
-                    ++skipped_count;
+                    if (!model || model->hasUploadFailed()) {
+                        ++failed_count;
+                    }
                     continue;
                 }
 
@@ -66,7 +72,11 @@ namespace NexAur {
                 for (size_t mesh_index = 0; mesh_index < meshes.size(); ++mesh_index) {
                     const VulkanMeshResource& mesh = meshes[mesh_index];
                     if (!mesh.isReady()) {
-                        ++skipped_count;
+                        const VulkanUploadStatus status = mesh.getUploadStatus();
+                        if (status == VulkanUploadStatus::Failed ||
+                            status == VulkanUploadStatus::Cancelled) {
+                            ++failed_count;
+                        }
                         continue;
                     }
 
@@ -87,10 +97,10 @@ namespace NexAur {
                 }
             }
 
-            if (skipped_count > 0) {
+            if (failed_count > 0) {
                 NX_CORE_WARN(
-                    "VulkanDrawListBuilder skipped {} {} mesh/object item(s) because resources were not ready.",
-                    skipped_count,
+                    "VulkanDrawListBuilder skipped {} failed {} mesh/object item(s).",
+                    failed_count,
                     list_name);
             }
         }

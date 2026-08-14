@@ -127,7 +127,7 @@ namespace NexAur {
         sampler_info.maxLod = 1.0f;
         sampler_info.maxAnisotropy = 1.0f;
 
-        return m_sampler.create(m_device, sampler_info, "vkCreateSampler(shadow map)");
+        return m_sampler.create(*m_gpu_allocator, sampler_info, "vkCreateSampler(shadow map)");
     }
 
     void VulkanShadowMapTarget::cleanupImage() {

@@ -36,6 +36,7 @@ namespace NexAur {
         m_debug_name = debug_name;
         m_meshes.reserve(cpu_meshes.size());
         m_materials.reserve(cpu_meshes.size());
+        m_material_assets.reserve(cpu_meshes.size());
 
         for (const Mesh& cpu_mesh : cpu_meshes) {
             VulkanMeshResource mesh_resource;
@@ -52,24 +53,60 @@ namespace NexAur {
                 return false;
             }
 
-            VulkanMaterialResource material_resource;
-            if (!resource_cache.createMaterialResource(material_resource, *material_asset, asset_manager)) {
+            m_meshes.push_back(std::move(mesh_resource));
+            m_materials.emplace_back();
+            m_material_assets.push_back(std::move(material_asset));
+
+            MaterialAsset& stored_material = *m_material_assets.back();
+            if (resource_cache.areMaterialTexturesReady(
+                    stored_material,
+                    asset_manager) &&
+                !resource_cache.createMaterialResource(
+                    m_materials.back(),
+                    stored_material,
+                    asset_manager)) {
                 NX_CORE_ERROR("Failed to create Vulkan material resource for model: {}", debug_name);
                 reset();
                 return false;
             }
-
-            m_meshes.push_back(std::move(mesh_resource));
-            m_materials.push_back(std::move(material_resource));
         }
 
         return true;
     }
 
     void VulkanModelResource::reset() {
+        m_material_assets.clear();
         m_materials.clear();
         m_meshes.clear();
         m_debug_name.clear();
+    }
+
+    void VulkanModelResource::refreshMaterials(
+        VulkanRenderResourceCache& resource_cache,
+        AssetManager& asset_manager) {
+        const size_t material_count = std::min(
+            m_materials.size(),
+            m_material_assets.size());
+        for (size_t index = 0; index < material_count; ++index) {
+            if (m_materials[index].isReady() || !m_material_assets[index] ||
+                !resource_cache.areMaterialTexturesReady(
+                    *m_material_assets[index],
+                    asset_manager)) {
+                continue;
+            }
+
+            VulkanMaterialResource material;
+            if (resource_cache.createMaterialResource(
+                    material,
+                    *m_material_assets[index],
+                    asset_manager)) {
+                m_materials[index] = std::move(material);
+            } else {
+                NX_CORE_ERROR(
+                    "Failed to finalize Vulkan material resource for model: {}",
+                    m_debug_name);
+            }
+        }
     }
 
     bool VulkanModelResource::isReady() const {
@@ -80,5 +117,16 @@ namespace NexAur {
         return std::all_of(m_meshes.begin(), m_meshes.end(), [](const VulkanMeshResource& mesh) {
             return mesh.isReady();
         });
+    }
+
+    bool VulkanModelResource::hasUploadFailed() const {
+        return std::any_of(
+            m_meshes.begin(),
+            m_meshes.end(),
+            [](const VulkanMeshResource& mesh) {
+                const VulkanUploadStatus status = mesh.getUploadStatus();
+                return status == VulkanUploadStatus::Failed ||
+                       status == VulkanUploadStatus::Cancelled;
+            });
     }
 } // namespace NexAur

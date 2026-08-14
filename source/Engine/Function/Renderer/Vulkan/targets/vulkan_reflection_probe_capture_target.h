@@ -11,7 +11,7 @@
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
-    class NEXAUR_API VulkanReflectionProbeCaptureTarget {
+    class VulkanReflectionProbeCaptureTarget {
     public:
         static constexpr uint32_t kFaceCount = 6;
 

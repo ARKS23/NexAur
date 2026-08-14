@@ -18,7 +18,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanDescriptorAllocator {
+    class VulkanDescriptorAllocator {
     public:
         VulkanDescriptorAllocator() = default;
         ~VulkanDescriptorAllocator();

@@ -2,6 +2,7 @@
 #include "Core/Base.h"
 #include "Core/Events/mouse_event.h"
 #include "Editor/editor_tool_state.h"
+#include "Function/Renderer/renderer_service_types.h"
 #include "editor_panel.h"
 
 #include <glm/glm.hpp>
@@ -9,13 +10,13 @@
 #include <ImGuizmo.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace NexAur {
+    class SceneV2;
     struct ViewportOutput;
-    struct ViewportPickRequest;
-    struct ViewportPickResult;
 
     class ViewportPanel : public EditorPanel {
     public:
@@ -63,6 +64,9 @@ namespace NexAur {
         bool m_viewport_focused = false;
         bool m_viewport_hovered = false;
         bool m_viewport_overlay_hovered = false;
+        ViewportPickRequest m_pending_pick_request;
+        std::weak_ptr<SceneV2> m_pending_pick_scene;
+        bool m_has_pending_pick_request = false;
         
         bool m_was_using_gizmo_last_frame = false;
     };

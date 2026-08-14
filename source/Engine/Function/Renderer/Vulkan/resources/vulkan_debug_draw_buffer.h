@@ -11,7 +11,7 @@
 namespace NexAur {
     struct RenderDebugDrawData;
 
-    class NEXAUR_API VulkanDebugDrawBuffer {
+    class VulkanDebugDrawBuffer {
     public:
         VulkanDebugDrawBuffer() = default;
         ~VulkanDebugDrawBuffer();

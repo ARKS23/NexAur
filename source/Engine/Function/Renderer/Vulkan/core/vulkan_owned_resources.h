@@ -8,6 +8,7 @@
 
 namespace NexAur {
     class VulkanGpuAllocator;
+    class VulkanRetirementQueue;
 
     struct VulkanImageViewState {
         VkImage image = VK_NULL_HANDLE;
@@ -85,6 +86,7 @@ namespace NexAur {
         void moveFrom(VulkanOwnedImage&& other) noexcept;
 
         const VulkanGpuAllocator* m_allocator = nullptr;
+        VulkanRetirementQueue* m_retirement_queue = nullptr;
         VkDevice m_device = VK_NULL_HANDLE;
         VulkanImageViewState m_view;
         VmaAllocation m_allocation = VK_NULL_HANDLE;
@@ -127,6 +129,7 @@ namespace NexAur {
         void moveFrom(VulkanOwnedBuffer&& other) noexcept;
 
         const VulkanGpuAllocator* m_allocator = nullptr;
+        VulkanRetirementQueue* m_retirement_queue = nullptr;
         VkBuffer m_buffer = VK_NULL_HANDLE;
         VmaAllocation m_allocation = VK_NULL_HANDLE;
         VkDeviceSize m_size = 0;
@@ -144,7 +147,10 @@ namespace NexAur {
         VulkanOwnedSampler(VulkanOwnedSampler&& other) noexcept;
         VulkanOwnedSampler& operator=(VulkanOwnedSampler&& other) noexcept;
 
-        bool create(VkDevice device, const VkSamplerCreateInfo& create_info, const char* debug_name);
+        bool create(
+            const VulkanGpuAllocator& allocator,
+            const VkSamplerCreateInfo& create_info,
+            const char* debug_name);
         void reset();
 
         bool isReady() const { return m_sampler != VK_NULL_HANDLE; }
@@ -154,6 +160,7 @@ namespace NexAur {
         void moveFrom(VulkanOwnedSampler&& other) noexcept;
 
         VkDevice m_device = VK_NULL_HANDLE;
+        VulkanRetirementQueue* m_retirement_queue = nullptr;
         VkSampler m_sampler = VK_NULL_HANDLE;
         std::string m_debug_name;
     };

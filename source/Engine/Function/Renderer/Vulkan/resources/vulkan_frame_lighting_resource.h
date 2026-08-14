@@ -16,7 +16,7 @@ namespace NexAur {
     class VulkanDescriptorLayoutCache;
     struct VulkanDrawList;
 
-    class NEXAUR_API VulkanFrameLightingResource {
+    class VulkanFrameLightingResource {
     public:
         VulkanFrameLightingResource() = default;
         ~VulkanFrameLightingResource();

@@ -18,7 +18,8 @@
 #include "Function/Platform/platform_services.h"
 #include "Function/Resource/asset_manager.h"
 #include "Function/Renderer/renderer_debug_service.h"
-#include "Function/Renderer/renderer_service.h"
+#include "Function/Renderer/reflection_probe_capture_service.h"
+#include "Function/Renderer/viewport_renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Editor/Camera/editor_camera.h"
 #include "Function/Scene/component.h"
@@ -367,7 +368,7 @@ namespace NexAur {
             [this]() {
                 return m_context &&
                        m_context->active_scene &&
-                       m_context->renderer_service;
+                       m_context->reflection_probe_capture_service;
             },
             {},
             [this]() { bakeReflectionProbes(false); }
@@ -382,7 +383,7 @@ namespace NexAur {
             [this]() {
                 return m_context &&
                        m_context->active_scene &&
-                       m_context->renderer_service;
+                       m_context->reflection_probe_capture_service;
             },
             {},
             [this]() { bakeReflectionProbes(true); }
@@ -1106,7 +1107,7 @@ namespace NexAur {
     }
 
     void EditorLayer::bakeReflectionProbes(bool dirty_only) {
-        if (!m_context || !m_context->active_scene || !m_context->renderer_service) {
+        if (!m_context || !m_context->active_scene || !m_context->reflection_probe_capture_service) {
             NX_CORE_WARN("Bake Reflection Probes skipped: editor scene or renderer service is unavailable.");
             return;
         }
@@ -1133,7 +1134,7 @@ namespace NexAur {
             request.input_hash = probe.computeCaptureInputHash(transform);
 
             probe.capture_dirty = true;
-            if (m_context->renderer_service->requestReflectionProbeCapture(request)) {
+            if (m_context->reflection_probe_capture_service->requestReflectionProbeCapture(request)) {
                 ++queued_count;
             } else {
                 ++skipped_count;
@@ -1147,7 +1148,7 @@ namespace NexAur {
     }
 
     void EditorLayer::syncReflectionProbeCaptureStates() {
-        if (!m_context || !m_context->active_scene || !m_context->renderer_service) {
+        if (!m_context || !m_context->active_scene || !m_context->reflection_probe_capture_service) {
             return;
         }
 
@@ -1157,7 +1158,7 @@ namespace NexAur {
             const TransformComponent& transform = view.get<TransformComponent>(entity);
             const uint64_t current_input_hash = probe.computeCaptureInputHash(transform);
             const ReflectionProbeCaptureState state =
-                m_context->renderer_service->getReflectionProbeCaptureState(
+                m_context->reflection_probe_capture_service->getReflectionProbeCaptureState(
                     static_cast<int>(static_cast<uint32_t>(entity)));
 
             if (probe.last_capture_input_hash != 0 &&
@@ -1243,11 +1244,11 @@ namespace NexAur {
             return true;
         }
 
-        if (!m_context->renderer_service) {
+        if (!m_context->viewport_renderer_service) {
             return false;
         }
 
-        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        const ViewportOutput output = m_context->viewport_renderer_service->getViewportOutput();
         return output.valid() && output.kind == ViewportOutputKind::ExternalSwapchain;
     }
 

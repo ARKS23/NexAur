@@ -112,6 +112,13 @@ namespace NexAur {
 
         drawKeyValue("Engine Delta Ms", snapshot.frame.engine_delta_ms);
         drawKeyValue("Renderer CPU Ms", snapshot.frame.renderer_cpu_ms);
+        drawKeyValue("Frame Wait Ms", snapshot.frame.frame_wait_ms);
+        drawKeyValue("Frame Slots", snapshot.frame.frame_slot_count);
+        drawKeyValue("Current Frame Slot", snapshot.frame.current_frame_slot);
+        drawKeyValue("Frames In Flight", snapshot.frame.frames_in_flight);
+        drawKeyValue(
+            "Swapchain Images In Flight",
+            snapshot.frame.swapchain_images_in_flight);
         drawKeyValue("Opaque Objects", snapshot.frame.opaque_object_count);
         drawKeyValue("Transparent Objects", snapshot.frame.transparent_object_count);
         drawKeyValue("Opaque Draw Items", snapshot.frame.opaque_draw_item_count);
@@ -202,6 +209,9 @@ namespace NexAur {
         drawKeyValue("  ObjectId Format", snapshot.picking_target.object_id_format.c_str());
         drawKeyValue("  Depth Format", snapshot.picking_target.depth_format.c_str());
         drawKeyValue("  Frame Ready", boolToText(snapshot.picking_target.frame_ready));
+        drawKeyValue("  Pending Requests", snapshot.picking_target.pending_request_count);
+        drawKeyValue("  Readbacks In Flight", snapshot.picking_target.readback_in_flight_count);
+        drawKeyValue("  Last Request", snapshot.picking_target.last_request_status.c_str());
 
         ImGui::Spacing();
         ImGui::TextUnformatted("Shadow Target");
@@ -326,6 +336,38 @@ namespace NexAur {
         drawKeyValue("Environments", snapshot.resources.environment_count);
         drawKeyValue("Meshes", snapshot.resources.mesh_count);
         drawKeyValue("Materials", snapshot.resources.material_count);
+        ImGui::Text(
+            "GPU Submitted Serial: %llu",
+            static_cast<unsigned long long>(snapshot.resources.gpu_submitted_serial));
+        ImGui::Text(
+            "GPU Completed Serial: %llu",
+            static_cast<unsigned long long>(snapshot.resources.gpu_completed_serial));
+        drawKeyValue(
+            "GPU Retirement Pending",
+            snapshot.resources.gpu_retirement_pending_count);
+        ImGui::Text(
+            "GPU Resources Retired: %llu",
+            static_cast<unsigned long long>(snapshot.resources.gpu_retired_count));
+        ImGui::Text(
+            "GPU Resources Collected: %llu",
+            static_cast<unsigned long long>(snapshot.resources.gpu_collected_count));
+        ImGui::SeparatorText("Async Upload");
+        ImGui::Text(
+            "Bytes: %zu pending / %zu submitted / %zu budget",
+            snapshot.resources.upload_pending_bytes,
+            snapshot.resources.upload_submitted_bytes_this_frame,
+            snapshot.resources.upload_byte_budget_per_frame);
+        ImGui::Text(
+            "Requests: %u pending / %u in flight / %u submitted / %u budget",
+            snapshot.resources.upload_pending_requests,
+            snapshot.resources.upload_in_flight_requests,
+            snapshot.resources.upload_submitted_requests_this_frame,
+            snapshot.resources.upload_request_budget_per_frame);
+        ImGui::Text(
+            "Completed: %llu ready / %llu failed / %llu cancelled",
+            static_cast<unsigned long long>(snapshot.resources.upload_ready_requests),
+            static_cast<unsigned long long>(snapshot.resources.upload_failed_requests),
+            static_cast<unsigned long long>(snapshot.resources.upload_cancelled_requests));
         drawKeyValue(
             "Fallback White Texture",
             boolToText(snapshot.resources.fallback_white_texture_ready));

@@ -43,7 +43,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanAoPass {
+    class VulkanAoPass {
     public:
         VulkanAoPass() = default;
         ~VulkanAoPass();

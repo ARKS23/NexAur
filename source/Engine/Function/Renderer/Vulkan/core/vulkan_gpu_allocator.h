@@ -9,6 +9,8 @@
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
+    class VulkanRetirementQueue;
+
     class VulkanGpuAllocator final {
     public:
         VulkanGpuAllocator() = default;
@@ -23,6 +25,7 @@ namespace NexAur {
         bool isInitialized() const { return m_allocator != VK_NULL_HANDLE; }
         VmaAllocator getHandle() const { return m_allocator; }
         VkDevice getDevice() const { return m_device; }
+        VulkanRetirementQueue* getRetirementQueue() const { return m_retirement_queue; }
 
         bool createImage(
             const VkImageCreateInfo& image_info,
@@ -44,5 +47,6 @@ namespace NexAur {
     private:
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
+        VulkanRetirementQueue* m_retirement_queue = nullptr;
     };
 } // namespace NexAur

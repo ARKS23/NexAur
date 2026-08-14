@@ -2,9 +2,152 @@
 #include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 
 #include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
 #include "Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h"
 
 namespace NexAur {
+    namespace {
+        struct RetiredImage {
+            const VulkanGpuAllocator* allocator = nullptr;
+            VkDevice device = VK_NULL_HANDLE;
+            VkImage image = VK_NULL_HANDLE;
+            VkImageView view = VK_NULL_HANDLE;
+            VmaAllocation allocation = VK_NULL_HANDLE;
+
+            RetiredImage() = default;
+            RetiredImage(const RetiredImage&) = delete;
+            RetiredImage& operator=(const RetiredImage&) = delete;
+
+            RetiredImage(RetiredImage&& other) noexcept
+                : allocator(other.allocator),
+                  device(other.device),
+                  image(other.image),
+                  view(other.view),
+                  allocation(other.allocation) {
+                other.allocator = nullptr;
+                other.device = VK_NULL_HANDLE;
+                other.image = VK_NULL_HANDLE;
+                other.view = VK_NULL_HANDLE;
+                other.allocation = VK_NULL_HANDLE;
+            }
+
+            RetiredImage& operator=(RetiredImage&& other) noexcept {
+                if (this != &other) {
+                    destroy();
+                    allocator = other.allocator;
+                    device = other.device;
+                    image = other.image;
+                    view = other.view;
+                    allocation = other.allocation;
+                    other.allocator = nullptr;
+                    other.device = VK_NULL_HANDLE;
+                    other.image = VK_NULL_HANDLE;
+                    other.view = VK_NULL_HANDLE;
+                    other.allocation = VK_NULL_HANDLE;
+                }
+                return *this;
+            }
+
+            ~RetiredImage() { destroy(); }
+
+        private:
+            void destroy() {
+                if (device != VK_NULL_HANDLE && view != VK_NULL_HANDLE) {
+                    vkDestroyImageView(device, view, nullptr);
+                }
+                if (allocator != nullptr) {
+                    allocator->destroyImage(image, allocation);
+                }
+                allocator = nullptr;
+                device = VK_NULL_HANDLE;
+                image = VK_NULL_HANDLE;
+                view = VK_NULL_HANDLE;
+                allocation = VK_NULL_HANDLE;
+            }
+        };
+
+        struct RetiredBuffer {
+            const VulkanGpuAllocator* allocator = nullptr;
+            VkBuffer buffer = VK_NULL_HANDLE;
+            VmaAllocation allocation = VK_NULL_HANDLE;
+
+            RetiredBuffer() = default;
+            RetiredBuffer(const RetiredBuffer&) = delete;
+            RetiredBuffer& operator=(const RetiredBuffer&) = delete;
+
+            RetiredBuffer(RetiredBuffer&& other) noexcept
+                : allocator(other.allocator),
+                  buffer(other.buffer),
+                  allocation(other.allocation) {
+                other.allocator = nullptr;
+                other.buffer = VK_NULL_HANDLE;
+                other.allocation = VK_NULL_HANDLE;
+            }
+
+            RetiredBuffer& operator=(RetiredBuffer&& other) noexcept {
+                if (this != &other) {
+                    destroy();
+                    allocator = other.allocator;
+                    buffer = other.buffer;
+                    allocation = other.allocation;
+                    other.allocator = nullptr;
+                    other.buffer = VK_NULL_HANDLE;
+                    other.allocation = VK_NULL_HANDLE;
+                }
+                return *this;
+            }
+
+            ~RetiredBuffer() { destroy(); }
+
+        private:
+            void destroy() {
+                if (allocator != nullptr) {
+                    allocator->destroyBuffer(buffer, allocation);
+                }
+                allocator = nullptr;
+                buffer = VK_NULL_HANDLE;
+                allocation = VK_NULL_HANDLE;
+            }
+        };
+
+        struct RetiredSampler {
+            VkDevice device = VK_NULL_HANDLE;
+            VkSampler sampler = VK_NULL_HANDLE;
+
+            RetiredSampler() = default;
+            RetiredSampler(const RetiredSampler&) = delete;
+            RetiredSampler& operator=(const RetiredSampler&) = delete;
+
+            RetiredSampler(RetiredSampler&& other) noexcept
+                : device(other.device), sampler(other.sampler) {
+                other.device = VK_NULL_HANDLE;
+                other.sampler = VK_NULL_HANDLE;
+            }
+
+            RetiredSampler& operator=(RetiredSampler&& other) noexcept {
+                if (this != &other) {
+                    destroy();
+                    device = other.device;
+                    sampler = other.sampler;
+                    other.device = VK_NULL_HANDLE;
+                    other.sampler = VK_NULL_HANDLE;
+                }
+                return *this;
+            }
+
+            ~RetiredSampler() { destroy(); }
+
+        private:
+            void destroy() {
+                if (device != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE) {
+                    vkDestroySampler(device, sampler, nullptr);
+                }
+                device = VK_NULL_HANDLE;
+                sampler = VK_NULL_HANDLE;
+            }
+        };
+    } // namespace
+
     VulkanOwnedImage::~VulkanOwnedImage() {
         reset();
     }
@@ -58,6 +201,7 @@ namespace NexAur {
         }
 
         m_allocator = &allocator;
+        m_retirement_queue = allocator.getRetirementQueue();
         m_device = allocator.getDevice();
         m_view.format = create_info.format;
         m_view.extent = {
@@ -93,14 +237,19 @@ namespace NexAur {
     }
 
     void VulkanOwnedImage::reset() {
-        if (m_device != VK_NULL_HANDLE && m_view.view != VK_NULL_HANDLE) {
-            vkDestroyImageView(m_device, m_view.view, nullptr);
-        }
-        if (m_allocator != nullptr) {
-            m_allocator->destroyImage(m_view.image, m_allocation);
+        RetiredImage retired;
+        retired.allocator = m_allocator;
+        retired.device = m_device;
+        retired.image = m_view.image;
+        retired.view = m_view.view;
+        retired.allocation = m_allocation;
+        if (m_retirement_queue != nullptr &&
+            (retired.view != VK_NULL_HANDLE || retired.image != VK_NULL_HANDLE)) {
+            m_retirement_queue->retire(std::move(retired));
         }
 
         m_allocator = nullptr;
+        m_retirement_queue = nullptr;
         m_device = VK_NULL_HANDLE;
         m_view = {};
         m_allocation = VK_NULL_HANDLE;
@@ -108,11 +257,13 @@ namespace NexAur {
 
     void VulkanOwnedImage::moveFrom(VulkanOwnedImage&& other) noexcept {
         m_allocator = other.m_allocator;
+        m_retirement_queue = other.m_retirement_queue;
         m_device = other.m_device;
         m_view = std::move(other.m_view);
         m_allocation = other.m_allocation;
 
         other.m_allocator = nullptr;
+        other.m_retirement_queue = nullptr;
         other.m_device = VK_NULL_HANDLE;
         other.m_view = {};
         other.m_allocation = VK_NULL_HANDLE;
@@ -164,17 +315,23 @@ namespace NexAur {
         }
 
         m_allocator = &allocator;
+        m_retirement_queue = allocator.getRetirementQueue();
         m_size = size;
         m_debug_name = debug_name ? debug_name : "VulkanOwnedBuffer";
         return true;
     }
 
     void VulkanOwnedBuffer::reset() {
-        if (m_allocator != nullptr) {
-            m_allocator->destroyBuffer(m_buffer, m_allocation);
+        RetiredBuffer retired;
+        retired.allocator = m_allocator;
+        retired.buffer = m_buffer;
+        retired.allocation = m_allocation;
+        if (m_retirement_queue != nullptr && retired.buffer != VK_NULL_HANDLE) {
+            m_retirement_queue->retire(std::move(retired));
         }
 
         m_allocator = nullptr;
+        m_retirement_queue = nullptr;
         m_buffer = VK_NULL_HANDLE;
         m_allocation = VK_NULL_HANDLE;
         m_size = 0;
@@ -230,12 +387,14 @@ namespace NexAur {
 
     void VulkanOwnedBuffer::moveFrom(VulkanOwnedBuffer&& other) noexcept {
         m_allocator = other.m_allocator;
+        m_retirement_queue = other.m_retirement_queue;
         m_buffer = other.m_buffer;
         m_allocation = other.m_allocation;
         m_size = other.m_size;
         m_debug_name = std::move(other.m_debug_name);
 
         other.m_allocator = nullptr;
+        other.m_retirement_queue = nullptr;
         other.m_buffer = VK_NULL_HANDLE;
         other.m_allocation = VK_NULL_HANDLE;
         other.m_size = 0;
@@ -259,10 +418,11 @@ namespace NexAur {
     }
 
     bool VulkanOwnedSampler::create(
-        VkDevice device,
+        const VulkanGpuAllocator& allocator,
         const VkSamplerCreateInfo& create_info,
         const char* debug_name) {
         reset();
+        const VkDevice device = allocator.getDevice();
         if (device == VK_NULL_HANDLE) {
             NX_CORE_ERROR("VulkanOwnedSampler requires a valid device.");
             return false;
@@ -275,26 +435,33 @@ namespace NexAur {
         }
 
         m_device = device;
+        m_retirement_queue = allocator.getRetirementQueue();
         m_debug_name = debug_name ? debug_name : "VulkanOwnedSampler";
         return true;
     }
 
     void VulkanOwnedSampler::reset() {
-        if (m_device != VK_NULL_HANDLE && m_sampler != VK_NULL_HANDLE) {
-            vkDestroySampler(m_device, m_sampler, nullptr);
+        RetiredSampler retired;
+        retired.device = m_device;
+        retired.sampler = m_sampler;
+        if (m_retirement_queue != nullptr && retired.sampler != VK_NULL_HANDLE) {
+            m_retirement_queue->retire(std::move(retired));
         }
 
         m_device = VK_NULL_HANDLE;
+        m_retirement_queue = nullptr;
         m_sampler = VK_NULL_HANDLE;
         m_debug_name.clear();
     }
 
     void VulkanOwnedSampler::moveFrom(VulkanOwnedSampler&& other) noexcept {
         m_device = other.m_device;
+        m_retirement_queue = other.m_retirement_queue;
         m_sampler = other.m_sampler;
         m_debug_name = std::move(other.m_debug_name);
 
         other.m_device = VK_NULL_HANDLE;
+        other.m_retirement_queue = nullptr;
         other.m_sampler = VK_NULL_HANDLE;
         other.m_debug_name.clear();
     }

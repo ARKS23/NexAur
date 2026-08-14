@@ -50,7 +50,7 @@ namespace NexAur {
         VkClearValue depth_clear_value{};
     };
 
-    class NEXAUR_API VulkanForwardPass {
+    class VulkanForwardPass {
     public:
         VulkanForwardPass() = default;
         ~VulkanForwardPass();

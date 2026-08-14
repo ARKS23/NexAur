@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
 
 namespace NexAur {
     namespace {
@@ -52,7 +51,7 @@ namespace NexAur {
             return false;
         }
 
-        if (!createReadbackBuffer() || !recreateImages(width, height)) {
+        if (!recreateImages(width, height)) {
             shutdown();
             return false;
         }
@@ -77,34 +76,12 @@ namespace NexAur {
 
     void VulkanPickingTarget::shutdown() {
         cleanupImages();
-        cleanupReadbackBuffer();
         m_physical_device = VK_NULL_HANDLE;
         m_gpu_allocator = nullptr;
         m_device = VK_NULL_HANDLE;
         m_extent = {};
         m_depth_format = VK_FORMAT_UNDEFINED;
         m_ready = false;
-    }
-
-    int32_t VulkanPickingTarget::readbackEntityId() const {
-        if (m_device == VK_NULL_HANDLE || !m_readback_buffer.isReady()) {
-            return -1;
-        }
-
-        void* mapped = nullptr;
-        if (!m_readback_buffer.map(mapped)) {
-            return -1;
-        }
-
-        if (!m_readback_buffer.isHostCoherent() && !m_readback_buffer.invalidate()) {
-            m_readback_buffer.unmap();
-            return -1;
-        }
-
-        int32_t entity_id = -1;
-        std::memcpy(&entity_id, mapped, sizeof(entity_id));
-        m_readback_buffer.unmap();
-        return entity_id;
     }
 
     VulkanRenderTarget VulkanPickingTarget::getRenderTarget() const {
@@ -170,16 +147,6 @@ namespace NexAur {
         return image.create(*m_gpu_allocator, create_info);
     }
 
-    bool VulkanPickingTarget::createReadbackBuffer() {
-        return m_readback_buffer.create(
-            *m_gpu_allocator,
-            sizeof(int32_t),
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
-            "VulkanPickingTarget readback buffer");
-    }
-
     void VulkanPickingTarget::cleanupImages() {
         m_object_id_image.reset();
         m_depth_image.reset();
@@ -187,7 +154,4 @@ namespace NexAur {
         m_ready = false;
     }
 
-    void VulkanPickingTarget::cleanupReadbackBuffer() {
-        m_readback_buffer.reset();
-    }
 } // namespace NexAur

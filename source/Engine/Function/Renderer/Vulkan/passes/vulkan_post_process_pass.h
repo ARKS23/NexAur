@@ -91,7 +91,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanPostProcessPass {
+    class VulkanPostProcessPass {
     public:
         VulkanPostProcessPass() = default;
         ~VulkanPostProcessPass();

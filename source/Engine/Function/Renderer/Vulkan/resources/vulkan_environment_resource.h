@@ -36,7 +36,7 @@ namespace NexAur {
         std::string debug_name_override;
     };
 
-    class NEXAUR_API VulkanEnvironmentResource {
+    class VulkanEnvironmentResource {
     public:
         VulkanEnvironmentResource() = default;
         ~VulkanEnvironmentResource();

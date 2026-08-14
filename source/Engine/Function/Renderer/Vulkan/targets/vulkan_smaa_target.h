@@ -24,7 +24,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanSmaaTarget {
+    class VulkanSmaaTarget {
     public:
         VulkanSmaaTarget() = default;
         ~VulkanSmaaTarget();

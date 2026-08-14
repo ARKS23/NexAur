@@ -81,7 +81,7 @@ namespace NexAur {
         bool valid(VulkanFrameOutputRoute output_route) const;
     };
 
-    class NEXAUR_API VulkanFrameGraphBuilder final {
+    class VulkanFrameGraphBuilder final {
     public:
         bool build(
             VulkanPassGraph& graph,

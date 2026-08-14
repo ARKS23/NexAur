@@ -47,7 +47,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanMaterialResource {
+    class VulkanMaterialResource {
     public:
         VulkanMaterialResource() = default;
         ~VulkanMaterialResource();

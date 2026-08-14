@@ -37,47 +37,6 @@ namespace NexAur {
             return executableDirectory() / "shaders" / "Renderer" / "Vulkan";
         }
 
-        const char* shaderFileName(VulkanShaderProgramId program_id, VkShaderStageFlagBits stage) {
-            switch (program_id) {
-                case VulkanShaderProgramId::Forward:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_forward.vert.spv" : "vulkan_forward.frag.spv";
-                case VulkanShaderProgramId::ObjectId:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_object_id.vert.spv" : "vulkan_object_id.frag.spv";
-                case VulkanShaderProgramId::Skybox:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_skybox.vert.spv" : "vulkan_skybox.frag.spv";
-                case VulkanShaderProgramId::ShadowDepth:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_shadow_depth.vert.spv" : nullptr;
-                case VulkanShaderProgramId::DebugDraw:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_debug_draw.vert.spv" : "vulkan_debug_draw.frag.spv";
-                case VulkanShaderProgramId::PostProcess:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_post_process.vert.spv" : "vulkan_post_process.frag.spv";
-                case VulkanShaderProgramId::BloomDownsample:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_bloom_downsample.vert.spv" : "vulkan_bloom_downsample.frag.spv";
-                case VulkanShaderProgramId::BloomUpsample:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_bloom_upsample.vert.spv" : "vulkan_bloom_upsample.frag.spv";
-                case VulkanShaderProgramId::BloomComposite:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_bloom_composite.vert.spv" : "vulkan_bloom_composite.frag.spv";
-                case VulkanShaderProgramId::Ssao:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ssao.vert.spv" : "vulkan_ssao.frag.spv";
-                case VulkanShaderProgramId::AoBlur:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ao_blur.vert.spv" : "vulkan_ao_blur.frag.spv";
-                case VulkanShaderProgramId::SsrTrace:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_ssr_trace.vert.spv" : "vulkan_ssr_trace.frag.spv";
-                case VulkanShaderProgramId::SmaaEdge:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_smaa_edge.vert.spv" : "vulkan_smaa_edge.frag.spv";
-                case VulkanShaderProgramId::SmaaBlend:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_smaa_blend.vert.spv" : "vulkan_smaa_blend.frag.spv";
-                case VulkanShaderProgramId::SmaaNeighborhood:
-                    return stage == VK_SHADER_STAGE_VERTEX_BIT ? "vulkan_smaa_neighborhood.vert.spv" : "vulkan_smaa_neighborhood.frag.spv";
-                default:
-                    return nullptr;
-            }
-        }
-
-        bool hasFragmentStage(VulkanShaderProgramId program_id) {
-            return program_id != VulkanShaderProgramId::ShadowDepth;
-        }
-
         uint64_t shaderModuleKey(VulkanShaderProgramId program_id, VkShaderStageFlagBits stage) {
             return (static_cast<uint64_t>(program_id) << 32u) | static_cast<uint64_t>(stage);
         }
@@ -133,7 +92,16 @@ namespace NexAur {
 
     VulkanShaderProgram VulkanShaderLibrary::getProgram(VulkanShaderProgramId program_id) {
         VulkanShaderProgram program;
-        program.has_fragment_stage = hasFragmentStage(program_id);
+        const VulkanShaderManifestEntry* manifest_entry =
+            findVulkanShaderManifestEntry(program_id);
+        if (!manifest_entry) {
+            NX_CORE_ERROR("Unknown Vulkan shader program id.");
+            return program;
+        }
+
+        program.vertex_entry = manifest_entry->vertex_entry;
+        program.fragment_entry = manifest_entry->fragment_entry;
+        program.has_fragment_stage = manifest_entry->has_fragment_stage;
         program.vertex_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_VERTEX_BIT);
         if (program.has_fragment_stage) {
             program.fragment_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -153,9 +121,15 @@ namespace NexAur {
             return cached_it->second;
         }
 
-        const char* file_name = shaderFileName(program_id, stage);
+        const VulkanShaderManifestEntry* manifest_entry =
+            findVulkanShaderManifestEntry(program_id);
+        const char* file_name = nullptr;
+        if (manifest_entry) {
+            file_name = stage == VK_SHADER_STAGE_VERTEX_BIT ?
+                manifest_entry->vertex_file : manifest_entry->fragment_file;
+        }
         if (!file_name) {
-            NX_CORE_ERROR("Unknown Vulkan shader program id.");
+            NX_CORE_ERROR("Vulkan shader program does not define the requested stage.");
             return VK_NULL_HANDLE;
         }
 

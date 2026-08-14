@@ -8,7 +8,7 @@
 namespace NexAur {
     class VulkanPassGraph;
 
-    class NEXAUR_API VulkanGraphExecutor {
+    class VulkanGraphExecutor {
     public:
         bool execute(VulkanPassGraph& graph, VkCommandBuffer command_buffer);
 

@@ -23,7 +23,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanObjectIdPass {
+    class VulkanObjectIdPass {
     public:
         VulkanObjectIdPass() = default;
         ~VulkanObjectIdPass();

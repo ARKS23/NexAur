@@ -47,7 +47,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanBloomPass {
+    class VulkanBloomPass {
     public:
         VulkanBloomPass() = default;
         ~VulkanBloomPass();

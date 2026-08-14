@@ -14,6 +14,7 @@
 #include "Function/Renderer/Vulkan/resources/vulkan_environment_resource.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_texture_resource.h"
+#include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
@@ -22,8 +23,9 @@ namespace NexAur {
     class VulkanDescriptorAllocator;
     class VulkanDescriptorLayoutCache;
     class VulkanGpuAllocator;
+    class VulkanRetirementQueue;
 
-    class NEXAUR_API VulkanRenderResourceCache {
+    class VulkanRenderResourceCache {
     public:
         VulkanRenderResourceCache() = default;
         ~VulkanRenderResourceCache();
@@ -34,10 +36,17 @@ namespace NexAur {
         bool init(
             const VulkanResourceContext& context,
             VulkanDescriptorLayoutCache& descriptor_layout_cache,
-            VulkanDescriptorAllocator& descriptor_allocator);
-        // Caller must make sure cached GPU resources are no longer referenced by in-flight commands.
+            VulkanDescriptorAllocator& descriptor_allocator,
+            AssetManager& asset_manager);
+        // Cached resources are retired against the renderer submission serial.
         void clear();
         void shutdown();
+
+        bool processUploads();
+        void refreshAsyncResources(AssetManager& asset_manager);
+        uint64_t collectCompletedUploadSerial() const;
+        void onSubmissionsCompleted(uint64_t completed_serial);
+        VulkanUploadManagerStats getUploadStats() const;
 
         VulkanModelResource* getOrCreateModel(AssetHandle model_asset, AssetManager& asset_manager);
         VulkanModelResource* getModel(AssetHandle model_asset) const;
@@ -72,6 +81,9 @@ namespace NexAur {
             VulkanMaterialResource& material_resource,
             const MaterialAsset& material_asset,
             AssetManager& asset_manager);
+        bool areMaterialTexturesReady(
+            const MaterialAsset& material_asset,
+            AssetManager& asset_manager);
 
         bool isInitialized() const { return m_initialized; }
 
@@ -79,11 +91,11 @@ namespace NexAur {
         bool createUploadCommandPool(const VulkanResourceContext& context);
         bool resolveDescriptorLayouts();
         bool createFallbackTexture();
-        bool createFallbackMaterial();
+        bool createFallbackMaterial(AssetManager& asset_manager);
         bool createFallbackEnvironment();
-        VulkanResourceUploadContext createUploadContext() const;
-        VulkanMaterialResourceCreateContext createMaterialContext() const;
-        VulkanEnvironmentResourceCreateContext createEnvironmentContext() const;
+        VulkanResourceUploadContext createUploadContext();
+        VulkanMaterialResourceCreateContext createMaterialContext();
+        VulkanEnvironmentResourceCreateContext createEnvironmentContext();
 
     private:
         struct CachedMaterialResource {
@@ -98,8 +110,10 @@ namespace NexAur {
         VkCommandPool m_upload_command_pool = VK_NULL_HANDLE;
         VulkanDescriptorLayoutCache* m_descriptor_layout_cache = nullptr;
         VulkanDescriptorAllocator* m_descriptor_allocator = nullptr;
+        VulkanRetirementQueue* m_retirement_queue = nullptr;
         VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_environment_descriptor_set_layout = VK_NULL_HANDLE;
+        VulkanUploadManager m_upload_manager;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanModelResource>> m_model_cache;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanTextureResource>> m_texture_cache;
         std::unordered_map<AssetHandle, CachedMaterialResource> m_material_cache;

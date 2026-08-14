@@ -5,8 +5,11 @@
 #include "Core/Module/builtin_module_names.h"
 #include "Core/Module/engine_module.h"
 #include "Function/Platform/platform_services.h"
+#include "Function/Resource/asset_manager.h"
+#include "Function/Renderer/reflection_probe_capture_service.h"
 #include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
+#include "Function/Renderer/viewport_renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Platform/window_graphics_api.h"
 #include "Function/Renderer/Vulkan/vulkan_renderer_system.h"
@@ -46,17 +49,34 @@ namespace NexAur {
 
             void initialize(ModuleContext& context) override {
                 std::shared_ptr<WindowService> window_service = context.registry.getService<WindowService>();
+                m_asset_manager = context.registry.getService<AssetManager>();
                 NX_CORE_ASSERT(window_service, "RendererModule requires WindowService.");
+                NX_CORE_ASSERT(m_asset_manager, "RendererModule requires AssetManager.");
                 NX_CORE_ASSERT(window_service->getGraphicsAPI() == WindowGraphicsAPI::Vulkan, "RendererModule requires a Vulkan window.");
 
                 m_vulkan_renderer_system = std::make_shared<VulkanRendererSystem>();
-                NX_CORE_ASSERT(m_vulkan_renderer_system->init(*window_service), "Failed to initialize VulkanRendererSystem.");
+                VulkanRendererInitContext renderer_context;
+                renderer_context.window_service = window_service.get();
+                renderer_context.asset_manager = m_asset_manager.get();
+                NX_CORE_ASSERT(
+                    m_vulkan_renderer_system->init(renderer_context),
+                    "Failed to initialize VulkanRendererSystem.");
                 m_renderer_service = std::static_pointer_cast<RendererService>(m_vulkan_renderer_system);
+                m_viewport_renderer_service =
+                    std::static_pointer_cast<ViewportRendererService>(m_vulkan_renderer_system);
+                m_reflection_probe_capture_service =
+                    std::static_pointer_cast<ReflectionProbeCaptureService>(m_vulkan_renderer_system);
                 m_renderer_debug_service = std::static_pointer_cast<RendererDebugService>(m_vulkan_renderer_system);
                 NX_CORE_INFO("Renderer module selected Vulkan backend.");
 
                 if (m_renderer_service) {
                     context.registry.registerService<RendererService>(m_renderer_service);
+                }
+                if (m_viewport_renderer_service) {
+                    context.registry.registerService<ViewportRendererService>(m_viewport_renderer_service);
+                }
+                if (m_reflection_probe_capture_service) {
+                    context.registry.registerService<ReflectionProbeCaptureService>(m_reflection_probe_capture_service);
                 }
                 if (m_renderer_debug_service) {
                     context.registry.registerService<RendererDebugService>(m_renderer_debug_service);
@@ -70,11 +90,16 @@ namespace NexAur {
                     m_vulkan_renderer_system->shutdown();
                 }
 
+                context.registry.resetService<ReflectionProbeCaptureService>();
+                context.registry.resetService<ViewportRendererService>();
                 context.registry.resetService<RendererService>();
                 context.registry.resetService<RendererDebugService>();
                 m_renderer_debug_service.reset();
+                m_reflection_probe_capture_service.reset();
+                m_viewport_renderer_service.reset();
                 m_renderer_service.reset();
                 m_vulkan_renderer_system.reset();
+                m_asset_manager.reset();
             }
 
             void onEvent(Event& event) override {
@@ -85,8 +110,11 @@ namespace NexAur {
 
         private:
             std::shared_ptr<RendererService> m_renderer_service;
+            std::shared_ptr<ViewportRendererService> m_viewport_renderer_service;
+            std::shared_ptr<ReflectionProbeCaptureService> m_reflection_probe_capture_service;
             std::shared_ptr<RendererDebugService> m_renderer_debug_service;
             std::shared_ptr<VulkanRendererSystem> m_vulkan_renderer_system;
+            std::shared_ptr<AssetManager> m_asset_manager;
         };
     } // namespace
 

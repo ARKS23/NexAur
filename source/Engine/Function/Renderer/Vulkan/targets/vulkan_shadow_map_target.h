@@ -11,7 +11,7 @@
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
-    class NEXAUR_API VulkanShadowMapTarget {
+    class VulkanShadowMapTarget {
     public:
         VulkanShadowMapTarget() = default;
         ~VulkanShadowMapTarget();

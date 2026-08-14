@@ -25,7 +25,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanBloomTarget {
+    class VulkanBloomTarget {
     public:
         VulkanBloomTarget() = default;
         ~VulkanBloomTarget();

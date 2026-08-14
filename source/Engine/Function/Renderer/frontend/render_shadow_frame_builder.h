@@ -3,12 +3,11 @@
 #include <cstdint>
 #include <vector>
 
-#include "Core/Base.h"
 #include "Function/Renderer/data/render_scene_frame.h"
 #include "Function/Renderer/data/render_shadow_cascade.h"
 
 namespace NexAur {
-    class NEXAUR_API RenderShadowFrameBuilder {
+    class RenderShadowFrameBuilder {
     public:
         RenderShadowCascadeFrame buildDirectionalShadowFrame(
             const RenderView& view,

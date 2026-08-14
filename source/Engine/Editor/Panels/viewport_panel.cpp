@@ -6,7 +6,7 @@
 #include "Editor/Style/editor_theme.h"
 #include "Editor/Widgets/editor_widgets.h"
 #include "Function/Platform/platform_services.h"
-#include "Function/Renderer/renderer_service.h"
+#include "Function/Renderer/viewport_renderer_service.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/renderer_debug_service.h"
 #include "Editor/Camera/editor_camera.h"
@@ -161,6 +161,33 @@ namespace NexAur {
 
     void ViewportPanel::onUpdate(TimeStep delta_time) {
         (void)delta_time;
+        if (!m_has_pending_pick_request || !m_context ||
+            !m_context->viewport_renderer_service) {
+            return;
+        }
+
+        const std::shared_ptr<SceneV2> requested_scene =
+            m_pending_pick_scene.lock();
+        if (!requested_scene || requested_scene != m_context->active_scene) {
+            m_pending_pick_request = {};
+            m_pending_pick_scene.reset();
+            m_has_pending_pick_request = false;
+            return;
+        }
+
+        const ViewportPickResult result =
+            m_context->viewport_renderer_service->pickViewport(
+                m_pending_pick_request);
+        if (result.status == ViewportPickStatus::Pending) {
+            return;
+        }
+
+        if (result.status == ViewportPickStatus::Ready) {
+            applyPickResult(m_pending_pick_request, result);
+        }
+        m_pending_pick_request = {};
+        m_pending_pick_scene.reset();
+        m_has_pending_pick_request = false;
     }
 
     void ViewportPanel::onUIRender() {
@@ -213,14 +240,15 @@ namespace NexAur {
     }
 
     void ViewportPanel::syncViewportResize() {
-        if (!m_context || !m_context->renderer_service || !m_context->active_scene) {
+        if (!m_context || !m_context->viewport_renderer_service || !m_context->active_scene) {
             return;
         }
         if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) {
             return;
         }
 
-        std::shared_ptr<RendererService> renderer_service = m_context->renderer_service;
+        std::shared_ptr<ViewportRendererService> viewport_renderer_service =
+            m_context->viewport_renderer_service;
 
         const uint32_t target_w = static_cast<uint32_t>(m_viewport_size.x);
         const uint32_t target_h = static_cast<uint32_t>(m_viewport_size.y);
@@ -229,7 +257,7 @@ namespace NexAur {
             return;
         }
 
-        const ViewportOutput output = renderer_service->getViewportOutput();
+        const ViewportOutput output = viewport_renderer_service->getViewportOutput();
         if (output.kind == ViewportOutputKind::ExternalSwapchain) {
             if (output.valid()) {
                 syncEditorCameraSize(output.width, output.height);
@@ -241,23 +269,23 @@ namespace NexAur {
             return;
         }
 
-        auto [current_w, current_h] = renderer_service->getViewportSize();
+        auto [current_w, current_h] = viewport_renderer_service->getViewportSize();
         if (target_w != current_w || target_h != current_h) {
-            renderer_service->setViewportSize(target_w, target_h);
+            viewport_renderer_service->setViewportSize(target_w, target_h);
         }
 
         syncEditorCameraSize(target_w, target_h);
     }
 
     void ViewportPanel::drawViewportOutput() {
-        if (!m_context || !m_context->renderer_service) {
+        if (!m_context || !m_context->viewport_renderer_service) {
             return;
         }
         if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) {
             return;
         }
 
-        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        const ViewportOutput output = m_context->viewport_renderer_service->getViewportOutput();
         switch (output.kind) {
         case ViewportOutputKind::VulkanImGuiTexture:
             drawVulkanImGuiViewport(output);
@@ -341,14 +369,14 @@ namespace NexAur {
     }
 
     void ViewportPanel::drawViewportOverlay() {
-        if (!m_context || !m_context->renderer_service) {
+        if (!m_context || !m_context->viewport_renderer_service) {
             return;
         }
         if (m_viewport_size.x <= 96.0f || m_viewport_size.y <= 72.0f) {
             return;
         }
 
-        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        const ViewportOutput output = m_context->viewport_renderer_service->getViewportOutput();
 
         drawViewportToolbarOverlay(output);
         drawViewportInfoOverlay(output);
@@ -638,11 +666,11 @@ namespace NexAur {
     }
 
     bool ViewportPanel::canUseEmbeddedViewportOutput() const {
-        if (!m_context || !m_context->renderer_service) {
+        if (!m_context || !m_context->viewport_renderer_service) {
             return false;
         }
 
-        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        const ViewportOutput output = m_context->viewport_renderer_service->getViewportOutput();
         return isEmbeddedViewportOutput(output);
     }
 
@@ -731,14 +759,14 @@ namespace NexAur {
     }
 
     void ViewportPanel::pickEntityAtMouse() {
-        if (!m_context || !m_context->renderer_service || !m_context->input_service || !m_context->active_scene) {
+        if (!m_context || !m_context->viewport_renderer_service || !m_context->input_service || !m_context->active_scene) {
             return;
         }
         if (m_viewport_size.x <= 0.0f || m_viewport_size.y <= 0.0f) {
             return;
         }
 
-        const ViewportOutput output = m_context->renderer_service->getViewportOutput();
+        const ViewportOutput output = m_context->viewport_renderer_service->getViewportOutput();
         if (!canUseSceneViewTools() || !isEmbeddedViewportOutput(output)) {
             return;
         }
@@ -770,12 +798,28 @@ namespace NexAur {
         request.x = pixel_x;
         request.y = pixel_y;
 
-        const ViewportPickResult result = m_context->renderer_service->pickViewport(request);
-        applyPickResult(request, result);
+        const ViewportPickResult result = m_context->viewport_renderer_service->pickViewport(request);
+        if (result.status == ViewportPickStatus::Pending) {
+            request.request_id = result.request_id;
+            m_pending_pick_request = request;
+            m_pending_pick_scene = m_context->active_scene;
+            m_has_pending_pick_request = true;
+        } else if (result.status == ViewportPickStatus::Ready) {
+            applyPickResult(request, result);
+            m_pending_pick_request = {};
+            m_pending_pick_scene.reset();
+            m_has_pending_pick_request = false;
+        } else {
+            m_pending_pick_request = {};
+            m_pending_pick_scene.reset();
+            m_has_pending_pick_request = false;
+        }
     }
 
     void ViewportPanel::applyPickResult(const ViewportPickRequest& request, const ViewportPickResult& result) {
-        if (!result.supported || !result.ready) {
+        if (!result.supported ||
+            result.status != ViewportPickStatus::Ready ||
+            !result.ready) {
             return;
         }
         if (!m_context || !m_context->active_scene) {

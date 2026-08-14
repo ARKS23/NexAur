@@ -10,7 +10,7 @@
 namespace NexAur {
     class VulkanShaderLibrary;
 
-    class NEXAUR_API VulkanPipelineCache {
+    class VulkanPipelineCache {
     public:
         VulkanPipelineCache() = default;
         ~VulkanPipelineCache();

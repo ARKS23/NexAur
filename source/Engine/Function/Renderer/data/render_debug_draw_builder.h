@@ -2,11 +2,10 @@
 
 #include <glm/glm.hpp>
 
-#include "Core/Base.h"
 #include "Function/Renderer/data/render_debug_draw.h"
 
 namespace NexAur {
-    class NEXAUR_API RenderDebugDrawBuilder {
+    class RenderDebugDrawBuilder {
     public:
         static void addLine(
             RenderDebugDrawData& debug_draw,

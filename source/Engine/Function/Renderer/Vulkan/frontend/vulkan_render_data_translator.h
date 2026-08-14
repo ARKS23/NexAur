@@ -6,7 +6,7 @@
 
 namespace NexAur {
     // Converts canonical renderer data into Vulkan-native CPU descriptions.
-    class NEXAUR_API VulkanRenderDataTranslator {
+    class VulkanRenderDataTranslator {
     public:
         VulkanRenderView buildRenderView(const RenderView& render_view) const;
     };

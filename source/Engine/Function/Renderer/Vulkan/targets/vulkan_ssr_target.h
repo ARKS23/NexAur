@@ -24,7 +24,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanSsrTarget {
+    class VulkanSsrTarget {
     public:
         VulkanSsrTarget() = default;
         ~VulkanSsrTarget();

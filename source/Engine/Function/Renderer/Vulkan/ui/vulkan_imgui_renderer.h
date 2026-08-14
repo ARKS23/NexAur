@@ -30,7 +30,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanImGuiRenderer {
+    class VulkanImGuiRenderer {
     public:
         VulkanImGuiRenderer() = default;
         ~VulkanImGuiRenderer();

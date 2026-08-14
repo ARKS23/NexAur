@@ -44,7 +44,7 @@ namespace NexAur {
         VulkanGraphPass& m_pass;
     };
 
-    class NEXAUR_API VulkanPassGraph {
+    class VulkanPassGraph {
     public:
         VulkanGraphImageHandle addImage(VulkanGraphImageDesc desc);
         VulkanGraphPassBuilder addPass(std::string name);

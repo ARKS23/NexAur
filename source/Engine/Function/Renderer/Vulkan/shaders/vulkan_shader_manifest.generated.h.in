@@ -1,0 +1,29 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace NexAur {
+    enum class VulkanShaderProgramId : uint8_t {
+@NEXAUR_VULKAN_SHADER_ENUM_ENTRIES@        Count
+    };
+
+    struct VulkanShaderManifestEntry {
+        const char* vertex_file = nullptr;
+        const char* fragment_file = nullptr;
+        const char* vertex_entry = nullptr;
+        const char* fragment_entry = nullptr;
+        bool has_fragment_stage = false;
+    };
+
+    inline constexpr std::array<VulkanShaderManifestEntry, @NEXAUR_VULKAN_SHADER_PROGRAM_COUNT@>
+        kVulkanShaderManifest{{
+@NEXAUR_VULKAN_SHADER_TABLE_ENTRIES@        }};
+
+    inline constexpr const VulkanShaderManifestEntry* findVulkanShaderManifestEntry(
+        VulkanShaderProgramId program_id) {
+        const std::size_t index = static_cast<std::size_t>(program_id);
+        return index < kVulkanShaderManifest.size() ? &kVulkanShaderManifest[index] : nullptr;
+    }
+} // namespace NexAur

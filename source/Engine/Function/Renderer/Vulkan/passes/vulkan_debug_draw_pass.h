@@ -25,7 +25,7 @@ namespace NexAur {
         }
     };
 
-    class NEXAUR_API VulkanDebugDrawPass {
+    class VulkanDebugDrawPass {
     public:
         VulkanDebugDrawPass() = default;
         ~VulkanDebugDrawPass();

@@ -4,8 +4,6 @@
 
 #include <glm/glm.hpp>
 
-#include "Core/Base.h"
-
 namespace NexAur {
     // Backend-neutral camera contract:
     // - right-handed view space, forward -Z, up +Y;
@@ -13,7 +11,7 @@ namespace NexAur {
     // - GLM column-major matrices transform as projection * view * position.
     // RenderSceneFrameBuilder owns validation and all derived matrices. Backends
     // convert this view to their native clip convention at their boundary.
-    struct NEXAUR_API RenderView {
+    struct RenderView {
         glm::mat4 view_matrix{ 1.0f };
         glm::mat4 projection_matrix{ 1.0f };
         glm::mat4 view_projection_matrix{ 1.0f };

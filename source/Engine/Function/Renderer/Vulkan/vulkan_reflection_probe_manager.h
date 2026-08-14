@@ -18,6 +18,7 @@
 namespace NexAur {
     class AssetManager;
     class VulkanRenderResourceCache;
+    class VulkanRetirementQueue;
 
     struct VulkanReflectionProbeCaptureCallbacks {
         std::function<bool(const RenderSettings&, std::string&)> prepare;
@@ -54,7 +55,6 @@ namespace NexAur {
 
         bool init(
             const VulkanResourceContext& context,
-            VkCommandPool command_pool,
             VkFormat color_format,
             VkFormat depth_format);
         void shutdown();
@@ -92,6 +92,8 @@ namespace NexAur {
 
         void syncScene(uint64_t scene_id);
         void pruneCaptures(const RenderSceneFrame& scene_frame);
+        void clearCaptures();
+        void retireEnvironment(RuntimeCapture& capture);
         void enqueueCapture(const ReflectionProbeCaptureRequest& request);
         bool erasePendingCapture(int entity_id);
         bool hasPendingCapture(int entity_id) const;
@@ -131,6 +133,7 @@ namespace NexAur {
         void bindRuntimeCapture(VulkanPreparedFrame& prepared_frame);
 
         bool ensureCaptureTarget(uint32_t resolution, std::string& error_message);
+        bool createCommandPool(uint32_t queue_family_index);
         bool submitImmediateCommands(
             const char* operation,
             const std::function<bool(VkCommandBuffer)>& record_commands) const;
@@ -139,6 +142,7 @@ namespace NexAur {
 
     private:
         VulkanResourceContext m_resource_context;
+        VulkanRetirementQueue* m_retirement_queue = nullptr;
         VkCommandPool m_command_pool = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;

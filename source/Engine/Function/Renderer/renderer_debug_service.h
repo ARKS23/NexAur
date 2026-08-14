@@ -25,6 +25,11 @@ namespace NexAur {
     struct RendererDebugFrameStats {
         double engine_delta_ms = 0.0;
         double renderer_cpu_ms = 0.0;
+        double frame_wait_ms = 0.0;
+        uint32_t frame_slot_count = 0;
+        uint32_t current_frame_slot = 0;
+        uint32_t frames_in_flight = 0;
+        uint32_t swapchain_images_in_flight = 0;
         size_t opaque_object_count = 0;
         size_t transparent_object_count = 0;
         size_t opaque_draw_item_count = 0;
@@ -64,6 +69,9 @@ namespace NexAur {
         std::string object_id_format = "None";
         std::string depth_format = "None";
         bool frame_ready = false;
+        uint32_t pending_request_count = 0;
+        uint32_t readback_in_flight_count = 0;
+        std::string last_request_status = "None";
     };
 
     struct RendererDebugShadowTargetStats {
@@ -191,6 +199,21 @@ namespace NexAur {
         size_t environment_count = 0;
         size_t mesh_count = 0;
         size_t material_count = 0;
+        uint64_t gpu_submitted_serial = 0;
+        uint64_t gpu_completed_serial = 0;
+        size_t gpu_retirement_pending_count = 0;
+        uint64_t gpu_retired_count = 0;
+        uint64_t gpu_collected_count = 0;
+        size_t upload_pending_bytes = 0;
+        size_t upload_submitted_bytes_this_frame = 0;
+        size_t upload_byte_budget_per_frame = 0;
+        uint32_t upload_pending_requests = 0;
+        uint32_t upload_in_flight_requests = 0;
+        uint32_t upload_submitted_requests_this_frame = 0;
+        uint32_t upload_request_budget_per_frame = 0;
+        uint64_t upload_ready_requests = 0;
+        uint64_t upload_failed_requests = 0;
+        uint64_t upload_cancelled_requests = 0;
         bool fallback_white_texture_ready = false;
         bool fallback_material_ready = false;
         bool fallback_environment_ready = false;
