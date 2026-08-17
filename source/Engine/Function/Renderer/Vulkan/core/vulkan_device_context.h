@@ -1,6 +1,9 @@
 #pragma once
 
 #ifdef NX_PLATFORM_WINDOWS
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
     #ifndef VK_USE_PLATFORM_WIN32_KHR
         #define VK_USE_PLATFORM_WIN32_KHR
     #endif
@@ -11,6 +14,8 @@
 
 #include <VkBootstrap.h>
 #include <vulkan/vulkan.h>
+
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 
 struct GLFWwindow;
 
@@ -23,7 +28,10 @@ namespace NexAur {
         VulkanDeviceContext(const VulkanDeviceContext&) = delete;
         VulkanDeviceContext& operator=(const VulkanDeviceContext&) = delete;
 
-        bool init(GLFWwindow* window, const std::vector<const char*>& required_extensions);
+        bool init(
+            GLFWwindow* window,
+            const std::vector<const char*>& required_extensions,
+            const VulkanRayTracingOptions& ray_tracing_options = {});
         void shutdown();
 
         bool isReady() const { return m_device.device != VK_NULL_HANDLE; }
@@ -36,6 +44,9 @@ namespace NexAur {
         VkQueue getPresentQueue() const { return m_present_queue; }
         uint32_t getGraphicsQueueFamily() const { return m_graphics_queue_family; }
         uint32_t getApiVersion() const { return m_device_api_version; }
+        const VulkanRayTracingCapabilities& getRayTracingCapabilities() const {
+            return m_ray_tracing_capabilities;
+        }
 
         vkb::Instance& getInstanceBundle() { return m_instance; }
         const vkb::Instance& getInstanceBundle() const { return m_instance; }
@@ -57,7 +68,7 @@ namespace NexAur {
     private:
         bool createInstance(const std::vector<const char*>& required_extensions);
         bool createSurface();
-        bool createDevice();
+        bool createDevice(const VulkanRayTracingOptions& ray_tracing_options);
         void cachePhysicalDeviceProperties();
         bool buildRequiredVulkan13Features(VkPhysicalDeviceVulkan13Features& enabled_features) const;
 
@@ -70,5 +81,6 @@ namespace NexAur {
         VkQueue m_present_queue = VK_NULL_HANDLE;
         uint32_t m_graphics_queue_family = 0;
         uint32_t m_device_api_version = VK_API_VERSION_1_3;
+        VulkanRayTracingCapabilities m_ray_tracing_capabilities;
     };
 } // namespace NexAur

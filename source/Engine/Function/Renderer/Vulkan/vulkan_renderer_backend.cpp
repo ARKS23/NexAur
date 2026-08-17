@@ -165,7 +165,10 @@ namespace NexAur {
                 std::max(1u, window_width),
                 std::max(1u, window_height));
 
-            if (!device_context.init(native_window, service.getRequiredVulkanInstanceExtensions()) ||
+            if (!device_context.init(
+                    native_window,
+                    service.getRequiredVulkanInstanceExtensions(),
+                    init_context.ray_tracing_options) ||
                 !gpu_allocator.init(createResourceContext()) ||
                 !shader_library.init(device.device) ||
                 !descriptor_layout_cache.init(device.device) ||
@@ -808,6 +811,20 @@ namespace NexAur {
             stats.backend = RendererBackendType::Vulkan;
             stats.initialized = initialized;
             stats.device_api_version = VulkanDiagnosticsCollector::apiVersionToString(device_api_version);
+            const VulkanRayTracingCapabilities& ray_tracing_capabilities =
+                device_context.getRayTracingCapabilities();
+            stats.ray_query_supported = ray_tracing_capabilities.supportsRayQuery();
+            stats.ray_query_enabled = ray_tracing_capabilities.ray_query_enabled;
+            stats.ray_tracing_pipeline_supported = ray_tracing_capabilities.ray_tracing_pipeline;
+            stats.ray_query_fallback_reason =
+                ray_tracing_capabilities.unavailable_reason.empty() ?
+                    "None" : ray_tracing_capabilities.unavailable_reason;
+            stats.acceleration_structure_min_scratch_alignment =
+                ray_tracing_capabilities.min_scratch_alignment;
+            stats.acceleration_structure_max_geometry_count =
+                ray_tracing_capabilities.max_geometry_count;
+            stats.acceleration_structure_max_instance_count =
+                ray_tracing_capabilities.max_instance_count;
             stats.swapchain_ready = swapchain.swapchain != VK_NULL_HANDLE && !swapchain_images.empty();
             stats.swapchain_width = swapchain.extent.width;
             stats.swapchain_height = swapchain.extent.height;

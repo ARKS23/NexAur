@@ -16,7 +16,8 @@ namespace NexAur {
 
     bool VulkanDeviceContext::init(
         GLFWwindow* window,
-        const std::vector<const char*>& required_extensions) {
+        const std::vector<const char*>& required_extensions,
+        const VulkanRayTracingOptions& ray_tracing_options) {
         if (isReady()) {
             return true;
         }
@@ -27,7 +28,9 @@ namespace NexAur {
             return false;
         }
 
-        if (!createInstance(required_extensions) || !createSurface() || !createDevice()) {
+        if (!createInstance(required_extensions) ||
+            !createSurface() ||
+            !createDevice(ray_tracing_options)) {
             shutdown();
             return false;
         }
@@ -57,6 +60,7 @@ namespace NexAur {
         m_present_queue = VK_NULL_HANDLE;
         m_graphics_queue_family = 0;
         m_device_api_version = VK_API_VERSION_1_3;
+        m_ray_tracing_capabilities = {};
     }
 
     bool VulkanDeviceContext::createInstance(const std::vector<const char*>& required_extensions) {
@@ -132,7 +136,8 @@ namespace NexAur {
 #endif
     }
 
-    bool VulkanDeviceContext::createDevice() {
+    bool VulkanDeviceContext::createDevice(
+        const VulkanRayTracingOptions& ray_tracing_options) {
         auto physical_device_result = vkb::PhysicalDeviceSelector(m_instance)
             .set_surface(m_surface)
             .require_present(true)
@@ -150,6 +155,20 @@ namespace NexAur {
         m_physical_device = physical_device_result.value();
         cachePhysicalDeviceProperties();
 
+        const VulkanRayTracingDeviceSupport ray_tracing_support =
+            queryVulkanRayTracingDeviceSupport(m_physical_device.physical_device);
+        m_ray_tracing_capabilities = negotiateVulkanRayTracingCapabilities(
+            ray_tracing_support,
+            ray_tracing_options);
+        if (m_ray_tracing_capabilities.ray_query_enabled &&
+            !m_physical_device.enable_extensions_if_present(
+                kVulkanRayQueryDeviceExtensions.size(),
+                kVulkanRayQueryDeviceExtensions.data())) {
+            m_ray_tracing_capabilities.ray_query_enabled = false;
+            m_ray_tracing_capabilities.unavailable_reason =
+                "Failed to enable the complete Ray Query extension cluster.";
+        }
+
         VkPhysicalDeviceFeatures optional_core_features{};
         optional_core_features.samplerAnisotropy = VK_TRUE;
         if (!m_physical_device.enable_features_if_present(optional_core_features)) {
@@ -162,9 +181,30 @@ namespace NexAur {
             return false;
         }
 
-        auto device_result = vkb::DeviceBuilder(m_physical_device)
-            .add_pNext(&vulkan13_features)
-            .build();
+        VkPhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features{};
+        buffer_device_address_features.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+        buffer_device_address_features.bufferDeviceAddress = VK_TRUE;
+
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features{};
+        acceleration_structure_features.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+        acceleration_structure_features.accelerationStructure = VK_TRUE;
+
+        VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features{};
+        ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+        ray_query_features.rayQuery = VK_TRUE;
+
+        vkb::DeviceBuilder device_builder(m_physical_device);
+        device_builder.add_pNext(&vulkan13_features);
+        if (m_ray_tracing_capabilities.ray_query_enabled) {
+            device_builder
+                .add_pNext(&buffer_device_address_features)
+                .add_pNext(&acceleration_structure_features)
+                .add_pNext(&ray_query_features);
+        }
+
+        auto device_result = device_builder.build();
         if (!device_result) {
             VulkanDiagnosticsCollector::logVkbFailure("Vulkan logical device creation", device_result);
             return false;
@@ -194,6 +234,18 @@ namespace NexAur {
             return false;
         }
         m_graphics_queue_family = graphics_queue_index_result.value();
+
+        if (m_ray_tracing_capabilities.ray_query_enabled) {
+            NX_CORE_INFO(
+                "Vulkan Ray Query supported and enabled (scratch alignment: {}, max geometries: {}, max instances: {}).",
+                m_ray_tracing_capabilities.min_scratch_alignment,
+                m_ray_tracing_capabilities.max_geometry_count,
+                m_ray_tracing_capabilities.max_instance_count);
+        } else {
+            NX_CORE_INFO(
+                "Vulkan Ray Query fallback active: {}",
+                m_ray_tracing_capabilities.unavailable_reason);
+        }
         return true;
     }
 

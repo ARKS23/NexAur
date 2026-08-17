@@ -9,6 +9,7 @@
 #include "Function/Renderer/renderer_debug_service.h"
 #include "Function/Renderer/renderer_service.h"
 #include "Function/Renderer/viewport_renderer_service.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 
 namespace NexAur {
     class AssetManager;
@@ -19,6 +20,7 @@ namespace NexAur {
     struct VulkanRendererInitContext {
         WindowService* window_service = nullptr;
         AssetManager* asset_manager = nullptr;
+        VulkanRayTracingOptions ray_tracing_options;
 
         bool valid() const {
             return window_service != nullptr && asset_manager != nullptr;

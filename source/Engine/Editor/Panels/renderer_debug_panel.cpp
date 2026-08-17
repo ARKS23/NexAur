@@ -54,6 +54,10 @@ namespace NexAur {
             ImGui::Text("%s: %.3f", label, value);
         }
 
+        void drawKeyValue64(const char* label, uint64_t value) {
+            ImGui::Text("%s: %llu", label, static_cast<unsigned long long>(value));
+        }
+
         void drawExtent(const char* label, uint32_t width, uint32_t height) {
             ImGui::Text("%s: %u x %u", label, width, height);
         }
@@ -93,6 +97,23 @@ namespace NexAur {
         drawKeyValue("Backend", backendToText(snapshot.backend.backend));
         drawKeyValue("Initialized", boolToText(snapshot.backend.initialized));
         drawKeyValue("Device API", snapshot.backend.device_api_version.c_str());
+        drawKeyValue("Ray Query Supported", boolToText(snapshot.backend.ray_query_supported));
+        drawKeyValue("Ray Query Enabled", boolToText(snapshot.backend.ray_query_enabled));
+        drawKeyValue(
+            "RT Pipeline Supported",
+            boolToText(snapshot.backend.ray_tracing_pipeline_supported));
+        drawKeyValue(
+            "Ray Query Fallback",
+            snapshot.backend.ray_query_fallback_reason.c_str());
+        drawKeyValue64(
+            "AS Scratch Alignment",
+            snapshot.backend.acceleration_structure_min_scratch_alignment);
+        drawKeyValue64(
+            "AS Max Geometries",
+            snapshot.backend.acceleration_structure_max_geometry_count);
+        drawKeyValue64(
+            "AS Max Instances",
+            snapshot.backend.acceleration_structure_max_instance_count);
         drawKeyValue("Swapchain Ready", boolToText(snapshot.backend.swapchain_ready));
         drawExtent(
             "Swapchain Extent",

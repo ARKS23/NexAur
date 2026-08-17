@@ -14,6 +14,13 @@ namespace NexAur {
         RendererBackendType backend = RendererBackendType::Unknown;
         bool initialized = false;
         std::string device_api_version = "Unknown";
+        bool ray_query_supported = false;
+        bool ray_query_enabled = false;
+        bool ray_tracing_pipeline_supported = false;
+        std::string ray_query_fallback_reason = "Not queried";
+        uint64_t acceleration_structure_min_scratch_alignment = 0;
+        uint64_t acceleration_structure_max_geometry_count = 0;
+        uint64_t acceleration_structure_max_instance_count = 0;
         bool swapchain_ready = false;
         uint32_t swapchain_width = 0;
         uint32_t swapchain_height = 0;

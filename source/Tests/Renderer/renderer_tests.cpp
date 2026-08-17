@@ -10,6 +10,11 @@
 #include <utility>
 #include <vector>
 
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Core/Log/log_system.h"
@@ -20,6 +25,7 @@
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
 #include "Function/Renderer/frontend/render_shadow_frame_builder.h"
 #include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
+#include "Function/Renderer/Vulkan/core/vulkan_device_context.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_constants.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h"
@@ -27,6 +33,7 @@
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
 
@@ -2047,6 +2054,210 @@ int runRenderSettingsSmoke() {
     return 0;
 }
 
+int runRayTracingCapabilitiesSmoke() {
+    NexAur::VulkanRayTracingDeviceSupport complete_support;
+    complete_support.query_succeeded = true;
+    complete_support.acceleration_structure_extension = true;
+    complete_support.ray_query_extension = true;
+    complete_support.deferred_host_operations_extension = true;
+    complete_support.ray_tracing_pipeline_extension = true;
+    complete_support.buffer_device_address_feature = true;
+    complete_support.acceleration_structure_feature = true;
+    complete_support.ray_query_feature = true;
+    complete_support.ray_tracing_pipeline_feature = true;
+    complete_support.min_scratch_alignment = 256;
+    complete_support.max_geometry_count = 4096;
+    complete_support.max_instance_count = 8192;
+
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    const NexAur::VulkanRayTracingCapabilities automatic_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(complete_support);
+    expect(
+        automatic_capabilities.supportsRayQuery() &&
+        automatic_capabilities.ray_query_enabled &&
+        automatic_capabilities.ray_tracing_pipeline &&
+        automatic_capabilities.unavailable_reason.empty(),
+        "Ray tracing capability smoke failed: complete Auto capability was not enabled.");
+    expect(
+        automatic_capabilities.min_scratch_alignment == 256u &&
+        automatic_capabilities.max_geometry_count == 4096u &&
+        automatic_capabilities.max_instance_count == 8192u,
+        "Ray tracing capability smoke failed: acceleration structure properties were not preserved.");
+
+    struct MissingRequirement {
+        bool NexAur::VulkanRayTracingDeviceSupport::*field = nullptr;
+        const char* reason_fragment = nullptr;
+    };
+    constexpr std::array<MissingRequirement, 6> missing_requirements{
+        MissingRequirement{
+            &NexAur::VulkanRayTracingDeviceSupport::acceleration_structure_extension,
+            "VK_KHR_acceleration_structure" },
+        MissingRequirement{
+            &NexAur::VulkanRayTracingDeviceSupport::ray_query_extension,
+            "VK_KHR_ray_query" },
+        MissingRequirement{
+            &NexAur::VulkanRayTracingDeviceSupport::deferred_host_operations_extension,
+            "VK_KHR_deferred_host_operations" },
+        MissingRequirement{
+            &NexAur::VulkanRayTracingDeviceSupport::buffer_device_address_feature,
+            "bufferDeviceAddress" },
+        MissingRequirement{
+            &NexAur::VulkanRayTracingDeviceSupport::acceleration_structure_feature,
+            "accelerationStructure" },
+        MissingRequirement{
+            &NexAur::VulkanRayTracingDeviceSupport::ray_query_feature,
+            "rayQuery" },
+    };
+
+    for (const MissingRequirement& missing_requirement : missing_requirements) {
+        NexAur::VulkanRayTracingDeviceSupport incomplete_support = complete_support;
+        incomplete_support.*(missing_requirement.field) = false;
+        const NexAur::VulkanRayTracingCapabilities capabilities =
+            NexAur::negotiateVulkanRayTracingCapabilities(incomplete_support);
+        expect(
+            !capabilities.supportsRayQuery() &&
+            !capabilities.ray_query_enabled &&
+            capabilities.unavailable_reason.find(missing_requirement.reason_fragment) !=
+                std::string::npos,
+            "Ray tracing capability smoke failed: an incomplete capability cluster was accepted.");
+    }
+
+    NexAur::VulkanRayTracingOptions disabled_options;
+    disabled_options.ray_query_mode = NexAur::VulkanRayQueryMode::Disabled;
+    const NexAur::VulkanRayTracingCapabilities disabled_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(complete_support, disabled_options);
+    expect(
+        disabled_capabilities.supportsRayQuery() &&
+        !disabled_capabilities.ray_query_enabled &&
+        disabled_capabilities.unavailable_reason.find("configuration") != std::string::npos,
+        "Ray tracing capability smoke failed: Disabled mode did not preserve support and select fallback.");
+
+    NexAur::VulkanRayTracingOptions force_disabled_options;
+    force_disabled_options.force_disable_ray_query = true;
+    const NexAur::VulkanRayTracingCapabilities force_disabled_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(
+            complete_support,
+            force_disabled_options);
+    expect(
+        force_disabled_capabilities.supportsRayQuery() &&
+        !force_disabled_capabilities.ray_query_enabled &&
+        force_disabled_capabilities.unavailable_reason.find("force-disabled") != std::string::npos,
+        "Ray tracing capability smoke failed: force-disable did not select fallback.");
+
+    NexAur::VulkanRayTracingDeviceSupport no_pipeline_support = complete_support;
+    no_pipeline_support.ray_tracing_pipeline_extension = false;
+    const NexAur::VulkanRayTracingCapabilities ray_query_only_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(no_pipeline_support);
+    expect(
+        ray_query_only_capabilities.ray_query_enabled &&
+        !ray_query_only_capabilities.ray_tracing_pipeline,
+        "Ray tracing capability smoke failed: Ray Query incorrectly required the full RT pipeline.");
+
+    NexAur::VulkanRayTracingDeviceSupport failed_query_support;
+    failed_query_support.query_failure_reason = "Synthetic capability query failure.";
+    const NexAur::VulkanRayTracingCapabilities failed_query_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(failed_query_support);
+    expect(
+        !failed_query_capabilities.supportsRayQuery() &&
+        !failed_query_capabilities.ray_query_enabled &&
+        failed_query_capabilities.unavailable_reason == failed_query_support.query_failure_reason,
+        "Ray tracing capability smoke failed: query failure did not produce an explicit fallback reason.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Ray tracing capability smoke passed." << std::endl;
+    return 0;
+}
+
+int runRayTracingDeviceSmoke(
+    NexAur::VulkanRayQueryMode mode,
+    bool force_disable_ray_query,
+    const char* mode_name) {
+    if (glfwInit() != GLFW_TRUE) {
+        std::cerr << "Ray tracing device smoke failed: GLFW initialization failed." << std::endl;
+        return 1;
+    }
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    GLFWwindow* window = glfwCreateWindow(64, 64, "NexAur RT-00 Smoke", nullptr, nullptr);
+    if (!window) {
+        glfwTerminate();
+        std::cerr << "Ray tracing device smoke failed: hidden Vulkan window creation failed." << std::endl;
+        return 1;
+    }
+
+    uint32_t extension_count = 0;
+    const char** extension_names = glfwGetRequiredInstanceExtensions(&extension_count);
+    std::vector<const char*> required_extensions;
+    if (extension_names && extension_count > 0) {
+        required_extensions.assign(extension_names, extension_names + extension_count);
+    }
+
+    NexAur::VulkanRayTracingOptions options;
+    options.ray_query_mode = mode;
+    options.force_disable_ray_query = force_disable_ray_query;
+
+    NexAur::VulkanDeviceContext device_context;
+    const bool initialized = device_context.init(window, required_extensions, options);
+    bool success = initialized;
+    std::string failure = "Ray tracing device smoke failed: VulkanDeviceContext initialization failed.";
+    if (initialized) {
+        const NexAur::VulkanRayTracingCapabilities& capabilities =
+            device_context.getRayTracingCapabilities();
+        if (force_disable_ray_query) {
+            success = !capabilities.ray_query_enabled &&
+                capabilities.unavailable_reason.find("force-disabled") != std::string::npos;
+            failure = "Ray tracing device smoke failed: force-disable did not select Raster fallback.";
+        } else if (mode == NexAur::VulkanRayQueryMode::Disabled) {
+            success = !capabilities.ray_query_enabled &&
+                capabilities.unavailable_reason.find("configuration") != std::string::npos;
+            failure = "Ray tracing device smoke failed: Disabled mode enabled Ray Query.";
+        } else if (capabilities.supportsRayQuery()) {
+            success = capabilities.ray_query_enabled && capabilities.unavailable_reason.empty();
+            failure = "Ray tracing device smoke failed: supported Auto mode did not enable Ray Query.";
+        } else {
+            success = !capabilities.ray_query_enabled && !capabilities.unavailable_reason.empty();
+            failure = "Ray tracing device smoke failed: unsupported Auto mode has no fallback reason.";
+        }
+    }
+
+    device_context.shutdown();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Ray tracing device " << mode_name << " smoke passed." << std::endl;
+    return 0;
+}
+
+int runRayTracingDeviceAutoSmoke() {
+    return runRayTracingDeviceSmoke(NexAur::VulkanRayQueryMode::Auto, false, "Auto");
+}
+
+int runRayTracingDeviceDisabledSmoke() {
+    return runRayTracingDeviceSmoke(NexAur::VulkanRayQueryMode::Disabled, false, "Disabled");
+}
+
+int runRayTracingDeviceForceDisabledSmoke() {
+    return runRayTracingDeviceSmoke(NexAur::VulkanRayQueryMode::Auto, true, "force-disabled");
+}
+
 
 namespace {
     struct RendererTestEntry {
@@ -2063,6 +2274,10 @@ namespace {
         { "--retirement-queue", runRetirementQueueSmoke },
         { "--frame-context", runFrameContextSmoke },
         { "--async-transfer-state", runAsyncTransferStateSmoke },
+        { "--ray-tracing-capabilities", runRayTracingCapabilitiesSmoke },
+        { "--ray-tracing-device-auto", runRayTracingDeviceAutoSmoke },
+        { "--ray-tracing-device-disabled", runRayTracingDeviceDisabledSmoke },
+        { "--ray-tracing-device-force-disabled", runRayTracingDeviceForceDisabledSmoke },
     };
 } // namespace
 

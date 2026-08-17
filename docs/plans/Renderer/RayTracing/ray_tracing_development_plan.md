@@ -1,8 +1,8 @@
 # NexAur Ray Tracing Development Plan
 
-日期：2026-08-11
+日期：2026-08-17
 
-状态：Draft，待审核
+状态：开发中；RT-00 已完成，下一工作包为 RT-01
 
 ## 1. 文档目的
 
@@ -82,6 +82,8 @@ SSR 仍负责低成本、与当前屏幕内容一致的近场反射；Ray Tracin
 
 - Vulkan device 最低版本为 Vulkan 1.3。
 - 已启用 `dynamicRendering` 和 `synchronization2` device feature。
+- 已完成 Renderer Rebuild RR-00 至 RR-14，具备稳定 frame contract、Feature ownership、FrameContext、deferred destruction 和 focused test target。
+- RT-00 已建立可选 Ray Query capability negotiation、logical-device feature chain 和 diagnostics。
 - Shader 使用 HLSL，经 DXC 编译为 Vulkan 1.3 SPIR-V。
 - `VulkanDrawList` 已包含 mesh、material、world transform 和 entity ID。
 - `VulkanMeshResource` 已持有 GPU vertex / index buffer；CPU Mesh 也保留标准三角形顶点和 `uint32_t` index 数据。
@@ -106,23 +108,23 @@ VulkanMeshDrawItem
 
 | 领域 | 当前状态 | 光追影响 |
 |---|---|---|
-| Device capability | 只要求 swapchain 和 Vulkan 1.3 feature | 未查询或启用 acceleration structure、ray query、BDA |
+| Device capability | RT-00 已完成 capability cluster 查询、`Auto` / `Disabled` / force-disable 和可选 feature chain | 已解除；不支持或关闭时继续创建 Raster logical device |
 | GPU allocator | VMA allocator 未启用 device-address allocator flag | AS backing / scratch / instance buffer 无法形成统一 device-address 路径 |
 | Mesh buffer | 只有 vertex / index usage | 不能直接作为 acceleration structure build input |
 | AS primitive | 不存在 BLAS、TLAS 和 scratch buffer 封装 | 无法构建或持有 acceleration structure |
 | RenderGraph | 只注册 image | 无法表达 instance buffer、BLAS/TLAS build 和 shader read hazard |
-| Synchronization | Graph 仍使用 legacy image barrier，且同 layout 直接跳过 | 无法正确覆盖 AS build write -> fragment ray query read |
+| Synchronization | Graph image state 已迁移到 synchronization2 并覆盖同 layout hazard；尚无 AS resource / access | RT-05 仍需增加 AS build write -> shader read 语义 |
 | Descriptor allocator | Pool 未分配 acceleration structure descriptor | 无法分配 Ray Query descriptor set |
 | Descriptor writer | 只支持 image / buffer info | 缺少 `VkWriteDescriptorSetAccelerationStructureKHR` pNext 写入 |
 | Shader library | 只描述 vertex / fragment program pair | 可支持 fragment Ray Query variant，但需扩展 program 和编译配置 |
 | Pipeline cache | 只支持 graphics pipeline | 第一阶段足够；Full RT Pipeline 时必须新增独立 pipeline 类型 |
 | Scene material table | 仍按 draw call 绑定 material | 足够做 shadow visibility，不足以做通用 hit shading |
 | Temporal data | 没有正式 motion vector / history contract | 不足以实现稳定的 RT reflection denoiser |
-| GPU lifetime | 当前依赖单帧 fence 和同步等待 | 可做第一版 baseline，但多帧并行前必须接入 deferred destruction |
+| GPU lifetime | 已有 FrameContext、frame serial、retirement queue 和 deferred destruction | 后续 AS 对象必须接入现有 retirement contract |
 
 ### 3.3 结论
 
-当前 Renderer 可以作为光追开发底座，但不能直接开始写 Ray Query shader。必须先补齐 capability negotiation、device-address buffer、BLAS/TLAS、descriptor 和同步模型。
+当前 Renderer 已可进入光追基础设施开发。RT-00 capability negotiation 已完成；仍不能直接开始正式 Ray Query shader，下一步必须依次补齐 device-address buffer、BLAS/TLAS、descriptor 和 AS 同步模型。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -189,13 +191,7 @@ RR-01 RenderGraph Access Model
 | RR-05 | Capability、device feature chain 和 function ownership 应进入 `VulkanDeviceContext` |
 | RR-06 | AS backing、scratch、instance buffer 应复用统一 `VulkanOwnedBuffer` / allocator |
 
-以下工作不是第一版单帧 Ray Query baseline 的硬阻塞，但有明确时限：
-
-- RR-04 Shadow Frame Builder：建议在 RT-07 前完成，便于 Raster / RT shadow 使用一致的 light 和 shadow distance contract。
-- RR-08 / RR-09 Feature ownership：可与 RT Feature 接入并行，但 RT 代码不得继续堆入巨型 Backend。
-- RR-11 / RR-12 Deferred Destruction / FrameContext：在进入多帧并行和生产级 AS 更新前必须完成。
-
-约束：光追 PR 不应顺便完成大块 Renderer 重构。依赖未完成时先完成对应 RR 工作包，再进入 RT 工作包。
+截至 2026-08-17，RR-00 至 RR-14 已全部完成，上述前置依赖均已满足：Shadow Frame Builder、Feature ownership、deferred destruction、FrameContext、异步上传和 Renderer focused tests 均可直接复用。光追工作包不得重新建立平行生命周期、buffer ownership 或 feature 调度路径。
 
 ## 6. 目标架构
 
@@ -473,6 +469,8 @@ result       = visible or occluded
 
 ### 11.1 RT-00：Capability Baseline
 
+状态：已完成（2026-08-17）。
+
 风险：低到中。
 
 工作内容：
@@ -490,6 +488,22 @@ result       = visible or occluded
 - 支持光追时 feature / properties 记录正确。
 - 关闭光追时不创建任何 AS 对象。
 - Vulkan validation 不新增 feature-chain 或 extension VUID。
+
+实现结果：
+
+- 新增 `VulkanRayTracingCapabilities` 和纯数据 capability negotiation。
+- `VulkanDeviceContext` 查询 Ray Query extension cluster、BDA / AS / Ray Query feature 及 AS properties。
+- 仅在完整 capability 且模式允许时启用 extension cluster 与 device feature `pNext` chain。
+- `VulkanRendererInitContext` 提供默认 `Auto`、显式 `Disabled` 和测试用 force-disable 配置。
+- Renderer diagnostics 暴露 Ray Query supported / enabled、fallback reason、RT Pipeline support 和 AS limits。
+- focused test 覆盖完整 capability、缺失任一依赖、query failure、Disabled、force-disable 和 Ray Query / Full RT Pipeline 能力分离。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 与 `Sandbox` 构建通过。
+- capability CPU focused test 通过。
+- RT-capable GPU 上 `Auto`、`Disabled`、force-disable 三条 logical-device 路径通过。
+- Debug Vulkan validation 已启用，无新增 feature-chain 或 extension VUID。
 
 ### 11.2 RT-01：Device Address Buffer Foundation
 
