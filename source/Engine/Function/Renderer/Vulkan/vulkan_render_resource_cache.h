@@ -72,6 +72,7 @@ namespace NexAur {
         size_t getTextureCount() const { return m_texture_cache.size(); }
         size_t getEnvironmentCount() const { return m_environment_cache.size(); }
         size_t getMeshCount() const;
+        size_t getDeviceAddressMeshCount() const;
         size_t getMaterialCount() const;
         bool hasFallbackWhiteTexture() const;
         bool hasFallbackMaterial() const;

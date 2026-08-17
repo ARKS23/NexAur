@@ -328,6 +328,10 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.cpp
+    Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_functions.h
+    Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_functions.cpp
+    Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.h
+    Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.cpp
     Function/Renderer/Vulkan/frontend/vulkan_render_view.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp

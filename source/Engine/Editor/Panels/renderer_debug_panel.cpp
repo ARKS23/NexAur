@@ -100,6 +100,12 @@ namespace NexAur {
         drawKeyValue("Ray Query Supported", boolToText(snapshot.backend.ray_query_supported));
         drawKeyValue("Ray Query Enabled", boolToText(snapshot.backend.ray_query_enabled));
         drawKeyValue(
+            "AS Functions Loaded",
+            boolToText(snapshot.backend.acceleration_structure_functions_loaded));
+        drawKeyValue(
+            "Buffer Device Address",
+            boolToText(snapshot.backend.buffer_device_address_enabled));
+        drawKeyValue(
             "RT Pipeline Supported",
             boolToText(snapshot.backend.ray_tracing_pipeline_supported));
         drawKeyValue(
@@ -356,6 +362,7 @@ namespace NexAur {
         drawKeyValue("Textures", snapshot.resources.texture_count);
         drawKeyValue("Environments", snapshot.resources.environment_count);
         drawKeyValue("Meshes", snapshot.resources.mesh_count);
+        drawKeyValue("Device Address Meshes", snapshot.resources.device_address_mesh_count);
         drawKeyValue("Materials", snapshot.resources.material_count);
         ImGui::Text(
             "GPU Submitted Serial: %llu",

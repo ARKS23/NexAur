@@ -27,6 +27,9 @@ namespace NexAur {
         allocator_info.instance = context.instance;
         allocator_info.physicalDevice = context.physical_device;
         allocator_info.device = context.device;
+        if (context.buffer_device_address_enabled) {
+            allocator_info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+        }
 
         const VkResult result = vmaCreateAllocator(&allocator_info, &m_allocator);
         if (!VulkanDiagnosticsCollector::checkVk(result, "vmaCreateAllocator")) {
@@ -36,6 +39,7 @@ namespace NexAur {
 
         m_device = context.device;
         m_retirement_queue = context.retirement_queue;
+        m_buffer_device_address_enabled = context.buffer_device_address_enabled;
         return true;
     }
 
@@ -47,6 +51,7 @@ namespace NexAur {
 
         m_device = VK_NULL_HANDLE;
         m_retirement_queue = nullptr;
+        m_buffer_device_address_enabled = false;
     }
 
     bool VulkanGpuAllocator::createImage(
@@ -88,37 +93,83 @@ namespace NexAur {
         const VkBufferCreateInfo& buffer_info,
         VmaMemoryUsage memory_usage,
         VmaAllocationCreateFlags allocation_flags,
+        VkDeviceSize minimum_alignment,
         VkBuffer& buffer,
         VmaAllocation& allocation,
         const char* operation) const {
+        const char* operation_name =
+            operation != nullptr && operation[0] != '\0' ? operation : "vmaCreateBuffer";
         buffer = VK_NULL_HANDLE;
         allocation = VK_NULL_HANDLE;
         if (!isInitialized()) {
-            NX_CORE_ERROR("{} failed: VulkanGpuAllocator is not initialized.", operation);
+            NX_CORE_ERROR("{} failed: VulkanGpuAllocator is not initialized.", operation_name);
+            return false;
+        }
+        if (minimum_alignment == 0 ||
+            (minimum_alignment & (minimum_alignment - 1)) != 0) {
+            NX_CORE_ERROR("{} failed: minimum alignment must be a power of two.", operation_name);
+            return false;
+        }
+        if ((buffer_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0 &&
+            !m_buffer_device_address_enabled) {
+            NX_CORE_ERROR(
+                "{} failed: buffer device address usage was requested without an enabled allocator capability.",
+                operation_name);
             return false;
         }
 
         VmaAllocationCreateInfo allocation_info{};
         allocation_info.usage = memory_usage;
         allocation_info.flags = allocation_flags;
-        const VkResult result = vmaCreateBuffer(
-            m_allocator,
-            &buffer_info,
-            &allocation_info,
-            &buffer,
-            &allocation,
-            nullptr);
-        if (!VulkanDiagnosticsCollector::checkVk(result, operation)) {
+        const VkResult result = minimum_alignment > 1 ?
+            vmaCreateBufferWithAlignment(
+                m_allocator,
+                &buffer_info,
+                &allocation_info,
+                minimum_alignment,
+                &buffer,
+                &allocation,
+                nullptr) :
+            vmaCreateBuffer(
+                m_allocator,
+                &buffer_info,
+                &allocation_info,
+                &buffer,
+                &allocation,
+                nullptr);
+        if (!VulkanDiagnosticsCollector::checkVk(result, operation_name)) {
             buffer = VK_NULL_HANDLE;
             allocation = VK_NULL_HANDLE;
             return false;
         }
 
-        if (operation != nullptr && operation[0] != '\0') {
-            vmaSetAllocationName(m_allocator, allocation, operation);
+        if (operation_name[0] != '\0') {
+            vmaSetAllocationName(m_allocator, allocation, operation_name);
         }
 
         return true;
+    }
+
+    VkDeviceAddress VulkanGpuAllocator::getBufferDeviceAddress(
+        VkBuffer buffer,
+        const char* operation) const {
+        const char* operation_name =
+            operation != nullptr && operation[0] != '\0' ? operation : "vkGetBufferDeviceAddress";
+        if (!isInitialized() || !m_buffer_device_address_enabled || buffer == VK_NULL_HANDLE) {
+            NX_CORE_ERROR(
+                "{} failed: allocator, buffer, or buffer device address capability is invalid.",
+                operation_name);
+            return 0;
+        }
+
+        VkBufferDeviceAddressInfo address_info{};
+        address_info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        address_info.buffer = buffer;
+        const VkDeviceAddress address = vkGetBufferDeviceAddress(m_device, &address_info);
+        if (address == 0) {
+            NX_CORE_ERROR("{} failed: Vulkan returned a zero device address.", operation_name);
+        }
+        return address;
     }
 
     void VulkanGpuAllocator::destroyImage(VkImage& image, VmaAllocation& allocation) const {

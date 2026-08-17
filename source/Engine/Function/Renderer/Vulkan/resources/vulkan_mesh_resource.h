@@ -38,6 +38,18 @@ namespace NexAur {
         }
         VkBuffer getVertexBuffer() const { return m_vertex_buffer.get(); }
         VkBuffer getIndexBuffer() const { return m_index_buffer.get(); }
+        VkBufferUsageFlags getVertexBufferUsage() const { return m_vertex_buffer.getUsage(); }
+        VkBufferUsageFlags getIndexBufferUsage() const { return m_index_buffer.getUsage(); }
+        VkDeviceAddress getVertexBufferDeviceAddress() const {
+            return m_vertex_buffer.getDeviceAddress();
+        }
+        VkDeviceAddress getIndexBufferDeviceAddress() const {
+            return m_index_buffer.getDeviceAddress();
+        }
+        bool hasDeviceAddressBuffers() const {
+            return m_vertex_buffer.isDeviceAddressable() &&
+                   m_index_buffer.isDeviceAddressable();
+        }
         uint32_t getVertexCount() const { return m_vertex_count; }
         uint32_t getIndexCount() const { return m_index_count; }
 

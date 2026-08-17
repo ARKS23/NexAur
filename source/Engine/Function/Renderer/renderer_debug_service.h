@@ -16,6 +16,8 @@ namespace NexAur {
         std::string device_api_version = "Unknown";
         bool ray_query_supported = false;
         bool ray_query_enabled = false;
+        bool acceleration_structure_functions_loaded = false;
+        bool buffer_device_address_enabled = false;
         bool ray_tracing_pipeline_supported = false;
         std::string ray_query_fallback_reason = "Not queried";
         uint64_t acceleration_structure_min_scratch_alignment = 0;
@@ -205,6 +207,7 @@ namespace NexAur {
         size_t texture_count = 0;
         size_t environment_count = 0;
         size_t mesh_count = 0;
+        size_t device_address_mesh_count = 0;
         size_t material_count = 0;
         uint64_t gpu_submitted_serial = 0;
         uint64_t gpu_completed_serial = 0;

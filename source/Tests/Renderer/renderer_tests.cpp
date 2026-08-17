@@ -4,6 +4,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -18,12 +19,15 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Core/Log/log_system.h"
+#include "Function/Resource/mesh.h"
 #include "Function/Renderer/data/render_settings.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
 #include "Function/Renderer/renderer_service_types.h"
 #include "Function/Renderer/frontend/render_scene_frame_builder.h"
 #include "Function/Renderer/frontend/render_shadow_frame_builder.h"
+#include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
 #include "Function/Renderer/Vulkan/core/vulkan_device_context.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_constants.h"
@@ -33,9 +37,12 @@
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
 #include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
+#include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace {
     bool nearlyEqual(float lhs, float rhs, float epsilon = 0.001f) {
@@ -56,6 +63,67 @@ namespace {
         failure = message;
         return false;
     }
+
+    class VulkanDeviceTestFixture final {
+    public:
+        ~VulkanDeviceTestFixture() {
+            shutdown();
+        }
+
+        bool init(
+            const NexAur::VulkanRayTracingOptions& options,
+            std::string& failure) {
+            if (glfwInit() != GLFW_TRUE) {
+                failure = "GLFW initialization failed.";
+                return false;
+            }
+            m_glfw_initialized = true;
+
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+            m_window = glfwCreateWindow(64, 64, "NexAur Vulkan Smoke", nullptr, nullptr);
+            if (!m_window) {
+                failure = "Hidden Vulkan window creation failed.";
+                return false;
+            }
+
+            uint32_t extension_count = 0;
+            const char** extension_names = glfwGetRequiredInstanceExtensions(&extension_count);
+            std::vector<const char*> required_extensions;
+            if (extension_names && extension_count > 0) {
+                required_extensions.assign(
+                    extension_names,
+                    extension_names + extension_count);
+            }
+
+            if (!m_device_context.init(m_window, required_extensions, options)) {
+                failure = "VulkanDeviceContext initialization failed.";
+                return false;
+            }
+            return true;
+        }
+
+        void shutdown() {
+            m_device_context.shutdown();
+            if (m_window) {
+                glfwDestroyWindow(m_window);
+                m_window = nullptr;
+            }
+            if (m_glfw_initialized) {
+                glfwTerminate();
+                m_glfw_initialized = false;
+            }
+        }
+
+        NexAur::VulkanDeviceContext& getDeviceContext() {
+            return m_device_context;
+        }
+
+    private:
+        GLFWwindow* m_window = nullptr;
+        NexAur::VulkanDeviceContext m_device_context;
+        bool m_glfw_initialized = false;
+    };
 } // namespace
 
 int runShadowFrameBuilderSmoke() {
@@ -2180,65 +2248,166 @@ int runRayTracingCapabilitiesSmoke() {
     return 0;
 }
 
+int runDeviceAddressBufferContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    NexAur::VulkanOwnedBufferCreateInfo raster_buffer_info;
+    raster_buffer_info.size = 256;
+    raster_buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    raster_buffer_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    raster_buffer_info.debug_name = "Raster buffer contract";
+    expect(
+        raster_buffer_info.valid() && !raster_buffer_info.requiresDeviceAddress(),
+        "Device address buffer contract failed: a valid Raster buffer was rejected.");
+
+    NexAur::VulkanOwnedBufferCreateInfo build_input_info = raster_buffer_info;
+    build_input_info.usage |=
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    expect(
+        build_input_info.valid() && build_input_info.requiresDeviceAddress(),
+        "Device address buffer contract failed: AS build input did not require a device address.");
+
+    NexAur::VulkanOwnedBufferCreateInfo scratch_info;
+    scratch_info.size = 4096;
+    scratch_info.usage =
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    scratch_info.minimum_alignment = 256;
+    expect(
+        scratch_info.valid() && scratch_info.requiresDeviceAddress(),
+        "Device address buffer contract failed: aligned scratch info was rejected.");
+
+    NexAur::VulkanOwnedBufferCreateInfo invalid_info = scratch_info;
+    invalid_info.minimum_alignment = 192;
+    expect(
+        !invalid_info.valid(),
+        "Device address buffer contract failed: non-power-of-two alignment was accepted.");
+    invalid_info = scratch_info;
+    invalid_info.size = 0;
+    expect(
+        !invalid_info.valid(),
+        "Device address buffer contract failed: zero-sized buffer was accepted.");
+    invalid_info = scratch_info;
+    invalid_info.usage = 0;
+    expect(
+        !invalid_info.valid(),
+        "Device address buffer contract failed: zero usage was accepted.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Device address buffer contract smoke passed." << std::endl;
+    return 0;
+}
+
+int runAccelerationStructureContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    expect(
+        NexAur::alignVulkanAccelerationStructureScratchSize(1, 128) == 128 &&
+        NexAur::alignVulkanAccelerationStructureScratchSize(128, 128) == 128 &&
+        NexAur::alignVulkanAccelerationStructureScratchSize(129, 128) == 256,
+        "Acceleration structure contract failed: scratch alignment is incorrect.");
+    expect(
+        NexAur::alignVulkanAccelerationStructureScratchSize(0, 128) == 0 &&
+        NexAur::alignVulkanAccelerationStructureScratchSize(128, 0) == 0 &&
+        NexAur::alignVulkanAccelerationStructureScratchSize(128, 192) == 0 &&
+        NexAur::alignVulkanAccelerationStructureScratchSize(
+            std::numeric_limits<VkDeviceSize>::max(),
+            128) == 0,
+        "Acceleration structure contract failed: invalid scratch request was accepted.");
+
+    NexAur::VulkanAccelerationStructureCreateInfo create_info;
+    create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+    create_info.size = 4096;
+    expect(
+        create_info.valid(),
+        "Acceleration structure contract failed: valid BLAS create info was rejected.");
+    create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+    expect(
+        create_info.valid(),
+        "Acceleration structure contract failed: valid TLAS create info was rejected.");
+    create_info.size = 0;
+    expect(
+        !create_info.valid(),
+        "Acceleration structure contract failed: zero-sized create info was accepted.");
+
+    NexAur::VulkanAccelerationStructureBuildSizes build_sizes;
+    build_sizes.acceleration_structure_size = 4096;
+    build_sizes.build_scratch_size = 2048;
+    expect(
+        build_sizes.valid(),
+        "Acceleration structure contract failed: valid build sizes were rejected.");
+    build_sizes.build_scratch_size = 0;
+    expect(
+        !build_sizes.valid(),
+        "Acceleration structure contract failed: zero scratch size was accepted.");
+
+    NexAur::VulkanRayTracingDeviceFunctions functions;
+    expect(
+        !functions.valid(),
+        "Acceleration structure contract failed: unloaded function table is valid.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Acceleration structure contract smoke passed." << std::endl;
+    return 0;
+}
+
 int runRayTracingDeviceSmoke(
     NexAur::VulkanRayQueryMode mode,
     bool force_disable_ray_query,
     const char* mode_name) {
-    if (glfwInit() != GLFW_TRUE) {
-        std::cerr << "Ray tracing device smoke failed: GLFW initialization failed." << std::endl;
-        return 1;
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    GLFWwindow* window = glfwCreateWindow(64, 64, "NexAur RT-00 Smoke", nullptr, nullptr);
-    if (!window) {
-        glfwTerminate();
-        std::cerr << "Ray tracing device smoke failed: hidden Vulkan window creation failed." << std::endl;
-        return 1;
-    }
-
-    uint32_t extension_count = 0;
-    const char** extension_names = glfwGetRequiredInstanceExtensions(&extension_count);
-    std::vector<const char*> required_extensions;
-    if (extension_names && extension_count > 0) {
-        required_extensions.assign(extension_names, extension_names + extension_count);
-    }
-
     NexAur::VulkanRayTracingOptions options;
     options.ray_query_mode = mode;
     options.force_disable_ray_query = force_disable_ray_query;
 
-    NexAur::VulkanDeviceContext device_context;
-    const bool initialized = device_context.init(window, required_extensions, options);
+    VulkanDeviceTestFixture fixture;
+    std::string failure;
+    const bool initialized = fixture.init(options, failure);
     bool success = initialized;
-    std::string failure = "Ray tracing device smoke failed: VulkanDeviceContext initialization failed.";
     if (initialized) {
         const NexAur::VulkanRayTracingCapabilities& capabilities =
-            device_context.getRayTracingCapabilities();
+            fixture.getDeviceContext().getRayTracingCapabilities();
         if (force_disable_ray_query) {
             success = !capabilities.ray_query_enabled &&
                 capabilities.unavailable_reason.find("force-disabled") != std::string::npos;
-            failure = "Ray tracing device smoke failed: force-disable did not select Raster fallback.";
+            failure = "Force-disable did not select Raster fallback.";
         } else if (mode == NexAur::VulkanRayQueryMode::Disabled) {
             success = !capabilities.ray_query_enabled &&
                 capabilities.unavailable_reason.find("configuration") != std::string::npos;
-            failure = "Ray tracing device smoke failed: Disabled mode enabled Ray Query.";
+            failure = "Disabled mode enabled Ray Query.";
         } else if (capabilities.supportsRayQuery()) {
             success = capabilities.ray_query_enabled && capabilities.unavailable_reason.empty();
-            failure = "Ray tracing device smoke failed: supported Auto mode did not enable Ray Query.";
+            failure = "Supported Auto mode did not enable Ray Query.";
         } else {
             success = !capabilities.ray_query_enabled && !capabilities.unavailable_reason.empty();
-            failure = "Ray tracing device smoke failed: unsupported Auto mode has no fallback reason.";
+            failure = "Unsupported Auto mode has no fallback reason.";
         }
     }
 
-    device_context.shutdown();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-
     if (!success) {
-        std::cerr << failure << std::endl;
+        std::cerr << "Ray tracing device smoke failed: " << failure << std::endl;
         return 1;
     }
 
@@ -2258,6 +2427,438 @@ int runRayTracingDeviceForceDisabledSmoke() {
     return runRayTracingDeviceSmoke(NexAur::VulkanRayQueryMode::Auto, true, "force-disabled");
 }
 
+int runDeviceAddressBufferSmoke(
+    NexAur::VulkanRayQueryMode mode,
+    bool expect_device_address,
+    const char* mode_name) {
+    NexAur::VulkanRayTracingOptions options;
+    options.ray_query_mode = mode;
+
+    VulkanDeviceTestFixture fixture;
+    std::string failure;
+    if (!fixture.init(options, failure)) {
+        std::cerr << "Device address buffer smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    NexAur::VulkanDeviceContext& device_context = fixture.getDeviceContext();
+    const NexAur::VulkanRayTracingCapabilities& capabilities =
+        device_context.getRayTracingCapabilities();
+    if (expect_device_address && !capabilities.supportsRayQuery()) {
+        std::cout << "Device address buffer Auto smoke skipped: Ray Query is unsupported." << std::endl;
+        return 0;
+    }
+
+    NexAur::VulkanRetirementQueue retirement_queue;
+    NexAur::VulkanGpuAllocator allocator;
+    NexAur::VulkanResourceContext resource_context;
+    resource_context.instance = device_context.getInstance();
+    resource_context.physical_device = device_context.getPhysicalDevice();
+    resource_context.device = device_context.getDevice();
+    resource_context.graphics_queue = device_context.getGraphicsQueue();
+    resource_context.graphics_queue_family = device_context.getGraphicsQueueFamily();
+    resource_context.api_version = device_context.getApiVersion();
+    resource_context.buffer_device_address_enabled = capabilities.ray_query_enabled;
+    resource_context.gpu_allocator = &allocator;
+    resource_context.retirement_queue = &retirement_queue;
+    if (!allocator.init(resource_context)) {
+        std::cerr << "Device address buffer smoke failed: allocator initialization failed." << std::endl;
+        return 1;
+    }
+
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+    VkCommandPoolCreateInfo command_pool_info{};
+    command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_info.queueFamilyIndex = device_context.getGraphicsQueueFamily();
+    command_pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    if (vkCreateCommandPool(
+            device_context.getDevice(),
+            &command_pool_info,
+            nullptr,
+            &command_pool) != VK_SUCCESS) {
+        allocator.shutdown();
+        std::cerr << "Device address buffer smoke failed: command pool creation failed." << std::endl;
+        return 1;
+    }
+
+    NexAur::VulkanUploadManager upload_manager;
+    if (!upload_manager.init(resource_context)) {
+        vkDestroyCommandPool(device_context.getDevice(), command_pool, nullptr);
+        retirement_queue.drain();
+        allocator.shutdown();
+        std::cerr << "Device address buffer smoke failed: upload manager initialization failed." << std::endl;
+        return 1;
+    }
+
+    NexAur::VulkanResourceUploadContext upload_context;
+    upload_context.gpu_allocator = &allocator;
+    upload_context.retirement_queue = &retirement_queue;
+    upload_context.upload_manager = &upload_manager;
+    upload_context.allocator = allocator.getHandle();
+    upload_context.physical_device = device_context.getPhysicalDevice();
+    upload_context.device = device_context.getDevice();
+    upload_context.graphics_queue = device_context.getGraphicsQueue();
+    upload_context.command_pool = command_pool;
+
+    std::vector<NexAur::Vertex> vertices(3);
+    vertices[0].position = glm::vec3{ -1.0f, 0.0f, 0.0f };
+    vertices[1].position = glm::vec3{ 1.0f, 0.0f, 0.0f };
+    vertices[2].position = glm::vec3{ 0.0f, 1.0f, 0.0f };
+    const std::vector<unsigned int> indices{ 0, 1, 2 };
+    const NexAur::Mesh cpu_mesh(
+        vertices,
+        indices,
+        NexAur::MaterialImportData{});
+
+    NexAur::VulkanMeshResource mesh_resource;
+    NexAur::VulkanOwnedBuffer scratch_buffer;
+    NexAur::VulkanOwnedBuffer acceleration_structure_buffer;
+    bool success = true;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (success && !condition) {
+            success = false;
+            failure = message;
+        }
+    };
+
+    expect(
+        allocator.isBufferDeviceAddressEnabled() == expect_device_address,
+        "allocator capability did not match the selected mode.");
+    expect(
+        mesh_resource.create(upload_context, cpu_mesh),
+        "mesh resource creation failed.");
+
+    constexpr VkBufferUsageFlags ray_tracing_mesh_usage =
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    expect(
+        (mesh_resource.getVertexBufferUsage() & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0 &&
+        (mesh_resource.getIndexBufferUsage() & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) != 0,
+        "mesh lost its Raster vertex/index usage.");
+    if (expect_device_address) {
+        expect(
+            (mesh_resource.getVertexBufferUsage() & ray_tracing_mesh_usage) ==
+                ray_tracing_mesh_usage &&
+            (mesh_resource.getIndexBufferUsage() & ray_tracing_mesh_usage) ==
+                ray_tracing_mesh_usage &&
+            mesh_resource.hasDeviceAddressBuffers() &&
+            mesh_resource.getVertexBufferDeviceAddress() != 0 &&
+            mesh_resource.getIndexBufferDeviceAddress() != 0,
+            "RT mesh buffers are missing usage flags or non-zero addresses.");
+
+        NexAur::VulkanOwnedBufferCreateInfo scratch_info;
+        scratch_info.size = 4096;
+        scratch_info.usage =
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        scratch_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        scratch_info.minimum_alignment = capabilities.min_scratch_alignment > 0 ?
+            capabilities.min_scratch_alignment : 1;
+        scratch_info.debug_name = "RT-01 aligned scratch buffer";
+        expect(
+            scratch_buffer.create(allocator, scratch_info) &&
+            scratch_buffer.getDeviceAddress() != 0 &&
+            scratch_buffer.getDeviceAddress() % scratch_info.minimum_alignment == 0,
+            "scratch buffer address is zero or misaligned.");
+
+        NexAur::VulkanOwnedBufferCreateInfo acceleration_structure_info;
+        acceleration_structure_info.size = 4096;
+        acceleration_structure_info.usage =
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        acceleration_structure_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        acceleration_structure_info.debug_name = "RT-01 acceleration structure storage buffer";
+        expect(
+            acceleration_structure_buffer.create(allocator, acceleration_structure_info) &&
+            acceleration_structure_buffer.getDeviceAddress() != 0,
+            "acceleration structure storage buffer has no device address.");
+    } else {
+        expect(
+            (mesh_resource.getVertexBufferUsage() & ray_tracing_mesh_usage) == 0 &&
+            (mesh_resource.getIndexBufferUsage() & ray_tracing_mesh_usage) == 0 &&
+            !mesh_resource.hasDeviceAddressBuffers() &&
+            mesh_resource.getVertexBufferDeviceAddress() == 0 &&
+            mesh_resource.getIndexBufferDeviceAddress() == 0,
+            "Disabled mesh unexpectedly uses the device-address path.");
+    }
+
+    mesh_resource.reset();
+    scratch_buffer.reset();
+    acceleration_structure_buffer.reset();
+    upload_manager.shutdown();
+    vkDestroyCommandPool(device_context.getDevice(), command_pool, nullptr);
+    retirement_queue.drain();
+    allocator.shutdown();
+
+    if (!success) {
+        std::cerr << "Device address buffer smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Device address buffer " << mode_name << " smoke passed." << std::endl;
+    return 0;
+}
+
+int runDeviceAddressBufferAutoSmoke() {
+    return runDeviceAddressBufferSmoke(NexAur::VulkanRayQueryMode::Auto, true, "Auto");
+}
+
+int runDeviceAddressBufferDisabledSmoke() {
+    return runDeviceAddressBufferSmoke(NexAur::VulkanRayQueryMode::Disabled, false, "Disabled");
+}
+
+int runAccelerationStructureDeviceSmoke() {
+    NexAur::VulkanRayTracingOptions options;
+    options.ray_query_mode = NexAur::VulkanRayQueryMode::Auto;
+
+    VulkanDeviceTestFixture fixture;
+    std::string failure;
+    if (!fixture.init(options, failure)) {
+        std::cerr << "Acceleration structure device smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    NexAur::VulkanDeviceContext& device_context = fixture.getDeviceContext();
+    const NexAur::VulkanRayTracingCapabilities& capabilities =
+        device_context.getRayTracingCapabilities();
+    const NexAur::VulkanRayTracingDeviceFunctions& functions =
+        device_context.getRayTracingFunctions();
+    if (!capabilities.supportsRayQuery()) {
+        std::cout << "Acceleration structure device smoke skipped: Ray Query is unsupported." << std::endl;
+        return 0;
+    }
+
+    NexAur::VulkanRetirementQueue retirement_queue;
+    NexAur::VulkanGpuAllocator allocator;
+    NexAur::VulkanResourceContext resource_context;
+    resource_context.instance = device_context.getInstance();
+    resource_context.physical_device = device_context.getPhysicalDevice();
+    resource_context.device = device_context.getDevice();
+    resource_context.graphics_queue = device_context.getGraphicsQueue();
+    resource_context.graphics_queue_family = device_context.getGraphicsQueueFamily();
+    resource_context.api_version = device_context.getApiVersion();
+    resource_context.buffer_device_address_enabled = capabilities.ray_query_enabled;
+    resource_context.gpu_allocator = &allocator;
+    resource_context.retirement_queue = &retirement_queue;
+    if (!allocator.init(resource_context)) {
+        std::cerr << "Acceleration structure device smoke failed: allocator initialization failed." << std::endl;
+        return 1;
+    }
+
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+    VkCommandPoolCreateInfo command_pool_info{};
+    command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_info.queueFamilyIndex = device_context.getGraphicsQueueFamily();
+    command_pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    if (vkCreateCommandPool(
+            device_context.getDevice(),
+            &command_pool_info,
+            nullptr,
+            &command_pool) != VK_SUCCESS) {
+        retirement_queue.drain();
+        allocator.shutdown();
+        std::cerr << "Acceleration structure device smoke failed: command pool creation failed." << std::endl;
+        return 1;
+    }
+
+    bool success = true;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (success && !condition) {
+            success = false;
+            failure = message;
+        }
+    };
+
+    NexAur::VulkanOwnedBuffer vertex_buffer;
+    NexAur::VulkanOwnedBuffer index_buffer;
+    NexAur::VulkanAccelerationStructure acceleration_structure;
+    NexAur::VulkanAccelerationStructure moved_acceleration_structure;
+    NexAur::VulkanAccelerationStructureScratchBuffer scratch_buffer;
+    NexAur::VulkanAccelerationStructureScratchBuffer moved_scratch_buffer;
+
+    NexAur::VulkanOwnedBufferCreateInfo vertex_buffer_info;
+    vertex_buffer_info.size = sizeof(glm::vec3) * 3;
+    vertex_buffer_info.usage =
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    vertex_buffer_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    vertex_buffer_info.debug_name = "RT-02 test triangle vertices";
+
+    NexAur::VulkanOwnedBufferCreateInfo index_buffer_info;
+    index_buffer_info.size = sizeof(uint32_t) * 3;
+    index_buffer_info.usage =
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    index_buffer_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    index_buffer_info.debug_name = "RT-02 test triangle indices";
+    expect(
+        functions.valid() &&
+        vertex_buffer.create(allocator, vertex_buffer_info) &&
+        index_buffer.create(allocator, index_buffer_info),
+        "function table or triangle build-input buffer creation failed.");
+
+    VkAccelerationStructureGeometryKHR geometry{};
+    VkAccelerationStructureBuildGeometryInfoKHR build_info{};
+    NexAur::VulkanAccelerationStructureBuildSizes build_sizes;
+    if (success) {
+        VkAccelerationStructureGeometryTrianglesDataKHR triangles{};
+        triangles.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+        triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+        triangles.vertexData.deviceAddress = vertex_buffer.getDeviceAddress();
+        triangles.vertexStride = sizeof(glm::vec3);
+        triangles.maxVertex = 2;
+        triangles.indexType = VK_INDEX_TYPE_UINT32;
+        triangles.indexData.deviceAddress = index_buffer.getDeviceAddress();
+
+        geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+        geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        geometry.geometry.triangles = triangles;
+
+        build_info.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        build_info.geometryCount = 1;
+        build_info.pGeometries = &geometry;
+
+        constexpr std::array<uint32_t, 1> primitive_counts{ 1 };
+        expect(
+            NexAur::queryVulkanAccelerationStructureBuildSizes(
+                device_context.getDevice(),
+                functions,
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                build_info,
+                primitive_counts,
+                build_sizes),
+            "build-size query failed.");
+    }
+
+    if (success) {
+        NexAur::VulkanAccelerationStructureCreateInfo create_info;
+        create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        create_info.size = build_sizes.acceleration_structure_size;
+        create_info.debug_name = "RT-02 test BLAS";
+        expect(
+            acceleration_structure.create(allocator, functions, create_info) &&
+            acceleration_structure.isReady() &&
+            acceleration_structure.getDeviceAddress() != 0 &&
+            acceleration_structure.getSize() == build_sizes.acceleration_structure_size,
+            "unbuilt BLAS primitive creation failed.");
+    }
+
+    if (success) {
+        const VkDeviceSize scratch_alignment = capabilities.min_scratch_alignment > 0 ?
+            capabilities.min_scratch_alignment : 1;
+        expect(
+            scratch_buffer.ensureCapacity(
+                allocator,
+                build_sizes.build_scratch_size,
+                scratch_alignment,
+                "RT-02 test BLAS scratch") &&
+            scratch_buffer.isReady() &&
+            scratch_buffer.getDeviceAddress() % scratch_alignment == 0,
+            "aligned scratch buffer creation failed.");
+
+        moved_scratch_buffer = std::move(scratch_buffer);
+        expect(
+            !scratch_buffer.isReady() &&
+            scratch_buffer.getCapacity() == 0 &&
+            scratch_buffer.getAlignment() == 1 &&
+            moved_scratch_buffer.isReady() &&
+            moved_scratch_buffer.getCapacity() >= build_sizes.build_scratch_size &&
+            moved_scratch_buffer.getAlignment() == scratch_alignment,
+            "scratch buffer move ownership contract failed.");
+    }
+
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    if (success) {
+        VkCommandBufferAllocateInfo allocate_info{};
+        allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocate_info.commandPool = command_pool;
+        allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocate_info.commandBufferCount = 1;
+        expect(
+            vkAllocateCommandBuffers(
+                device_context.getDevice(),
+                &allocate_info,
+                &command_buffer) == VK_SUCCESS,
+            "command buffer allocation failed.");
+    }
+
+    bool command_buffer_begun = false;
+    if (success) {
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        command_buffer_begun =
+            vkBeginCommandBuffer(command_buffer, &begin_info) == VK_SUCCESS;
+        expect(command_buffer_begun, "command buffer begin failed.");
+    }
+
+    if (success) {
+        moved_acceleration_structure = std::move(acceleration_structure);
+        expect(
+            !acceleration_structure.isReady() &&
+            moved_acceleration_structure.isReady(),
+            "move ownership contract failed.");
+
+        VkAccelerationStructureBuildRangeInfoKHR build_range{};
+        build_range.primitiveCount = 1;
+        const std::array<VkAccelerationStructureBuildRangeInfoKHR, 1> build_ranges{
+            build_range
+        };
+        expect(
+            moved_acceleration_structure.recordBuild(
+                command_buffer,
+                build_info,
+                build_ranges,
+                moved_scratch_buffer.getDeviceAddress()),
+            "BLAS build command recording failed.");
+    }
+
+    if (command_buffer_begun) {
+        expect(
+            vkEndCommandBuffer(command_buffer) == VK_SUCCESS,
+            "command buffer end failed.");
+    }
+    if (command_buffer != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(
+            device_context.getDevice(),
+            command_pool,
+            1,
+            &command_buffer);
+    }
+
+    const uint64_t retirement_serial = retirement_queue.markSubmitted();
+    moved_acceleration_structure.reset();
+    acceleration_structure.reset();
+    moved_scratch_buffer.reset();
+    scratch_buffer.reset();
+    index_buffer.reset();
+    vertex_buffer.reset();
+    expect(
+        retirement_queue.getStats().pending_count > 0,
+        "resources were destroyed before their retirement serial completed.");
+    retirement_queue.markCompleted(retirement_serial);
+    vkDestroyCommandPool(device_context.getDevice(), command_pool, nullptr);
+    retirement_queue.drain();
+    expect(
+        retirement_queue.getStats().pending_count == 0,
+        "retirement queue retained acceleration structure resources.");
+    allocator.shutdown();
+
+    if (!success) {
+        std::cerr << "Acceleration structure device smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Acceleration structure device smoke passed." << std::endl;
+    return 0;
+}
+
 
 namespace {
     struct RendererTestEntry {
@@ -2275,9 +2876,14 @@ namespace {
         { "--frame-context", runFrameContextSmoke },
         { "--async-transfer-state", runAsyncTransferStateSmoke },
         { "--ray-tracing-capabilities", runRayTracingCapabilitiesSmoke },
+        { "--device-address-buffer-contract", runDeviceAddressBufferContractSmoke },
+        { "--acceleration-structure-contract", runAccelerationStructureContractSmoke },
         { "--ray-tracing-device-auto", runRayTracingDeviceAutoSmoke },
         { "--ray-tracing-device-disabled", runRayTracingDeviceDisabledSmoke },
         { "--ray-tracing-device-force-disabled", runRayTracingDeviceForceDisabledSmoke },
+        { "--device-address-buffer-auto", runDeviceAddressBufferAutoSmoke },
+        { "--device-address-buffer-disabled", runDeviceAddressBufferDisabledSmoke },
+        { "--acceleration-structure-device", runAccelerationStructureDeviceSmoke },
     };
 } // namespace
 

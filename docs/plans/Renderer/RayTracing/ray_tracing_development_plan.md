@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：开发中；RT-00 已完成，下一工作包为 RT-01
+状态：开发中；RT-00、RT-01、RT-02 已完成，下一工作包为 RT-03
 
 ## 1. 文档目的
 
@@ -84,6 +84,8 @@ SSR 仍负责低成本、与当前屏幕内容一致的近场反射；Ray Tracin
 - 已启用 `dynamicRendering` 和 `synchronization2` device feature。
 - 已完成 Renderer Rebuild RR-00 至 RR-14，具备稳定 frame contract、Feature ownership、FrameContext、deferred destruction 和 focused test target。
 - RT-00 已建立可选 Ray Query capability negotiation、logical-device feature chain 和 diagnostics。
+- RT-01 已建立 VMA buffer-device-address contract、统一 addressable buffer primitive 和 RT-enabled mesh buffer usage。
+- RT-02 已建立 acceleration structure 函数表、move-only AS primitive、aligned scratch buffer 和 deferred destruction contract。
 - Shader 使用 HLSL，经 DXC 编译为 Vulkan 1.3 SPIR-V。
 - `VulkanDrawList` 已包含 mesh、material、world transform 和 entity ID。
 - `VulkanMeshResource` 已持有 GPU vertex / index buffer；CPU Mesh 也保留标准三角形顶点和 `uint32_t` index 数据。
@@ -109,9 +111,9 @@ VulkanMeshDrawItem
 | 领域 | 当前状态 | 光追影响 |
 |---|---|---|
 | Device capability | RT-00 已完成 capability cluster 查询、`Auto` / `Disabled` / force-disable 和可选 feature chain | 已解除；不支持或关闭时继续创建 Raster logical device |
-| GPU allocator | VMA allocator 未启用 device-address allocator flag | AS backing / scratch / instance buffer 无法形成统一 device-address 路径 |
-| Mesh buffer | 只有 vertex / index usage | 不能直接作为 acceleration structure build input |
-| AS primitive | 不存在 BLAS、TLAS 和 scratch buffer 封装 | 无法构建或持有 acceleration structure |
+| GPU allocator | RT-01 已按实际 device feature 设置 VMA device-address flag，并统一地址与 alignment 校验 | 已解除；RT-02 可直接复用 addressable `VulkanOwnedBuffer` |
+| Mesh buffer | Ray Query enabled 时附加 build-input / device-address usage，Disabled 时保持 Raster usage | 已解除；RT-03 可直接读取非零 vertex / index address |
+| AS primitive | RT-02 已建立 AS backing / handle ownership、build-size query、scratch buffer 和 build command 录制 | 已解除；RT-03 可直接建立 static mesh BLAS cache |
 | RenderGraph | 只注册 image | 无法表达 instance buffer、BLAS/TLAS build 和 shader read hazard |
 | Synchronization | Graph image state 已迁移到 synchronization2 并覆盖同 layout hazard；尚无 AS resource / access | RT-05 仍需增加 AS build write -> shader read 语义 |
 | Descriptor allocator | Pool 未分配 acceleration structure descriptor | 无法分配 Ray Query descriptor set |
@@ -124,7 +126,7 @@ VulkanMeshDrawItem
 
 ### 3.3 结论
 
-当前 Renderer 已可进入光追基础设施开发。RT-00 capability negotiation 已完成；仍不能直接开始正式 Ray Query shader，下一步必须依次补齐 device-address buffer、BLAS/TLAS、descriptor 和 AS 同步模型。
+当前 Renderer 已可进入光追场景结构开发。RT-00 capability negotiation、RT-01 device-address buffer foundation 和 RT-02 acceleration structure primitive 已完成；仍不能直接开始正式 Ray Query shader，下一步必须依次补齐 BLAS/TLAS、descriptor 和 AS 同步模型。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -507,6 +509,8 @@ result       = visible or occluded
 
 ### 11.2 RT-01：Device Address Buffer Foundation
 
+状态：已完成（2026-08-17）。
+
 风险：中。
 
 工作内容：
@@ -523,7 +527,27 @@ result       = visible or occluded
 - Raster-only 路径 buffer 创建行为不回归。
 - 资源关闭和创建失败 cleanup 不泄漏。
 
+实现结果：
+
+- `VulkanResourceContext` 只传播 logical device 上实际启用的 buffer-device-address 状态。
+- `VulkanGpuAllocator` 按 capability 设置 `VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT`，并统一封装 `vkGetBufferDeviceAddress()`。
+- 新增 `VulkanOwnedBufferCreateInfo`，集中表达 size、usage、memory usage、allocation flags、minimum alignment 和 debug name。
+- addressable buffer 创建后立即校验非零地址和 alignment；失败时直接释放未发布的 buffer / allocation。
+- RT-enabled mesh vertex / index buffer 附加 AS build-input 与 shader-device-address usage；Disabled 路径保持原 Raster usage。
+- Mesh upload barrier 在 RT 路径同时覆盖 acceleration-structure build read。
+- Renderer diagnostics 暴露 BDA enabled 状态和 device-address mesh 数量。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 与 `Sandbox` 构建通过。
+- capability 与 buffer create-info 两项 CPU focused test 通过。
+- RT-capable GPU 上 mesh vertex / index、aligned scratch 和 AS-storage buffer 地址非零。
+- `Disabled` 模式 mesh 保持 Raster usage 且 device address 为零。
+- Debug Vulkan validation 已启用，无新增 buffer usage、allocation flag 或 alignment VUID。
+
 ### 11.3 RT-02：Acceleration Structure Primitive
+
+状态：已完成（2026-08-17）。
 
 风险：中到高。
 
@@ -546,6 +570,22 @@ result       = visible or occluded
 - 可创建并销毁空的测试 backing / AS primitive 路径。
 - 失败路径无 handle 或 allocation 泄漏。
 - Validation 不报告 address、alignment 或 build size 错误。
+
+实现结果：
+
+- `VulkanDeviceContext` 加载并持有 acceleration structure device function table；加载失败时保持 Raster fallback。
+- 新增 move-only `VulkanAccelerationStructure`，统一持有 backing buffer、AS handle、type、size、device address 和 debug name。
+- AS handle 与 backing buffer 作为同一 deferred-retirement 对象，严格按 handle 先于 buffer 的顺序销毁。
+- 新增 build-size query、单 AS build command 录制和 geometry pointer contract 校验。
+- 新增可复用 aligned scratch buffer，按设备 `minAccelerationStructureScratchOffsetAlignment` 分配并验证 address。
+- Renderer diagnostics 暴露 AS function table 加载状态。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 与 `Sandbox` 构建通过。
+- capability、device-address buffer 与 AS primitive 三项 CPU focused test 通过。
+- RT-capable GPU 上完成 triangle BLAS size query、空 AS 创建、scratch 对齐、move ownership、build command 录制和 deferred destruction smoke。
+- Sandbox 完整启动到 `NexAur Engine started`；Debug Vulkan validation 无新增 VUID，stderr 为空。
 
 ### 11.4 RT-03：Static Mesh BLAS Cache
 

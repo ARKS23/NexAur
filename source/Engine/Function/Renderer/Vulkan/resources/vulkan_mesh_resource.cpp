@@ -18,7 +18,8 @@ namespace NexAur {
             VkBuffer vertex_buffer,
             VkDeviceSize vertex_bytes,
             VkBuffer index_buffer,
-            VkDeviceSize index_bytes) {
+            VkDeviceSize index_bytes,
+            bool acceleration_structure_build_input) {
             VkBufferCopy vertex_copy{};
             vertex_copy.srcOffset = staging_offset;
             vertex_copy.size = vertex_bytes;
@@ -45,13 +46,20 @@ namespace NexAur {
             barriers[0].srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
             barriers[0].dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
             barriers[0].dstAccessMask = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+            if (acceleration_structure_build_input) {
+                barriers[0].dstStageMask |=
+                    VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+                barriers[0].dstAccessMask |=
+                    VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+            }
             barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barriers[0].buffer = vertex_buffer;
             barriers[0].size = VK_WHOLE_SIZE;
 
             barriers[1] = barriers[0];
-            barriers[1].dstAccessMask = VK_ACCESS_2_INDEX_READ_BIT;
+            barriers[1].dstAccessMask &= ~VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+            barriers[1].dstAccessMask |= VK_ACCESS_2_INDEX_READ_BIT;
             barriers[1].buffer = index_buffer;
 
             VkDependencyInfo dependency_info{};
@@ -109,23 +117,33 @@ namespace NexAur {
         const VkDeviceSize index_bytes =
             static_cast<VkDeviceSize>(indices.size() * sizeof(unsigned int));
         const VkDeviceSize upload_bytes = vertex_bytes + index_bytes;
+        const bool device_address_enabled =
+            context.gpu_allocator->isBufferDeviceAddressEnabled();
+        const VkBufferUsageFlags ray_tracing_usage = device_address_enabled ?
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT :
+            0;
 
-        if (!m_vertex_buffer.create(
-                *context.gpu_allocator,
-                vertex_bytes,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-                0,
-                "Vulkan mesh vertex buffer") ||
-            !m_index_buffer.create(
-                *context.gpu_allocator,
-                index_bytes,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-                0,
-                "Vulkan mesh index buffer")) {
+        VulkanOwnedBufferCreateInfo vertex_buffer_info;
+        vertex_buffer_info.size = vertex_bytes;
+        vertex_buffer_info.usage =
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+            ray_tracing_usage;
+        vertex_buffer_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        vertex_buffer_info.debug_name = "Vulkan mesh vertex buffer";
+
+        VulkanOwnedBufferCreateInfo index_buffer_info;
+        index_buffer_info.size = index_bytes;
+        index_buffer_info.usage =
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+            ray_tracing_usage;
+        index_buffer_info.memory_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        index_buffer_info.debug_name = "Vulkan mesh index buffer";
+
+        if (!m_vertex_buffer.create(*context.gpu_allocator, vertex_buffer_info) ||
+            !m_index_buffer.create(*context.gpu_allocator, index_buffer_info)) {
             reset();
             return false;
         }
@@ -142,7 +160,13 @@ namespace NexAur {
         m_upload_ticket = context.upload_manager->enqueue(
             std::move(upload_data),
             "Vulkan mesh upload",
-            [vertex_buffer, vertex_bytes, index_buffer, index_bytes](
+            [
+                vertex_buffer,
+                vertex_bytes,
+                index_buffer,
+                index_bytes,
+                device_address_enabled
+            ](
                 VkCommandBuffer command_buffer,
                 VkBuffer staging_buffer,
                 VkDeviceSize staging_offset) {
@@ -153,7 +177,8 @@ namespace NexAur {
                     vertex_buffer,
                     vertex_bytes,
                     index_buffer,
-                    index_bytes);
+                    index_bytes,
+                    device_address_enabled);
             });
         if (m_upload_ticket.getStatus() == VulkanUploadStatus::Failed) {
             reset();

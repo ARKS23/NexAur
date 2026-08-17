@@ -1,6 +1,7 @@
 find_package(EnTT CONFIG REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 
 add_executable(NexAurRendererTests
     renderer_tests.cpp
@@ -15,6 +16,7 @@ target_link_libraries(NexAurRendererTests PRIVATE
     EnTT::EnTT
     glfw
     spdlog::spdlog
+    GPUOpen::VulkanMemoryAllocator
 )
 
 set_target_properties(NexAurRendererTests PROPERTIES
@@ -37,3 +39,5 @@ nexaur_add_renderer_test(RetirementQueue "--retirement-queue")
 nexaur_add_renderer_test(FrameContext "--frame-context")
 nexaur_add_renderer_test(AsyncTransferState "--async-transfer-state")
 nexaur_add_renderer_test(RayTracingCapabilities "--ray-tracing-capabilities")
+nexaur_add_renderer_test(DeviceAddressBufferContract "--device-address-buffer-contract")
+nexaur_add_renderer_test(AccelerationStructureContract "--acceleration-structure-contract")

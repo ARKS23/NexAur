@@ -19,6 +19,7 @@ namespace NexAur {
         VkQueue graphics_queue = VK_NULL_HANDLE;
         uint32_t graphics_queue_family = 0;
         uint32_t api_version = VK_API_VERSION_1_3;
+        bool buffer_device_address_enabled = false;
         const VulkanGpuAllocator* gpu_allocator = nullptr;
         VulkanRetirementQueue* retirement_queue = nullptr;
 

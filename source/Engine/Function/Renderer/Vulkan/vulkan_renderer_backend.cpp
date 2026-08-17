@@ -554,6 +554,8 @@ namespace NexAur {
             context.graphics_queue = graphics_queue;
             context.graphics_queue_family = graphics_queue_family;
             context.api_version = device_api_version;
+            context.buffer_device_address_enabled =
+                device_context.getRayTracingCapabilities().ray_query_enabled;
             context.gpu_allocator = &gpu_allocator;
             context.retirement_queue = &retirement_queue;
             return context;
@@ -815,6 +817,10 @@ namespace NexAur {
                 device_context.getRayTracingCapabilities();
             stats.ray_query_supported = ray_tracing_capabilities.supportsRayQuery();
             stats.ray_query_enabled = ray_tracing_capabilities.ray_query_enabled;
+            stats.acceleration_structure_functions_loaded =
+                device_context.getRayTracingFunctions().valid();
+            stats.buffer_device_address_enabled =
+                gpu_allocator.isBufferDeviceAddressEnabled();
             stats.ray_tracing_pipeline_supported = ray_tracing_capabilities.ray_tracing_pipeline;
             stats.ray_query_fallback_reason =
                 ray_tracing_capabilities.unavailable_reason.empty() ?
@@ -1055,6 +1061,8 @@ namespace NexAur {
             stats.texture_count = resource_cache.getTextureCount();
             stats.environment_count = resource_cache.getEnvironmentCount();
             stats.mesh_count = resource_cache.getMeshCount();
+            stats.device_address_mesh_count =
+                resource_cache.getDeviceAddressMeshCount();
             stats.material_count = resource_cache.getMaterialCount();
             stats.fallback_white_texture_ready = resource_cache.hasFallbackWhiteTexture();
             stats.fallback_material_ready = resource_cache.hasFallbackMaterial();

@@ -26,6 +26,7 @@ namespace NexAur {
         VmaAllocator getHandle() const { return m_allocator; }
         VkDevice getDevice() const { return m_device; }
         VulkanRetirementQueue* getRetirementQueue() const { return m_retirement_queue; }
+        bool isBufferDeviceAddressEnabled() const { return m_buffer_device_address_enabled; }
 
         bool createImage(
             const VkImageCreateInfo& image_info,
@@ -37,8 +38,13 @@ namespace NexAur {
             const VkBufferCreateInfo& buffer_info,
             VmaMemoryUsage memory_usage,
             VmaAllocationCreateFlags allocation_flags,
+            VkDeviceSize minimum_alignment,
             VkBuffer& buffer,
             VmaAllocation& allocation,
+            const char* operation) const;
+
+        VkDeviceAddress getBufferDeviceAddress(
+            VkBuffer buffer,
             const char* operation) const;
 
         void destroyImage(VkImage& image, VmaAllocation& allocation) const;
@@ -48,5 +54,6 @@ namespace NexAur {
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VulkanRetirementQueue* m_retirement_queue = nullptr;
+        bool m_buffer_device_address_enabled = false;
     };
 } // namespace NexAur

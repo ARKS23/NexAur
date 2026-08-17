@@ -287,38 +287,84 @@ namespace NexAur {
 
     bool VulkanOwnedBuffer::create(
         const VulkanGpuAllocator& allocator,
-        VkDeviceSize size,
-        VkBufferUsageFlags usage,
-        VmaMemoryUsage memory_usage,
-        VmaAllocationCreateFlags allocation_flags,
-        const char* debug_name) {
+        const VulkanOwnedBufferCreateInfo& create_info) {
         reset();
 
-        if (!allocator.isInitialized() || size == 0 || usage == 0) {
-            NX_CORE_ERROR("VulkanOwnedBuffer requires an initialized allocator, size, and usage.");
+        if (!allocator.isInitialized() || !create_info.valid()) {
+            NX_CORE_ERROR("VulkanOwnedBuffer requires an initialized allocator and valid create info.");
+            return false;
+        }
+        if (create_info.requiresDeviceAddress() &&
+            !allocator.isBufferDeviceAddressEnabled()) {
+            NX_CORE_ERROR(
+                "VulkanOwnedBuffer '{}' requires buffer device address support.",
+                create_info.debug_name.empty() ? "Unnamed" : create_info.debug_name);
             return false;
         }
 
         VkBufferCreateInfo buffer_info{};
         buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size = size;
-        buffer_info.usage = usage;
+        buffer_info.size = create_info.size;
+        buffer_info.usage = create_info.usage;
         buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
+        const char* operation = create_info.debug_name.empty() ?
+            "VulkanOwnedBuffer" : create_info.debug_name.c_str();
         if (!allocator.createBuffer(
                 buffer_info,
-                memory_usage,
-                allocation_flags,
-                m_buffer,
-                m_allocation,
-                debug_name ? debug_name : "VulkanOwnedBuffer")) {
+                create_info.memory_usage,
+                create_info.allocation_flags,
+                create_info.minimum_alignment,
+                buffer,
+                allocation,
+                operation)) {
             return false;
+        }
+
+        VkDeviceAddress device_address = 0;
+        if (create_info.requiresDeviceAddress()) {
+            device_address = allocator.getBufferDeviceAddress(buffer, operation);
+            if (device_address == 0 ||
+                device_address % create_info.minimum_alignment != 0) {
+                if (device_address != 0) {
+                    NX_CORE_ERROR(
+                        "{} failed: device address {} does not satisfy alignment {}.",
+                        operation,
+                        device_address,
+                        create_info.minimum_alignment);
+                }
+                allocator.destroyBuffer(buffer, allocation);
+                return false;
+            }
         }
 
         m_allocator = &allocator;
         m_retirement_queue = allocator.getRetirementQueue();
-        m_size = size;
-        m_debug_name = debug_name ? debug_name : "VulkanOwnedBuffer";
+        m_buffer = buffer;
+        m_allocation = allocation;
+        m_size = create_info.size;
+        m_usage = create_info.usage;
+        m_device_address = device_address;
+        m_debug_name = operation;
         return true;
+    }
+
+    bool VulkanOwnedBuffer::create(
+        const VulkanGpuAllocator& allocator,
+        VkDeviceSize size,
+        VkBufferUsageFlags usage,
+        VmaMemoryUsage memory_usage,
+        VmaAllocationCreateFlags allocation_flags,
+        const char* debug_name) {
+        VulkanOwnedBufferCreateInfo create_info;
+        create_info.size = size;
+        create_info.usage = usage;
+        create_info.memory_usage = memory_usage;
+        create_info.allocation_flags = allocation_flags;
+        create_info.debug_name = debug_name ? debug_name : "VulkanOwnedBuffer";
+        return create(allocator, create_info);
     }
 
     void VulkanOwnedBuffer::reset() {
@@ -335,6 +381,8 @@ namespace NexAur {
         m_buffer = VK_NULL_HANDLE;
         m_allocation = VK_NULL_HANDLE;
         m_size = 0;
+        m_usage = 0;
+        m_device_address = 0;
         m_debug_name.clear();
     }
 
@@ -391,6 +439,8 @@ namespace NexAur {
         m_buffer = other.m_buffer;
         m_allocation = other.m_allocation;
         m_size = other.m_size;
+        m_usage = other.m_usage;
+        m_device_address = other.m_device_address;
         m_debug_name = std::move(other.m_debug_name);
 
         other.m_allocator = nullptr;
@@ -398,6 +448,8 @@ namespace NexAur {
         other.m_buffer = VK_NULL_HANDLE;
         other.m_allocation = VK_NULL_HANDLE;
         other.m_size = 0;
+        other.m_usage = 0;
+        other.m_device_address = 0;
         other.m_debug_name.clear();
     }
 

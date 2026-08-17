@@ -10,6 +10,26 @@ namespace NexAur {
     class VulkanGpuAllocator;
     class VulkanRetirementQueue;
 
+    struct VulkanOwnedBufferCreateInfo {
+        VkDeviceSize size = 0;
+        VkBufferUsageFlags usage = 0;
+        VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_AUTO;
+        VmaAllocationCreateFlags allocation_flags = 0;
+        VkDeviceSize minimum_alignment = 1;
+        std::string debug_name;
+
+        bool valid() const {
+            return size > 0 &&
+                   usage != 0 &&
+                   minimum_alignment > 0 &&
+                   (minimum_alignment & (minimum_alignment - 1)) == 0;
+        }
+
+        bool requiresDeviceAddress() const {
+            return (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0;
+        }
+    };
+
     struct VulkanImageViewState {
         VkImage image = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
@@ -105,6 +125,9 @@ namespace NexAur {
 
         bool create(
             const VulkanGpuAllocator& allocator,
+            const VulkanOwnedBufferCreateInfo& create_info);
+        bool create(
+            const VulkanGpuAllocator& allocator,
             VkDeviceSize size,
             VkBufferUsageFlags usage,
             VmaMemoryUsage memory_usage,
@@ -115,6 +138,9 @@ namespace NexAur {
         bool isReady() const { return m_buffer != VK_NULL_HANDLE; }
         VkBuffer get() const { return m_buffer; }
         VkDeviceSize getSize() const { return m_size; }
+        VkBufferUsageFlags getUsage() const { return m_usage; }
+        VkDeviceAddress getDeviceAddress() const { return m_device_address; }
+        bool isDeviceAddressable() const { return m_device_address != 0; }
         bool isHostCoherent() const;
         bool map(void*& mapped_data) const;
         void unmap() const;
@@ -133,6 +159,8 @@ namespace NexAur {
         VkBuffer m_buffer = VK_NULL_HANDLE;
         VmaAllocation m_allocation = VK_NULL_HANDLE;
         VkDeviceSize m_size = 0;
+        VkBufferUsageFlags m_usage = 0;
+        VkDeviceAddress m_device_address = 0;
         std::string m_debug_name;
     };
 

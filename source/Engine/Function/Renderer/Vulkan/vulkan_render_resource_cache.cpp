@@ -467,6 +467,22 @@ namespace NexAur {
         return mesh_count;
     }
 
+    size_t VulkanRenderResourceCache::getDeviceAddressMeshCount() const {
+        size_t mesh_count = 0;
+        for (const auto& [asset_handle, model_resource] : m_model_cache) {
+            (void)asset_handle;
+            if (!model_resource) {
+                continue;
+            }
+            for (const VulkanMeshResource& mesh : model_resource->getMeshes()) {
+                if (mesh.hasDeviceAddressBuffers()) {
+                    ++mesh_count;
+                }
+            }
+        }
+        return mesh_count;
+    }
+
     size_t VulkanRenderResourceCache::getMaterialCount() const {
         size_t material_count = 0;
         for (const auto& [asset_handle, model_resource] : m_model_cache) {

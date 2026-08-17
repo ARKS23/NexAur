@@ -39,6 +39,7 @@ namespace NexAur {
     }
 
     void VulkanDeviceContext::shutdown() {
+        m_ray_tracing_functions.reset();
         if (m_device.device != VK_NULL_HANDLE) {
             vkb::destroy_device(m_device);
             m_device = {};
@@ -211,6 +212,12 @@ namespace NexAur {
         }
 
         m_device = device_result.value();
+        if (m_ray_tracing_capabilities.ray_query_enabled &&
+            !m_ray_tracing_functions.load(m_device.device)) {
+            m_ray_tracing_capabilities.ray_query_enabled = false;
+            m_ray_tracing_capabilities.unavailable_reason =
+                "Failed to load required acceleration structure device functions.";
+        }
 
         auto graphics_queue_result = m_device.get_queue(vkb::QueueType::graphics);
         if (!graphics_queue_result) {

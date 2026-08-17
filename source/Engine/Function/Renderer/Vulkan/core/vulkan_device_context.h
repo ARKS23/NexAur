@@ -16,6 +16,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_functions.h"
 
 struct GLFWwindow;
 
@@ -46,6 +47,9 @@ namespace NexAur {
         uint32_t getApiVersion() const { return m_device_api_version; }
         const VulkanRayTracingCapabilities& getRayTracingCapabilities() const {
             return m_ray_tracing_capabilities;
+        }
+        const VulkanRayTracingDeviceFunctions& getRayTracingFunctions() const {
+            return m_ray_tracing_functions;
         }
 
         vkb::Instance& getInstanceBundle() { return m_instance; }
@@ -82,5 +86,6 @@ namespace NexAur {
         uint32_t m_graphics_queue_family = 0;
         uint32_t m_device_api_version = VK_API_VERSION_1_3;
         VulkanRayTracingCapabilities m_ray_tracing_capabilities;
+        VulkanRayTracingDeviceFunctions m_ray_tracing_functions;
     };
 } // namespace NexAur
