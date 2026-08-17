@@ -831,6 +831,8 @@ namespace NexAur {
             availability.point_shadow = shadow_feature.isPointReady();
             availability.rect_shadow = shadow_feature.isRectReady();
             availability.ray_query = ray_query_ready && forward_pass.isRayQueryReady();
+            availability.ray_query_shadow =
+                ray_query_ready && forward_pass.isRayQueryShadowReady();
             return VulkanRenderFeaturePlan::build(render_settings, availability);
         }
 
@@ -1051,6 +1053,45 @@ namespace NexAur {
             stats.point_shadow_debug_available = availability.point_shadow;
             stats.rect_shadow_debug_available = availability.rect_shadow;
             stats.ray_query_debug_available = availability.ray_query;
+            const RenderRayQueryShadowSettings& ray_query_shadow_settings =
+                render_settings.ray_query_shadow;
+            const bool ray_query_shadow_requested =
+                render_settings.shadow.enabled &&
+                ray_query_shadow_settings.mode != RenderRayQueryShadowMode::Disabled;
+            stats.ray_query_shadow_available = availability.ray_query_shadow;
+            stats.ray_query_shadow_enabled = ray_query_shadow_requested;
+            stats.ray_query_shadow_active = feature_plan.usesRayQueryShadow();
+            stats.ray_query_shadow_mode = renderRayQueryShadowModeName(
+                ray_query_shadow_settings.mode);
+            stats.ray_query_shadow_max_distance = ray_query_shadow_settings.max_distance;
+            stats.ray_query_shadow_normal_bias = ray_query_shadow_settings.normal_bias;
+            stats.ray_query_shadow_direction_bias = ray_query_shadow_settings.direction_bias;
+            if (!ray_query_shadow_requested) {
+                stats.ray_query_shadow_fallback_reason =
+                    render_settings.shadow.enabled ?
+                    "Disabled by renderer settings." :
+                    "Directional shadows are disabled.";
+            } else if (feature_plan.usesRayQueryShadow()) {
+                stats.ray_query_shadow_fallback_reason = "None";
+            } else if (render_settings.shadow.cascade_debug_overlay) {
+                stats.ray_query_shadow_fallback_reason =
+                    "Disabled by CSM cascade debug overlay.";
+            } else if (feature_plan.isolatesForwardDebug()) {
+                stats.ray_query_shadow_fallback_reason =
+                    "Disabled by forward debug isolation.";
+            } else if (debug_settings.view != RenderEffectDebugView::FinalLit) {
+                stats.ray_query_shadow_fallback_reason =
+                    "Disabled by effect debug isolation.";
+            } else if (!availability.ray_query_shadow) {
+                const VulkanRayTracingCapabilities& capabilities =
+                    device_context.getRayTracingCapabilities();
+                stats.ray_query_shadow_fallback_reason =
+                    capabilities.ray_query_enabled ?
+                    "TLAS or Ray Query shadow pipeline is unavailable." :
+                    (capabilities.unavailable_reason.empty() ?
+                        "Ray Query capability is unavailable." :
+                        capabilities.unavailable_reason);
+            }
             stats.point_shadow_enabled = render_settings.point_shadow.enabled;
             stats.rect_shadow_enabled = render_settings.rect_shadow.enabled;
             stats.contact_shadow_enabled = render_settings.contact_shadow.enabled;
@@ -1765,7 +1806,7 @@ namespace NexAur {
             if (feature_plan.rendersSmaa()) {
                 resources.smaa_source = smaa_feature.addSourceImage(graph);
             }
-            if (feature_plan.usesRayQueryDebug()) {
+            if (feature_plan.usesRayQueryDebug() || feature_plan.usesRayQueryShadow()) {
                 const VulkanAccelerationStructure* tlas =
                     tlas_manager.get(frame_context.getFrameIndex());
                 if (tlas == nullptr) {
@@ -1837,6 +1878,7 @@ namespace NexAur {
                     options.ray_tracing_scene_descriptor_set =
                         frame_contexts[frame_index].getRayTracingSceneDescriptorSet();
                     options.ray_query_debug = feature_plan.usesRayQueryDebug();
+                    options.ray_query_shadow = feature_plan.usesRayQueryShadow();
                     return forward_pass.record(
                         target_command_buffer,
                         scene_target,

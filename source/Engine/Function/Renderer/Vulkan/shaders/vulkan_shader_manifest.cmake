@@ -2,6 +2,7 @@
 set(NEXAUR_VULKAN_SHADER_PROGRAMS
     "Forward|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward.vert.spv|ps_6_0|PSMain|vulkan_forward.frag.spv"
     "ForwardRayQuery|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward_ray_query.vert.spv|ps_6_5|PSMain|vulkan_forward_ray_query.frag.spv"
+    "ForwardRayQueryShadow|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward_ray_query_shadow.vert.spv|ps_6_5|PSMain|vulkan_forward_ray_query_shadow.frag.spv"
     "ObjectId|vulkan_object_id.hlsl|vs_6_0|VSMain|vulkan_object_id.vert.spv|ps_6_0|PSMain|vulkan_object_id.frag.spv"
     "Skybox|vulkan_skybox.hlsl|vs_6_0|VSMain|vulkan_skybox.vert.spv|ps_6_0|PSMain|vulkan_skybox.frag.spv"
     "ShadowDepth|vulkan_shadow_depth.hlsl|vs_6_0|VSMain|vulkan_shadow_depth.vert.spv|NONE|NONE|NONE"

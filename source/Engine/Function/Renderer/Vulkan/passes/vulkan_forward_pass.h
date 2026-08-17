@@ -54,6 +54,7 @@ namespace NexAur {
         VkClearValue depth_clear_value{};
         VkDescriptorSet ray_tracing_scene_descriptor_set = VK_NULL_HANDLE;
         bool ray_query_debug = false;
+        bool ray_query_shadow = false;
     };
 
     class VulkanForwardPass {
@@ -108,6 +109,10 @@ namespace NexAur {
             return m_ray_query_pipeline != VK_NULL_HANDLE &&
                    m_ray_query_pipeline_layout != VK_NULL_HANDLE;
         }
+        bool isRayQueryShadowReady() const {
+            return m_ray_query_shadow_pipeline != VK_NULL_HANDLE &&
+                   m_ray_query_shadow_pipeline_layout != VK_NULL_HANDLE;
+        }
 
     private:
         bool createImageViews(const VulkanForwardPassSwapchainContext& context);
@@ -135,5 +140,7 @@ namespace NexAur {
         VkPipeline m_pipeline = VK_NULL_HANDLE;
         VkPipelineLayout m_ray_query_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_ray_query_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout m_ray_query_shadow_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline m_ray_query_shadow_pipeline = VK_NULL_HANDLE;
     };
 } // namespace NexAur

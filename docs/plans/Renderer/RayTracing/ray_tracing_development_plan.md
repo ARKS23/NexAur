@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：开发中；RT-00 至 RT-06 已完成，下一工作包为 RT-07
+状态：开发中；RT-00 至 RT-07 已完成，下一工作包为 RT-08
 
 ## 1. 文档目的
 
@@ -130,7 +130,7 @@ VulkanMeshDrawItem
 
 ### 3.3 结论
 
-当前 Renderer 已具备进入第一项实际 Ray Query 视觉功能的基础。RT-00 capability negotiation、RT-01 device-address buffer foundation、RT-02 acceleration structure primitive、RT-03 static mesh BLAS cache、RT-04 TLAS instance build、RT-05 RenderGraph AS synchronization 和 RT-06 descriptor / debug shader 已完成；下一步进入 RT-07 directional shadow integration。
+当前 Renderer 已具备第一项实际 Ray Query 视觉功能。RT-00 capability negotiation、RT-01 device-address buffer foundation、RT-02 acceleration structure primitive、RT-03 static mesh BLAS cache、RT-04 TLAS instance build、RT-05 RenderGraph AS synchronization、RT-06 descriptor / debug shader 和 RT-07 directional shadow integration 已完成；下一步进入 RT-08 lifetime、compaction 和 profiling。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -709,7 +709,7 @@ result       = visible or occluded
 
 边界：
 
-- RT-03 / RT-04 当前仍使用独立的一次性 build submission；RT-06 已将实际 debug shader 的 TLAS read 声明接入 frame graph，生产级 directional shadow query 将在 RT-07 接入光照路径。
+- RT-03 / RT-04 当前仍使用独立的一次性 build submission；RT-06 已将实际 debug shader 的 TLAS read 声明接入 frame graph，RT-07 在相同 access contract 上接入 directional direct-light shading。
 
 ### 11.7 RT-06：Ray Query Descriptor and Debug Shader
 
@@ -749,7 +749,7 @@ result       = visible or occluded
 
 边界：
 
-- 当前 shader 只用于 visibility debug，不改变 directional / point / rect 光照；正式阴影选择、bias 和 fallback 逻辑属于 RT-07。
+- RT-06 的 `RayQueryVisibility` 仍是独立 debug isolation；RT-07 使用单独的 shader / pipeline variant，不把 debug 输出混入 Final Lit。
 
 ### 11.8 RT-07：Directional Ray Query Shadow
 
@@ -774,6 +774,30 @@ result       = visible or occluded
 - RT on / off 同帧对照。
 
 第一版接受 opaque-only 语义，但 UI / diagnostics 必须明确，不能把缺失 alpha-tested shadow 误判为通用光追阴影已完成。
+
+状态：已完成（2026-08-17）。
+
+实现结果：
+
+- 新增 `RenderRayQueryShadowSettings`，提供 `Disabled`、`Auto`、`Ray Query` 模式，以及 maximum distance、normal bias 和 direction bias。
+- 新增独立 `ForwardRayQueryShadow` graphics pipeline variant；方向光 direct-light BRDF 使用 first-hit opaque Ray Query visibility，point / rect shadow 路径保持不变。
+- `VulkanRenderFeaturePlan` 统一选择 Ray Query shadow、Ray Query debug 或 Raster CSM / PCSS；TLAS、pipeline、capability 或 debug isolation 不满足时自动回退。
+- `ForwardScene` 在 RT shadow 或 debug 激活时声明 TLAS `RayQueryShaderRead`，descriptor set 仅绑定到对应 Ray Query pipeline layout。
+- Editor 增加 Ray Query shadow 模式、距离和 bias 控件；diagnostics 暴露 requested / available / active、fallback reason 和 opaque-only 参数。
+- 修复 shader manifest 第二遍遍历未读取 `program_id` 的问题，并将 Ray Query 调用改为 DXC 支持的 `RayDesc` contract，确保 debug 与 shadow variant 都实际生成 `RayQueryKHR` traversal。
+
+验证记录：
+
+- `NexAurVulkanShaders`、Debug `NexAurRendererTests` 和 `Sandbox` 构建通过。
+- `RenderSettings`、`FrameFeaturePlan` 和 `RenderGraphAccelerationStructurePlanner` focused test 通过。
+- 两个 Ray Query fragment SPIR-V 均通过 `spirv-val --target-env vulkan1.3`，并确认包含 `OpCapability RayQueryKHR` 和 `OpRayQuery*KHR` 指令。
+- RT-capable GPU 上 Sandbox 启动 smoke 通过，Ray Query capability 已启用，Debug Vulkan validation 无新增错误。
+- Sandbox Final Lit viewport 屏幕像素检查非空，Editor UI、场景渲染和 frame loop 正常。
+
+边界：
+
+- 第一版仅查询 static opaque triangle meshes；alpha mask、transparent、skinned / deforming mesh 和 colored transmission 不在当前语义内。
+- 当前仍保留 Raster directional shadow target，既作为稳定 fallback，也用于 CSM / PCSS 对照；AS compaction、TLAS refit、GPU timing 和 steady-state allocation 优化属于 RT-08。
 
 ### 11.9 RT-08：Compaction, Update, Lifetime and Profiling
 

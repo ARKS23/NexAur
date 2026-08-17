@@ -136,6 +136,30 @@ namespace NexAur {
             }
         }
 
+        int rayQueryShadowModeToIndex(RenderRayQueryShadowMode mode) {
+            switch (mode) {
+            case RenderRayQueryShadowMode::Auto:
+                return 1;
+            case RenderRayQueryShadowMode::RayQuery:
+                return 2;
+            case RenderRayQueryShadowMode::Disabled:
+            default:
+                return 0;
+            }
+        }
+
+        RenderRayQueryShadowMode rayQueryShadowModeFromIndex(int index) {
+            switch (index) {
+            case 1:
+                return RenderRayQueryShadowMode::Auto;
+            case 2:
+                return RenderRayQueryShadowMode::RayQuery;
+            case 0:
+            default:
+                return RenderRayQueryShadowMode::Disabled;
+            }
+        }
+
         int shadowMapResolutionToIndex(uint32_t resolution) {
             if (resolution >= 4096u) {
                 return 2;
@@ -291,6 +315,7 @@ namespace NexAur {
         drawSsrSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
+        drawRayQueryShadowSection(settings, changed);
         drawPointShadowSection(settings, changed);
         drawContactShadowSection(settings, changed);
         drawRectLightSection(settings, changed);
@@ -477,7 +502,7 @@ namespace NexAur {
             ImGui::TextDisabled("SSR debug can run the SSR graph without changing the SSR toggle.");
         }
         if (settings.effects_debug.view == RenderEffectDebugView::RayQueryVisibility) {
-            ImGui::TextDisabled("Ray Query debug shows first-hit triangle visibility; it falls back when RT or TLAS is unavailable.");
+            ImGui::TextDisabled("Ray Query debug shows directional first-hit visibility; it falls back when RT or TLAS is unavailable.");
         }
     }
 
@@ -979,6 +1004,62 @@ namespace NexAur {
         if (!settings.shadow.enabled) {
             ImGui::EndDisabled();
         }
+    }
+
+    void RenderSettingsPanel::drawRayQueryShadowSection(
+        RenderSettings& settings,
+        bool& changed) {
+        if (!EditorWidgets::sectionHeader("Ray Query Shadows", false)) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Mode", [&]() {
+            const char* items[] = { "Disabled", "Auto", "Ray Query" };
+            int index = rayQueryShadowModeToIndex(settings.ray_query_shadow.mode);
+            setControlWidth();
+            if (ImGui::Combo("##RayQueryShadowMode", &index, items, IM_ARRAYSIZE(items))) {
+                settings.ray_query_shadow.mode = rayQueryShadowModeFromIndex(index);
+                changed = true;
+            }
+        });
+
+        if (settings.ray_query_shadow.mode == RenderRayQueryShadowMode::Disabled) {
+            ImGui::BeginDisabled();
+        }
+
+        EditorWidgets::propertyRow("Max Distance", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RayQueryShadowMaxDistance",
+                &settings.ray_query_shadow.max_distance,
+                1.0f,
+                120.0f,
+                "%.1f");
+        });
+        EditorWidgets::propertyRow("Normal Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RayQueryShadowNormalBias",
+                &settings.ray_query_shadow.normal_bias,
+                0.0f,
+                0.2f,
+                "%.4f");
+        });
+        EditorWidgets::propertyRow("Direction Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RayQueryShadowDirectionBias",
+                &settings.ray_query_shadow.direction_bias,
+                0.0f,
+                0.2f,
+                "%.4f");
+        });
+
+        if (settings.ray_query_shadow.mode == RenderRayQueryShadowMode::Disabled) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::TextDisabled("Opaque static meshes only; unavailable RT hardware falls back to CSM / PCSS.");
     }
 
     void RenderSettingsPanel::drawPointShadowSection(RenderSettings& settings, bool& changed) {

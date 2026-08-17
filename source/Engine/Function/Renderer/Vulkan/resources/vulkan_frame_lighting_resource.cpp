@@ -32,6 +32,7 @@ namespace NexAur {
             glm::vec4 directional_color_point_count{ 1.0f, 1.0f, 1.0f, 0.0f };
             glm::vec4 ambient_color_intensity{ 1.0f, 1.0f, 1.0f, kFallbackAmbientIntensity };
             glm::vec4 shadow_params{ 0.0f, 0.65f, 0.002f, 1.0f };
+            glm::vec4 ray_query_shadow_params{ 1.0f, 35.0f, 0.02f, 0.01f };
             glm::vec4 shadow_quality_params{ 1.0f, 1.0f, 0.0f, 0.001f };
             glm::vec4 shadow_pcss_params{ 0.5f, 3.0f, 0.75f, 6.0f };
             glm::vec4 shadow_cascade_splits{ 0.0f, 0.0f, 0.0f, 0.0f };
@@ -115,6 +116,17 @@ namespace NexAur {
                 return static_cast<uint32_t>(mode);
             default:
                 return static_cast<uint32_t>(RenderShadowFilterMode::PCF3x3);
+            }
+        }
+
+        uint32_t sanitizeRayQueryShadowMode(RenderRayQueryShadowMode mode) {
+            switch (mode) {
+            case RenderRayQueryShadowMode::Disabled:
+            case RenderRayQueryShadowMode::Auto:
+            case RenderRayQueryShadowMode::RayQuery:
+                return static_cast<uint32_t>(mode);
+            default:
+                return static_cast<uint32_t>(RenderRayQueryShadowMode::Auto);
             }
         }
     } // namespace
@@ -228,6 +240,13 @@ namespace NexAur {
             sanitizeUnit(shadow_settings.strength, draw_list.directional_light.shadow_strength),
             sanitizeMin(shadow_settings.constant_bias, draw_list.directional_light.shadow_bias, 0.0f),
             std::max(1.0f, shadow_map_size));
+        const RenderRayQueryShadowSettings& ray_query_shadow_settings =
+            render_settings.ray_query_shadow;
+        frame_globals.ray_query_shadow_params = glm::vec4(
+            static_cast<float>(sanitizeRayQueryShadowMode(ray_query_shadow_settings.mode)),
+            sanitizeMin(ray_query_shadow_settings.max_distance, 35.0f, 0.001f),
+            sanitizeMin(ray_query_shadow_settings.normal_bias, 0.02f, 0.0f),
+            sanitizeMin(ray_query_shadow_settings.direction_bias, 0.01f, 0.0f));
         frame_globals.shadow_quality_params = glm::vec4(
             static_cast<float>(sanitizeShadowFilterMode(shadow_settings.filter_mode)),
             sanitizeMin(shadow_settings.filter_radius, 1.0f, 0.0f),

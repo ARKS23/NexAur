@@ -601,6 +601,7 @@ endfunction()
 set(NEXAUR_VULKAN_SHADER_OUTPUTS)
 foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     string(REPLACE "|" ";" shader_fields "${shader_program}")
+    list(GET shader_fields 0 program_id)
     list(GET shader_fields 1 source_file)
     list(GET shader_fields 2 vertex_profile)
     list(GET shader_fields 3 vertex_entry)
@@ -613,6 +614,10 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     if(program_id STREQUAL "ForwardRayQuery")
         set(shader_compile_options
             -DNEXAUR_ENABLE_RAY_QUERY_DEBUG=1
+            -fspv-extension=SPV_KHR_ray_query)
+    elseif(program_id STREQUAL "ForwardRayQueryShadow")
+        set(shader_compile_options
+            -DNEXAUR_ENABLE_RAY_QUERY_SHADOW=1
             -fspv-extension=SPV_KHR_ray_query)
     endif()
 

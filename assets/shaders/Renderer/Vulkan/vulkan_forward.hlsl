@@ -32,6 +32,7 @@ struct FrameGlobals {
     float4 directional_color_point_count;
     float4 ambient_color_intensity;
     float4 shadow_params; // x: enabled, y: strength, z: bias, w: shadow map size
+    float4 ray_query_shadow_params; // x: mode, y: max distance, z: normal bias, w: direction bias
     float4 shadow_quality_params; // x: filter mode, y: radius, z: normal bias, w: slope bias
     float4 shadow_pcss_params; // x: light radius, y: search radius, z: min radius, w: max radius
     float4 shadow_cascade_splits; // xyz/w: view-space far split depth per cascade
@@ -164,7 +165,7 @@ Texture2D<float4> g_reflection_probe_brdf_lut;
 [[vk::binding(4, 3)]]
 SamplerState g_reflection_probe_sampler;
 
-#ifdef NEXAUR_ENABLE_RAY_QUERY_DEBUG
+#if defined(NEXAUR_ENABLE_RAY_QUERY_DEBUG) || defined(NEXAUR_ENABLE_RAY_QUERY_SHADOW)
 [[vk::binding(0, 4)]]
 RaytracingAccelerationStructure g_ray_query_scene;
 #endif
@@ -254,6 +255,61 @@ float Luminance(float3 color) {
     return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
 }
 
+#if defined(NEXAUR_ENABLE_RAY_QUERY_DEBUG) || defined(NEXAUR_ENABLE_RAY_QUERY_SHADOW)
+bool NxTraceRayQueryDirectionalOcclusion(
+    float3 world_position,
+    float3 world_normal,
+    float3 light_direction) {
+    const float3 safe_normal = NxSafeNormalizeShadowVector(
+        world_normal,
+        float3(0.0f, 1.0f, 0.0f));
+    const float3 safe_light_direction = NxSafeNormalizeShadowVector(
+        light_direction,
+        float3(0.0f, 1.0f, 0.0f));
+    const float normal_bias = max(g_frame.ray_query_shadow_params.z, 0.0f);
+    const float direction_bias = max(g_frame.ray_query_shadow_params.w, 0.0f);
+    const float ray_distance = max(g_frame.ray_query_shadow_params.y, 0.001f);
+    const float3 origin = world_position +
+        safe_normal * normal_bias +
+        safe_light_direction * direction_bias;
+
+    RayQuery<
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+        RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.TMin = 0.001f;
+    ray.Direction = safe_light_direction;
+    ray.TMax = ray_distance;
+    query.TraceRayInline(
+        g_ray_query_scene,
+        RAY_FLAG_NONE,
+        0xff,
+        ray);
+    while (query.Proceed()) {
+    }
+
+    return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+}
+
+float NxEvaluateRayQueryDirectionalShadow(
+    float3 world_position,
+    float3 world_normal,
+    float3 light_direction) {
+    if (g_frame.shadow_params.x < 0.5f ||
+        g_frame.ray_query_shadow_params.x < 0.5f) {
+        return 1.0f;
+    }
+
+    return NxTraceRayQueryDirectionalOcclusion(
+        world_position,
+        world_normal,
+        light_direction) ?
+        1.0f - saturate(g_frame.shadow_params.y) :
+        1.0f;
+}
+#endif
+
 float EvaluateSsrSurfaceMask(NxMaterialSample material, float3 view_dir) {
     const float smoothness = 1.0f - material.roughness;
     const float smoothness_weight = smoothstep(0.30f, 0.80f, smoothness);
@@ -297,28 +353,12 @@ float3 EvaluateRectLight(
 
 #ifdef NEXAUR_ENABLE_RAY_QUERY_DEBUG
 float4 PSMain(VSOutput input) : SV_Target0 {
-    const float3 view_direction = normalize(
-        g_frame.camera_position_environment_intensity.xyz - input.world_position);
-    const float3 origin = input.world_position + view_direction * 0.01f;
-    const float ray_distance = max(
-        length(g_frame.camera_position_environment_intensity.xyz - input.world_position),
-        0.05f);
-
-    RayQuery<
-        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
-        RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
-    query.TraceRayInline(
-        g_ray_query_scene,
-        RAY_FLAG_NONE,
-        0xff,
-        origin,
-        0.001f,
-        view_direction,
-        ray_distance);
-    while (query.Proceed()) {
-    }
-
-    const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    const float3 directional_light_dir = normalize(
+        -g_frame.directional_direction_intensity.xyz);
+    const bool hit = NxTraceRayQueryDirectionalOcclusion(
+        input.world_position,
+        input.world_normal,
+        directional_light_dir);
     return hit ?
         float4(1.0f, 0.05f, 0.05f, 1.0f) :
         float4(0.05f, 1.0f, 0.05f, 1.0f);
@@ -394,11 +434,18 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     float3 directional_light_dir = normalize(-g_frame.directional_direction_intensity.xyz);
     float3 directional_radiance = g_frame.directional_color_point_count.rgb * g_frame.directional_direction_intensity.w;
+    #ifdef NEXAUR_ENABLE_RAY_QUERY_SHADOW
+    const float directional_shadow = NxEvaluateRayQueryDirectionalShadow(
+        input.world_position,
+        input.world_normal,
+        directional_light_dir);
+    #else
     const float directional_shadow = NxEvaluateShadowVisibility(
         input.world_position,
         material.normal,
         directional_light_dir,
         input.view_depth);
+    #endif
     lit_color += directional_shadow * NxEvaluateDirectLight(
         material.base_color.rgb,
         material.metallic,

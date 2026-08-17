@@ -20,6 +20,7 @@ namespace NexAur {
         bool point_shadow = false;
         bool rect_shadow = false;
         bool ray_query = false;
+        bool ray_query_shadow = false;
     };
 
     // A frame plan is a value snapshot. It has no mutating API so graph
@@ -41,6 +42,7 @@ namespace NexAur {
         bool usesRayQueryDebug() const {
             return m_debug_settings.view == RenderEffectDebugView::RayQueryVisibility;
         }
+        bool usesRayQueryShadow() const { return m_use_ray_query_shadow; }
         bool rendersAo() const { return m_render_ao; }
         bool rendersSsr() const { return m_render_ssr; }
         bool rendersBloom() const { return m_render_bloom; }
@@ -53,6 +55,7 @@ namespace NexAur {
             RenderEffectDebugSettings debug_settings,
             RenderEffectDebugSettings post_process_debug_settings,
             bool isolate_forward_debug,
+            bool use_ray_query_shadow,
             bool render_ao,
             bool render_ssr,
             bool render_bloom,
@@ -64,6 +67,7 @@ namespace NexAur {
         const RenderEffectDebugSettings m_debug_settings;
         const RenderEffectDebugSettings m_post_process_debug_settings;
         const bool m_isolate_forward_debug;
+        const bool m_use_ray_query_shadow;
         const bool m_render_ao;
         const bool m_render_ssr;
         const bool m_render_bloom;

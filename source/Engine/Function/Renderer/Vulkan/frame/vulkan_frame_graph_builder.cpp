@@ -16,7 +16,8 @@ namespace NexAur {
                ssr_hit_mask.valid() &&
                final_color.valid() &&
                swapchain_color.valid() &&
-               (!plan.usesRayQueryDebug() || ray_query_scene.valid()) &&
+               (!(plan.usesRayQueryDebug() || plan.usesRayQueryShadow()) ||
+                ray_query_scene.valid()) &&
                (!plan.rendersSmaa() || smaa_source.valid());
     }
 
@@ -86,7 +87,7 @@ namespace NexAur {
         }
 
         VulkanGraphPassBuilder forward_pass = graph.addPass("ForwardScene");
-        if (plan.usesRayQueryDebug()) {
+        if (plan.usesRayQueryDebug() || plan.usesRayQueryShadow()) {
             forward_pass.readAccelerationStructure(
                 resources.ray_query_scene,
                 VulkanGraphAccelerationStructureUsage::RayQueryShaderRead);

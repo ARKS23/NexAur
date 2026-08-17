@@ -822,8 +822,17 @@ int runFrameFeaturePlanSmoke() {
         default_plan.rendersAo() &&
             !default_plan.rendersSsr() &&
             default_plan.rendersBloom() &&
-            default_plan.rendersSmaa(),
+            default_plan.rendersSmaa() &&
+            !default_plan.usesRayQueryShadow(),
         "Frame feature plan did not preserve default feature enable decisions.");
+
+    settings.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::RayQuery;
+    const NexAur::VulkanRenderFeaturePlan unavailable_ray_query_shadow_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        !unavailable_ray_query_shadow_plan.usesRayQueryShadow(),
+        "Requested Ray Query shadows should fall back when the runtime path is unavailable.");
+    settings.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::Auto;
 
     settings.ao.enabled = false;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::AoRaw;
@@ -894,6 +903,39 @@ int runFrameFeaturePlanSmoke() {
             !ray_query_debug_plan.rendersSmaa(),
         "Ray Query debug view should isolate the forward Ray Query variant.");
 
+    available.ray_query_shadow = true;
+    settings = NexAur::RenderSettings{};
+    const NexAur::VulkanRenderFeaturePlan ray_query_shadow_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        ray_query_shadow_plan.usesRayQueryShadow() &&
+            !ray_query_shadow_plan.usesRayQueryDebug(),
+        "Auto Ray Query shadow mode should select the directional Ray Query path when ready.");
+
+    settings.shadow.cascade_debug_overlay = true;
+    const NexAur::VulkanRenderFeaturePlan cascade_debug_ray_query_shadow_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        !cascade_debug_ray_query_shadow_plan.usesRayQueryShadow(),
+        "CSM cascade debug overlay should isolate the Raster shadow path.");
+    settings.shadow.cascade_debug_overlay = false;
+
+    settings.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::Disabled;
+    const NexAur::VulkanRenderFeaturePlan disabled_ray_query_shadow_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        !disabled_ray_query_shadow_plan.usesRayQueryShadow(),
+        "Disabled Ray Query shadow mode should preserve the Raster shadow path.");
+
+    settings = NexAur::RenderSettings{};
+    settings.ibl_debug.mode = NexAur::RenderIblDebugMode::DiffuseIbl;
+    const NexAur::VulkanRenderFeaturePlan ray_query_shadow_isolated_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        !ray_query_shadow_isolated_plan.usesRayQueryShadow() &&
+            ray_query_shadow_isolated_plan.isolatesForwardDebug(),
+        "IBL debug isolation should suppress the directional Ray Query shadow path.");
+
     settings = NexAur::RenderSettings{};
     settings.ssr.enabled = true;
     settings.effects_debug.view = NexAur::RenderEffectDebugView::SsrRawReflection;
@@ -923,6 +965,7 @@ int runFrameFeaturePlanSmoke() {
         resources.final_color.index = index++;
         resources.swapchain_color.index = index++;
         resources.smaa_source.index = index++;
+        resources.ray_query_scene.index = index++;
         return resources;
     };
     auto makeCallbacks = [](
@@ -1024,6 +1067,15 @@ int runFrameFeaturePlanSmoke() {
             post_process_calls == 1 &&
             smaa_calls == 1,
         "Frame graph builder did not follow the feature plan for viewport output.");
+
+    NexAur::VulkanPassGraph ray_query_shadow_graph;
+    expect(
+        graph_builder.build(
+            ray_query_shadow_graph,
+            ray_query_shadow_plan,
+            makeResources(),
+            viewport_callbacks),
+        "Frame graph builder rejected a ready directional Ray Query shadow resource.");
 
     ao_calls = 0;
     ssr_calls = 0;
@@ -1711,6 +1763,10 @@ int runRenderSettingsSmoke() {
     settings.shadow.cascade_count = 4u;
     settings.shadow.cascade_split_lambda = 0.82f;
     settings.shadow.cascade_debug_overlay = true;
+    settings.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::RayQuery;
+    settings.ray_query_shadow.max_distance = 72.0f;
+    settings.ray_query_shadow.normal_bias = 0.035f;
+    settings.ray_query_shadow.direction_bias = 0.012f;
     settings.point_shadow.enabled = true;
     settings.point_shadow.max_shadowed_lights = 2u;
     settings.point_shadow.map_resolution = 1024u;
@@ -1762,6 +1818,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.effects_debug;
     const NexAur::RenderShadowSettings& first_shadow =
         render_context.getReadData().render_settings.shadow;
+    const NexAur::RenderRayQueryShadowSettings& first_ray_query_shadow =
+        render_context.getReadData().render_settings.ray_query_shadow;
     const NexAur::RenderPointShadowSettings& first_point_shadow =
         render_context.getReadData().render_settings.point_shadow;
     const NexAur::RenderContactShadowSettings& first_contact_shadow =
@@ -1862,6 +1920,12 @@ int runRenderSettingsSmoke() {
         first_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: shadow settings did not reach the read packet.");
     expect(
+        first_ray_query_shadow.mode == NexAur::RenderRayQueryShadowMode::RayQuery &&
+        nearlyEqual(first_ray_query_shadow.max_distance, 72.0f) &&
+        nearlyEqual(first_ray_query_shadow.normal_bias, 0.035f) &&
+        nearlyEqual(first_ray_query_shadow.direction_bias, 0.012f),
+        "RenderSettings smoke failed: Ray Query shadow settings did not reach the read packet.");
+    expect(
         first_point_shadow.enabled &&
         first_point_shadow.max_shadowed_lights == 2u &&
         first_point_shadow.map_resolution == 1024u &&
@@ -1959,6 +2023,10 @@ int runRenderSettingsSmoke() {
     settings.shadow.cascade_count = 1u;
     settings.shadow.cascade_split_lambda = 0.65f;
     settings.shadow.cascade_debug_overlay = false;
+    settings.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::Auto;
+    settings.ray_query_shadow.max_distance = 35.0f;
+    settings.ray_query_shadow.normal_bias = 0.02f;
+    settings.ray_query_shadow.direction_bias = 0.01f;
     settings.point_shadow.enabled = true;
     settings.point_shadow.max_shadowed_lights = 1u;
     settings.point_shadow.map_resolution = 512u;
@@ -2010,6 +2078,8 @@ int runRenderSettingsSmoke() {
         render_context.getReadData().render_settings.effects_debug;
     const NexAur::RenderShadowSettings& second_shadow =
         render_context.getReadData().render_settings.shadow;
+    const NexAur::RenderRayQueryShadowSettings& second_ray_query_shadow =
+        render_context.getReadData().render_settings.ray_query_shadow;
     const NexAur::RenderPointShadowSettings& second_point_shadow =
         render_context.getReadData().render_settings.point_shadow;
     const NexAur::RenderContactShadowSettings& second_contact_shadow =
@@ -2109,6 +2179,12 @@ int runRenderSettingsSmoke() {
         nearlyEqual(second_shadow.cascade_split_lambda, 0.65f) &&
         !second_shadow.cascade_debug_overlay,
         "RenderSettings smoke failed: updated shadow settings did not reach the read packet.");
+    expect(
+        second_ray_query_shadow.mode == NexAur::RenderRayQueryShadowMode::Auto &&
+        nearlyEqual(second_ray_query_shadow.max_distance, 35.0f) &&
+        nearlyEqual(second_ray_query_shadow.normal_bias, 0.02f) &&
+        nearlyEqual(second_ray_query_shadow.direction_bias, 0.01f),
+        "RenderSettings smoke failed: updated Ray Query shadow settings did not reach the read packet.");
     expect(
         second_point_shadow.enabled &&
         second_point_shadow.max_shadowed_lights == 1u &&

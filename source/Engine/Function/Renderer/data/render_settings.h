@@ -41,6 +41,24 @@ namespace NexAur {
         PCSS = 4
     };
 
+    enum class RenderRayQueryShadowMode : uint32_t {
+        Disabled = 0,
+        Auto = 1,
+        RayQuery = 2
+    };
+
+    inline const char* renderRayQueryShadowModeName(RenderRayQueryShadowMode mode) {
+        switch (mode) {
+        case RenderRayQueryShadowMode::Auto:
+            return "Auto";
+        case RenderRayQueryShadowMode::RayQuery:
+            return "Ray Query";
+        case RenderRayQueryShadowMode::Disabled:
+        default:
+            return "Disabled";
+        }
+    }
+
     enum class RenderAntiAliasingMode : uint32_t {
         None = 0,
         SMAA = 1
@@ -188,6 +206,13 @@ namespace NexAur {
         bool cascade_debug_overlay = false;
     };
 
+    struct RenderRayQueryShadowSettings {
+        RenderRayQueryShadowMode mode = RenderRayQueryShadowMode::Auto;
+        float max_distance = 35.0f;
+        float normal_bias = 0.02f;
+        float direction_bias = 0.01f;
+    };
+
     struct RenderPointShadowSettings {
         bool enabled = true;
         uint32_t max_shadowed_lights = 1;
@@ -242,6 +267,7 @@ namespace NexAur {
         RenderShadowSettings shadow;
         RenderPointShadowSettings point_shadow;
         RenderContactShadowSettings contact_shadow;
+        RenderRayQueryShadowSettings ray_query_shadow;
         RenderRectShadowSettings rect_shadow;
         RenderRectLightSettings rect_light;
     };

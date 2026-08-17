@@ -326,6 +326,28 @@ namespace NexAur {
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));
         drawKeyValue("Rect Shadow Debug Ready", boolToText(snapshot.effects.rect_shadow_debug_available));
+        drawKeyValue(
+            "Ray Query Shadow Available",
+            boolToText(snapshot.effects.ray_query_shadow_available));
+        drawKeyValue(
+            "Ray Query Shadow Enabled",
+            boolToText(snapshot.effects.ray_query_shadow_enabled));
+        drawKeyValue(
+            "Ray Query Shadow Active",
+            boolToText(snapshot.effects.ray_query_shadow_active));
+        drawKeyValue("Ray Query Shadow Mode", snapshot.effects.ray_query_shadow_mode.c_str());
+        drawKeyValue(
+            "Ray Query Shadow Fallback",
+            snapshot.effects.ray_query_shadow_fallback_reason.c_str());
+        ImGui::Text(
+            "Ray Query Shadow Distance: %.1f",
+            snapshot.effects.ray_query_shadow_max_distance);
+        ImGui::Text(
+            "Ray Query Shadow Normal Bias: %.4f",
+            snapshot.effects.ray_query_shadow_normal_bias);
+        ImGui::Text(
+            "Ray Query Shadow Direction Bias: %.4f",
+            snapshot.effects.ray_query_shadow_direction_bias);
         drawKeyValue("Point Shadows", boolToText(snapshot.effects.point_shadow_enabled));
         drawKeyValue("Rect Shadows", boolToText(snapshot.effects.rect_shadow_enabled));
         drawKeyValue("Contact Shadows", boolToText(snapshot.effects.contact_shadow_enabled));

@@ -76,6 +76,13 @@ namespace NexAur {
             (settings.ibl_debug.mode != RenderIblDebugMode::FinalLit &&
              debug_view == RenderEffectDebugView::FinalLit) ||
             isRayQueryDebugView(debug_view);
+        const bool use_ray_query_shadow =
+            settings.shadow.enabled &&
+            settings.ray_query_shadow.mode != RenderRayQueryShadowMode::Disabled &&
+            !isolate_forward_debug &&
+            debug_view == RenderEffectDebugView::FinalLit &&
+            !settings.shadow.cascade_debug_overlay &&
+            availability.ray_query_shadow;
 
         const bool final_bloom_output =
             debug_view == RenderEffectDebugView::FinalLit ||
@@ -118,6 +125,7 @@ namespace NexAur {
             debug_settings,
             post_process_debug_settings,
             isolate_forward_debug,
+            use_ray_query_shadow,
             render_ao,
             render_ssr,
             render_bloom,
@@ -130,6 +138,7 @@ namespace NexAur {
         RenderEffectDebugSettings debug_settings,
         RenderEffectDebugSettings post_process_debug_settings,
         bool isolate_forward_debug,
+        bool use_ray_query_shadow,
         bool render_ao,
         bool render_ssr,
         bool render_bloom,
@@ -139,6 +148,7 @@ namespace NexAur {
           m_debug_settings(debug_settings),
           m_post_process_debug_settings(post_process_debug_settings),
           m_isolate_forward_debug(isolate_forward_debug),
+          m_use_ray_query_shadow(use_ray_query_shadow),
           m_render_ao(render_ao),
           m_render_ssr(render_ssr),
           m_render_bloom(render_bloom),

@@ -175,6 +175,14 @@ namespace NexAur {
         bool point_shadow_debug_available = false;
         bool rect_shadow_debug_available = false;
         bool ray_query_debug_available = false;
+        bool ray_query_shadow_available = false;
+        bool ray_query_shadow_enabled = false;
+        bool ray_query_shadow_active = false;
+        std::string ray_query_shadow_mode = "Auto";
+        std::string ray_query_shadow_fallback_reason = "None";
+        float ray_query_shadow_max_distance = 35.0f;
+        float ray_query_shadow_normal_bias = 0.02f;
+        float ray_query_shadow_direction_bias = 0.01f;
         bool point_shadow_enabled = false;
         bool rect_shadow_enabled = false;
         bool contact_shadow_enabled = false;

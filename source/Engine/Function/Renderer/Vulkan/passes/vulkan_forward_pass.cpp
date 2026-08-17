@@ -303,10 +303,19 @@ namespace NexAur {
             options.ray_query_debug &&
             options.ray_tracing_scene_descriptor_set != VK_NULL_HANDLE &&
             isRayQueryReady();
+        const bool use_ray_query_shadow =
+            !use_ray_query_debug &&
+            options.ray_query_shadow &&
+            options.ray_tracing_scene_descriptor_set != VK_NULL_HANDLE &&
+            isRayQueryShadowReady();
+        const bool use_ray_query_pipeline =
+            use_ray_query_debug || use_ray_query_shadow;
         const VkPipeline pipeline = use_ray_query_debug ?
-            m_ray_query_pipeline : m_pipeline;
+            m_ray_query_pipeline :
+            (use_ray_query_shadow ? m_ray_query_shadow_pipeline : m_pipeline);
         const VkPipelineLayout pipeline_layout = use_ray_query_debug ?
-            m_ray_query_pipeline_layout : m_pipeline_layout;
+            m_ray_query_pipeline_layout :
+            (use_ray_query_shadow ? m_ray_query_shadow_pipeline_layout : m_pipeline_layout);
         if (pipeline != VK_NULL_HANDLE &&
             pipeline_layout != VK_NULL_HANDLE &&
             frame_descriptor_set != VK_NULL_HANDLE &&
@@ -345,7 +354,7 @@ namespace NexAur {
                 0,
                 nullptr);
 
-            if (use_ray_query_debug) {
+            if (use_ray_query_pipeline) {
                 vkCmdBindDescriptorSets(
                     command_buffer,
                     VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -508,6 +517,21 @@ namespace NexAur {
                 NX_CORE_WARN(
                     "Forward Ray Query debug pipeline is unavailable; Raster fallback remains active.");
             }
+
+            VulkanGraphicsPipelineDesc ray_query_shadow_desc = desc;
+            ray_query_shadow_desc.debug_name = "ForwardRayQueryShadow";
+            ray_query_shadow_desc.shader_program = VulkanShaderProgramId::ForwardRayQueryShadow;
+            ray_query_shadow_desc.descriptor_set_layouts.push_back(
+                m_ray_tracing_scene_descriptor_set_layout);
+            const VulkanGraphicsPipelineState ray_query_shadow_pipeline_state =
+                m_pipeline_cache->getOrCreateGraphicsPipeline(ray_query_shadow_desc);
+            if (ray_query_shadow_pipeline_state.valid()) {
+                m_ray_query_shadow_pipeline = ray_query_shadow_pipeline_state.pipeline;
+                m_ray_query_shadow_pipeline_layout = ray_query_shadow_pipeline_state.layout;
+            } else {
+                NX_CORE_WARN(
+                    "Forward Ray Query shadow pipeline is unavailable; CSM / PCSS fallback remains active.");
+            }
         }
 
         return true;
@@ -522,5 +546,7 @@ namespace NexAur {
         m_pipeline_layout = VK_NULL_HANDLE;
         m_ray_query_pipeline = VK_NULL_HANDLE;
         m_ray_query_pipeline_layout = VK_NULL_HANDLE;
+        m_ray_query_shadow_pipeline = VK_NULL_HANDLE;
+        m_ray_query_shadow_pipeline_layout = VK_NULL_HANDLE;
     }
 } // namespace NexAur
