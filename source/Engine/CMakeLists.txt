@@ -332,6 +332,10 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_functions.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.h
     Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.cpp
+    Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.h
+    Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.cpp
+    Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h
+    Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.cpp
     Function/Renderer/Vulkan/frontend/vulkan_render_view.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp

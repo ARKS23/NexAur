@@ -364,6 +364,39 @@ namespace NexAur {
         drawKeyValue("Meshes", snapshot.resources.mesh_count);
         drawKeyValue("Device Address Meshes", snapshot.resources.device_address_mesh_count);
         drawKeyValue("Materials", snapshot.resources.material_count);
+        ImGui::SeparatorText("Static Mesh BLAS");
+        drawKeyValue(
+            "Cache Ready",
+            boolToText(snapshot.resources.static_mesh_blas_cache_ready));
+        drawKeyValue("Entries", snapshot.resources.static_mesh_blas_entry_count);
+        drawKeyValue("Ready", snapshot.resources.static_mesh_blas_ready_count);
+        drawKeyValue("Failed", snapshot.resources.static_mesh_blas_failed_count);
+        drawKeyValue64("Builds", snapshot.resources.static_mesh_blas_build_count);
+        drawKeyValue64("Cache Hits", snapshot.resources.static_mesh_blas_cache_hit_count);
+        drawKeyValue64(
+            "Failed Builds",
+            snapshot.resources.static_mesh_blas_failed_build_count);
+        drawKeyValue64("AS Bytes", snapshot.resources.static_mesh_blas_bytes);
+        drawKeyValue(
+            "Last Failure",
+            snapshot.resources.static_mesh_blas_last_failure.c_str());
+        ImGui::SeparatorText("TLAS");
+        drawKeyValue(
+            "Manager Ready",
+            boolToText(snapshot.resources.tlas_manager_ready));
+        drawKeyValue("Ready", boolToText(snapshot.resources.tlas_ready));
+        drawKeyValue("Source Instances", snapshot.resources.tlas_source_instance_count);
+        drawKeyValue("Built Instances", snapshot.resources.tlas_built_instance_count);
+        drawKeyValue("Skipped BLAS", snapshot.resources.tlas_skipped_blas_count);
+        drawKeyValue(
+            "Skipped Transforms",
+            snapshot.resources.tlas_skipped_transform_count);
+        drawKeyValue64("Builds", snapshot.resources.tlas_build_count);
+        drawKeyValue64(
+            "Instance Bytes",
+            snapshot.resources.tlas_instance_buffer_bytes);
+        drawKeyValue64("TLAS Bytes", snapshot.resources.tlas_bytes);
+        drawKeyValue("Last Failure", snapshot.resources.tlas_last_failure.c_str());
         ImGui::Text(
             "GPU Submitted Serial: %llu",
             static_cast<unsigned long long>(snapshot.resources.gpu_submitted_serial));

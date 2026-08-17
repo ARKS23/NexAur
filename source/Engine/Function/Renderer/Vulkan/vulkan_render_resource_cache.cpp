@@ -211,7 +211,14 @@ namespace NexAur {
         }
 
         auto model_resource = std::make_unique<VulkanModelResource>();
-        if (!model_resource->create(createUploadContext(), *cpu_model, debug_name, *this, asset_manager)) {
+        if (!model_resource->create(
+                createUploadContext(),
+                *cpu_model,
+                model_asset,
+                allocateModelGeneration(),
+                debug_name,
+                *this,
+                asset_manager)) {
             NX_CORE_ERROR("Failed to create Vulkan model resource: {}", debug_name);
             return nullptr;
         }
@@ -666,6 +673,14 @@ namespace NexAur {
 
         m_fallback_environment = std::move(environment_resource);
         return true;
+    }
+
+    uint64_t VulkanRenderResourceCache::allocateModelGeneration() {
+        const uint64_t generation = m_next_model_generation++;
+        if (m_next_model_generation == 0) {
+            m_next_model_generation = 1;
+        }
+        return generation;
     }
 
     VulkanResourceUploadContext VulkanRenderResourceCache::createUploadContext() {

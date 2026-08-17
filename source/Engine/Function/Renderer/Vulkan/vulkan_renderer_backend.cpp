@@ -27,6 +27,8 @@
 #include "Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_executor.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h"
 #include "Function/Renderer/Vulkan/core/vulkan_device_context.h"
 #include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
 #include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
@@ -185,6 +187,25 @@ namespace NexAur {
                 return false;
             }
 
+            const VulkanRayTracingCapabilities& ray_tracing_capabilities =
+                device_context.getRayTracingCapabilities();
+            if (ray_tracing_capabilities.ray_query_enabled &&
+                !static_mesh_blas_cache.init(
+                    createResourceContext(),
+                    device_context.getRayTracingFunctions(),
+                    ray_tracing_capabilities.min_scratch_alignment)) {
+                NX_CORE_WARN(
+                    "Static mesh BLAS cache initialization failed; Ray Query features will remain unavailable.");
+            }
+            if (static_mesh_blas_cache.isInitialized() &&
+                !tlas_manager.init(
+                    createResourceContext(),
+                    device_context.getRayTracingFunctions(),
+                    ray_tracing_capabilities.min_scratch_alignment)) {
+                NX_CORE_WARN(
+                    "TLAS manager initialization failed; Ray Query scene instances will remain unavailable.");
+            }
+
             ao_format = VulkanDiagnosticsCollector::findAoFormat(physical_device.physical_device);
             if (ao_format == VK_FORMAT_UNDEFINED) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to find a supported AO target format.");
@@ -303,6 +324,8 @@ namespace NexAur {
             viewport_target.shutdown();
             forward_pass.shutdown();
             cleanupSwapchain();
+            tlas_manager.shutdown();
+            static_mesh_blas_cache.shutdown();
             resource_cache.shutdown();
             cleanupFrameContexts();
             retirement_queue.drain();
@@ -366,6 +389,7 @@ namespace NexAur {
             if (!resource_cache.processUploads()) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to process asynchronous uploads.");
             }
+            prepareStaticMeshBlas(prepared_frame.draw_list);
 
             VulkanFrameContext& frame_context = frame_contexts[current_frame_index];
             if (!waitForFrame(frame_context)) {
@@ -380,6 +404,7 @@ namespace NexAur {
                     render_start_time);
                 return;
             }
+            prepareTlas(frame_context.getFrameIndex(), prepared_frame.draw_list);
             const VulkanReflectionProbeCaptureCallbacks capture_callbacks =
                 createReflectionProbeCaptureCallbacks(frame_context);
             reflection_probe_manager.processFrame(
@@ -568,6 +593,34 @@ namespace NexAur {
             context.descriptor_allocator = &descriptor_allocator;
             context.pipeline_cache = &pipeline_cache;
             return context;
+        }
+
+        void prepareStaticMeshBlas(const VulkanDrawList& draw_list) {
+            if (!static_mesh_blas_cache.isInitialized() ||
+                draw_list.opaque_items.empty()) {
+                return;
+            }
+
+            std::vector<const VulkanMeshResource*> meshes;
+            meshes.reserve(draw_list.opaque_items.size());
+            for (const VulkanMeshDrawItem& draw_item : draw_list.opaque_items) {
+                if (draw_item.mesh != nullptr) {
+                    meshes.push_back(draw_item.mesh);
+                }
+            }
+            static_mesh_blas_cache.prepare(meshes);
+        }
+
+        void prepareTlas(
+            uint32_t frame_index,
+            const VulkanDrawList& draw_list) {
+            if (!tlas_manager.isInitialized()) {
+                return;
+            }
+            tlas_manager.buildFrame(
+                frame_index,
+                draw_list.opaque_items,
+                static_mesh_blas_cache);
         }
 
         bool waitForDeviceIdle(const char* operation) {
@@ -1063,6 +1116,28 @@ namespace NexAur {
             stats.mesh_count = resource_cache.getMeshCount();
             stats.device_address_mesh_count =
                 resource_cache.getDeviceAddressMeshCount();
+            const VulkanStaticMeshBlasCacheStats blas_stats =
+                static_mesh_blas_cache.getStats();
+            stats.static_mesh_blas_cache_ready = blas_stats.initialized;
+            stats.static_mesh_blas_entry_count = blas_stats.entry_count;
+            stats.static_mesh_blas_ready_count = blas_stats.ready_entry_count;
+            stats.static_mesh_blas_failed_count = blas_stats.failed_entry_count;
+            stats.static_mesh_blas_build_count = blas_stats.build_count;
+            stats.static_mesh_blas_cache_hit_count = blas_stats.cache_hit_count;
+            stats.static_mesh_blas_failed_build_count = blas_stats.failed_build_count;
+            stats.static_mesh_blas_bytes = blas_stats.acceleration_structure_bytes;
+            stats.static_mesh_blas_last_failure = blas_stats.last_failure_reason;
+            const VulkanTlasBuildStats tlas_stats = tlas_manager.getStats();
+            stats.tlas_manager_ready = tlas_stats.initialized;
+            stats.tlas_ready = tlas_stats.ready;
+            stats.tlas_source_instance_count = tlas_stats.source_instance_count;
+            stats.tlas_built_instance_count = tlas_stats.built_instance_count;
+            stats.tlas_skipped_blas_count = tlas_stats.skipped_blas_count;
+            stats.tlas_skipped_transform_count = tlas_stats.skipped_transform_count;
+            stats.tlas_build_count = tlas_stats.build_count;
+            stats.tlas_instance_buffer_bytes = tlas_stats.instance_buffer_bytes;
+            stats.tlas_bytes = tlas_stats.acceleration_structure_bytes;
+            stats.tlas_last_failure = tlas_stats.last_failure_reason;
             stats.material_count = resource_cache.getMaterialCount();
             stats.fallback_white_texture_ready = resource_cache.hasFallbackWhiteTexture();
             stats.fallback_material_ready = resource_cache.hasFallbackMaterial();
@@ -2162,6 +2237,8 @@ namespace NexAur {
         VulkanDescriptorAllocator descriptor_allocator;
         VulkanPipelineCache pipeline_cache;
         VulkanRenderResourceCache resource_cache;
+        VulkanStaticMeshBlasCache static_mesh_blas_cache;
+        VulkanTlasManager tlas_manager;
         AssetManager* asset_manager = nullptr;
         VulkanRenderDataTranslator translator;
         RenderSceneFrameBuilder scene_frame_builder;

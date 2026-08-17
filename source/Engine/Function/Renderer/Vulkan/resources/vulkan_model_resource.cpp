@@ -7,19 +7,23 @@
 #include "Function/Renderer/Vulkan/vulkan_render_resource_cache.h"
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace NexAur {
     bool VulkanModelResource::create(
         const VulkanResourceUploadContext& context,
         const Model& model,
+        AssetHandle model_asset,
+        uint64_t generation,
         const std::string& debug_name,
         VulkanRenderResourceCache& resource_cache,
         AssetManager& asset_manager) {
         reset();
 
-        if (!context.valid()) {
-            NX_CORE_ERROR("VulkanModelResource requires a valid upload context.");
+        if (!context.valid() || !model_asset || generation == 0) {
+            NX_CORE_ERROR(
+                "VulkanModelResource requires a valid upload context and model identity.");
             return false;
         }
         if (!model.isLoaded()) {
@@ -32,15 +36,26 @@ namespace NexAur {
             NX_CORE_ERROR("VulkanModelResource requires at least one mesh.");
             return false;
         }
+        if (cpu_meshes.size() > std::numeric_limits<uint32_t>::max()) {
+            NX_CORE_ERROR("VulkanModelResource has too many meshes: {}", debug_name);
+            return false;
+        }
 
         m_debug_name = debug_name;
+        m_model_asset = model_asset;
+        m_generation = generation;
         m_meshes.reserve(cpu_meshes.size());
         m_materials.reserve(cpu_meshes.size());
         m_material_assets.reserve(cpu_meshes.size());
 
-        for (const Mesh& cpu_mesh : cpu_meshes) {
+        for (size_t mesh_index = 0; mesh_index < cpu_meshes.size(); ++mesh_index) {
+            const Mesh& cpu_mesh = cpu_meshes[mesh_index];
             VulkanMeshResource mesh_resource;
-            if (!mesh_resource.create(context, cpu_mesh)) {
+            VulkanMeshResourceKey mesh_key;
+            mesh_key.identity.model_asset = model_asset;
+            mesh_key.identity.mesh_index = static_cast<uint32_t>(mesh_index);
+            mesh_key.generation = generation;
+            if (!mesh_resource.create(context, cpu_mesh, mesh_key)) {
                 NX_CORE_ERROR("Failed to create Vulkan mesh resource for model: {}", debug_name);
                 reset();
                 return false;
@@ -79,6 +94,8 @@ namespace NexAur {
         m_materials.clear();
         m_meshes.clear();
         m_debug_name.clear();
+        m_model_asset = {};
+        m_generation = 0;
     }
 
     void VulkanModelResource::refreshMaterials(

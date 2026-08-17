@@ -88,15 +88,19 @@ namespace NexAur {
 
     bool VulkanMeshResource::create(
         const VulkanResourceUploadContext& context,
-        const Mesh& mesh) {
+        const Mesh& mesh,
+        const VulkanMeshResourceKey& key) {
         reset();
 
         static_assert(
             sizeof(unsigned int) == sizeof(uint32_t),
             "NexAur mesh indices must map to VK_INDEX_TYPE_UINT32.");
 
-        if (!context.valid() || !context.upload_manager->isInitialized()) {
-            NX_CORE_ERROR("VulkanMeshResource requires a valid async upload context.");
+        if (!context.valid() ||
+            !context.upload_manager->isInitialized() ||
+            !key.valid()) {
+            NX_CORE_ERROR(
+                "VulkanMeshResource requires a valid async upload context and resource key.");
             return false;
         }
 
@@ -187,6 +191,7 @@ namespace NexAur {
 
         m_vertex_count = static_cast<uint32_t>(vertices.size());
         m_index_count = static_cast<uint32_t>(indices.size());
+        m_key = key;
         return true;
     }
 
@@ -197,6 +202,7 @@ namespace NexAur {
         m_vertex_buffer.reset();
         m_vertex_count = 0;
         m_index_count = 0;
+        m_key = {};
     }
 
     void VulkanMeshResource::moveFrom(VulkanMeshResource&& other) noexcept {
@@ -205,9 +211,11 @@ namespace NexAur {
         m_upload_ticket = std::move(other.m_upload_ticket);
         m_vertex_count = other.m_vertex_count;
         m_index_count = other.m_index_count;
+        m_key = other.m_key;
 
         other.m_upload_ticket = {};
         other.m_vertex_count = 0;
         other.m_index_count = 0;
+        other.m_key = {};
     }
 } // namespace NexAur

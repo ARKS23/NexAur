@@ -1,4 +1,5 @@
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -39,6 +41,8 @@
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
 #include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
@@ -2374,6 +2378,112 @@ int runAccelerationStructureContractSmoke() {
     return 0;
 }
 
+int runStaticMeshBlasCacheContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    NexAur::VulkanMeshResourceIdentity first_identity;
+    first_identity.model_asset = NexAur::AssetHandle(NexAur::UUID(0x7100u));
+    first_identity.mesh_index = 3;
+    NexAur::VulkanMeshResourceIdentity same_identity = first_identity;
+    NexAur::VulkanMeshResourceIdentity different_identity = first_identity;
+    different_identity.mesh_index = 4;
+    const NexAur::VulkanMeshResourceIdentityHash identity_hash;
+    expect(
+        first_identity.valid() &&
+        first_identity == same_identity &&
+        !(first_identity == different_identity) &&
+        identity_hash(first_identity) == identity_hash(same_identity),
+        "Static mesh BLAS contract failed: stable mesh identity is inconsistent.");
+
+    NexAur::VulkanMeshResourceKey first_generation;
+    first_generation.identity = first_identity;
+    first_generation.generation = 1;
+    NexAur::VulkanMeshResourceKey second_generation = first_generation;
+    second_generation.generation = 2;
+    NexAur::VulkanMeshResourceKey invalid_generation = first_generation;
+    invalid_generation.generation = 0;
+    expect(
+        first_generation.valid() &&
+        second_generation.valid() &&
+        !(first_generation == second_generation) &&
+        !invalid_generation.valid(),
+        "Static mesh BLAS contract failed: resource generation is not part of the key.");
+
+    NexAur::VulkanStaticMeshBlasCache cache;
+    const NexAur::VulkanStaticMeshBlasCacheStats stats = cache.getStats();
+    expect(
+        !stats.initialized &&
+        stats.entry_count == 0 &&
+        stats.build_count == 0 &&
+        stats.acceleration_structure_bytes == 0 &&
+        stats.last_failure_reason == "None",
+        "Static mesh BLAS contract failed: default cache diagnostics are invalid.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Static mesh BLAS cache contract smoke passed." << std::endl;
+    return 0;
+}
+
+int runTlasInstanceContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    glm::mat4 transform{ 1.0f };
+    transform = glm::translate(transform, glm::vec3{ 4.0f, 5.0f, 6.0f });
+    transform = glm::rotate(transform, glm::radians(90.0f), glm::vec3{ 0.0f, 0.0f, 1.0f });
+    transform = glm::scale(transform, glm::vec3{ 2.0f, 3.0f, 4.0f });
+    const VkTransformMatrixKHR matrix = NexAur::toVulkanTransformMatrix(transform);
+    expect(
+        nearlyEqual(matrix.matrix[0][0], 0.0f) &&
+        nearlyEqual(matrix.matrix[0][1], -3.0f) &&
+        nearlyEqual(matrix.matrix[0][2], 0.0f) &&
+        nearlyEqual(matrix.matrix[0][3], 4.0f) &&
+        nearlyEqual(matrix.matrix[1][0], 2.0f) &&
+        nearlyEqual(matrix.matrix[1][1], 0.0f) &&
+        nearlyEqual(matrix.matrix[1][2], 0.0f) &&
+        nearlyEqual(matrix.matrix[1][3], 5.0f) &&
+        nearlyEqual(matrix.matrix[2][0], 0.0f) &&
+        nearlyEqual(matrix.matrix[2][1], 0.0f) &&
+        nearlyEqual(matrix.matrix[2][2], 4.0f) &&
+        nearlyEqual(matrix.matrix[2][3], 6.0f),
+        "TLAS instance contract failed: GLM transform conversion is incorrect.");
+
+    NexAur::VulkanTlasManager manager;
+    const NexAur::VulkanTlasBuildStats stats = manager.getStats();
+    expect(
+        !stats.initialized &&
+        !stats.ready &&
+        stats.source_instance_count == 0 &&
+        stats.built_instance_count == 0 &&
+        stats.last_failure_reason == "None",
+        "TLAS instance contract failed: default manager diagnostics are invalid.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "TLAS instance contract smoke passed." << std::endl;
+    return 0;
+}
+
 int runRayTracingDeviceSmoke(
     NexAur::VulkanRayQueryMode mode,
     bool force_disable_ray_query,
@@ -2524,8 +2634,12 @@ int runDeviceAddressBufferSmoke(
     expect(
         allocator.isBufferDeviceAddressEnabled() == expect_device_address,
         "allocator capability did not match the selected mode.");
+    NexAur::VulkanMeshResourceKey mesh_key;
+    mesh_key.identity.model_asset = NexAur::AssetHandle(NexAur::UUID(0x1001u));
+    mesh_key.identity.mesh_index = 0;
+    mesh_key.generation = 1;
     expect(
-        mesh_resource.create(upload_context, cpu_mesh),
+        mesh_resource.create(upload_context, cpu_mesh, mesh_key),
         "mesh resource creation failed.");
 
     constexpr VkBufferUsageFlags ray_tracing_mesh_usage =
@@ -2859,6 +2973,376 @@ int runAccelerationStructureDeviceSmoke() {
     return 0;
 }
 
+int runRayTracingSceneDeviceSmoke() {
+    NexAur::VulkanRayTracingOptions options;
+    options.ray_query_mode = NexAur::VulkanRayQueryMode::Auto;
+
+    VulkanDeviceTestFixture fixture;
+    std::string failure;
+    if (!fixture.init(options, failure)) {
+        std::cerr << "Ray tracing scene device smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    NexAur::VulkanDeviceContext& device_context = fixture.getDeviceContext();
+    const NexAur::VulkanRayTracingCapabilities& capabilities =
+        device_context.getRayTracingCapabilities();
+    if (!capabilities.supportsRayQuery()) {
+        std::cout << "Ray tracing scene device smoke skipped: Ray Query is unsupported." << std::endl;
+        return 0;
+    }
+
+    NexAur::VulkanRetirementQueue retirement_queue;
+    NexAur::VulkanGpuAllocator allocator;
+    NexAur::VulkanUploadManager upload_manager;
+    NexAur::VulkanStaticMeshBlasCache blas_cache;
+    NexAur::VulkanTlasManager tlas_manager;
+    NexAur::VulkanMeshResource first_generation_mesh;
+    NexAur::VulkanMeshResource second_generation_mesh;
+    NexAur::VulkanMeshResource batched_mesh;
+    NexAur::VulkanMeshResource non_triangle_mesh;
+    NexAur::VulkanMeshResource empty_mesh_resource;
+    VkCommandPool upload_context_pool = VK_NULL_HANDLE;
+
+    NexAur::VulkanResourceContext resource_context;
+    resource_context.instance = device_context.getInstance();
+    resource_context.physical_device = device_context.getPhysicalDevice();
+    resource_context.device = device_context.getDevice();
+    resource_context.graphics_queue = device_context.getGraphicsQueue();
+    resource_context.graphics_queue_family = device_context.getGraphicsQueueFamily();
+    resource_context.api_version = device_context.getApiVersion();
+    resource_context.buffer_device_address_enabled = capabilities.ray_query_enabled;
+    resource_context.gpu_allocator = &allocator;
+    resource_context.retirement_queue = &retirement_queue;
+
+    auto cleanup = [&]() {
+        tlas_manager.shutdown();
+        blas_cache.shutdown();
+        empty_mesh_resource.reset();
+        non_triangle_mesh.reset();
+        batched_mesh.reset();
+        second_generation_mesh.reset();
+        first_generation_mesh.reset();
+        upload_manager.shutdown();
+        if (upload_context_pool != VK_NULL_HANDLE) {
+            vkDestroyCommandPool(
+                device_context.getDevice(),
+                upload_context_pool,
+                nullptr);
+            upload_context_pool = VK_NULL_HANDLE;
+        }
+        retirement_queue.drain();
+        allocator.shutdown();
+    };
+
+    if (!allocator.init(resource_context)) {
+        cleanup();
+        std::cerr << "Ray tracing scene device smoke failed: allocator initialization failed." << std::endl;
+        return 1;
+    }
+
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    pool_info.queueFamilyIndex = device_context.getGraphicsQueueFamily();
+    if (vkCreateCommandPool(
+            device_context.getDevice(),
+            &pool_info,
+            nullptr,
+            &upload_context_pool) != VK_SUCCESS ||
+        !upload_manager.init(resource_context) ||
+        !blas_cache.init(
+            resource_context,
+            device_context.getRayTracingFunctions(),
+            capabilities.min_scratch_alignment) ||
+        !tlas_manager.init(
+            resource_context,
+            device_context.getRayTracingFunctions(),
+            capabilities.min_scratch_alignment)) {
+        cleanup();
+        std::cerr << "Ray tracing scene device smoke failed: build context initialization failed." << std::endl;
+        return 1;
+    }
+
+    NexAur::VulkanResourceUploadContext upload_context;
+    upload_context.gpu_allocator = &allocator;
+    upload_context.retirement_queue = &retirement_queue;
+    upload_context.upload_manager = &upload_manager;
+    upload_context.allocator = allocator.getHandle();
+    upload_context.physical_device = device_context.getPhysicalDevice();
+    upload_context.device = device_context.getDevice();
+    upload_context.graphics_queue = device_context.getGraphicsQueue();
+    upload_context.command_pool = upload_context_pool;
+
+    std::vector<NexAur::Vertex> vertices(3);
+    vertices[0].position = glm::vec3{ -1.0f, 0.0f, 0.0f };
+    vertices[1].position = glm::vec3{ 1.0f, 0.0f, 0.0f };
+    vertices[2].position = glm::vec3{ 0.0f, 1.0f, 0.0f };
+    const NexAur::Mesh triangle_mesh(
+        vertices,
+        std::vector<unsigned int>{ 0, 1, 2 },
+        NexAur::MaterialImportData{});
+    const NexAur::Mesh invalid_mesh(
+        vertices,
+        std::vector<unsigned int>{ 0, 1, 2, 0 },
+        NexAur::MaterialImportData{});
+    const NexAur::Mesh empty_mesh(
+        std::vector<NexAur::Vertex>{},
+        std::vector<unsigned int>{},
+        NexAur::MaterialImportData{});
+
+    NexAur::VulkanMeshResourceKey first_key;
+    first_key.identity.model_asset = NexAur::AssetHandle(NexAur::UUID(0x7200u));
+    first_key.identity.mesh_index = 0;
+    first_key.generation = 1;
+    NexAur::VulkanMeshResourceKey second_key = first_key;
+    second_key.generation = 2;
+    NexAur::VulkanMeshResourceKey batched_key;
+    batched_key.identity.model_asset = first_key.identity.model_asset;
+    batched_key.identity.mesh_index = 1;
+    batched_key.generation = 1;
+    NexAur::VulkanMeshResourceKey invalid_key;
+    invalid_key.identity.model_asset = first_key.identity.model_asset;
+    invalid_key.identity.mesh_index = 2;
+    invalid_key.generation = 1;
+    NexAur::VulkanMeshResourceKey empty_key;
+    empty_key.identity.model_asset = first_key.identity.model_asset;
+    empty_key.identity.mesh_index = 3;
+    empty_key.generation = 1;
+
+    bool success = true;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (success && !condition) {
+            success = false;
+            failure = message;
+        }
+    };
+
+    expect(
+        !empty_mesh_resource.create(upload_context, empty_mesh, empty_key),
+        "empty mesh was accepted for GPU upload.");
+    expect(
+        first_generation_mesh.create(upload_context, triangle_mesh, first_key) &&
+        second_generation_mesh.create(upload_context, triangle_mesh, second_key) &&
+        batched_mesh.create(upload_context, triangle_mesh, batched_key) &&
+        non_triangle_mesh.create(upload_context, invalid_mesh, invalid_key),
+        "mesh resource creation failed.");
+
+    if (success) {
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (!upload_manager.processFrame()) {
+                success = false;
+                failure = "mesh upload processing failed.";
+                break;
+            }
+
+            const uint64_t completed_serial =
+                upload_manager.collectCompletedSerial();
+            if (completed_serial > 0) {
+                retirement_queue.markCompleted(completed_serial);
+                upload_manager.onSubmissionsCompleted(completed_serial);
+            }
+
+            const bool uploads_ready =
+                first_generation_mesh.isReady() &&
+                second_generation_mesh.isReady() &&
+                batched_mesh.isReady() &&
+                non_triangle_mesh.isReady();
+            if (uploads_ready) {
+                break;
+            }
+            if (first_generation_mesh.getUploadStatus() ==
+                    NexAur::VulkanUploadStatus::Failed ||
+                second_generation_mesh.getUploadStatus() ==
+                    NexAur::VulkanUploadStatus::Failed ||
+                batched_mesh.getUploadStatus() ==
+                    NexAur::VulkanUploadStatus::Failed ||
+                non_triangle_mesh.getUploadStatus() ==
+                    NexAur::VulkanUploadStatus::Failed) {
+                success = false;
+                failure = "one or more mesh uploads failed.";
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        expect(
+            first_generation_mesh.isReady() &&
+            second_generation_mesh.isReady() &&
+            batched_mesh.isReady() &&
+            non_triangle_mesh.isReady(),
+            "mesh uploads did not complete before the timeout.");
+    }
+
+    if (success) {
+        const std::array<const NexAur::VulkanMeshResource*, 3> duplicate_instances{
+            &first_generation_mesh,
+            &first_generation_mesh,
+            &batched_mesh
+        };
+        expect(
+            blas_cache.prepare(duplicate_instances),
+            "first-generation BLAS build failed.");
+        const NexAur::VulkanStaticMeshBlasCacheStats stats =
+            blas_cache.getStats();
+        const NexAur::VulkanAccelerationStructure* blas =
+            blas_cache.find(first_generation_mesh);
+        expect(
+            stats.entry_count == 2 &&
+            stats.ready_entry_count == 2 &&
+            stats.build_count == 2 &&
+            stats.acceleration_structure_bytes > 0 &&
+            blas != nullptr &&
+            blas->getDeviceAddress() != 0 &&
+            blas_cache.find(batched_mesh) != nullptr,
+            "batched duplicate instances did not resolve to two ready BLAS entries.");
+
+        expect(
+            blas_cache.prepare(duplicate_instances) &&
+            blas_cache.getStats().build_count == 2 &&
+            blas_cache.getStats().cache_hit_count >= 2,
+            "unchanged mesh did not reuse its cached BLAS.");
+    }
+
+    if (success) {
+        const std::array<const NexAur::VulkanMeshResource*, 1> replacement{
+            &second_generation_mesh
+        };
+        expect(
+            blas_cache.prepare(replacement),
+            "second-generation BLAS rebuild failed.");
+        const NexAur::VulkanStaticMeshBlasCacheStats stats =
+            blas_cache.getStats();
+        expect(
+            stats.entry_count == 2 &&
+            stats.ready_entry_count == 2 &&
+            stats.build_count == 3 &&
+            blas_cache.find(first_generation_mesh) == nullptr &&
+            blas_cache.find(second_generation_mesh) != nullptr &&
+            blas_cache.find(batched_mesh) != nullptr,
+            "mesh generation change did not replace exactly one BLAS entry.");
+    }
+
+    if (success) {
+        const std::array<const NexAur::VulkanMeshResource*, 1> invalid_geometry{
+            &non_triangle_mesh
+        };
+        expect(
+            blas_cache.prepare(invalid_geometry),
+            "non-triangle fallback unexpectedly failed the cache batch.");
+        const NexAur::VulkanStaticMeshBlasCacheStats failed_stats =
+            blas_cache.getStats();
+        expect(
+            failed_stats.entry_count == 3 &&
+            failed_stats.ready_entry_count == 2 &&
+            failed_stats.failed_entry_count == 1 &&
+            failed_stats.failed_build_count == 1 &&
+            failed_stats.last_failure_reason.find("divisible by three") !=
+                std::string::npos &&
+            blas_cache.find(non_triangle_mesh) == nullptr,
+            "non-triangle mesh failure was not diagnosed and cached.");
+
+        expect(
+            blas_cache.prepare(invalid_geometry) &&
+            blas_cache.getStats().failed_build_count == 1,
+            "failed mesh generation was rebuilt every frame.");
+    }
+
+    if (success) {
+        std::vector<NexAur::VulkanMeshDrawItem> tlas_items(4);
+        tlas_items[0].mesh = &second_generation_mesh;
+        tlas_items[0].transform = glm::translate(
+            glm::mat4{ 1.0f },
+            glm::vec3{ 1.0f, 2.0f, 3.0f });
+        tlas_items[1].mesh = &second_generation_mesh;
+        tlas_items[1].transform = glm::translate(
+            glm::mat4{ 1.0f },
+            glm::vec3{ -2.0f, 0.5f, 4.0f });
+        tlas_items[1].transform = glm::rotate(
+            tlas_items[1].transform,
+            glm::radians(35.0f),
+            glm::vec3{ 0.0f, 1.0f, 0.0f });
+        tlas_items[1].transform = glm::scale(
+            tlas_items[1].transform,
+            glm::vec3{ 1.0f, 2.0f, 0.5f });
+        tlas_items[2].mesh = &batched_mesh;
+        tlas_items[2].transform = glm::scale(
+            glm::mat4{ 1.0f },
+            glm::vec3{ 0.75f, 1.5f, 2.0f });
+        tlas_items[3].mesh = &non_triangle_mesh;
+
+        expect(
+            tlas_manager.buildFrame(0, tlas_items, blas_cache),
+            "initial TLAS build failed.");
+        const NexAur::VulkanTlasBuildStats initial_tlas_stats =
+            tlas_manager.getStats();
+        expect(
+            initial_tlas_stats.ready &&
+            initial_tlas_stats.source_instance_count == 4 &&
+            initial_tlas_stats.built_instance_count == 3 &&
+            initial_tlas_stats.skipped_blas_count == 1 &&
+            initial_tlas_stats.skipped_transform_count == 0 &&
+            initial_tlas_stats.build_count == 1 &&
+            initial_tlas_stats.instance_buffer_bytes > 0 &&
+            initial_tlas_stats.acceleration_structure_bytes > 0 &&
+            tlas_manager.get(0) != nullptr &&
+            tlas_manager.get(0)->getDeviceAddress() != 0,
+            "TLAS did not contain the current valid opaque instances.");
+
+        const std::array<NexAur::VulkanMeshDrawItem, 1> moved_item{
+            tlas_items[1]
+        };
+        expect(
+            tlas_manager.buildFrame(1, moved_item, blas_cache),
+            "second-frame TLAS rebuild failed.");
+        const NexAur::VulkanTlasBuildStats moved_tlas_stats =
+            tlas_manager.getStats();
+        expect(
+            moved_tlas_stats.ready &&
+            moved_tlas_stats.source_instance_count == 1 &&
+            moved_tlas_stats.built_instance_count == 1 &&
+            moved_tlas_stats.skipped_blas_count == 0 &&
+            moved_tlas_stats.build_count == 2 &&
+            tlas_manager.get(1) != nullptr,
+            "TLAS did not rebuild from the changed current draw list.");
+
+        const std::array<NexAur::VulkanMeshDrawItem, 0> empty_items{};
+        expect(
+            tlas_manager.buildFrame(0, empty_items, blas_cache) &&
+            !tlas_manager.get(0) &&
+            !tlas_manager.getStats().ready &&
+            tlas_manager.getStats().source_instance_count == 0,
+            "empty scene retained a stale TLAS instance set.");
+    }
+
+    if (success) {
+        const uint64_t retirement_serial = retirement_queue.markSubmitted();
+        blas_cache.clear();
+        non_triangle_mesh.reset();
+        batched_mesh.reset();
+        second_generation_mesh.reset();
+        first_generation_mesh.reset();
+        expect(
+            retirement_queue.getStats().pending_count > 0,
+            "BLAS or mesh resources bypassed deferred destruction.");
+        retirement_queue.markCompleted(retirement_serial);
+        expect(
+            retirement_queue.getStats().pending_count == 0,
+            "BLAS resources remained queued after their serial completed.");
+    }
+
+    cleanup();
+    if (!success) {
+        std::cerr << "Ray tracing scene device smoke failed: "
+                  << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Static mesh BLAS / TLAS scene device smoke passed." << std::endl;
+    return 0;
+}
+
 
 namespace {
     struct RendererTestEntry {
@@ -2878,12 +3362,16 @@ namespace {
         { "--ray-tracing-capabilities", runRayTracingCapabilitiesSmoke },
         { "--device-address-buffer-contract", runDeviceAddressBufferContractSmoke },
         { "--acceleration-structure-contract", runAccelerationStructureContractSmoke },
+        { "--static-mesh-blas-cache-contract", runStaticMeshBlasCacheContractSmoke },
+        { "--tlas-instance-contract", runTlasInstanceContractSmoke },
         { "--ray-tracing-device-auto", runRayTracingDeviceAutoSmoke },
         { "--ray-tracing-device-disabled", runRayTracingDeviceDisabledSmoke },
         { "--ray-tracing-device-force-disabled", runRayTracingDeviceForceDisabledSmoke },
         { "--device-address-buffer-auto", runDeviceAddressBufferAutoSmoke },
         { "--device-address-buffer-disabled", runDeviceAddressBufferDisabledSmoke },
         { "--acceleration-structure-device", runAccelerationStructureDeviceSmoke },
+        { "--static-mesh-blas-cache-device", runRayTracingSceneDeviceSmoke },
+        { "--tlas-instance-device", runRayTracingSceneDeviceSmoke },
     };
 } // namespace
 

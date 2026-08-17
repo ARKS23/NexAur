@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：开发中；RT-00、RT-01、RT-02 已完成，下一工作包为 RT-03
+状态：开发中；RT-00、RT-01、RT-02、RT-03、RT-04 已完成，下一工作包为 RT-05
 
 ## 1. 文档目的
 
@@ -86,6 +86,8 @@ SSR 仍负责低成本、与当前屏幕内容一致的近场反射；Ray Tracin
 - RT-00 已建立可选 Ray Query capability negotiation、logical-device feature chain 和 diagnostics。
 - RT-01 已建立 VMA buffer-device-address contract、统一 addressable buffer primitive 和 RT-enabled mesh buffer usage。
 - RT-02 已建立 acceleration structure 函数表、move-only AS primitive、aligned scratch buffer 和 deferred destruction contract。
+- RT-03 已建立 opaque static mesh BLAS cache、stable mesh identity / generation 和一次性 fence build path。
+- RT-04 已建立按 frame slot 重建的 TLAS instance path、transform conversion 和有效 BLAS filtering。
 - Shader 使用 HLSL，经 DXC 编译为 Vulkan 1.3 SPIR-V。
 - `VulkanDrawList` 已包含 mesh、material、world transform 和 entity ID。
 - `VulkanMeshResource` 已持有 GPU vertex / index buffer；CPU Mesh 也保留标准三角形顶点和 `uint32_t` index 数据。
@@ -112,8 +114,10 @@ VulkanMeshDrawItem
 |---|---|---|
 | Device capability | RT-00 已完成 capability cluster 查询、`Auto` / `Disabled` / force-disable 和可选 feature chain | 已解除；不支持或关闭时继续创建 Raster logical device |
 | GPU allocator | RT-01 已按实际 device feature 设置 VMA device-address flag，并统一地址与 alignment 校验 | 已解除；RT-02 可直接复用 addressable `VulkanOwnedBuffer` |
-| Mesh buffer | Ray Query enabled 时附加 build-input / device-address usage，Disabled 时保持 Raster usage | 已解除；RT-03 可直接读取非零 vertex / index address |
-| AS primitive | RT-02 已建立 AS backing / handle ownership、build-size query、scratch buffer 和 build command 录制 | 已解除；RT-03 可直接建立 static mesh BLAS cache |
+| Mesh buffer | Ray Query enabled 时附加 build-input / device-address usage，Disabled 时保持 Raster usage | 已解除；RT-03 已从 ready mesh 读取非零 vertex / index address |
+| AS primitive | RT-02 已建立 AS backing / handle ownership、build-size query、scratch buffer 和 build command 录制 | 已解除；RT-03 已复用该 primitive 建立 static mesh BLAS cache |
+| BLAS cache | RT-03 已按 model asset + mesh index + generation 缓存 opaque static mesh BLAS | 已解除；RT-04 可直接引用 ready BLAS device address |
+| TLAS instance | RT-04 已建立 per-frame instance buffer、TLAS build 和空 scene fallback | 已解除；RT-05 仍需把 AS access 纳入 RenderGraph |
 | RenderGraph | 只注册 image | 无法表达 instance buffer、BLAS/TLAS build 和 shader read hazard |
 | Synchronization | Graph image state 已迁移到 synchronization2 并覆盖同 layout hazard；尚无 AS resource / access | RT-05 仍需增加 AS build write -> shader read 语义 |
 | Descriptor allocator | Pool 未分配 acceleration structure descriptor | 无法分配 Ray Query descriptor set |
@@ -126,7 +130,7 @@ VulkanMeshDrawItem
 
 ### 3.3 结论
 
-当前 Renderer 已可进入光追场景结构开发。RT-00 capability negotiation、RT-01 device-address buffer foundation 和 RT-02 acceleration structure primitive 已完成；仍不能直接开始正式 Ray Query shader，下一步必须依次补齐 BLAS/TLAS、descriptor 和 AS 同步模型。
+当前 Renderer 已具备进入 AS synchronization 与 descriptor 开发的基础。RT-00 capability negotiation、RT-01 device-address buffer foundation、RT-02 acceleration structure primitive、RT-03 static mesh BLAS cache 和 RT-04 TLAS instance build 已完成；仍不能直接开始正式 Ray Query shader，下一步必须补齐 RenderGraph AS access、descriptor 和 shader variant。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -589,6 +593,8 @@ result       = visible or occluded
 
 ### 11.4 RT-03：Static Mesh BLAS Cache
 
+状态：已完成（2026-08-17）。
+
 风险：高。
 
 工作内容：
@@ -609,7 +615,28 @@ result       = visible or occluded
 - mesh resource generation 变化会触发一次正确 rebuild。
 - 空 mesh、非三角 index 和 build failure 可诊断并回退。
 
+实现结果：
+
+- `VulkanMeshResource` 使用 model asset、mesh index 和 GPU resource generation 组成稳定 key；transform 不进入 BLAS identity。
+- 新增 `VulkanStaticMeshBlasCache`，只接收 ready opaque mesh，并在每帧请求内按 stable identity 去重。
+- 首次使用时从 vertex / index device address 生成 triangle geometry，查询尺寸并创建 BLAS；相同 generation 后续直接命中缓存。
+- generation 改变时在新 BLAS 构建成功后替换旧 entry，旧 AS 继续使用 deferred destruction。
+- 多个缺失 BLAS 在一个 command buffer 中构建，共享 aligned scratch，并在连续 build 间插入 synchronization2 AS dependency。
+- 一次性 build 使用专用 fence 精确等待，不调用 `vkDeviceWaitIdle()`；初始化或单 mesh 失败时继续 Raster fallback。
+- 非三角、未 ready、缺少 device address 和 Vulkan build failure 会形成可诊断 failed entry，同 generation 不会每帧重试。
+- Renderer diagnostics 暴露 cache ready、entry / ready / failed、build count、cache hit、AS bytes 和 last failure。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 与 `Sandbox` 构建通过。
+- RT-00 至 RT-03 四项 CPU focused contract test 通过。
+- RT-capable GPU 上完成真实 mesh upload、empty mesh fallback、duplicate instance dedup、双 BLAS batch build / reuse、generation rebuild、非三角失败记忆和 deferred destruction smoke。
+- Auto device-address 与 Disabled Raster fallback 两条 GPU mesh smoke 通过。
+- Sandbox 完整启动到 `NexAur Engine started`；Debug Vulkan validation 无新增 VUID，stderr 为空。
+
 ### 11.5 RT-04：TLAS Instance Build / Update Baseline
+
+状态：已完成（2026-08-17）。
 
 风险：高。
 
@@ -628,6 +655,23 @@ result       = visible or occluded
 - 增加、删除、移动 object 后 TLAS 与当前 draw list 一致。
 - scene reload 后不引用旧 BLAS / TLAS。
 - 多个 instance 引用同一个 BLAS 时遮挡结果正确。
+
+实现结果：
+
+- 新增 `VulkanTlasManager`，为每个 `VulkanFrameContext` slot 独立持有 instance buffer 和 TLAS，复用只在 slot fence 完成后发生。
+- 新增 GLM `mat4` 到 `VkTransformMatrixKHR` 的显式 row-major 3x4 转换，支持 translation、rotation 和 non-uniform scale。
+- 从当前 opaque draw list 逐项解析 BLAS device address；同一 BLAS 可被多个 instance 引用，transform 不影响 BLAS cache。
+- instance buffer 使用 host-visible、device-addressable allocation，写入后 flush，并在 TLAS command 中加入 host write -> AS build read barrier。
+- TLAS backing、scratch 和 build size query 接入现有 AS primitive；每个有效 frame slot 每帧 rebuild，旧 slot 资源继续使用 deferred destruction。
+- 未 ready 或 BLAS 失败的 mesh 会被跳过并计数；空 scene 会清除当前 slot 的 ready 状态，避免引用旧 TLAS。
+- Renderer diagnostics 暴露 source / built / skipped instance、build count、instance bytes、TLAS bytes 和 failure reason。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 与 `Sandbox` 构建通过。
+- RT-00 至 RT-04 五项 CPU focused contract test 通过。
+- RT-capable GPU 上完成真实 TLAS instance buffer、重复 BLAS 引用、frame-slot rebuild、无效 BLAS skip 和空 scene reset smoke。
+- Sandbox 完整启动到 `NexAur Engine started`；Debug Vulkan validation 无新增 VUID，stderr 为空。
 
 ### 11.6 RT-05：RenderGraph AS Synchronization
 

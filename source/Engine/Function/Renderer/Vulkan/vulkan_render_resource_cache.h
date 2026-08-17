@@ -94,6 +94,7 @@ namespace NexAur {
         bool createFallbackTexture();
         bool createFallbackMaterial(AssetManager& asset_manager);
         bool createFallbackEnvironment();
+        uint64_t allocateModelGeneration();
         VulkanResourceUploadContext createUploadContext();
         VulkanMaterialResourceCreateContext createMaterialContext();
         VulkanEnvironmentResourceCreateContext createEnvironmentContext();
@@ -122,6 +123,7 @@ namespace NexAur {
         std::unique_ptr<VulkanTextureResource> m_fallback_white_texture;
         std::unique_ptr<VulkanMaterialResource> m_fallback_material;
         std::unique_ptr<VulkanEnvironmentResource> m_fallback_environment;
+        uint64_t m_next_model_generation = 1;
         bool m_initialized = false;
     };
 } // namespace NexAur
