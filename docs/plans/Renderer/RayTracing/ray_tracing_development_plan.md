@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：开发中；RT-00、RT-01、RT-02、RT-03、RT-04 已完成，下一工作包为 RT-05
+状态：开发中；RT-00 至 RT-06 已完成，下一工作包为 RT-07
 
 ## 1. 文档目的
 
@@ -117,12 +117,12 @@ VulkanMeshDrawItem
 | Mesh buffer | Ray Query enabled 时附加 build-input / device-address usage，Disabled 时保持 Raster usage | 已解除；RT-03 已从 ready mesh 读取非零 vertex / index address |
 | AS primitive | RT-02 已建立 AS backing / handle ownership、build-size query、scratch buffer 和 build command 录制 | 已解除；RT-03 已复用该 primitive 建立 static mesh BLAS cache |
 | BLAS cache | RT-03 已按 model asset + mesh index + generation 缓存 opaque static mesh BLAS | 已解除；RT-04 可直接引用 ready BLAS device address |
-| TLAS instance | RT-04 已建立 per-frame instance buffer、TLAS build 和空 scene fallback | 已解除；RT-05 仍需把 AS access 纳入 RenderGraph |
-| RenderGraph | 只注册 image | 无法表达 instance buffer、BLAS/TLAS build 和 shader read hazard |
-| Synchronization | Graph image state 已迁移到 synchronization2 并覆盖同 layout hazard；尚无 AS resource / access | RT-05 仍需增加 AS build write -> shader read 语义 |
-| Descriptor allocator | Pool 未分配 acceleration structure descriptor | 无法分配 Ray Query descriptor set |
-| Descriptor writer | 只支持 image / buffer info | 缺少 `VkWriteDescriptorSetAccelerationStructureKHR` pNext 写入 |
-| Shader library | 只描述 vertex / fragment program pair | 可支持 fragment Ray Query variant，但需扩展 program 和编译配置 |
+| TLAS instance | RT-04 已建立 per-frame instance buffer、TLAS build 和空 scene fallback | 已解除；AS access 可由 RenderGraph 描述 |
+| RenderGraph | 已支持 imported buffer / acceleration structure resource 和对应 pass access | 可表达 instance buffer、BLAS/TLAS build 和 shader read hazard |
+| Synchronization | Graph image、buffer 和 AS state 均由 synchronization2 planner 描述 | 已覆盖 AS build write -> shader read 及连续 write hazard |
+| Descriptor allocator | RT-06 已按 capability 条件分配 acceleration structure descriptor pool capacity | 可分配 Ray Query descriptor set；RT-disabled 不创建 AS pool entry |
+| Descriptor writer | RT-06 已支持 `VkWriteDescriptorSetAccelerationStructureKHR` pNext 写入 | 可更新有效 TLAS；BLAS 会在 CPU 侧拒绝 |
+| Shader library | RT-06 已加入 `ForwardRayQuery` manifest、DXC profile 和 `SPV_KHR_ray_query` 编译选项 | 可创建独立 fragment Ray Query variant；RT-disabled 不创建 pipeline |
 | Pipeline cache | 只支持 graphics pipeline | 第一阶段足够；Full RT Pipeline 时必须新增独立 pipeline 类型 |
 | Scene material table | 仍按 draw call 绑定 material | 足够做 shadow visibility，不足以做通用 hit shading |
 | Temporal data | 没有正式 motion vector / history contract | 不足以实现稳定的 RT reflection denoiser |
@@ -130,7 +130,7 @@ VulkanMeshDrawItem
 
 ### 3.3 结论
 
-当前 Renderer 已具备进入 AS synchronization 与 descriptor 开发的基础。RT-00 capability negotiation、RT-01 device-address buffer foundation、RT-02 acceleration structure primitive、RT-03 static mesh BLAS cache 和 RT-04 TLAS instance build 已完成；仍不能直接开始正式 Ray Query shader，下一步必须补齐 RenderGraph AS access、descriptor 和 shader variant。
+当前 Renderer 已具备进入第一项实际 Ray Query 视觉功能的基础。RT-00 capability negotiation、RT-01 device-address buffer foundation、RT-02 acceleration structure primitive、RT-03 static mesh BLAS cache、RT-04 TLAS instance build、RT-05 RenderGraph AS synchronization 和 RT-06 descriptor / debug shader 已完成；下一步进入 RT-07 directional shadow integration。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -691,6 +691,26 @@ result       = visible or occluded
 - 同一 TLAS 连续 update / read 不会因“状态相同”漏 barrier。
 - Validation synchronization 检查无新增错误。
 
+状态：已完成（2026-08-17）。
+
+实现结果：
+
+- `VulkanPassGraph` 增加 imported buffer / acceleration structure resource、对应 handle、initial state 和 pass access API。
+- `VulkanGraphStatePlanner` 增加 AS build input、AS build write、Ray Query shader read、scratch buffer 的 state / transition plan。
+- `VulkanGraphExecutor` 接入 `VkBufferMemoryBarrier2` 和 AS 语义的 `VkMemoryBarrier2`，并保持 image transition 行为不变。
+- BLAS batch build、TLAS build、TLAS instance upload 和 mesh upload 的 AS 依赖改为复用 graph planner 的 stage / access 状态计算。
+- 新增 `RenderGraph AS planner` focused test，覆盖 host instance write、BLAS -> TLAS、TLAS -> fragment、scratch reuse 和连续 TLAS write hazard。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 目标构建通过。
+- `--render-graph-as-planner`、`--render-graph-state-planner` 和 `--tlas-instance-contract` 通过。
+- `--tlas-instance-device` 通过；Debug Vulkan validation 无新增 synchronization VUID。
+
+边界：
+
+- RT-03 / RT-04 当前仍使用独立的一次性 build submission；RT-06 已将实际 debug shader 的 TLAS read 声明接入 frame graph，生产级 directional shadow query 将在 RT-07 接入光照路径。
+
 ### 11.7 RT-06：Ray Query Descriptor and Debug Shader
 
 风险：中到高。
@@ -709,6 +729,27 @@ result       = visible or occluded
 - Debug view 能稳定区分 hit / miss。
 - RT-disabled 时不创建或绑定该 pipeline variant。
 - Resize、scene reload 和开关切换后 descriptor 不引用 stale TLAS。
+
+状态：已完成（2026-08-17）。
+
+实现结果：
+
+- `VulkanDescriptorSetLayoutId::RayTracingScene`、capability-gated descriptor pool capacity 和 `writeAccelerationStructure()` 已接入。
+- 新增 per-frame `VulkanRayTracingSceneResource`，按 frame slot 分配并更新 TLAS descriptor；无效、BLAS 或空 scene 会主动清除 ready 状态。
+- Forward pass 新增 `ForwardRayQuery` graphics pipeline variant 和 `RayQueryVisibility` debug shader，使用 first-hit opaque triangle query 输出 hit / miss 颜色。
+- Feature plan、Editor debug view、diagnostics 和 RenderGraph 均接入 Ray Query debug；没有 capability、有效 TLAS 或 pipeline 时回退 Raster / Final Lit。
+- Ray Query debug 的 TLAS 作为 imported graph AS resource，在 `ForwardScene` 中声明 `RayQueryShaderRead`，由 graph executor 生成 build-write -> fragment-read barrier。
+
+验证记录：
+
+- `NexAurVulkanShaders` 构建通过，`ForwardRayQuery` vertex / fragment SPIR-V 生成通过。
+- Debug `NexAurRendererTests`、FrameFeaturePlan、RenderGraph AS planner 和 RT contract tests 通过。
+- RT-capable GPU 上完成 TLAS descriptor allocation、两个 frame-slot 更新和空 scene stale descriptor 清除；Debug Vulkan validation 无新增 VUID。
+- Sandbox 成功创建 Ray Query capability、Forward Ray Query pipeline 和 renderer；Debug validation stderr 为空。
+
+边界：
+
+- 当前 shader 只用于 visibility debug，不改变 directional / point / rect 光照；正式阴影选择、bias 和 fallback 逻辑属于 RT-07。
 
 ### 11.8 RT-07：Directional Ray Query Shadow
 

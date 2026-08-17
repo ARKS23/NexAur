@@ -8,6 +8,7 @@
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_debug_draw_buffer.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_frame_lighting_resource.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
@@ -26,7 +27,8 @@ namespace NexAur {
             const VulkanResourceContext& context,
             VulkanDescriptorLayoutCache& descriptor_layout_cache,
             VulkanDescriptorAllocator& descriptor_allocator,
-            uint32_t frame_index);
+            uint32_t frame_index,
+            VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE);
         void shutdown();
 
         void markSubmitted(uint64_t serial);
@@ -46,6 +48,13 @@ namespace NexAur {
 
         VulkanFrameLightingResource& getLightingResource() { return m_lighting_resource; }
         const VulkanFrameLightingResource& getLightingResource() const { return m_lighting_resource; }
+        bool updateRayTracingScene(const VulkanAccelerationStructure* acceleration_structure) {
+            return m_ray_tracing_scene_resource.update(acceleration_structure);
+        }
+        bool hasRayTracingScene() const { return m_ray_tracing_scene_resource.isReady(); }
+        VkDescriptorSet getRayTracingSceneDescriptorSet() const {
+            return m_ray_tracing_scene_resource.getDescriptorSet();
+        }
         VulkanDebugDrawBuffer& getDebugDrawBuffer() { return m_debug_draw_buffer; }
         const VulkanDebugDrawBuffer& getDebugDrawBuffer() const { return m_debug_draw_buffer; }
 
@@ -60,6 +69,7 @@ namespace NexAur {
         VkSemaphore m_image_available = VK_NULL_HANDLE;
         VkFence m_fence = VK_NULL_HANDLE;
         VulkanFrameLightingResource m_lighting_resource;
+        VulkanRayTracingSceneResource m_ray_tracing_scene_resource;
         VulkanDebugDrawBuffer m_debug_draw_buffer;
         VulkanFrameSlotState m_flight_state;
         uint32_t m_frame_index = 0;

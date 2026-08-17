@@ -15,7 +15,8 @@ namespace NexAur {
         const VulkanResourceContext& context,
         VulkanDescriptorLayoutCache& descriptor_layout_cache,
         VulkanDescriptorAllocator& descriptor_allocator,
-        uint32_t frame_index) {
+        uint32_t frame_index,
+        VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout) {
         shutdown();
         if (!context.valid() ||
             context.gpu_allocator == nullptr ||
@@ -32,6 +33,11 @@ namespace NexAur {
                 context,
                 descriptor_layout_cache,
                 descriptor_allocator) ||
+            (ray_tracing_scene_descriptor_set_layout != VK_NULL_HANDLE &&
+             !m_ray_tracing_scene_resource.init(
+                 context.device,
+                 descriptor_allocator,
+                 ray_tracing_scene_descriptor_set_layout)) ||
             !m_debug_draw_buffer.init(context)) {
             shutdown();
             return false;
@@ -43,6 +49,7 @@ namespace NexAur {
 
     void VulkanFrameContext::shutdown() {
         m_debug_draw_buffer.shutdown();
+        m_ray_tracing_scene_resource.shutdown();
         m_lighting_resource.shutdown();
 
         if (m_device != VK_NULL_HANDLE) {

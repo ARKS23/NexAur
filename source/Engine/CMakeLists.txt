@@ -336,6 +336,8 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h
     Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.cpp
+    Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.h
+    Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.cpp
     Function/Renderer/Vulkan/frontend/vulkan_render_view.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.h
     Function/Renderer/Vulkan/graph/vulkan_graph_executor.cpp
@@ -573,6 +575,7 @@ else()
 endif()
 
 function(nexaur_add_vulkan_hlsl_output output_var source_file target_profile entry_point output_file)
+    set(shader_compile_options ${ARGN})
     set(source_path "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/${source_file}")
     set(output_path "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}/${output_file}")
     add_custom_command(
@@ -580,6 +583,7 @@ function(nexaur_add_vulkan_hlsl_output output_var source_file target_profile ent
         COMMAND ${CMAKE_COMMAND} -E make_directory "${NEXAUR_VULKAN_SHADER_OUTPUT_DIR}"
         COMMAND "${DIRECTX_DXC_TOOL}" -spirv -fspv-target-env=vulkan1.3 -HV 2021
                 -I "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}"
+                ${shader_compile_options}
                 -T ${target_profile}
                 -E ${entry_point}
                 -Fo "${output_path}"
@@ -605,19 +609,28 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     list(GET shader_fields 6 fragment_entry)
     list(GET shader_fields 7 fragment_output)
 
+    set(shader_compile_options)
+    if(program_id STREQUAL "ForwardRayQuery")
+        set(shader_compile_options
+            -DNEXAUR_ENABLE_RAY_QUERY_DEBUG=1
+            -fspv-extension=SPV_KHR_ray_query)
+    endif()
+
     nexaur_add_vulkan_hlsl_output(
         NEXAUR_VULKAN_SHADER_OUTPUTS
         "${source_file}"
         "${vertex_profile}"
         "${vertex_entry}"
-        "${vertex_output}")
+        "${vertex_output}"
+        ${shader_compile_options})
     if(NOT fragment_profile STREQUAL "NONE")
         nexaur_add_vulkan_hlsl_output(
             NEXAUR_VULKAN_SHADER_OUTPUTS
             "${source_file}"
             "${fragment_profile}"
             "${fragment_entry}"
-            "${fragment_output}")
+            "${fragment_output}"
+            ${shader_compile_options})
     endif()
 endforeach()
 

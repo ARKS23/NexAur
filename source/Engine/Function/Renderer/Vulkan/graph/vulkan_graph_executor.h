@@ -18,5 +18,15 @@ namespace NexAur {
             VulkanPassGraph& graph,
             const VulkanGraphImageAccess& access,
             const char* pass_name) const;
+        bool transitionBuffer(
+            VkCommandBuffer command_buffer,
+            VulkanPassGraph& graph,
+            const VulkanGraphBufferAccess& access,
+            const char* pass_name) const;
+        bool transitionAccelerationStructure(
+            VkCommandBuffer command_buffer,
+            VulkanPassGraph& graph,
+            const VulkanGraphAccelerationStructureAccess& access,
+            const char* pass_name) const;
     };
 } // namespace NexAur

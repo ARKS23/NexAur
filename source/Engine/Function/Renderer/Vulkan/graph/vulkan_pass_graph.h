@@ -20,6 +20,11 @@ namespace NexAur {
 
         const std::string& getName() const { return m_name; }
         const std::vector<VulkanGraphImageAccess>& getImageAccesses() const { return m_image_accesses; }
+        const std::vector<VulkanGraphBufferAccess>& getBufferAccesses() const { return m_buffer_accesses; }
+        const std::vector<VulkanGraphAccelerationStructureAccess>&
+        getAccelerationStructureAccesses() const {
+            return m_acceleration_structure_accesses;
+        }
         bool execute(VkCommandBuffer command_buffer) const;
 
     private:
@@ -28,6 +33,8 @@ namespace NexAur {
 
         std::string m_name;
         std::vector<VulkanGraphImageAccess> m_image_accesses;
+        std::vector<VulkanGraphBufferAccess> m_buffer_accesses;
+        std::vector<VulkanGraphAccelerationStructureAccess> m_acceleration_structure_accesses;
         ExecuteCallback m_execute;
     };
 
@@ -38,6 +45,18 @@ namespace NexAur {
         VulkanGraphPassBuilder& readImage(VulkanGraphImageHandle image, VulkanGraphImageUsage usage);
         VulkanGraphPassBuilder& writeImage(VulkanGraphImageHandle image, VulkanGraphImageUsage usage);
         VulkanGraphPassBuilder& readWriteImage(VulkanGraphImageHandle image, VulkanGraphImageUsage usage);
+        VulkanGraphPassBuilder& readBuffer(VulkanGraphBufferHandle buffer, VulkanGraphBufferUsage usage);
+        VulkanGraphPassBuilder& writeBuffer(VulkanGraphBufferHandle buffer, VulkanGraphBufferUsage usage);
+        VulkanGraphPassBuilder& readWriteBuffer(VulkanGraphBufferHandle buffer, VulkanGraphBufferUsage usage);
+        VulkanGraphPassBuilder& readAccelerationStructure(
+            VulkanGraphAccelerationStructureHandle acceleration_structure,
+            VulkanGraphAccelerationStructureUsage usage);
+        VulkanGraphPassBuilder& writeAccelerationStructure(
+            VulkanGraphAccelerationStructureHandle acceleration_structure,
+            VulkanGraphAccelerationStructureUsage usage);
+        VulkanGraphPassBuilder& readWriteAccelerationStructure(
+            VulkanGraphAccelerationStructureHandle acceleration_structure,
+            VulkanGraphAccelerationStructureUsage usage);
         VulkanGraphPassBuilder& execute(VulkanGraphPass::ExecuteCallback callback);
 
     private:
@@ -47,6 +66,9 @@ namespace NexAur {
     class VulkanPassGraph {
     public:
         VulkanGraphImageHandle addImage(VulkanGraphImageDesc desc);
+        VulkanGraphBufferHandle addBuffer(VulkanGraphBufferDesc desc);
+        VulkanGraphAccelerationStructureHandle addAccelerationStructure(
+            VulkanGraphAccelerationStructureDesc desc);
         VulkanGraphPassBuilder addPass(std::string name);
 
         void clear();
@@ -60,10 +82,28 @@ namespace NexAur {
             VulkanGraphImageState state;
         };
 
+        struct BufferResource {
+            VulkanGraphBufferDesc desc;
+            VulkanGraphBufferState state;
+        };
+
+        struct AccelerationStructureResource {
+            VulkanGraphAccelerationStructureDesc desc;
+            VulkanGraphAccelerationStructureState state;
+        };
+
         ImageResource* getImage(VulkanGraphImageHandle handle);
         const ImageResource* getImage(VulkanGraphImageHandle handle) const;
+        BufferResource* getBuffer(VulkanGraphBufferHandle handle);
+        const BufferResource* getBuffer(VulkanGraphBufferHandle handle) const;
+        AccelerationStructureResource* getAccelerationStructure(
+            VulkanGraphAccelerationStructureHandle handle);
+        const AccelerationStructureResource* getAccelerationStructure(
+            VulkanGraphAccelerationStructureHandle handle) const;
 
         std::vector<ImageResource> m_images;
+        std::vector<BufferResource> m_buffers;
+        std::vector<AccelerationStructureResource> m_acceleration_structures;
         std::vector<VulkanGraphPass> m_passes;
     };
 } // namespace NexAur

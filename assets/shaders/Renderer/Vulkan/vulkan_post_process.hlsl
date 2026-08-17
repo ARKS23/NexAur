@@ -69,6 +69,7 @@ static const uint EFFECT_DEBUG_SSR_HIT_MASK = 17u;
 static const uint EFFECT_DEBUG_SSR_RAY_STEPS = 18u;
 static const uint EFFECT_DEBUG_SSR_RAW_REFLECTION = 19u;
 static const uint EFFECT_DEBUG_SSR_SURFACE_MASK = 20u;
+static const uint EFFECT_DEBUG_RAY_QUERY_VISIBILITY = 21u;
 
 struct PostProcessPushConstants {
     float exposure;

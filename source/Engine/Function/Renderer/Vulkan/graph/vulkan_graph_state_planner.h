@@ -10,6 +10,18 @@ namespace NexAur {
         bool requires_barrier = false;
     };
 
+    struct VulkanGraphBufferTransitionPlan {
+        VulkanGraphBufferState source;
+        VulkanGraphBufferState destination;
+        bool requires_barrier = false;
+    };
+
+    struct VulkanGraphAccelerationStructureTransitionPlan {
+        VulkanGraphAccelerationStructureState source;
+        VulkanGraphAccelerationStructureState destination;
+        bool requires_barrier = false;
+    };
+
     class VulkanGraphStatePlanner {
     public:
         static constexpr VulkanGraphImageTransitionPlan planImageTransition(
@@ -25,6 +37,29 @@ namespace NexAur {
             const bool memory_hazard =
                 hasWriteAccess(source.last_access) || hasWriteAccess(destination.last_access);
             return { source, destination, barrier_range, layout_transition || memory_hazard };
+        }
+
+        static constexpr VulkanGraphBufferTransitionPlan planBufferTransition(
+            const VulkanGraphBufferState& source,
+            const VulkanGraphBufferState& destination) {
+            return {
+                source,
+                destination,
+                hasWriteAccess(source.last_access) ||
+                    hasWriteAccess(destination.last_access)
+            };
+        }
+
+        static constexpr VulkanGraphAccelerationStructureTransitionPlan
+        planAccelerationStructureTransition(
+            const VulkanGraphAccelerationStructureState& source,
+            const VulkanGraphAccelerationStructureState& destination) {
+            return {
+                source,
+                destination,
+                hasWriteAccess(source.last_access) ||
+                    hasWriteAccess(destination.last_access)
+            };
         }
 
         static constexpr VulkanGraphImageState stateForUsage(
@@ -154,6 +189,70 @@ namespace NexAur {
             return state;
         }
 
+        static constexpr VulkanGraphBufferState stateForBufferUsage(
+            VulkanGraphBufferUsage usage,
+            VulkanGraphAccessType access_type) {
+            switch (usage) {
+                case VulkanGraphBufferUsage::AccelerationStructureBuildInput:
+                    return {
+                        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                        access_type
+                    };
+                case VulkanGraphBufferUsage::AccelerationStructureScratch:
+                    return {
+                        accelerationStructureBuildAccess(access_type),
+                        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                        access_type
+                    };
+            }
+
+            return {};
+        }
+
+        static constexpr VulkanGraphBufferState stateForBufferImport(
+            VkPipelineStageFlags2 stage,
+            VkAccessFlags2 access,
+            VulkanGraphAccessType access_type) {
+            return { access, stage, access_type };
+        }
+
+        static constexpr VulkanGraphAccelerationStructureState
+        stateForAccelerationStructureUsage(
+            VulkanGraphAccelerationStructureUsage usage,
+            VulkanGraphAccessType access_type) {
+            switch (usage) {
+                case VulkanGraphAccelerationStructureUsage::BuildInput:
+                    return {
+                        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                        access_type
+                    };
+                case VulkanGraphAccelerationStructureUsage::BuildWrite:
+                    return {
+                        accelerationStructureBuildAccess(access_type),
+                        VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                        access_type
+                    };
+                case VulkanGraphAccelerationStructureUsage::RayQueryShaderRead:
+                    return {
+                        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                        access_type
+                    };
+            }
+
+            return {};
+        }
+
+        static constexpr VulkanGraphAccelerationStructureState
+        stateForAccelerationStructureImport(
+            VkPipelineStageFlags2 stage,
+            VkAccessFlags2 access,
+            VulkanGraphAccessType access_type) {
+            return { access, stage, access_type };
+        }
+
         static constexpr bool subresourcesOverlap(
             const VulkanGraphImageSubresourceRange& lhs,
             const VulkanGraphImageSubresourceRange& rhs) {
@@ -184,6 +283,22 @@ namespace NexAur {
                 case VulkanGraphAccessType::ReadWrite:
                     return VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                case VulkanGraphAccessType::None:
+                default:
+                    return VK_ACCESS_2_NONE;
+            }
+        }
+
+        static constexpr VkAccessFlags2 accelerationStructureBuildAccess(
+            VulkanGraphAccessType access_type) {
+            switch (access_type) {
+                case VulkanGraphAccessType::Read:
+                    return VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+                case VulkanGraphAccessType::Write:
+                    return VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+                case VulkanGraphAccessType::ReadWrite:
+                    return VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR |
+                           VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
                 case VulkanGraphAccessType::None:
                 default:
                     return VK_ACCESS_2_NONE;

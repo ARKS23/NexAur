@@ -4,6 +4,7 @@
 #include "Function/Resource/mesh.h"
 #include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
 #include "Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h"
+#include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 
 #include <algorithm>
 #include <array>
@@ -95,17 +96,24 @@ namespace NexAur {
         }
 
         void recordBuildDependency(VkCommandBuffer command_buffer) {
+            const VulkanGraphAccelerationStructureTransitionPlan transition =
+                VulkanGraphStatePlanner::planAccelerationStructureTransition(
+                    VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+                        VulkanGraphAccelerationStructureUsage::BuildWrite,
+                        VulkanGraphAccessType::Write),
+                    VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+                        VulkanGraphAccelerationStructureUsage::BuildWrite,
+                        VulkanGraphAccessType::ReadWrite));
+            if (!transition.requires_barrier) {
+                return;
+            }
+
             VkMemoryBarrier2 barrier{};
             barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-            barrier.srcStageMask =
-                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-            barrier.srcAccessMask =
-                VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
-            barrier.dstStageMask =
-                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-            barrier.dstAccessMask =
-                VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR |
-                VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+            barrier.srcStageMask = transition.source.stage;
+            barrier.srcAccessMask = transition.source.access;
+            barrier.dstStageMask = transition.destination.stage;
+            barrier.dstAccessMask = transition.destination.access;
 
             VkDependencyInfo dependency_info{};
             dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;

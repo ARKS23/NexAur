@@ -24,6 +24,7 @@ namespace NexAur {
         VulkanGraphImageHandle final_color;
         VulkanGraphImageHandle swapchain_color;
         VulkanGraphImageHandle smaa_source;
+        VulkanGraphAccelerationStructureHandle ray_query_scene;
 
         bool valid(const VulkanRenderFeaturePlan& plan) const;
     };

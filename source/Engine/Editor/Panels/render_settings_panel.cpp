@@ -248,6 +248,8 @@ namespace NexAur {
                 return RenderEffectDebugView::SsrRawReflection;
             case 20:
                 return RenderEffectDebugView::SsrSurfaceMask;
+            case 21:
+                return RenderEffectDebugView::RayQueryVisibility;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -367,7 +369,8 @@ namespace NexAur {
                 "SSR Hit Mask",
                 "SSR Ray Steps",
                 "SSR Raw Reflection",
-                "SSR Surface Mask"
+                "SSR Surface Mask",
+                "Ray Query Visibility"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -472,6 +475,9 @@ namespace NexAur {
             settings.effects_debug.view == RenderEffectDebugView::SsrRawReflection ||
             settings.effects_debug.view == RenderEffectDebugView::SsrSurfaceMask) {
             ImGui::TextDisabled("SSR debug can run the SSR graph without changing the SSR toggle.");
+        }
+        if (settings.effects_debug.view == RenderEffectDebugView::RayQueryVisibility) {
+            ImGui::TextDisabled("Ray Query debug shows first-hit triangle visibility; it falls back when RT or TLAS is unavailable.");
         }
     }
 

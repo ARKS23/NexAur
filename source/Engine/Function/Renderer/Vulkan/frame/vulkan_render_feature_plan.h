@@ -19,6 +19,7 @@ namespace NexAur {
         bool directional_shadow = false;
         bool point_shadow = false;
         bool rect_shadow = false;
+        bool ray_query = false;
     };
 
     // A frame plan is a value snapshot. It has no mutating API so graph
@@ -37,6 +38,9 @@ namespace NexAur {
         }
 
         bool isolatesForwardDebug() const { return m_isolate_forward_debug; }
+        bool usesRayQueryDebug() const {
+            return m_debug_settings.view == RenderEffectDebugView::RayQueryVisibility;
+        }
         bool rendersAo() const { return m_render_ao; }
         bool rendersSsr() const { return m_render_ssr; }
         bool rendersBloom() const { return m_render_bloom; }

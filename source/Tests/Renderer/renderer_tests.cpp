@@ -32,6 +32,8 @@
 #include "Function/Renderer/Vulkan/core/vulkan_owned_resources.h"
 #include "Function/Renderer/Vulkan/core/vulkan_retirement_queue.h"
 #include "Function/Renderer/Vulkan/core/vulkan_device_context.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
+#include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_constants.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h"
@@ -43,6 +45,7 @@
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
 #include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
@@ -674,6 +677,120 @@ int runRenderGraphStatePlannerSmoke() {
     return 0;
 }
 
+int runRenderGraphAccelerationStructurePlannerSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!condition && success) {
+            failure = message;
+        }
+        success = success && condition;
+    };
+
+    const NexAur::VulkanGraphBufferState host_write =
+        NexAur::VulkanGraphStatePlanner::stateForBufferImport(
+            VK_PIPELINE_STAGE_2_HOST_BIT,
+            VK_ACCESS_2_HOST_WRITE_BIT,
+            NexAur::VulkanGraphAccessType::Write);
+    const NexAur::VulkanGraphBufferState build_input =
+        NexAur::VulkanGraphStatePlanner::stateForBufferUsage(
+            NexAur::VulkanGraphBufferUsage::AccelerationStructureBuildInput,
+            NexAur::VulkanGraphAccessType::Read);
+    const NexAur::VulkanGraphBufferTransitionPlan host_to_build =
+        NexAur::VulkanGraphStatePlanner::planBufferTransition(host_write, build_input);
+    expect(
+        host_to_build.requires_barrier &&
+            host_to_build.source.stage == VK_PIPELINE_STAGE_2_HOST_BIT &&
+            host_to_build.source.access == VK_ACCESS_2_HOST_WRITE_BIT &&
+            host_to_build.destination.stage ==
+                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR &&
+            host_to_build.destination.access ==
+                VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+        "RenderGraph AS planner skipped host write -> AS build input synchronization.");
+
+    const NexAur::VulkanGraphAccelerationStructureState blas_write =
+        NexAur::VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+            NexAur::VulkanGraphAccelerationStructureUsage::BuildWrite,
+            NexAur::VulkanGraphAccessType::Write);
+    const NexAur::VulkanGraphAccelerationStructureState tlas_build_input =
+        NexAur::VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+            NexAur::VulkanGraphAccelerationStructureUsage::BuildInput,
+            NexAur::VulkanGraphAccessType::Read);
+    const NexAur::VulkanGraphAccelerationStructureTransitionPlan blas_to_tlas =
+        NexAur::VulkanGraphStatePlanner::planAccelerationStructureTransition(
+            blas_write,
+            tlas_build_input);
+    expect(
+        blas_to_tlas.requires_barrier &&
+            blas_to_tlas.source.stage ==
+                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR &&
+            blas_to_tlas.source.access ==
+                VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR &&
+            blas_to_tlas.destination.stage ==
+                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR &&
+            blas_to_tlas.destination.access ==
+                VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+        "RenderGraph AS planner skipped BLAS build -> TLAS build synchronization.");
+
+    const NexAur::VulkanGraphAccelerationStructureState ray_query_read =
+        NexAur::VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+            NexAur::VulkanGraphAccelerationStructureUsage::RayQueryShaderRead,
+            NexAur::VulkanGraphAccessType::Read);
+    const NexAur::VulkanGraphAccelerationStructureTransitionPlan tlas_to_fragment =
+        NexAur::VulkanGraphStatePlanner::planAccelerationStructureTransition(
+            blas_write,
+            ray_query_read);
+    expect(
+        tlas_to_fragment.requires_barrier &&
+            tlas_to_fragment.destination.stage == VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT &&
+            tlas_to_fragment.destination.access ==
+                VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+        "RenderGraph AS planner skipped AS build write -> fragment read synchronization.");
+
+    const NexAur::VulkanGraphAccelerationStructureTransitionPlan read_to_read =
+        NexAur::VulkanGraphStatePlanner::planAccelerationStructureTransition(
+            ray_query_read,
+            ray_query_read);
+    expect(
+        !read_to_read.requires_barrier,
+        "RenderGraph AS planner emitted a barrier for unchanged read-only access.");
+
+    const NexAur::VulkanGraphAccelerationStructureTransitionPlan update_to_update =
+        NexAur::VulkanGraphStatePlanner::planAccelerationStructureTransition(
+            NexAur::VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+                NexAur::VulkanGraphAccelerationStructureUsage::BuildWrite,
+                NexAur::VulkanGraphAccessType::Write),
+            NexAur::VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+                NexAur::VulkanGraphAccelerationStructureUsage::BuildWrite,
+                NexAur::VulkanGraphAccessType::Write));
+    expect(
+        update_to_update.requires_barrier,
+        "RenderGraph AS planner skipped a consecutive TLAS update write hazard.");
+
+    const NexAur::VulkanGraphBufferTransitionPlan scratch_reuse =
+        NexAur::VulkanGraphStatePlanner::planBufferTransition(
+            NexAur::VulkanGraphStatePlanner::stateForBufferUsage(
+                NexAur::VulkanGraphBufferUsage::AccelerationStructureScratch,
+                NexAur::VulkanGraphAccessType::Write),
+            NexAur::VulkanGraphStatePlanner::stateForBufferUsage(
+                NexAur::VulkanGraphBufferUsage::AccelerationStructureScratch,
+                NexAur::VulkanGraphAccessType::ReadWrite));
+    expect(
+        scratch_reuse.requires_barrier &&
+            scratch_reuse.destination.access ==
+                (VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR |
+                 VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR),
+        "RenderGraph AS planner skipped scratch buffer reuse synchronization.");
+
+    if (!success) {
+        std::cerr << "RenderGraph AS planner smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "RenderGraph AS planner smoke passed." << std::endl;
+    return 0;
+}
+
 int runFrameFeaturePlanSmoke() {
     bool success = true;
     std::string failure;
@@ -755,6 +872,27 @@ int runFrameFeaturePlanSmoke() {
             !isolated_plan.rendersBloom() &&
             !isolated_plan.rendersSmaa(),
         "Forward debug isolation should suppress screen-space and post-process features.");
+
+    settings = NexAur::RenderSettings{};
+    settings.effects_debug.view = NexAur::RenderEffectDebugView::RayQueryVisibility;
+    const NexAur::VulkanRenderFeaturePlan ray_query_fallback_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        ray_query_fallback_plan.getDebugSettings().view ==
+            NexAur::RenderEffectDebugView::FinalLit,
+        "Ray Query debug view should fall back when the capability is unavailable.");
+
+    available.ray_query = true;
+    const NexAur::VulkanRenderFeaturePlan ray_query_debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        ray_query_debug_plan.usesRayQueryDebug() &&
+            ray_query_debug_plan.isolatesForwardDebug() &&
+            !ray_query_debug_plan.rendersAo() &&
+            !ray_query_debug_plan.rendersSsr() &&
+            !ray_query_debug_plan.rendersBloom() &&
+            !ray_query_debug_plan.rendersSmaa(),
+        "Ray Query debug view should isolate the forward Ray Query variant.");
 
     settings = NexAur::RenderSettings{};
     settings.ssr.enabled = true;
@@ -2789,6 +2927,9 @@ int runAccelerationStructureDeviceSmoke() {
     NexAur::VulkanAccelerationStructure moved_acceleration_structure;
     NexAur::VulkanAccelerationStructureScratchBuffer scratch_buffer;
     NexAur::VulkanAccelerationStructureScratchBuffer moved_scratch_buffer;
+    NexAur::VulkanDescriptorLayoutCache descriptor_layout_cache;
+    NexAur::VulkanDescriptorAllocator descriptor_allocator;
+    NexAur::VulkanRayTracingSceneResource ray_tracing_scene_resource;
 
     NexAur::VulkanOwnedBufferCreateInfo vertex_buffer_info;
     vertex_buffer_info.size = sizeof(glm::vec3) * 3;
@@ -2930,7 +3071,26 @@ int runAccelerationStructureDeviceSmoke() {
                 build_info,
                 build_ranges,
                 moved_scratch_buffer.getDeviceAddress()),
-            "BLAS build command recording failed.");
+                "BLAS build command recording failed.");
+    }
+
+    if (success) {
+        const bool descriptor_ready =
+            descriptor_layout_cache.init(device_context.getDevice()) &&
+            descriptor_allocator.init(device_context.getDevice(), true);
+        const VkDescriptorSetLayout ray_tracing_scene_layout = descriptor_ready ?
+            descriptor_layout_cache.getBuiltinLayout(
+                NexAur::VulkanDescriptorSetLayoutId::RayTracingScene) :
+            VK_NULL_HANDLE;
+        expect(
+            ray_tracing_scene_resource.init(
+                device_context.getDevice(),
+                descriptor_allocator,
+                ray_tracing_scene_layout) &&
+            !ray_tracing_scene_resource.update(&moved_acceleration_structure) &&
+            !ray_tracing_scene_resource.isReady() &&
+            ray_tracing_scene_resource.getDescriptorSet() == VK_NULL_HANDLE,
+            "Ray Query scene descriptor accepted a BLAS as a TLAS resource.");
     }
 
     if (command_buffer_begun) {
@@ -2962,6 +3122,9 @@ int runAccelerationStructureDeviceSmoke() {
     expect(
         retirement_queue.getStats().pending_count == 0,
         "retirement queue retained acceleration structure resources.");
+    ray_tracing_scene_resource.shutdown();
+    descriptor_allocator.shutdown();
+    descriptor_layout_cache.shutdown();
     allocator.shutdown();
 
     if (!success) {
@@ -2997,6 +3160,9 @@ int runRayTracingSceneDeviceSmoke() {
     NexAur::VulkanUploadManager upload_manager;
     NexAur::VulkanStaticMeshBlasCache blas_cache;
     NexAur::VulkanTlasManager tlas_manager;
+    NexAur::VulkanDescriptorLayoutCache descriptor_layout_cache;
+    NexAur::VulkanDescriptorAllocator descriptor_allocator;
+    NexAur::VulkanRayTracingSceneResource ray_tracing_scene_resource;
     NexAur::VulkanMeshResource first_generation_mesh;
     NexAur::VulkanMeshResource second_generation_mesh;
     NexAur::VulkanMeshResource batched_mesh;
@@ -3016,6 +3182,7 @@ int runRayTracingSceneDeviceSmoke() {
     resource_context.retirement_queue = &retirement_queue;
 
     auto cleanup = [&]() {
+        ray_tracing_scene_resource.shutdown();
         tlas_manager.shutdown();
         blas_cache.shutdown();
         empty_mesh_resource.reset();
@@ -3032,12 +3199,30 @@ int runRayTracingSceneDeviceSmoke() {
             upload_context_pool = VK_NULL_HANDLE;
         }
         retirement_queue.drain();
+        descriptor_allocator.shutdown();
+        descriptor_layout_cache.shutdown();
         allocator.shutdown();
     };
 
     if (!allocator.init(resource_context)) {
         cleanup();
         std::cerr << "Ray tracing scene device smoke failed: allocator initialization failed." << std::endl;
+        return 1;
+    }
+
+    const bool descriptor_context_ready =
+        descriptor_layout_cache.init(device_context.getDevice()) &&
+        descriptor_allocator.init(device_context.getDevice(), true);
+    const VkDescriptorSetLayout ray_tracing_scene_layout = descriptor_context_ready ?
+        descriptor_layout_cache.getBuiltinLayout(
+            NexAur::VulkanDescriptorSetLayoutId::RayTracingScene) :
+        VK_NULL_HANDLE;
+    if (!ray_tracing_scene_resource.init(
+            device_context.getDevice(),
+            descriptor_allocator,
+            ray_tracing_scene_layout)) {
+        cleanup();
+        std::cerr << "Ray tracing scene device smoke failed: descriptor context initialization failed." << std::endl;
         return 1;
     }
 
@@ -3289,6 +3474,11 @@ int runRayTracingSceneDeviceSmoke() {
             tlas_manager.get(0) != nullptr &&
             tlas_manager.get(0)->getDeviceAddress() != 0,
             "TLAS did not contain the current valid opaque instances.");
+        expect(
+            ray_tracing_scene_resource.update(tlas_manager.get(0)) &&
+            ray_tracing_scene_resource.isReady() &&
+            ray_tracing_scene_resource.getDescriptorSet() != VK_NULL_HANDLE,
+            "TLAS descriptor update failed for the first frame slot.");
 
         const std::array<NexAur::VulkanMeshDrawItem, 1> moved_item{
             tlas_items[1]
@@ -3306,6 +3496,10 @@ int runRayTracingSceneDeviceSmoke() {
             moved_tlas_stats.build_count == 2 &&
             tlas_manager.get(1) != nullptr,
             "TLAS did not rebuild from the changed current draw list.");
+        expect(
+            ray_tracing_scene_resource.update(tlas_manager.get(1)) &&
+            ray_tracing_scene_resource.isReady(),
+            "TLAS descriptor update failed after frame-slot rebuild.");
 
         const std::array<NexAur::VulkanMeshDrawItem, 0> empty_items{};
         expect(
@@ -3314,6 +3508,11 @@ int runRayTracingSceneDeviceSmoke() {
             !tlas_manager.getStats().ready &&
             tlas_manager.getStats().source_instance_count == 0,
             "empty scene retained a stale TLAS instance set.");
+        expect(
+            !ray_tracing_scene_resource.update(tlas_manager.get(0)) &&
+            !ray_tracing_scene_resource.isReady() &&
+            ray_tracing_scene_resource.getDescriptorSet() == VK_NULL_HANDLE,
+            "empty scene retained a stale TLAS descriptor.");
     }
 
     if (success) {
@@ -3355,6 +3554,7 @@ namespace {
         { "--render-settings", runRenderSettingsSmoke },
         { "--shadow-frame-builder", runShadowFrameBuilderSmoke },
         { "--render-graph-state-planner", runRenderGraphStatePlannerSmoke },
+        { "--render-graph-as-planner", runRenderGraphAccelerationStructurePlannerSmoke },
         { "--frame-feature-plan", runFrameFeaturePlanSmoke },
         { "--retirement-queue", runRetirementQueueSmoke },
         { "--frame-context", runFrameContextSmoke },

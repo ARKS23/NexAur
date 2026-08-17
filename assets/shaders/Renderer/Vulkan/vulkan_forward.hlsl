@@ -164,6 +164,11 @@ Texture2D<float4> g_reflection_probe_brdf_lut;
 [[vk::binding(4, 3)]]
 SamplerState g_reflection_probe_sampler;
 
+#ifdef NEXAUR_ENABLE_RAY_QUERY_DEBUG
+[[vk::binding(0, 4)]]
+RaytracingAccelerationStructure g_ray_query_scene;
+#endif
+
 #include "common/pbr_brdf.hlsli"
 #include "common/pbr_material.hlsli"
 #include "common/pbr_ibl.hlsli"
@@ -290,6 +295,35 @@ float3 EvaluateRectLight(
     return shadow_visibility * (diffuse + specular);
 }
 
+#ifdef NEXAUR_ENABLE_RAY_QUERY_DEBUG
+float4 PSMain(VSOutput input) : SV_Target0 {
+    const float3 view_direction = normalize(
+        g_frame.camera_position_environment_intensity.xyz - input.world_position);
+    const float3 origin = input.world_position + view_direction * 0.01f;
+    const float ray_distance = max(
+        length(g_frame.camera_position_environment_intensity.xyz - input.world_position),
+        0.05f);
+
+    RayQuery<
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+        RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+    query.TraceRayInline(
+        g_ray_query_scene,
+        RAY_FLAG_NONE,
+        0xff,
+        origin,
+        0.001f,
+        view_direction,
+        ray_distance);
+    while (query.Proceed()) {
+    }
+
+    const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    return hit ?
+        float4(1.0f, 0.05f, 0.05f, 1.0f) :
+        float4(0.05f, 1.0f, 0.05f, 1.0f);
+}
+#else
 float4 PSMain(VSOutput input) : SV_Target0 {
     NxMaterialSample material = NxSampleMaterial(input);
     if (g_material.factors.w > 0.5f && g_material.factors.w < 1.5f) {
@@ -419,3 +453,4 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     return float4(lit_color + material.emissive, EvaluateSsrSurfaceMask(material, view_dir));
 }
+#endif

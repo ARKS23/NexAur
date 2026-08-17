@@ -23,7 +23,34 @@ namespace NexAur {
         Present
     };
 
+    enum class VulkanGraphBufferUsage {
+        AccelerationStructureBuildInput,
+        AccelerationStructureScratch
+    };
+
+    enum class VulkanGraphAccelerationStructureUsage {
+        BuildInput,
+        BuildWrite,
+        RayQueryShaderRead
+    };
+
     struct VulkanGraphImageHandle {
+        uint32_t index = std::numeric_limits<uint32_t>::max();
+
+        bool valid() const {
+            return index != std::numeric_limits<uint32_t>::max();
+        }
+    };
+
+    struct VulkanGraphBufferHandle {
+        uint32_t index = std::numeric_limits<uint32_t>::max();
+
+        bool valid() const {
+            return index != std::numeric_limits<uint32_t>::max();
+        }
+    };
+
+    struct VulkanGraphAccelerationStructureHandle {
         uint32_t index = std::numeric_limits<uint32_t>::max();
 
         bool valid() const {
@@ -78,11 +105,63 @@ namespace NexAur {
         VulkanGraphAccessType access_type = VulkanGraphAccessType::None;
     };
 
+    struct VulkanGraphBufferDesc {
+        std::string name;
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkDeviceSize offset = 0;
+        VkDeviceSize size = VK_WHOLE_SIZE;
+        VkPipelineStageFlags2 initial_stage = VK_PIPELINE_STAGE_2_NONE;
+        VkAccessFlags2 initial_access = VK_ACCESS_2_NONE;
+        VulkanGraphAccessType initial_access_type = VulkanGraphAccessType::None;
+
+        bool valid() const {
+            return buffer != VK_NULL_HANDLE && size != 0;
+        }
+    };
+
+    struct VulkanGraphAccelerationStructureDesc {
+        std::string name;
+        VkAccelerationStructureKHR acceleration_structure = VK_NULL_HANDLE;
+        VkPipelineStageFlags2 initial_stage = VK_PIPELINE_STAGE_2_NONE;
+        VkAccessFlags2 initial_access = VK_ACCESS_2_NONE;
+        VulkanGraphAccessType initial_access_type = VulkanGraphAccessType::None;
+
+        bool valid() const {
+            return acceleration_structure != VK_NULL_HANDLE;
+        }
+    };
+
+    struct VulkanGraphBufferAccess {
+        VulkanGraphBufferHandle buffer;
+        VulkanGraphBufferUsage usage =
+            VulkanGraphBufferUsage::AccelerationStructureBuildInput;
+        VulkanGraphAccessType access_type = VulkanGraphAccessType::None;
+    };
+
+    struct VulkanGraphAccelerationStructureAccess {
+        VulkanGraphAccelerationStructureHandle acceleration_structure;
+        VulkanGraphAccelerationStructureUsage usage =
+            VulkanGraphAccelerationStructureUsage::BuildInput;
+        VulkanGraphAccessType access_type = VulkanGraphAccessType::None;
+    };
+
     struct VulkanGraphImageState {
         VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkAccessFlags2 access = VK_ACCESS_2_NONE;
         VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
         VulkanGraphAccessType last_access = VulkanGraphAccessType::None;
         VulkanGraphImageSubresourceRange subresource_range;
+    };
+
+    struct VulkanGraphBufferState {
+        VkAccessFlags2 access = VK_ACCESS_2_NONE;
+        VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
+        VulkanGraphAccessType last_access = VulkanGraphAccessType::None;
+    };
+
+    struct VulkanGraphAccelerationStructureState {
+        VkAccessFlags2 access = VK_ACCESS_2_NONE;
+        VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
+        VulkanGraphAccessType last_access = VulkanGraphAccessType::None;
     };
 } // namespace NexAur

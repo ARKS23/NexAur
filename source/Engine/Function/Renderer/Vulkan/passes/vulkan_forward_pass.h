@@ -24,6 +24,8 @@ namespace NexAur {
         VkDescriptorSetLayout frame_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout material_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout environment_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE;
+        bool ray_query_enabled = false;
         VulkanPipelineCache* pipeline_cache = nullptr;
 
         bool valid() const {
@@ -39,6 +41,8 @@ namespace NexAur {
                    frame_descriptor_set_layout != VK_NULL_HANDLE &&
                    material_descriptor_set_layout != VK_NULL_HANDLE &&
                    environment_descriptor_set_layout != VK_NULL_HANDLE &&
+                   (!ray_query_enabled ||
+                    ray_tracing_scene_descriptor_set_layout != VK_NULL_HANDLE) &&
                    pipeline_cache != nullptr;
         }
     };
@@ -48,6 +52,8 @@ namespace NexAur {
         VkAttachmentLoadOp depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
         VkClearValue color_clear_value{};
         VkClearValue depth_clear_value{};
+        VkDescriptorSet ray_tracing_scene_descriptor_set = VK_NULL_HANDLE;
+        bool ray_query_debug = false;
     };
 
     class VulkanForwardPass {
@@ -98,6 +104,10 @@ namespace NexAur {
         VkImageLayout getDepthImageLayout() const { return m_depth_image.getLayout(); }
         void setDepthImageLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
         VkFormat getDepthFormat() const { return m_depth_format; }
+        bool isRayQueryReady() const {
+            return m_ray_query_pipeline != VK_NULL_HANDLE &&
+                   m_ray_query_pipeline_layout != VK_NULL_HANDLE;
+        }
 
     private:
         bool createImageViews(const VulkanForwardPassSwapchainContext& context);
@@ -118,8 +128,12 @@ namespace NexAur {
         VkDescriptorSetLayout m_frame_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_material_descriptor_set_layout = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_environment_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE;
+        bool m_ray_query_enabled = false;
         VulkanPipelineCache* m_pipeline_cache = nullptr;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout m_ray_query_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline m_ray_query_pipeline = VK_NULL_HANDLE;
     };
 } // namespace NexAur

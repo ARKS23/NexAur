@@ -15,7 +15,8 @@ namespace NexAur {
         PostProcessInput,
         BloomDualInput,
         Environment,
-        AoInput
+        AoInput,
+        RayTracingScene
     };
 
     struct VulkanDescriptorBindingDesc {

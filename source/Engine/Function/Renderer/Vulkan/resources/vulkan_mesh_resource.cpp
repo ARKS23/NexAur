@@ -3,6 +3,7 @@
 
 #include "Function/Resource/mesh.h"
 #include "Function/Renderer/Vulkan/core/vulkan_gpu_allocator.h"
+#include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 
 #include <cstring>
 #include <limits>
@@ -40,26 +41,45 @@ namespace NexAur {
                 1,
                 &index_copy);
 
+            const VulkanGraphBufferState transfer_write =
+                VulkanGraphStatePlanner::stateForBufferImport(
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    VulkanGraphAccessType::Write);
+            const VkPipelineStageFlags2 build_stage = acceleration_structure_build_input ?
+                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR :
+                VK_PIPELINE_STAGE_2_NONE;
+            const VkAccessFlags2 build_access = acceleration_structure_build_input ?
+                VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR :
+                VK_ACCESS_2_NONE;
+            const VulkanGraphBufferState vertex_read =
+                VulkanGraphStatePlanner::stateForBufferImport(
+                    VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | build_stage,
+                    VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | build_access,
+                    VulkanGraphAccessType::Read);
+            const VulkanGraphBufferState index_read =
+                VulkanGraphStatePlanner::stateForBufferImport(
+                    VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | build_stage,
+                    VK_ACCESS_2_INDEX_READ_BIT | build_access,
+                    VulkanGraphAccessType::Read);
+            const VulkanGraphBufferTransitionPlan vertex_transition =
+                VulkanGraphStatePlanner::planBufferTransition(transfer_write, vertex_read);
+            const VulkanGraphBufferTransitionPlan index_transition =
+                VulkanGraphStatePlanner::planBufferTransition(transfer_write, index_read);
+
             VkBufferMemoryBarrier2 barriers[2]{};
             barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-            barriers[0].srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-            barriers[0].srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            barriers[0].dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
-            barriers[0].dstAccessMask = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
-            if (acceleration_structure_build_input) {
-                barriers[0].dstStageMask |=
-                    VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-                barriers[0].dstAccessMask |=
-                    VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-            }
+            barriers[0].srcStageMask = vertex_transition.source.stage;
+            barriers[0].srcAccessMask = vertex_transition.source.access;
+            barriers[0].dstStageMask = vertex_transition.destination.stage;
+            barriers[0].dstAccessMask = vertex_transition.destination.access;
             barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barriers[0].buffer = vertex_buffer;
             barriers[0].size = VK_WHOLE_SIZE;
 
             barriers[1] = barriers[0];
-            barriers[1].dstAccessMask &= ~VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
-            barriers[1].dstAccessMask |= VK_ACCESS_2_INDEX_READ_BIT;
+            barriers[1].dstAccessMask = index_transition.destination.access;
             barriers[1].buffer = index_buffer;
 
             VkDependencyInfo dependency_info{};

@@ -98,6 +98,14 @@ namespace NexAur {
             };
             return desc;
         }
+
+        VulkanDescriptorSetLayoutDesc rayTracingSceneDescriptorLayoutDesc() {
+            VulkanDescriptorSetLayoutDesc desc;
+            desc.bindings = {
+                { 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
+            };
+            return desc;
+        }
     } // namespace
 
     VulkanDescriptorLayoutCache::~VulkanDescriptorLayoutCache() {
@@ -169,6 +177,8 @@ namespace NexAur {
                 return getOrCreateLayout(environmentDescriptorLayoutDesc());
             case VulkanDescriptorSetLayoutId::AoInput:
                 return getOrCreateLayout(aoInputDescriptorLayoutDesc());
+            case VulkanDescriptorSetLayoutId::RayTracingScene:
+                return getOrCreateLayout(rayTracingSceneDescriptorLayoutDesc());
             default:
                 NX_CORE_ERROR("Unknown Vulkan descriptor set layout id.");
                 return VK_NULL_HANDLE;

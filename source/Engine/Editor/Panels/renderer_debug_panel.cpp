@@ -321,6 +321,7 @@ namespace NexAur {
         drawKeyValue("Bloom Debug Ready", boolToText(snapshot.effects.bloom_debug_available));
         drawKeyValue("AO Debug Ready", boolToText(snapshot.effects.ao_debug_available));
         drawKeyValue("SSR Debug Ready", boolToText(snapshot.effects.ssr_debug_available));
+        drawKeyValue("Ray Query Debug Ready", boolToText(snapshot.effects.ray_query_debug_available));
         drawKeyValue("SMAA Debug Ready", boolToText(snapshot.effects.smaa_debug_available));
         drawKeyValue("Shadow Debug Ready", boolToText(snapshot.effects.shadow_debug_available));
         drawKeyValue("Point Shadow Debug Ready", boolToText(snapshot.effects.point_shadow_debug_available));

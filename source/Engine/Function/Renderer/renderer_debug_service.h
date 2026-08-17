@@ -174,6 +174,7 @@ namespace NexAur {
         bool shadow_debug_available = false;
         bool point_shadow_debug_available = false;
         bool rect_shadow_debug_available = false;
+        bool ray_query_debug_available = false;
         bool point_shadow_enabled = false;
         bool rect_shadow_enabled = false;
         bool contact_shadow_enabled = false;

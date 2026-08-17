@@ -26,7 +26,7 @@ namespace NexAur {
         VulkanDescriptorAllocator(const VulkanDescriptorAllocator&) = delete;
         VulkanDescriptorAllocator& operator=(const VulkanDescriptorAllocator&) = delete;
 
-        bool init(VkDevice device);
+        bool init(VkDevice device, bool acceleration_structure_enabled = false);
         void shutdown();
 
         VulkanDescriptorSetAllocation allocate(VkDescriptorSetLayout layout);
@@ -43,5 +43,6 @@ namespace NexAur {
         VkDevice m_device = VK_NULL_HANDLE;
         std::vector<VkDescriptorPool> m_pools;
         uint32_t m_next_pool_set_count = 128;
+        bool m_acceleration_structure_enabled = false;
     };
 } // namespace NexAur

@@ -129,6 +129,8 @@ namespace NexAur {
                 return "SSR Raw Reflection";
             case RenderEffectDebugView::SsrSurfaceMask:
                 return "SSR Surface Mask";
+            case RenderEffectDebugView::RayQueryVisibility:
+                return "Ray Query Visibility";
             case RenderEffectDebugView::FinalLit:
             default:
                 return "Final Lit";
@@ -174,7 +176,9 @@ namespace NexAur {
                 !gpu_allocator.init(createResourceContext()) ||
                 !shader_library.init(device.device) ||
                 !descriptor_layout_cache.init(device.device) ||
-                !descriptor_allocator.init(device.device) ||
+                !descriptor_allocator.init(
+                    device.device,
+                    device_context.getRayTracingCapabilities().ray_query_enabled) ||
                 !initFrameContexts() ||
                 !pipeline_cache.init(device.device, shader_library) ||
                 !resource_cache.init(
@@ -405,6 +409,8 @@ namespace NexAur {
                 return;
             }
             prepareTlas(frame_context.getFrameIndex(), prepared_frame.draw_list);
+            frame_context.updateRayTracingScene(
+                tlas_manager.get(frame_context.getFrameIndex()));
             const VulkanReflectionProbeCaptureCallbacks capture_callbacks =
                 createReflectionProbeCaptureCallbacks(frame_context);
             reflection_probe_manager.processFrame(
@@ -426,7 +432,9 @@ namespace NexAur {
             }
 
             const VulkanRenderFeaturePlan feature_plan =
-                buildRenderFeaturePlan(prepared_frame.scene.render_settings);
+                buildRenderFeaturePlan(
+                    prepared_frame.scene.render_settings,
+                    frame_context.hasRayTracingScene());
             last_output_route = feature_plan.getOutputRoute();
             drawFrame(prepared_frame, feature_plan, frame_context);
             updateDebugSnapshot(
@@ -807,7 +815,9 @@ namespace NexAur {
             return callbacks;
         }
 
-        VulkanRenderFeaturePlan buildRenderFeaturePlan(const RenderSettings& render_settings) const {
+        VulkanRenderFeaturePlan buildRenderFeaturePlan(
+            const RenderSettings& render_settings,
+            bool ray_query_ready = false) const {
             VulkanRenderFeatureAvailability availability;
             availability.viewport_output =
                 viewport_target.isReady() &&
@@ -820,6 +830,7 @@ namespace NexAur {
             availability.directional_shadow = shadow_feature.isDirectionalReady();
             availability.point_shadow = shadow_feature.isPointReady();
             availability.rect_shadow = shadow_feature.isRectReady();
+            availability.ray_query = ray_query_ready && forward_pass.isRayQueryReady();
             return VulkanRenderFeaturePlan::build(render_settings, availability);
         }
 
@@ -1039,6 +1050,7 @@ namespace NexAur {
             stats.shadow_debug_available = availability.directional_shadow;
             stats.point_shadow_debug_available = availability.point_shadow;
             stats.rect_shadow_debug_available = availability.rect_shadow;
+            stats.ray_query_debug_available = availability.ray_query;
             stats.point_shadow_enabled = render_settings.point_shadow.enabled;
             stats.rect_shadow_enabled = render_settings.rect_shadow.enabled;
             stats.contact_shadow_enabled = render_settings.contact_shadow.enabled;
@@ -1322,6 +1334,12 @@ namespace NexAur {
             pass_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
             pass_context.material_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Material);
             pass_context.environment_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::Environment);
+            pass_context.ray_query_enabled =
+                device_context.getRayTracingCapabilities().ray_query_enabled;
+            pass_context.ray_tracing_scene_descriptor_set_layout =
+                pass_context.ray_query_enabled ?
+                descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::RayTracingScene) :
+                VK_NULL_HANDLE;
             pass_context.pipeline_cache = &pipeline_cache;
 
             VulkanSkyboxPassContext skybox_context;
@@ -1392,6 +1410,16 @@ namespace NexAur {
 
         bool initFrameContexts() {
             const VulkanResourceContext context = createResourceContext();
+            const bool ray_query_enabled =
+                device_context.getRayTracingCapabilities().ray_query_enabled;
+            const VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout =
+                ray_query_enabled ?
+                descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::RayTracingScene) :
+                VK_NULL_HANDLE;
+            if (ray_query_enabled && ray_tracing_scene_descriptor_set_layout == VK_NULL_HANDLE) {
+                NX_CORE_ERROR("Failed to create the Ray Query scene descriptor set layout.");
+                return false;
+            }
             for (uint32_t frame_index = 0;
                  frame_index < static_cast<uint32_t>(frame_contexts.size());
                  ++frame_index) {
@@ -1399,7 +1427,8 @@ namespace NexAur {
                         context,
                         descriptor_layout_cache,
                         descriptor_allocator,
-                        frame_index)) {
+                        frame_index,
+                        ray_tracing_scene_descriptor_set_layout)) {
                     cleanupFrameContexts();
                     return false;
                 }
@@ -1736,6 +1765,24 @@ namespace NexAur {
             if (feature_plan.rendersSmaa()) {
                 resources.smaa_source = smaa_feature.addSourceImage(graph);
             }
+            if (feature_plan.usesRayQueryDebug()) {
+                const VulkanAccelerationStructure* tlas =
+                    tlas_manager.get(frame_context.getFrameIndex());
+                if (tlas == nullptr) {
+                    return false;
+                }
+
+                VulkanGraphAccelerationStructureDesc ray_query_scene_desc;
+                ray_query_scene_desc.name = "Ray Query TLAS";
+                ray_query_scene_desc.acceleration_structure = tlas->get();
+                ray_query_scene_desc.initial_stage =
+                    VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+                ray_query_scene_desc.initial_access =
+                    VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+                ray_query_scene_desc.initial_access_type = VulkanGraphAccessType::Write;
+                resources.ray_query_scene = graph.addAccelerationStructure(
+                    std::move(ray_query_scene_desc));
+            }
 
             const VulkanFeatureImageInput scene_color_input = makeSceneColorFeatureInput();
             const uint32_t frame_index = frame_context.getFrameIndex();
@@ -1780,7 +1827,16 @@ namespace NexAur {
                     return addSkyboxPass(target_graph, color, makeSceneSkyboxTarget(), draw_list);
                 };
             callbacks.record_forward =
-                [this, &draw_list, scene_target, frame_descriptor_set](VkCommandBuffer target_command_buffer) {
+                [this,
+                 &draw_list,
+                 scene_target,
+                 frame_descriptor_set,
+                 frame_index,
+                 &feature_plan](VkCommandBuffer target_command_buffer) {
+                    VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
+                    options.ray_tracing_scene_descriptor_set =
+                        frame_contexts[frame_index].getRayTracingSceneDescriptorSet();
+                    options.ray_query_debug = feature_plan.usesRayQueryDebug();
                     return forward_pass.record(
                         target_command_buffer,
                         scene_target,
@@ -1788,7 +1844,7 @@ namespace NexAur {
                         frame_descriptor_set,
                         resolveEnvironmentDescriptorSet(draw_list),
                         resolveReflectionProbeDescriptorSet(draw_list),
-                        forwardAfterSkyboxOptions());
+                        options);
                 };
             callbacks.add_ao =
                 [this, &draw_list, scene_target, &render_settings, frame_index](

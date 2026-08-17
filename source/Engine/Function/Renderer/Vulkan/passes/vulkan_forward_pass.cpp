@@ -130,6 +130,9 @@ namespace NexAur {
         m_frame_descriptor_set_layout = context.frame_descriptor_set_layout;
         m_material_descriptor_set_layout = context.material_descriptor_set_layout;
         m_environment_descriptor_set_layout = context.environment_descriptor_set_layout;
+        m_ray_tracing_scene_descriptor_set_layout =
+            context.ray_tracing_scene_descriptor_set_layout;
+        m_ray_query_enabled = context.ray_query_enabled;
         m_pipeline_cache = context.pipeline_cache;
 
         if (!createImageViews(context) || !createDepthResources(context) || !createPipeline()) {
@@ -158,6 +161,8 @@ namespace NexAur {
         m_frame_descriptor_set_layout = VK_NULL_HANDLE;
         m_material_descriptor_set_layout = VK_NULL_HANDLE;
         m_environment_descriptor_set_layout = VK_NULL_HANDLE;
+        m_ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE;
+        m_ray_query_enabled = false;
         m_pipeline_cache = nullptr;
     }
 
@@ -294,18 +299,26 @@ namespace NexAur {
         scissor.extent = target.extent;
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        if (m_pipeline != VK_NULL_HANDLE &&
-            m_pipeline_layout != VK_NULL_HANDLE &&
+        const bool use_ray_query_debug =
+            options.ray_query_debug &&
+            options.ray_tracing_scene_descriptor_set != VK_NULL_HANDLE &&
+            isRayQueryReady();
+        const VkPipeline pipeline = use_ray_query_debug ?
+            m_ray_query_pipeline : m_pipeline;
+        const VkPipelineLayout pipeline_layout = use_ray_query_debug ?
+            m_ray_query_pipeline_layout : m_pipeline_layout;
+        if (pipeline != VK_NULL_HANDLE &&
+            pipeline_layout != VK_NULL_HANDLE &&
             frame_descriptor_set != VK_NULL_HANDLE &&
             environment_descriptor_set != VK_NULL_HANDLE &&
             reflection_probe_descriptor_set != VK_NULL_HANDLE &&
             !draw_list.opaque_items.empty()) {
-            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
             vkCmdBindDescriptorSets(
                 command_buffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
-                m_pipeline_layout,
+                pipeline_layout,
                 0,
                 1,
                 &frame_descriptor_set,
@@ -315,7 +328,7 @@ namespace NexAur {
             vkCmdBindDescriptorSets(
                 command_buffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
-                m_pipeline_layout,
+                pipeline_layout,
                 2,
                 1,
                 &environment_descriptor_set,
@@ -325,12 +338,24 @@ namespace NexAur {
             vkCmdBindDescriptorSets(
                 command_buffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
-                m_pipeline_layout,
+                pipeline_layout,
                 3,
                 1,
                 &reflection_probe_descriptor_set,
                 0,
                 nullptr);
+
+            if (use_ray_query_debug) {
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    pipeline_layout,
+                    4,
+                    1,
+                    &options.ray_tracing_scene_descriptor_set,
+                    0,
+                    nullptr);
+            }
 
             for (const VulkanMeshDrawItem& item : draw_list.opaque_items) {
                 if (!item.mesh || !item.mesh->isReady() || !item.material || !item.material->isReady()) {
@@ -347,7 +372,7 @@ namespace NexAur {
                 push_constants.normal_matrix = buildNormalMatrix(item.transform);
                 vkCmdPushConstants(
                     command_buffer,
-                    m_pipeline_layout,
+                    pipeline_layout,
                     VK_SHADER_STAGE_VERTEX_BIT,
                     0,
                     sizeof(VulkanForwardPushConstants),
@@ -357,7 +382,7 @@ namespace NexAur {
                 vkCmdBindDescriptorSets(
                     command_buffer,
                     VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    m_pipeline_layout,
+                    pipeline_layout,
                     1,
                     1,
                     &material_descriptor_set,
@@ -467,6 +492,24 @@ namespace NexAur {
 
         m_pipeline = pipeline_state.pipeline;
         m_pipeline_layout = pipeline_state.layout;
+
+        if (m_ray_query_enabled) {
+            VulkanGraphicsPipelineDesc ray_query_desc = desc;
+            ray_query_desc.debug_name = "ForwardRayQueryDebug";
+            ray_query_desc.shader_program = VulkanShaderProgramId::ForwardRayQuery;
+            ray_query_desc.descriptor_set_layouts.push_back(
+                m_ray_tracing_scene_descriptor_set_layout);
+            const VulkanGraphicsPipelineState ray_query_pipeline_state =
+                m_pipeline_cache->getOrCreateGraphicsPipeline(ray_query_desc);
+            if (ray_query_pipeline_state.valid()) {
+                m_ray_query_pipeline = ray_query_pipeline_state.pipeline;
+                m_ray_query_pipeline_layout = ray_query_pipeline_state.layout;
+            } else {
+                NX_CORE_WARN(
+                    "Forward Ray Query debug pipeline is unavailable; Raster fallback remains active.");
+            }
+        }
+
         return true;
     }
 
@@ -477,5 +520,7 @@ namespace NexAur {
     void VulkanForwardPass::cleanupPipeline() {
         m_pipeline = VK_NULL_HANDLE;
         m_pipeline_layout = VK_NULL_HANDLE;
+        m_ray_query_pipeline = VK_NULL_HANDLE;
+        m_ray_query_pipeline_layout = VK_NULL_HANDLE;
     }
 } // namespace NexAur

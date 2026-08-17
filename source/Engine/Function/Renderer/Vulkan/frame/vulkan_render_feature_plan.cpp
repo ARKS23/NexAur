@@ -27,6 +27,10 @@ namespace NexAur {
                    view == RenderEffectDebugView::SsrSurfaceMask;
         }
 
+        bool isRayQueryDebugView(RenderEffectDebugView view) {
+            return view == RenderEffectDebugView::RayQueryVisibility;
+        }
+
         RenderEffectDebugView resolveDebugView(
             RenderEffectDebugView requested_view,
             const VulkanRenderFeatureAvailability& availability) {
@@ -55,6 +59,9 @@ namespace NexAur {
                 !availability.rect_shadow) {
                 return RenderEffectDebugView::FinalLit;
             }
+            if (isRayQueryDebugView(requested_view) && !availability.ray_query) {
+                return RenderEffectDebugView::FinalLit;
+            }
             return requested_view;
         }
     } // namespace
@@ -66,8 +73,9 @@ namespace NexAur {
         debug_settings.view = resolveDebugView(debug_settings.view, availability);
         const RenderEffectDebugView debug_view = debug_settings.view;
         const bool isolate_forward_debug =
-            settings.ibl_debug.mode != RenderIblDebugMode::FinalLit &&
-            debug_view == RenderEffectDebugView::FinalLit;
+            (settings.ibl_debug.mode != RenderIblDebugMode::FinalLit &&
+             debug_view == RenderEffectDebugView::FinalLit) ||
+            isRayQueryDebugView(debug_view);
 
         const bool final_bloom_output =
             debug_view == RenderEffectDebugView::FinalLit ||
