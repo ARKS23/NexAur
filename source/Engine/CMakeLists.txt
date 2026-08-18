@@ -249,6 +249,8 @@ list(REMOVE_DUPLICATES NEXAUR_ENGINE_VULKAN_SHADER_FILES)
 file(GLOB_RECURSE NEXAUR_VULKAN_SHADER_INCLUDE_FILES CONFIGURE_DEPENDS
     "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/*.hlsli")
 list(APPEND NEXAUR_ENGINE_VULKAN_SHADER_FILES ${NEXAUR_VULKAN_SHADER_INCLUDE_FILES})
+list(APPEND NEXAUR_ENGINE_VULKAN_SHADER_FILES
+    "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/ray_tracing/vulkan_rt_geometry_fetch_probe.hlsl")
 
 set(NEXAUR_RENDERER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${NEXAUR_RENDERER_GENERATED_DIR}")
@@ -326,6 +328,8 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/core/vulkan_swapchain_manager.cpp
     Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.h
     Function/Renderer/Vulkan/diagnostics/vulkan_diagnostics_collector.cpp
+    Function/Renderer/Vulkan/diagnostics/vulkan_gpu_timestamp_query.h
+    Function/Renderer/Vulkan/diagnostics/vulkan_gpu_timestamp_query.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_functions.h
@@ -336,6 +340,8 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h
     Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.cpp
+    Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_table.h
+    Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_table.cpp
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.h
     Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.cpp
     Function/Renderer/Vulkan/frontend/vulkan_render_view.h
@@ -619,6 +625,9 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
         set(shader_compile_options
             -DNEXAUR_ENABLE_RAY_QUERY_SHADOW=1
             -fspv-extension=SPV_KHR_ray_query)
+    elseif(program_id STREQUAL "RayQueryAo")
+        set(shader_compile_options
+            -fspv-extension=SPV_KHR_ray_query)
     endif()
 
     nexaur_add_vulkan_hlsl_output(
@@ -638,6 +647,17 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
             ${shader_compile_options})
     endif()
 endforeach()
+
+# Compile the descriptor-indexed geometry fetch contract even before the
+# reflection compute pipeline exists. RT-10.0 treats this as the production
+# shader-path probe after DXC rejected physical-storage-buffer references.
+nexaur_add_vulkan_hlsl_output(
+    NEXAUR_VULKAN_SHADER_OUTPUTS
+    "ray_tracing/vulkan_rt_geometry_fetch_probe.hlsl"
+    cs_6_0
+    CSMain
+    "vulkan_rt_geometry_fetch_probe.comp.spv"
+    -fspv-extension=SPV_EXT_descriptor_indexing)
 
 add_custom_target(NexAurVulkanShaders DEPENDS ${NEXAUR_VULKAN_SHADER_OUTPUTS})
 add_dependencies(NexAurEngine NexAurVulkanShaders)

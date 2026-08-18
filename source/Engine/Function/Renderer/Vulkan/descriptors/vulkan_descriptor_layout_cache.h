@@ -21,6 +21,9 @@ namespace NexAur {
 
         VkDescriptorSetLayout getOrCreateLayout(VulkanDescriptorSetLayoutDesc desc);
         VkDescriptorSetLayout getBuiltinLayout(VulkanDescriptorSetLayoutId layout_id);
+        VkDescriptorSetLayout getRayTracingShadingSceneLayout(
+            uint32_t texture_capacity,
+            uint32_t geometry_descriptor_capacity);
 
         bool isInitialized() const { return m_device != VK_NULL_HANDLE; }
 

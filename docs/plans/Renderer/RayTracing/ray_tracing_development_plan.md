@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：开发中；RT-00 至 RT-07 已完成，下一工作包为 RT-08
+状态：开发中；RT-00 至 RT-09 已完成，下一工作包为 RT-10
 
 ## 1. 文档目的
 
@@ -86,8 +86,8 @@ SSR 仍负责低成本、与当前屏幕内容一致的近场反射；Ray Tracin
 - RT-00 已建立可选 Ray Query capability negotiation、logical-device feature chain 和 diagnostics。
 - RT-01 已建立 VMA buffer-device-address contract、统一 addressable buffer primitive 和 RT-enabled mesh buffer usage。
 - RT-02 已建立 acceleration structure 函数表、move-only AS primitive、aligned scratch buffer 和 deferred destruction contract。
-- RT-03 已建立 opaque static mesh BLAS cache、stable mesh identity / generation 和一次性 fence build path。
-- RT-04 已建立按 frame slot 重建的 TLAS instance path、transform conversion 和有效 BLAS filtering。
+- RT-03 / RT-08 已建立 opaque static mesh BLAS cache、stable mesh identity / generation、batched build、可选 compaction、预算淘汰和 deferred retirement。
+- RT-04 / RT-08 已建立 per-frame TLAS、transform conversion、有效 BLAS filtering、内容复用和同拓扑 update / refit。
 - Shader 使用 HLSL，经 DXC 编译为 Vulkan 1.3 SPIR-V。
 - `VulkanDrawList` 已包含 mesh、material、world transform 和 entity ID。
 - `VulkanMeshResource` 已持有 GPU vertex / index buffer；CPU Mesh 也保留标准三角形顶点和 `uint32_t` index 数据。
@@ -116,8 +116,8 @@ VulkanMeshDrawItem
 | GPU allocator | RT-01 已按实际 device feature 设置 VMA device-address flag，并统一地址与 alignment 校验 | 已解除；RT-02 可直接复用 addressable `VulkanOwnedBuffer` |
 | Mesh buffer | Ray Query enabled 时附加 build-input / device-address usage，Disabled 时保持 Raster usage | 已解除；RT-03 已从 ready mesh 读取非零 vertex / index address |
 | AS primitive | RT-02 已建立 AS backing / handle ownership、build-size query、scratch buffer 和 build command 录制 | 已解除；RT-03 已复用该 primitive 建立 static mesh BLAS cache |
-| BLAS cache | RT-03 已按 model asset + mesh index + generation 缓存 opaque static mesh BLAS | 已解除；RT-04 可直接引用 ready BLAS device address |
-| TLAS instance | RT-04 已建立 per-frame instance buffer、TLAS build 和空 scene fallback | 已解除；AS access 可由 RenderGraph 描述 |
+| BLAS cache | RT-03 / RT-08 已按 model asset + mesh index + generation 缓存 opaque static mesh BLAS，并加入 compaction、memory budget、inactive eviction 和 retirement | 已解除；未变化 mesh 不 rebuild，淘汰资源按 frame serial 回收 |
+| TLAS instance | RT-04 / RT-08 已建立 per-frame instance buffer、capacity growth、Build / Update / Reuse 决策和空 scene fallback | 已解除；transform-only 变化使用 update，稳定帧直接复用 |
 | RenderGraph | 已支持 imported buffer / acceleration structure resource 和对应 pass access | 可表达 instance buffer、BLAS/TLAS build 和 shader read hazard |
 | Synchronization | Graph image、buffer 和 AS state 均由 synchronization2 planner 描述 | 已覆盖 AS build write -> shader read 及连续 write hazard |
 | Descriptor allocator | RT-06 已按 capability 条件分配 acceleration structure descriptor pool capacity | 可分配 Ray Query descriptor set；RT-disabled 不创建 AS pool entry |
@@ -126,11 +126,11 @@ VulkanMeshDrawItem
 | Pipeline cache | 只支持 graphics pipeline | 第一阶段足够；Full RT Pipeline 时必须新增独立 pipeline 类型 |
 | Scene material table | 仍按 draw call 绑定 material | 足够做 shadow visibility，不足以做通用 hit shading |
 | Temporal data | 没有正式 motion vector / history contract | 不足以实现稳定的 RT reflection denoiser |
-| GPU lifetime | 已有 FrameContext、frame serial、retirement queue 和 deferred destruction | 后续 AS 对象必须接入现有 retirement contract |
+| GPU lifetime | AS、backing、instance / scratch replacement 已接入 FrameContext、frame serial、retirement queue 和 deferred destruction | 已解除；descriptor 仍由对应 frame slot 持有和更新 |
 
 ### 3.3 结论
 
-当前 Renderer 已具备第一项实际 Ray Query 视觉功能。RT-00 capability negotiation、RT-01 device-address buffer foundation、RT-02 acceleration structure primitive、RT-03 static mesh BLAS cache、RT-04 TLAS instance build、RT-05 RenderGraph AS synchronization、RT-06 descriptor / debug shader 和 RT-07 directional shadow integration 已完成；下一步进入 RT-08 lifetime、compaction 和 profiling。
+当前 Renderer 已具备 Directional Ray Query Shadow 和 Optional RTAO 两项实际 Ray Query 视觉功能及其稳定运行基础。RT-00 至 RT-09 已完成 capability、device-address resource、BLAS / TLAS、RenderGraph synchronization、descriptor / shader、directional shadow、lifetime、compaction、profiling 和可回退 RTAO；下一步可进入 RT-10 Ray-Traced Reflection Foundation 的 scene shading 前置工作。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -369,13 +369,15 @@ instance flags
 
 GLM `mat4` 与 `VkTransformMatrixKHR` 的存储布局不同，必须使用显式逐元素转换 helper，禁止直接 `memcpy`。该 helper 需要覆盖 translation、rotation、non-uniform scale 和 mirrored transform focused test。
 
-第一版可每帧重建 TLAS，以先固定正确性。RT-08 再根据以下 dirty state 决定 update 或 rebuild：
+RT-08 已按以下 dirty state 决定 Build、Update 或 Reuse：
 
 - instance count 改变。
 - BLAS identity / generation 改变。
 - world transform 改变。
 - visibility mask 改变。
 - scene identity 改变。
+
+每个 frame slot 保存 instance content hash、topology hash 和 capacity：内容完全一致时直接复用；instance count、BLAS reference、mask 和 flags 不变但 transform 变化时使用 `UPDATE`；拓扑或容量变化时使用 `BUILD`。Instance capacity 按幂次增长，避免小幅数量波动反复创建 buffer 和 TLAS storage。
 
 没有有效 instance 时不得绑定 stale TLAS。Feature 应选择 Raster fallback；后续如果需要常驻 empty TLAS，应作为显式、已验证的资源策略实现。
 
@@ -385,7 +387,7 @@ GLM `mat4` 与 `VkTransformMatrixKHR` 的存储布局不同，必须使用显式
 - TLAS backing、instance 和 scratch buffer 在 GPU build / trace 完成前不得重用或销毁。
 - Mesh resource eviction 必须先使 BLAS generation 失效，再按 frame retirement 销毁旧 AS。
 - 单帧 baseline 可沿用当前 frame fence，但不得依赖无记录的 `vkDeviceWaitIdle()` 维持正确性。
-- 进入 frames-in-flight 前必须接入 RR-11 / RR-12 的 deferred destruction 和 per-frame resource ownership。
+- AS handle、backing buffer 和增长替换资源已接入 RR-11 / RR-12 deferred destruction；TLAS descriptor 与 instance buffer 由对应 FrameContext slot 持有或更新。
 
 ## 9. RenderGraph 与同步
 
@@ -709,7 +711,7 @@ result       = visible or occluded
 
 边界：
 
-- RT-03 / RT-04 当前仍使用独立的一次性 build submission；RT-06 已将实际 debug shader 的 TLAS read 声明接入 frame graph，RT-07 在相同 access contract 上接入 directional direct-light shading。
+- RT-08 的实际 BLAS build、compaction 和 TLAS build / update 仍使用独立同步 submission；稳定 TLAS frame 使用 Reuse，不再提交 build。RT-06 已将实际 shader TLAS read 声明接入 frame graph，RT-07 在相同 access contract 上接入 directional direct-light shading。
 
 ### 11.7 RT-06：Ray Query Descriptor and Debug Shader
 
@@ -797,7 +799,7 @@ result       = visible or occluded
 边界：
 
 - 第一版仅查询 static opaque triangle meshes；alpha mask、transparent、skinned / deforming mesh 和 colored transmission 不在当前语义内。
-- 当前仍保留 Raster directional shadow target，既作为稳定 fallback，也用于 CSM / PCSS 对照；AS compaction、TLAS refit、GPU timing 和 steady-state allocation 优化属于 RT-08。
+- 当前仍保留 Raster directional shadow target，既作为稳定 fallback，也用于 CSM / PCSS 对照；RT-08 已补齐 AS compaction、TLAS refit、GPU timing 和 steady-state allocation policy。
 
 ### 11.9 RT-08：Compaction, Update, Lifetime and Profiling
 
@@ -819,6 +821,30 @@ result       = visible or occluded
 - 多帧并行下 AS、backing 和 descriptor 无 use-after-free。
 - 统计可以解释 build spike 和 steady-state cost。
 
+状态：已完成（2026-08-17）。
+
+实现结果：
+
+- Static mesh BLAS 保持单 command buffer 批次构建；支持 `ALLOW_COMPACTION`、compacted-size query 和批量 compact copy，只有达到最小节省阈值时才替换原 AS。
+- BLAS cache 默认使用 256 MiB budget 和 120 prepare epoch inactive retention；active mesh 不因 budget 被驱逐，generation replacement 与 inactive / LRU eviction 均通过 retirement queue 延迟销毁。
+- TLAS frame slot 保存 instance capacity、topology hash 和 content hash；稳定内容使用 `Reuse`，同拓扑 transform-only 变化使用 `UPDATE`，拓扑或容量变化使用 `BUILD`。
+- TLAS instance buffer 与 BLAS / TLAS scratch buffer 只增长并复用 capacity；空 scene 会清除对应 frame-slot TLAS，避免 stale descriptor。
+- 新增可选 `VulkanGpuTimestampQuery` primitive；BLAS build / compaction 和 TLAS build / update 在同步提交完成后读取，Ray Query ForwardScene 则由 FrameContext 在 frame fence 完成后读取，不增加 query wait。
+- Renderer Debug 增加 BLAS budget、compaction、eviction、retirement、scratch 和 GPU time，以及 TLAS Build / Update / Reuse、capacity、allocation、scratch 和 GPU time。
+
+验证记录：
+
+- Debug `NexAurRendererTests` 与 `Sandbox` 定向构建通过。
+- `StaticMeshBlasCacheContract`、`TlasInstanceContract`、`FrameContext`、`RetirementQueue` 和 `RenderGraphAccelerationStructurePlanner` focused test 通过。
+- RT-capable GPU device smoke 覆盖 batched BLAS、generation replacement、TLAS Build / Reuse / transform-only Update、稳定 TLAS address、BLAS inactive eviction 和 deferred collection；Debug Vulkan validation 无新增错误。
+- Ray Query force-disabled device smoke 与 Sandbox startup smoke 通过，Raster fallback 保持可用。
+
+边界：
+
+- BLAS / TLAS 有实际 build 或 update 工作时仍使用独立 queue submission + fence completion；稳定 frame 的 TLAS Reuse 不再提交 build。异步 AS build queue 属于后续性能扩展，不在 RT-08 中引入。
+- 当前 compaction 只用于 static BLAS，TLAS 不压缩；budget 是 backend policy，尚未暴露为 Editor project setting。
+- `Ray Query Forward GPU` 统计覆盖启用 Ray Query 的整个 ForwardScene pass，用于 on / off 对照，不等价于只测 traversal 指令。
+
 ### 11.10 RT-09：Optional RTAO
 
 风险：中到高。
@@ -832,9 +858,40 @@ result       = visible or occluded
 - 明确 AO 与现有 SSAO 的 fallback 和组合关系。
 - 后续再引入 temporal accumulation，不在第一版强行混入。
 
+状态：已完成（2026-08-17）。
+
+实现结果：
+
+- `RenderAoSettings` 增加 `ScreenSpace` / `RayQuery` 方法、1 至 8 rays、world-space depth threshold 和 reconstructed-normal threshold；默认保持 `ScreenSpace`，避免改变现有项目视觉基线。
+- `VulkanRenderFeaturePlan` 统一选择 `Disabled`、`ScreenSpace` 或 `RayQuery` AO。RTAO 与 SSAO 互斥，不进行双重 AO 合成；RTAO 请求在 capability、TLAS 或 pipeline 不可用时自动回退 SSAO。
+- RTAO 复用现有 `VulkanAoFeature`、half/full-resolution `raw + blurred` target 和 PostProcess 输入，没有创建平行 AO 资源体系。
+- 新增 deterministic cosine-weighted hemisphere Ray Query shader；第一版每像素采样序列不随 frame 改变，在没有 temporal accumulation 时避免主动引入 frame-varying noise。
+- 新增 3x3 bilateral spatial filter；从 scene depth 重建 world position 和面向 camera 的几何法线，以 spatial、camera-distance depth 和 normal similarity 权重抑制跨边缘泄漏。
+- `RayQueryAO` pass 自身在 RenderGraph 声明 scene depth、TLAS `RayQueryShaderRead` 和 AO raw write；`RayQueryAOFilter` 声明 AO raw / scene depth read 和 blurred write。Forward pass 只保留 Ray Query debug / shadow 自身的 TLAS access。
+- AO descriptor layout 增加独立 scene-depth binding；RTAO graphics pipeline 使用 `AoInput + RayTracingScene` 两个 set，RT-disabled 时不创建 Ray Query AO pipeline。
+- Render Settings 增加 AO Method、Ray Count、Spatial Filter 和 filter threshold 控件；Renderer Debug 暴露 requested / active technique、RTAO available / active、fallback reason、ray count 和 filter 参数。既有 `AO Raw / AO Blurred` debug view 自动显示当前激活技术的输出。
+
+验证记录：
+
+- `NexAurVulkanShaders`、Debug `NexAurRendererTests` 和 `Sandbox` 定向构建通过。
+- `RenderSettings`、`FrameFeaturePlan` 和 `RenderGraphAccelerationStructurePlanner` focused test 通过；覆盖设置传递、SSAO fallback、RTAO 互斥选择和 TLAS resource requirement。
+- RTAO 与 bilateral filter fragment SPIR-V 均通过 `spirv-val --target-env vulkan1.3`；RTAO bytecode 已确认包含 `OpCapability RayQueryKHR` 和 `OpRayQuery*KHR` 指令。
+- RT-capable GPU 上使用临时 RTAO 默认测试配置运行 Sandbox 30 秒，完整 renderer / frame loop 启动成功；Debug Vulkan validation 无新增 VUID、pipeline、descriptor 或 pass recording 错误。测试后默认模式已恢复 `ScreenSpace`。
+
+边界：
+
+- 第一版只查询当前 TLAS 中的 static opaque triangle meshes；alpha mask、transparent、skinned / deforming mesh 不参与遮挡。
+- 法线由 scene depth 重建，不等价于 material normal；这是当前 Forward renderer 没有 normal G-buffer 时的明确 baseline。
+- 第一版没有 temporal accumulation、motion-vector reprojection、history validation 或 temporal denoiser；低 ray count 下保留稳定的空间噪声是预期限制。
+- 当前继续沿用既有 SSAO / PostProcess 的 AO intensity 和 power 调校语义，避免在 RT-09 内同时重标定全局 AO 视觉；统一 raw visibility / composite contract 应作为独立视觉校准工作处理。
+
 ### 11.11 RT-10：Ray-Traced Reflection Foundation
 
 风险：很高。
+
+详细拆分、数据契约、RenderGraph顺序、fallback和验收标准见：
+
+- [RT-10 Ray-Traced Reflection Foundation Development Plan](ray_traced_reflection_foundation_plan.md)
 
 开始条件：完成以下 scene shading 基础：
 

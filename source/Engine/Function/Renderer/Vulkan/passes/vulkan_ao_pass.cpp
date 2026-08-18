@@ -23,8 +23,24 @@ namespace NexAur {
             uint32_t padding0 = 0;
         };
 
+        struct RtaoPushConstants {
+            glm::mat4 inverse_view_projection{ 1.0f };
+            glm::vec4 camera_position_max_distance{ 0.0f, 0.0f, 0.0f, 1.2f };
+            glm::vec4 ao_params{ 0.6f, 0.025f, 1.2f, 4.0f };
+            glm::vec4 depth_texture_params{ 1.0f, 1.0f, 0.0f, 0.0f };
+        };
+
+        struct RtaoFilterPushConstants {
+            glm::mat4 inverse_view_projection{ 1.0f };
+            glm::vec4 camera_position_depth_threshold{ 0.0f, 0.0f, 0.0f, 0.4f };
+            glm::vec4 texture_params{ 1.0f, 1.0f, 1.0f, 1.0f };
+            glm::vec4 filter_params{ 0.8f, 1.0f, 0.0f, 0.0f };
+        };
+
         static_assert(sizeof(SsaoPushConstants) <= 128, "SSAO push constants exceed Vulkan minimum limit.");
         static_assert(sizeof(AoBlurPushConstants) <= 128, "AO blur push constants exceed Vulkan minimum limit.");
+        static_assert(sizeof(RtaoPushConstants) <= 128, "RTAO push constants exceed Vulkan minimum limit.");
+        static_assert(sizeof(RtaoFilterPushConstants) <= 128, "RTAO filter push constants exceed Vulkan minimum limit.");
 
         VkDescriptorImageInfo sampledImageInfo(const VulkanAoInput& input) {
             VkDescriptorImageInfo info{};
@@ -63,6 +79,8 @@ namespace NexAur {
         m_device = context.device;
         m_color_format = context.color_format;
         m_input_descriptor_set_layout = context.input_descriptor_set_layout;
+        m_ray_tracing_scene_descriptor_set_layout =
+            context.ray_tracing_scene_descriptor_set_layout;
         m_descriptor_allocator = context.descriptor_allocator;
         m_pipeline_cache = context.pipeline_cache;
 
@@ -79,6 +97,7 @@ namespace NexAur {
         freeDescriptorSets();
         m_color_format = VK_FORMAT_UNDEFINED;
         m_input_descriptor_set_layout = VK_NULL_HANDLE;
+        m_ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE;
         m_descriptor_allocator = nullptr;
         m_pipeline_cache = nullptr;
         m_depth_extent = {};
@@ -102,11 +121,13 @@ namespace NexAur {
         VulkanDescriptorWriter()
             .writeImage(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, sampledImageInfo(depth_input))
             .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLER, samplerInfo(depth_input.sampler))
+            .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, sampledImageInfo(depth_input))
             .update(m_device, m_depth_descriptor_set);
 
         VulkanDescriptorWriter()
             .writeImage(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, sampledImageInfo(raw_ao_input))
             .writeImage(1, VK_DESCRIPTOR_TYPE_SAMPLER, samplerInfo(raw_ao_input.sampler))
+            .writeImage(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, sampledImageInfo(depth_input))
             .update(m_device, m_raw_descriptor_set);
 
         m_depth_extent = depth_input.extent;
@@ -201,6 +222,116 @@ namespace NexAur {
         return true;
     }
 
+    bool VulkanAoPass::recordRtao(
+        VkCommandBuffer command_buffer,
+        const VulkanAoRenderTarget& target,
+        const VulkanRenderView& view,
+        const RenderAoSettings& settings,
+        VkDescriptorSet ray_tracing_scene_descriptor_set) {
+        if (command_buffer == VK_NULL_HANDLE ||
+            ray_tracing_scene_descriptor_set == VK_NULL_HANDLE ||
+            !target.valid() ||
+            !isRayQueryReady()) {
+            return false;
+        }
+        if (target.color_format != m_color_format || !beginRenderTarget(command_buffer, target)) {
+            return false;
+        }
+
+        RtaoPushConstants constants;
+        constants.inverse_view_projection =
+            view.inverse_view_matrix * view.inverse_projection_matrix;
+        constants.camera_position_max_distance = glm::vec4(
+            view.camera_position,
+            sanitizeMin(settings.radius, 1.2f, 0.01f));
+        constants.ao_params = glm::vec4(
+            std::clamp(settings.intensity, 0.0f, 2.0f),
+            sanitizeMin(settings.bias, 0.025f, 0.0f),
+            sanitizeMin(settings.power, 1.2f, 0.01f),
+            static_cast<float>(std::clamp(settings.ray_count, 1u, 8u)));
+        constants.depth_texture_params = glm::vec4(
+            safeTexelSize(m_depth_extent.width),
+            safeTexelSize(m_depth_extent.height),
+            0.0f,
+            0.0f);
+
+        const VkDescriptorSet descriptor_sets[] = {
+            m_depth_descriptor_set,
+            ray_tracing_scene_descriptor_set
+        };
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_rtao_pipeline);
+        vkCmdBindDescriptorSets(
+            command_buffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_rtao_pipeline_layout,
+            0,
+            2,
+            descriptor_sets,
+            0,
+            nullptr);
+        vkCmdPushConstants(
+            command_buffer,
+            m_rtao_pipeline_layout,
+            VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,
+            sizeof(RtaoPushConstants),
+            &constants);
+        drawFullscreen(command_buffer);
+        vkCmdEndRendering(command_buffer);
+        return true;
+    }
+
+    bool VulkanAoPass::recordRtaoFilter(
+        VkCommandBuffer command_buffer,
+        const VulkanAoRenderTarget& target,
+        const VulkanRenderView& view,
+        const RenderAoSettings& settings) {
+        if (command_buffer == VK_NULL_HANDLE || !target.valid() || !isRayQueryReady()) {
+            return false;
+        }
+        if (target.color_format != m_color_format || !beginRenderTarget(command_buffer, target)) {
+            return false;
+        }
+
+        RtaoFilterPushConstants constants;
+        constants.inverse_view_projection =
+            view.inverse_view_matrix * view.inverse_projection_matrix;
+        constants.camera_position_depth_threshold = glm::vec4(
+            view.camera_position,
+            sanitizeMin(settings.filter_depth_threshold, 0.4f, 0.001f));
+        constants.texture_params = glm::vec4(
+            safeTexelSize(m_raw_extent.width),
+            safeTexelSize(m_raw_extent.height),
+            safeTexelSize(m_depth_extent.width),
+            safeTexelSize(m_depth_extent.height));
+        constants.filter_params = glm::vec4(
+            std::clamp(settings.filter_normal_threshold, 0.0f, 1.0f),
+            settings.blur_enabled ? 1.0f : 0.0f,
+            0.0f,
+            0.0f);
+
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_rtao_filter_pipeline);
+        vkCmdBindDescriptorSets(
+            command_buffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_rtao_filter_pipeline_layout,
+            0,
+            1,
+            &m_raw_descriptor_set,
+            0,
+            nullptr);
+        vkCmdPushConstants(
+            command_buffer,
+            m_rtao_filter_pipeline_layout,
+            VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,
+            sizeof(RtaoFilterPushConstants),
+            &constants);
+        drawFullscreen(command_buffer);
+        vkCmdEndRendering(command_buffer);
+        return true;
+    }
+
     bool VulkanAoPass::createPipelines() {
         VkPushConstantRange ssao_range{};
         ssao_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -212,27 +343,73 @@ namespace NexAur {
         blur_range.offset = 0;
         blur_range.size = sizeof(AoBlurPushConstants);
 
-        return createPipeline(
+        VkPushConstantRange rtao_range{};
+        rtao_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        rtao_range.offset = 0;
+        rtao_range.size = sizeof(RtaoPushConstants);
+
+        VkPushConstantRange rtao_filter_range{};
+        rtao_filter_range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        rtao_filter_range.offset = 0;
+        rtao_filter_range.size = sizeof(RtaoFilterPushConstants);
+
+        if (!createPipeline(
                    VulkanShaderProgramId::Ssao,
                    ssao_range,
                    "SSAO",
+                   { m_input_descriptor_set_layout },
                    m_ssao_pipeline,
-                   m_ssao_pipeline_layout) &&
-               createPipeline(
+                   m_ssao_pipeline_layout) ||
+            !createPipeline(
                    VulkanShaderProgramId::AoBlur,
                    blur_range,
                    "AOBlur",
+                   { m_input_descriptor_set_layout },
                    m_blur_pipeline,
-                   m_blur_pipeline_layout);
+                   m_blur_pipeline_layout)) {
+            return false;
+        }
+
+        if (m_ray_tracing_scene_descriptor_set_layout == VK_NULL_HANDLE) {
+            return true;
+        }
+
+        const bool rtao_ready =
+            createPipeline(
+                VulkanShaderProgramId::RayQueryAo,
+                rtao_range,
+                "RayQueryAO",
+                {
+                    m_input_descriptor_set_layout,
+                    m_ray_tracing_scene_descriptor_set_layout
+                },
+                m_rtao_pipeline,
+                m_rtao_pipeline_layout) &&
+            createPipeline(
+                VulkanShaderProgramId::RayQueryAoFilter,
+                rtao_filter_range,
+                "RayQueryAOFilter",
+                { m_input_descriptor_set_layout },
+                m_rtao_filter_pipeline,
+                m_rtao_filter_pipeline_layout);
+        if (!rtao_ready) {
+            m_rtao_pipeline = VK_NULL_HANDLE;
+            m_rtao_pipeline_layout = VK_NULL_HANDLE;
+            m_rtao_filter_pipeline = VK_NULL_HANDLE;
+            m_rtao_filter_pipeline_layout = VK_NULL_HANDLE;
+            NX_CORE_WARN("Ray Query AO pipelines are unavailable; SSAO fallback remains active.");
+        }
+        return true;
     }
 
     bool VulkanAoPass::createPipeline(
         VulkanShaderProgramId shader_program,
         const VkPushConstantRange& push_constant_range,
         const char* debug_name,
+        const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts,
         VkPipeline& pipeline,
         VkPipelineLayout& pipeline_layout) {
-        if (!m_pipeline_cache || m_input_descriptor_set_layout == VK_NULL_HANDLE) {
+        if (!m_pipeline_cache || descriptor_set_layouts.empty()) {
             return false;
         }
 
@@ -241,7 +418,7 @@ namespace NexAur {
         desc.shader_program = shader_program;
         desc.color_format = m_color_format;
         desc.depth_format = VK_FORMAT_UNDEFINED;
-        desc.descriptor_set_layouts = { m_input_descriptor_set_layout };
+        desc.descriptor_set_layouts = descriptor_set_layouts;
         desc.push_constant_ranges = { push_constant_range };
         desc.vertex_layout = VulkanPipelineVertexLayout::None;
         desc.depth_test_enable = false;
@@ -279,6 +456,10 @@ namespace NexAur {
         m_ssao_pipeline_layout = VK_NULL_HANDLE;
         m_blur_pipeline = VK_NULL_HANDLE;
         m_blur_pipeline_layout = VK_NULL_HANDLE;
+        m_rtao_pipeline = VK_NULL_HANDLE;
+        m_rtao_pipeline_layout = VK_NULL_HANDLE;
+        m_rtao_filter_pipeline = VK_NULL_HANDLE;
+        m_rtao_filter_pipeline_layout = VK_NULL_HANDLE;
     }
 
     void VulkanAoPass::freeDescriptorSets() {

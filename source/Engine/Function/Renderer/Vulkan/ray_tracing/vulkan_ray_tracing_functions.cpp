@@ -18,6 +18,14 @@ namespace NexAur {
         cmd_build_acceleration_structures =
             reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
                 vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR"));
+        cmd_copy_acceleration_structure =
+            reinterpret_cast<PFN_vkCmdCopyAccelerationStructureKHR>(
+                vkGetDeviceProcAddr(device, "vkCmdCopyAccelerationStructureKHR"));
+        cmd_write_acceleration_structures_properties =
+            reinterpret_cast<PFN_vkCmdWriteAccelerationStructuresPropertiesKHR>(
+                vkGetDeviceProcAddr(
+                    device,
+                    "vkCmdWriteAccelerationStructuresPropertiesKHR"));
         get_acceleration_structure_device_address =
             reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
                 vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR"));
@@ -35,6 +43,8 @@ namespace NexAur {
         destroy_acceleration_structure = nullptr;
         get_acceleration_structure_build_sizes = nullptr;
         cmd_build_acceleration_structures = nullptr;
+        cmd_copy_acceleration_structure = nullptr;
+        cmd_write_acceleration_structures_properties = nullptr;
         get_acceleration_structure_device_address = nullptr;
         set_debug_utils_object_name = nullptr;
     }
@@ -45,5 +55,10 @@ namespace NexAur {
                get_acceleration_structure_build_sizes != nullptr &&
                cmd_build_acceleration_structures != nullptr &&
                get_acceleration_structure_device_address != nullptr;
+    }
+
+    bool VulkanRayTracingDeviceFunctions::supportsCompaction() const {
+        return cmd_copy_acceleration_structure != nullptr &&
+               cmd_write_acceleration_structures_properties != nullptr;
     }
 } // namespace NexAur

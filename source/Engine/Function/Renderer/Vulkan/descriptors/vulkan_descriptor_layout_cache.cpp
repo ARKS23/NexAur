@@ -94,7 +94,8 @@ namespace NexAur {
             VulkanDescriptorSetLayoutDesc desc;
             desc.bindings = {
                 { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
-                { 1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
+                { 1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
+                { 2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
             };
             return desc;
         }
@@ -103,6 +104,31 @@ namespace NexAur {
             VulkanDescriptorSetLayoutDesc desc;
             desc.bindings = {
                 { 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
+            };
+            return desc;
+        }
+
+        VulkanDescriptorSetLayoutDesc rayTracingShadingSceneDescriptorLayoutDesc(
+            uint32_t texture_capacity,
+            uint32_t geometry_descriptor_capacity) {
+            VulkanDescriptorSetLayoutDesc desc;
+            desc.bindings = {
+                { 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, texture_capacity,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 5, VK_DESCRIPTOR_TYPE_SAMPLER, 1,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, geometry_descriptor_capacity,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT },
+                { 7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, geometry_descriptor_capacity,
+                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT }
             };
             return desc;
         }
@@ -183,6 +209,19 @@ namespace NexAur {
                 NX_CORE_ERROR("Unknown Vulkan descriptor set layout id.");
                 return VK_NULL_HANDLE;
         }
+    }
+
+    VkDescriptorSetLayout VulkanDescriptorLayoutCache::getRayTracingShadingSceneLayout(
+        uint32_t texture_capacity,
+        uint32_t geometry_descriptor_capacity) {
+        if (texture_capacity == 0 || geometry_descriptor_capacity == 0) {
+            NX_CORE_ERROR("Ray tracing shading scene layout requires non-zero descriptor capacities.");
+            return VK_NULL_HANDLE;
+        }
+        return getOrCreateLayout(
+            rayTracingShadingSceneDescriptorLayoutDesc(
+                texture_capacity,
+                geometry_descriptor_capacity));
     }
 
     VkDescriptorSetLayout VulkanDescriptorLayoutCache::createLayout(const VulkanDescriptorSetLayoutDesc& desc) {

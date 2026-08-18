@@ -14,6 +14,7 @@ namespace NexAur {
         VulkanDescriptorLayoutCache* descriptor_layout_cache = nullptr;
         VulkanDescriptorAllocator* descriptor_allocator = nullptr;
         VulkanPipelineCache* pipeline_cache = nullptr;
+        bool ray_query_enabled = false;
 
         bool valid() const {
             return resources.valid() &&

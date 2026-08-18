@@ -36,7 +36,8 @@ namespace NexAur {
             VulkanPassGraph&,
             VulkanGraphImageHandle,
             VulkanGraphImageHandle,
-            VulkanGraphImageHandle)>;
+            VulkanGraphImageHandle,
+            VulkanGraphAccelerationStructureHandle)>;
         using AddSsrPass = std::function<bool(
             VulkanPassGraph&,
             VulkanGraphImageHandle,

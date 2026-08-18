@@ -16,7 +16,9 @@ namespace NexAur {
                ssr_hit_mask.valid() &&
                final_color.valid() &&
                swapchain_color.valid() &&
-               (!(plan.usesRayQueryDebug() || plan.usesRayQueryShadow()) ||
+               (!(plan.usesRayQueryDebug() ||
+                  plan.usesRayQueryShadow() ||
+                  plan.usesRayQueryAo()) ||
                 ray_query_scene.valid()) &&
                (!plan.rendersSmaa() || smaa_source.valid());
     }
@@ -105,7 +107,8 @@ namespace NexAur {
                 graph,
                 resources.scene_depth,
                 resources.ao_raw,
-                resources.ao_blurred)) {
+                resources.ao_blurred,
+                resources.ray_query_scene)) {
             return false;
         }
         if (plan.rendersSsr() &&

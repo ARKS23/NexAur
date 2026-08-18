@@ -16,7 +16,10 @@ namespace NexAur {
         VulkanDescriptorLayoutCache& descriptor_layout_cache,
         VulkanDescriptorAllocator& descriptor_allocator,
         uint32_t frame_index,
-        VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout) {
+        VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout,
+        VkDescriptorSetLayout ray_tracing_shading_scene_descriptor_set_layout,
+        uint32_t ray_tracing_shading_texture_capacity,
+        uint32_t ray_tracing_shading_geometry_descriptor_capacity) {
         shutdown();
         if (!context.valid() ||
             context.gpu_allocator == nullptr ||
@@ -27,6 +30,14 @@ namespace NexAur {
 
         m_device = context.device;
         m_frame_index = frame_index;
+        if (!m_ray_query_gpu_timestamp.init(
+                context.physical_device,
+                context.device,
+                context.graphics_queue_family)) {
+            NX_CORE_WARN(
+                "Frame {} GPU timestamp profiling is unavailable.",
+                frame_index);
+        }
         if (!createCommandResources(context.graphics_queue_family) ||
             !createSyncObjects() ||
             !m_lighting_resource.init(
@@ -43,12 +54,28 @@ namespace NexAur {
             return false;
         }
 
+        if (ray_tracing_shading_scene_descriptor_set_layout != VK_NULL_HANDLE &&
+            ray_tracing_shading_texture_capacity >= kVulkanRtFallbackTextureSlotCount &&
+            ray_tracing_shading_geometry_descriptor_capacity >= 2 &&
+            !m_ray_tracing_scene_table.init(
+                context,
+                descriptor_allocator,
+                ray_tracing_shading_scene_descriptor_set_layout,
+                ray_tracing_shading_texture_capacity,
+                ray_tracing_shading_geometry_descriptor_capacity)) {
+            NX_CORE_WARN(
+                "Frame {} could not initialize the optional RT scene shading table.",
+                frame_index);
+        }
+
         m_ready = true;
         return true;
     }
 
     void VulkanFrameContext::shutdown() {
+        m_ray_query_gpu_timestamp.shutdown();
         m_debug_draw_buffer.shutdown();
+        m_ray_tracing_scene_table.shutdown();
         m_ray_tracing_scene_resource.shutdown();
         m_lighting_resource.shutdown();
 
@@ -70,6 +97,7 @@ namespace NexAur {
         m_image_available = VK_NULL_HANDLE;
         m_fence = VK_NULL_HANDLE;
         m_frame_index = 0;
+        m_ray_query_timing_submission_serial = 0;
         m_flight_state.reset();
         m_ready = false;
     }
@@ -79,7 +107,36 @@ namespace NexAur {
     }
 
     void VulkanFrameContext::markCompleted() {
+        const uint64_t completed_serial = m_flight_state.getSubmissionSerial();
+        if (m_ray_query_gpu_timestamp.resolve()) {
+            m_ray_query_timing_submission_serial = completed_serial;
+        }
         m_flight_state.markCompleted();
+    }
+
+    bool VulkanFrameContext::beginRayQueryGpuTiming(
+        VkCommandBuffer command_buffer) {
+        return m_ray_query_gpu_timestamp.begin(command_buffer);
+    }
+
+    bool VulkanFrameContext::endRayQueryGpuTiming(
+        VkCommandBuffer command_buffer) {
+        return m_ray_query_gpu_timestamp.end(command_buffer);
+    }
+
+    void VulkanFrameContext::discardRayQueryGpuTiming() {
+        m_ray_query_gpu_timestamp.discard();
+    }
+
+    VulkanFrameGpuTimingStats VulkanFrameContext::getGpuTimingStats() const {
+        const VulkanGpuTimestampQueryStats timestamp_stats =
+            m_ray_query_gpu_timestamp.getStats();
+        VulkanFrameGpuTimingStats stats;
+        stats.ray_query_supported = timestamp_stats.supported;
+        stats.ray_query_sample_count = timestamp_stats.sample_count;
+        stats.ray_query_submission_serial = m_ray_query_timing_submission_serial;
+        stats.ray_query_forward_ms = timestamp_stats.last_duration_ms;
+        return stats;
     }
 
     bool VulkanFrameContext::createCommandResources(uint32_t queue_family_index) {

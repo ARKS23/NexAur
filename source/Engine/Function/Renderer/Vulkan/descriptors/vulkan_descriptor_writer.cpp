@@ -12,6 +12,27 @@ namespace NexAur {
             binding,
             descriptor_type,
             info_index,
+            1,
+            PendingWrite::InfoType::Buffer
+        });
+        return *this;
+    }
+
+    VulkanDescriptorWriter& VulkanDescriptorWriter::writeBufferArray(
+        uint32_t binding,
+        VkDescriptorType descriptor_type,
+        std::span<const VkDescriptorBufferInfo> buffer_infos) {
+        if (buffer_infos.empty()) {
+            return *this;
+        }
+
+        const uint32_t info_index = static_cast<uint32_t>(m_buffer_infos.size());
+        m_buffer_infos.insert(m_buffer_infos.end(), buffer_infos.begin(), buffer_infos.end());
+        m_writes.push_back({
+            binding,
+            descriptor_type,
+            info_index,
+            static_cast<uint32_t>(buffer_infos.size()),
             PendingWrite::InfoType::Buffer
         });
         return *this;
@@ -27,6 +48,27 @@ namespace NexAur {
             binding,
             descriptor_type,
             info_index,
+            1,
+            PendingWrite::InfoType::Image
+        });
+        return *this;
+    }
+
+    VulkanDescriptorWriter& VulkanDescriptorWriter::writeImageArray(
+        uint32_t binding,
+        VkDescriptorType descriptor_type,
+        std::span<const VkDescriptorImageInfo> image_infos) {
+        if (image_infos.empty()) {
+            return *this;
+        }
+
+        const uint32_t info_index = static_cast<uint32_t>(m_image_infos.size());
+        m_image_infos.insert(m_image_infos.end(), image_infos.begin(), image_infos.end());
+        m_writes.push_back({
+            binding,
+            descriptor_type,
+            info_index,
+            static_cast<uint32_t>(image_infos.size()),
             PendingWrite::InfoType::Image
         });
         return *this;
@@ -41,6 +83,7 @@ namespace NexAur {
             binding,
             VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
             info_index,
+            1,
             PendingWrite::InfoType::AccelerationStructure
         });
         return *this;
@@ -61,7 +104,7 @@ namespace NexAur {
             write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             write.dstSet = descriptor_set;
             write.dstBinding = pending_write.binding;
-            write.descriptorCount = 1;
+            write.descriptorCount = pending_write.descriptor_count;
             write.descriptorType = pending_write.descriptor_type;
 
             switch (pending_write.info_type) {

@@ -77,6 +77,14 @@ namespace NexAur {
                    [](const VulkanAoPass& pass) { return pass.isReady(); });
     }
 
+    bool VulkanAoFeature::isRayQueryReady() const {
+        return m_target.isReady() &&
+               std::all_of(
+                   m_passes.begin(),
+                   m_passes.end(),
+                   [](const VulkanAoPass& pass) { return pass.isRayQueryReady(); });
+    }
+
     VulkanAoFeatureGraphResources VulkanAoFeature::addGraphResources(VulkanPassGraph& graph) {
         VulkanAoFeatureGraphResources resources;
         if (!m_target.isReady()) {
@@ -110,12 +118,24 @@ namespace NexAur {
     bool VulkanAoFeature::addPasses(
         VulkanPassGraph& graph,
         VulkanGraphImageHandle scene_depth,
+        VulkanGraphAccelerationStructureHandle ray_query_scene,
         const VulkanAoFeatureGraphResources& resources,
         VkImageView scene_depth_view,
         const VulkanRenderView& view,
         const RenderAoSettings& settings,
+        VulkanAoTechnique technique,
+        VkDescriptorSet ray_tracing_scene_descriptor_set,
         uint32_t frame_index) {
-        if (!isReady() || !scene_depth.valid() || !resources.valid()) {
+        if (!isReady() ||
+            technique == VulkanAoTechnique::Disabled ||
+            !scene_depth.valid() ||
+            !resources.valid()) {
+            return false;
+        }
+        if (technique == VulkanAoTechnique::RayQuery &&
+            (!isRayQueryReady() ||
+             !ray_query_scene.valid() ||
+             ray_tracing_scene_descriptor_set == VK_NULL_HANDLE)) {
             return false;
         }
 
@@ -138,20 +158,54 @@ namespace NexAur {
         VulkanAoPass* frame_pass = &pass;
 
         const VulkanAoRenderTarget raw_target = m_target.getRawRenderTarget();
-        graph.addPass("SSAO")
-            .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
-            .writeImage(resources.raw, VulkanGraphImageUsage::ColorAttachment)
-            .execute([frame_pass, raw_target, view, settings](VkCommandBuffer command_buffer) {
-                return frame_pass->recordSsao(command_buffer, raw_target, view, settings);
-            });
-
         const VulkanAoRenderTarget blurred_target = m_target.getBlurredRenderTarget();
-        graph.addPass("AOBlur")
-            .readImage(resources.raw, VulkanGraphImageUsage::ShaderRead)
-            .writeImage(resources.blurred, VulkanGraphImageUsage::ColorAttachment)
-            .execute([frame_pass, blurred_target, settings](VkCommandBuffer command_buffer) {
-                return frame_pass->recordBlur(command_buffer, blurred_target, settings);
-            });
+        if (technique == VulkanAoTechnique::RayQuery) {
+            graph.addPass("RayQueryAO")
+                .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
+                .readAccelerationStructure(
+                    ray_query_scene,
+                    VulkanGraphAccelerationStructureUsage::RayQueryShaderRead)
+                .writeImage(resources.raw, VulkanGraphImageUsage::ColorAttachment)
+                .execute([
+                    frame_pass,
+                    raw_target,
+                    view,
+                    settings,
+                    ray_tracing_scene_descriptor_set](VkCommandBuffer command_buffer) {
+                    return frame_pass->recordRtao(
+                        command_buffer,
+                        raw_target,
+                        view,
+                        settings,
+                        ray_tracing_scene_descriptor_set);
+                });
+
+            graph.addPass("RayQueryAOFilter")
+                .readImage(resources.raw, VulkanGraphImageUsage::ShaderRead)
+                .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(resources.blurred, VulkanGraphImageUsage::ColorAttachment)
+                .execute([frame_pass, blurred_target, view, settings](VkCommandBuffer command_buffer) {
+                    return frame_pass->recordRtaoFilter(
+                        command_buffer,
+                        blurred_target,
+                        view,
+                        settings);
+                });
+        } else {
+            graph.addPass("SSAO")
+                .readImage(scene_depth, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(resources.raw, VulkanGraphImageUsage::ColorAttachment)
+                .execute([frame_pass, raw_target, view, settings](VkCommandBuffer command_buffer) {
+                    return frame_pass->recordSsao(command_buffer, raw_target, view, settings);
+                });
+
+            graph.addPass("AOBlur")
+                .readImage(resources.raw, VulkanGraphImageUsage::ShaderRead)
+                .writeImage(resources.blurred, VulkanGraphImageUsage::ColorAttachment)
+                .execute([frame_pass, blurred_target, settings](VkCommandBuffer command_buffer) {
+                    return frame_pass->recordBlur(command_buffer, blurred_target, settings);
+                });
+        }
         return true;
     }
 
@@ -166,10 +220,29 @@ namespace NexAur {
         return input;
     }
 
-    RendererDebugAoStats VulkanAoFeature::buildDebugStats(bool enabled) const {
+    RendererDebugAoStats VulkanAoFeature::buildDebugStats(
+        const RenderAoSettings& settings,
+        const VulkanRenderFeaturePlan& feature_plan) const {
         RendererDebugAoStats stats;
-        stats.enabled = enabled;
+        stats.enabled = feature_plan.rendersAo();
         stats.ready = isReady();
+        stats.requested_mode = renderAoModeName(settings.mode);
+        stats.active_technique = vulkanAoTechniqueName(feature_plan.getAoTechnique());
+        stats.ray_query_available = feature_plan.getAvailability().ray_query_ao;
+        stats.ray_query_active = feature_plan.usesRayQueryAo();
+        stats.ray_count = std::clamp(settings.ray_count, 1u, 8u);
+        stats.filter_depth_threshold = settings.filter_depth_threshold;
+        stats.filter_normal_threshold = settings.filter_normal_threshold;
+        stats.spatial_filter_enabled = settings.blur_enabled;
+        if (settings.mode != RenderAoMode::RayQuery) {
+            stats.fallback_reason = "None";
+        } else if (feature_plan.usesRayQueryAo()) {
+            stats.fallback_reason = "None";
+        } else if (feature_plan.rendersAo()) {
+            stats.fallback_reason = "Ray Query AO unavailable; using SSAO.";
+        } else {
+            stats.fallback_reason = "AO is disabled or isolated.";
+        }
         if (!m_target.isReady()) {
             return stats;
         }
@@ -190,6 +263,11 @@ namespace NexAur {
         context.color_format = m_target.getColorFormat();
         context.input_descriptor_set_layout =
             m_context.descriptor_layout_cache->getBuiltinLayout(VulkanDescriptorSetLayoutId::AoInput);
+        context.ray_tracing_scene_descriptor_set_layout =
+            m_context.ray_query_enabled ?
+            m_context.descriptor_layout_cache->getBuiltinLayout(
+                VulkanDescriptorSetLayoutId::RayTracingScene) :
+            VK_NULL_HANDLE;
         context.descriptor_allocator = m_context.descriptor_allocator;
         context.pipeline_cache = m_context.pipeline_cache;
         for (VulkanAoPass& pass : m_passes) {

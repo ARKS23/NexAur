@@ -101,6 +101,13 @@ namespace NexAur {
             !isolate_forward_debug &&
             availability.ao &&
             (settings.ao.enabled || isAoDebugView(debug_view));
+        VulkanAoTechnique ao_technique = VulkanAoTechnique::Disabled;
+        if (render_ao) {
+            ao_technique =
+                settings.ao.mode == RenderAoMode::RayQuery && availability.ray_query_ao ?
+                VulkanAoTechnique::RayQuery :
+                VulkanAoTechnique::ScreenSpace;
+        }
         const bool render_ssr =
             !isolate_forward_debug &&
             availability.ssr &&
@@ -126,7 +133,7 @@ namespace NexAur {
             post_process_debug_settings,
             isolate_forward_debug,
             use_ray_query_shadow,
-            render_ao,
+            ao_technique,
             render_ssr,
             render_bloom,
             render_smaa);
@@ -139,7 +146,7 @@ namespace NexAur {
         RenderEffectDebugSettings post_process_debug_settings,
         bool isolate_forward_debug,
         bool use_ray_query_shadow,
-        bool render_ao,
+        VulkanAoTechnique ao_technique,
         bool render_ssr,
         bool render_bloom,
         bool render_smaa)
@@ -149,7 +156,7 @@ namespace NexAur {
           m_post_process_debug_settings(post_process_debug_settings),
           m_isolate_forward_debug(isolate_forward_debug),
           m_use_ray_query_shadow(use_ray_query_shadow),
-          m_render_ao(render_ao),
+          m_ao_technique(ao_technique),
           m_render_ssr(render_ssr),
           m_render_bloom(render_bloom),
           m_render_smaa(render_smaa) {}

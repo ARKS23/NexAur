@@ -196,6 +196,13 @@ namespace NexAur {
         ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
         ray_query_features.rayQuery = VK_TRUE;
 
+        VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features{};
+        descriptor_indexing_features.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+        descriptor_indexing_features.runtimeDescriptorArray = VK_TRUE;
+        descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+        descriptor_indexing_features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
+
         vkb::DeviceBuilder device_builder(m_physical_device);
         device_builder.add_pNext(&vulkan13_features);
         if (m_ray_tracing_capabilities.ray_query_enabled) {
@@ -203,6 +210,9 @@ namespace NexAur {
                 .add_pNext(&buffer_device_address_features)
                 .add_pNext(&acceleration_structure_features)
                 .add_pNext(&ray_query_features);
+        }
+        if (m_ray_tracing_capabilities.reflection_shading) {
+            device_builder.add_pNext(&descriptor_indexing_features);
         }
 
         auto device_result = device_builder.build();

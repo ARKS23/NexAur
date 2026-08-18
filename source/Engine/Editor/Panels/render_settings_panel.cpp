@@ -770,10 +770,31 @@ namespace NexAur {
             ImGui::BeginDisabled();
         }
 
-        EditorWidgets::propertyRow("Radius", [&]() {
+        EditorWidgets::propertyRow("Method", [&]() {
+            const char* items[] = { "Screen Space", "Ray Query" };
+            int mode = static_cast<int>(settings.ao.mode);
             setControlWidth();
-            changed |= ImGui::SliderFloat("##AoRadius", &settings.ao.radius, 0.05f, 5.0f, "%.2f");
+            if (ImGui::Combo("##AoMethod", &mode, items, IM_ARRAYSIZE(items))) {
+                settings.ao.mode = static_cast<RenderAoMode>(mode);
+                changed = true;
+            }
         });
+        EditorWidgets::propertyRow(
+            settings.ao.mode == RenderAoMode::RayQuery ? "Ray Distance" : "Radius",
+            [&]() {
+                setControlWidth();
+                changed |= ImGui::SliderFloat("##AoRadius", &settings.ao.radius, 0.05f, 5.0f, "%.2f");
+            });
+        if (settings.ao.mode == RenderAoMode::RayQuery) {
+            EditorWidgets::propertyRow("Ray Count", [&]() {
+                int ray_count = static_cast<int>(settings.ao.ray_count);
+                setControlWidth();
+                if (ImGui::SliderInt("##AoRayCount", &ray_count, 1, 8)) {
+                    settings.ao.ray_count = static_cast<uint32_t>(ray_count);
+                    changed = true;
+                }
+            });
+        }
         EditorWidgets::propertyRow("Intensity", [&]() {
             setControlWidth();
             changed |= ImGui::SliderFloat("##AoIntensity", &settings.ao.intensity, 0.0f, 2.0f, "%.2f");
@@ -786,9 +807,35 @@ namespace NexAur {
             setControlWidth();
             changed |= ImGui::SliderFloat("##AoPower", &settings.ao.power, 0.25f, 4.0f, "%.2f");
         });
-        EditorWidgets::propertyRow("Blur", [&]() {
+        EditorWidgets::propertyRow("Spatial Filter", [&]() {
             changed |= ImGui::Checkbox("##AoBlur", &settings.ao.blur_enabled);
         });
+        if (settings.ao.mode == RenderAoMode::RayQuery) {
+            if (!settings.ao.blur_enabled) {
+                ImGui::BeginDisabled();
+            }
+            EditorWidgets::propertyRow("Filter Depth", [&]() {
+                setControlWidth();
+                changed |= ImGui::SliderFloat(
+                    "##AoFilterDepth",
+                    &settings.ao.filter_depth_threshold,
+                    0.01f,
+                    2.0f,
+                    "%.2f");
+            });
+            EditorWidgets::propertyRow("Filter Normal", [&]() {
+                setControlWidth();
+                changed |= ImGui::SliderFloat(
+                    "##AoFilterNormal",
+                    &settings.ao.filter_normal_threshold,
+                    0.0f,
+                    1.0f,
+                    "%.2f");
+            });
+            if (!settings.ao.blur_enabled) {
+                ImGui::EndDisabled();
+            }
+        }
         EditorWidgets::propertyRow("Half Resolution", [&]() {
             changed |= ImGui::Checkbox("##AoHalfResolution", &settings.ao.half_resolution);
         });

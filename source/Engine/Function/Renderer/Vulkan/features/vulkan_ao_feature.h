@@ -5,6 +5,7 @@
 #include "Core/Base.h"
 #include "Function/Renderer/Vulkan/features/vulkan_render_feature_context.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_constants.h"
+#include "Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_resource.h"
 #include "Function/Renderer/Vulkan/passes/vulkan_ao_pass.h"
 #include "Function/Renderer/Vulkan/targets/vulkan_ao_target.h"
@@ -54,18 +55,24 @@ namespace NexAur {
         bool resize(uint32_t width, uint32_t height, bool half_resolution);
 
         bool isReady() const;
+        bool isRayQueryReady() const;
         VulkanAoFeatureGraphResources addGraphResources(VulkanPassGraph& graph);
         bool addPasses(
             VulkanPassGraph& graph,
             VulkanGraphImageHandle scene_depth,
+            VulkanGraphAccelerationStructureHandle ray_query_scene,
             const VulkanAoFeatureGraphResources& resources,
             VkImageView scene_depth_view,
             const VulkanRenderView& view,
             const RenderAoSettings& settings,
+            VulkanAoTechnique technique,
+            VkDescriptorSet ray_tracing_scene_descriptor_set,
             uint32_t frame_index);
 
         VulkanAoFeatureInput getPostProcessInput() const;
-        RendererDebugAoStats buildDebugStats(bool enabled) const;
+        RendererDebugAoStats buildDebugStats(
+            const RenderAoSettings& settings,
+            const VulkanRenderFeaturePlan& feature_plan) const;
 
     private:
         bool recreatePassResources();

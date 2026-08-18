@@ -81,7 +81,7 @@ namespace NexAur {
         }
 
         m_initialized = true;
-        if (!createFallbackTexture() ||
+        if (!createFallbackTextures() ||
             !createFallbackMaterial(asset_manager) ||
             !createFallbackEnvironment()) {
             shutdown();
@@ -126,6 +126,9 @@ namespace NexAur {
         clear();
         retireResource(m_retirement_queue, m_fallback_environment);
         retireResource(m_retirement_queue, m_fallback_material);
+        retireResource(m_retirement_queue, m_fallback_metallic_roughness_texture);
+        retireResource(m_retirement_queue, m_fallback_flat_normal_texture);
+        retireResource(m_retirement_queue, m_fallback_black_texture);
         retireResource(m_retirement_queue, m_fallback_white_texture);
         m_upload_manager.shutdown();
         if (m_upload_command_pool != VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
@@ -620,32 +623,74 @@ namespace NexAur {
         return true;
     }
 
-    bool VulkanRenderResourceCache::createFallbackTexture() {
+    bool VulkanRenderResourceCache::createFallbackTextures() {
+        return createFallbackTexture(
+                   m_fallback_white_texture,
+                   255,
+                   255,
+                   255,
+                   255,
+                   TextureColorSpace::SRGB,
+                   "FallbackWhiteTexture") &&
+               createFallbackTexture(
+                   m_fallback_black_texture,
+                   0,
+                   0,
+                   0,
+                   255,
+                   TextureColorSpace::SRGB,
+                   "FallbackBlackTexture") &&
+               createFallbackTexture(
+                   m_fallback_flat_normal_texture,
+                   128,
+                   128,
+                   255,
+                   255,
+                   TextureColorSpace::Linear,
+                   "FallbackFlatNormalTexture") &&
+               createFallbackTexture(
+                   m_fallback_metallic_roughness_texture,
+                   0,
+                   255,
+                   0,
+                   255,
+                   TextureColorSpace::Linear,
+                   "FallbackMetallicRoughnessTexture");
+    }
+
+    bool VulkanRenderResourceCache::createFallbackTexture(
+        std::unique_ptr<VulkanTextureResource>& resource,
+        uint8_t red,
+        uint8_t green,
+        uint8_t blue,
+        uint8_t alpha,
+        TextureColorSpace color_space,
+        const char* debug_name) {
         std::shared_ptr<TextureAsset> fallback_texture = TextureLoader::createSolidColorRGBA8(
-            255,
-            255,
-            255,
-            255,
-            TextureColorSpace::SRGB,
-            "FallbackWhiteTexture");
+            red,
+            green,
+            blue,
+            alpha,
+            color_space,
+            debug_name != nullptr ? debug_name : "FallbackTexture");
         if (!fallback_texture || !fallback_texture->isLoaded()) {
-            NX_CORE_ERROR("Failed to create CPU fallback white texture.");
+            NX_CORE_ERROR("Failed to create CPU fallback texture.");
             return false;
         }
 
         auto fallback_resource = std::make_unique<VulkanTextureResource>();
         if (!fallback_resource->create(createUploadContext(), *fallback_texture)) {
-            NX_CORE_ERROR("Failed to create Vulkan fallback white texture.");
+            NX_CORE_ERROR("Failed to create Vulkan fallback texture.");
             return false;
         }
 
         if (!m_upload_manager.waitUntilReady(
                 fallback_resource->getUploadTicket())) {
-            NX_CORE_ERROR("Failed to complete Vulkan fallback white texture upload.");
+            NX_CORE_ERROR("Failed to complete Vulkan fallback texture upload.");
             return false;
         }
 
-        m_fallback_white_texture = std::move(fallback_resource);
+        resource = std::move(fallback_resource);
         return true;
     }
 

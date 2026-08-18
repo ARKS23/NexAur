@@ -178,7 +178,17 @@ namespace NexAur {
                 !descriptor_layout_cache.init(device.device) ||
                 !descriptor_allocator.init(
                     device.device,
-                    device_context.getRayTracingCapabilities().ray_query_enabled) ||
+                    device_context.getRayTracingCapabilities().ray_query_enabled,
+                    device_context.getRayTracingCapabilities().ray_query_enabled &&
+                            device_context.getRayTracingCapabilities().supportsReflectionShading() ?
+                        device_context.getRayTracingCapabilities().reflection_texture_capacity :
+                        8u,
+                    device_context.getRayTracingCapabilities().ray_query_enabled &&
+                            device_context.getRayTracingCapabilities().supportsReflectionShading() ?
+                        3u +
+                            device_context.getRayTracingCapabilities()
+                                .reflection_geometry_descriptor_capacity * 2u :
+                        4u) ||
                 !initFrameContexts() ||
                 !pipeline_cache.init(device.device, shader_library) ||
                 !resource_cache.init(
@@ -409,8 +419,21 @@ namespace NexAur {
                 return;
             }
             prepareTlas(frame_context.getFrameIndex(), prepared_frame.draw_list);
+            const VulkanAccelerationStructure* frame_tlas =
+                tlas_manager.get(frame_context.getFrameIndex());
             frame_context.updateRayTracingScene(
-                tlas_manager.get(frame_context.getFrameIndex()));
+                frame_tlas);
+            if (frame_context.getRayTracingShadingTable().isInitialized()) {
+                if (frame_tlas != nullptr) {
+                    frame_context.updateRayTracingShadingTable(
+                        frame_tlas,
+                        tlas_manager.getAcceptedInstanceRecords(
+                            frame_context.getFrameIndex()),
+                        resource_cache.getRayTracingFallbackTextures());
+                } else {
+                    frame_context.clearRayTracingShadingTable();
+                }
+            }
             const VulkanReflectionProbeCaptureCallbacks capture_callbacks =
                 createReflectionProbeCaptureCallbacks(frame_context);
             reflection_probe_manager.processFrame(
@@ -600,6 +623,8 @@ namespace NexAur {
             context.descriptor_layout_cache = &descriptor_layout_cache;
             context.descriptor_allocator = &descriptor_allocator;
             context.pipeline_cache = &pipeline_cache;
+            context.ray_query_enabled =
+                device_context.getRayTracingCapabilities().ray_query_enabled;
             return context;
         }
 
@@ -833,6 +858,8 @@ namespace NexAur {
             availability.ray_query = ray_query_ready && forward_pass.isRayQueryReady();
             availability.ray_query_shadow =
                 ray_query_ready && forward_pass.isRayQueryShadowReady();
+            availability.ray_query_ao =
+                ray_query_ready && ao_feature.isRayQueryReady();
             return VulkanRenderFeaturePlan::build(render_settings, availability);
         }
 
@@ -861,7 +888,9 @@ namespace NexAur {
                 feature_plan.getAvailability().post_process,
                 feature_plan.rendersBloom());
             snapshot.bloom = bloom_feature.buildDebugStats(feature_plan.rendersBloom());
-            snapshot.ao = ao_feature.buildDebugStats(feature_plan.rendersAo());
+            snapshot.ao = ao_feature.buildDebugStats(
+                scene_frame.render_settings.ao,
+                feature_plan);
             snapshot.ssr = ssr_feature.buildDebugStats(
                 scene_frame.render_settings.ssr,
                 feature_plan.rendersSsr());
@@ -870,6 +899,8 @@ namespace NexAur {
                 feature_plan.rendersSmaa());
             snapshot.effects = buildEffectsDebugStats(scene_frame.render_settings, feature_plan);
             snapshot.resources = buildResourceDebugStats(draw_list);
+            snapshot.ray_tracing_scene_table =
+                buildRayTracingSceneTableDebugStats();
 
             debug_snapshot = std::move(snapshot);
         }
@@ -1066,6 +1097,24 @@ namespace NexAur {
             stats.ray_query_shadow_max_distance = ray_query_shadow_settings.max_distance;
             stats.ray_query_shadow_normal_bias = ray_query_shadow_settings.normal_bias;
             stats.ray_query_shadow_direction_bias = ray_query_shadow_settings.direction_bias;
+            uint64_t latest_timing_serial = 0;
+            for (const VulkanFrameContext& frame_context : frame_contexts) {
+                const VulkanFrameGpuTimingStats timing_stats =
+                    frame_context.getGpuTimingStats();
+                stats.ray_query_gpu_timing_supported =
+                    stats.ray_query_gpu_timing_supported ||
+                    timing_stats.ray_query_supported;
+                stats.ray_query_gpu_sample_count +=
+                    timing_stats.ray_query_sample_count;
+                if (timing_stats.ray_query_submission_serial >=
+                        latest_timing_serial &&
+                    timing_stats.ray_query_sample_count > 0) {
+                    latest_timing_serial =
+                        timing_stats.ray_query_submission_serial;
+                    stats.ray_query_forward_gpu_ms =
+                        timing_stats.ray_query_forward_ms;
+                }
+            }
             if (!ray_query_shadow_requested) {
                 stats.ray_query_shadow_fallback_reason =
                     render_settings.shadow.enabled ?
@@ -1179,6 +1228,31 @@ namespace NexAur {
             stats.static_mesh_blas_cache_hit_count = blas_stats.cache_hit_count;
             stats.static_mesh_blas_failed_build_count = blas_stats.failed_build_count;
             stats.static_mesh_blas_bytes = blas_stats.acceleration_structure_bytes;
+            stats.static_mesh_blas_memory_budget_bytes =
+                blas_stats.memory_budget_bytes;
+            stats.static_mesh_blas_compaction_count =
+                blas_stats.compaction_count;
+            stats.static_mesh_blas_failed_compaction_count =
+                blas_stats.failed_compaction_count;
+            stats.static_mesh_blas_compaction_saved_bytes =
+                blas_stats.compaction_saved_bytes;
+            stats.static_mesh_blas_eviction_count =
+                blas_stats.eviction_count;
+            stats.static_mesh_blas_retired_entry_count =
+                blas_stats.retired_entry_count;
+            stats.static_mesh_blas_retired_bytes = blas_stats.retired_bytes;
+            stats.static_mesh_blas_scratch_capacity_bytes =
+                blas_stats.scratch_capacity_bytes;
+            stats.static_mesh_blas_compaction_enabled =
+                blas_stats.compaction_enabled;
+            stats.static_mesh_blas_gpu_timing_supported =
+                blas_stats.gpu_timing_supported;
+            stats.static_mesh_blas_gpu_timing_sample_count =
+                blas_stats.gpu_timing_sample_count;
+            stats.static_mesh_blas_build_gpu_ms =
+                blas_stats.last_build_gpu_ms;
+            stats.static_mesh_blas_compaction_gpu_ms =
+                blas_stats.last_compaction_gpu_ms;
             stats.static_mesh_blas_last_failure = blas_stats.last_failure_reason;
             const VulkanTlasBuildStats tlas_stats = tlas_manager.getStats();
             stats.tlas_manager_ready = tlas_stats.initialized;
@@ -1187,9 +1261,25 @@ namespace NexAur {
             stats.tlas_built_instance_count = tlas_stats.built_instance_count;
             stats.tlas_skipped_blas_count = tlas_stats.skipped_blas_count;
             stats.tlas_skipped_transform_count = tlas_stats.skipped_transform_count;
+            stats.tlas_skipped_material_count = tlas_stats.skipped_material_count;
             stats.tlas_build_count = tlas_stats.build_count;
+            stats.tlas_rebuild_count = tlas_stats.rebuild_count;
+            stats.tlas_update_count = tlas_stats.update_count;
+            stats.tlas_reuse_count = tlas_stats.reuse_count;
+            stats.tlas_allocation_count = tlas_stats.allocation_count;
             stats.tlas_instance_buffer_bytes = tlas_stats.instance_buffer_bytes;
+            stats.tlas_instance_buffer_capacity_bytes =
+                tlas_stats.instance_buffer_capacity_bytes;
             stats.tlas_bytes = tlas_stats.acceleration_structure_bytes;
+            stats.tlas_scratch_capacity_bytes =
+                tlas_stats.scratch_capacity_bytes;
+            stats.tlas_instance_capacity = tlas_stats.instance_capacity;
+            stats.tlas_gpu_timing_supported =
+                tlas_stats.gpu_timing_supported;
+            stats.tlas_gpu_timing_sample_count =
+                tlas_stats.gpu_timing_sample_count;
+            stats.tlas_build_gpu_ms = tlas_stats.last_build_gpu_ms;
+            stats.tlas_last_build_mode = tlas_stats.last_build_mode;
             stats.tlas_last_failure = tlas_stats.last_failure_reason;
             stats.material_count = resource_cache.getMaterialCount();
             stats.fallback_white_texture_ready = resource_cache.hasFallbackWhiteTexture();
@@ -1242,6 +1332,44 @@ namespace NexAur {
             stats.reflection_probe_runtime_capture_limit = queue_state.resident_capture_limit;
             stats.reflection_probe_last_captured_entity_id =
                 queue_state.last_captured_entity_id;
+            return stats;
+        }
+
+        RendererDebugRayTracingSceneTableStats
+        buildRayTracingSceneTableDebugStats() const {
+            RendererDebugRayTracingSceneTableStats stats;
+            const VulkanRayTracingCapabilities& capabilities =
+                device_context.getRayTracingCapabilities();
+            stats.capability_supported =
+                capabilities.ray_query_enabled &&
+                capabilities.supportsReflectionShading();
+            if (last_frame_slot_index >= frame_contexts.size()) {
+                return stats;
+            }
+
+            const VulkanRayTracingSceneTableStats& table_stats =
+                frame_contexts[last_frame_slot_index]
+                    .getRayTracingShadingTableStats();
+            stats.initialized = table_stats.initialized;
+            stats.ready = table_stats.ready;
+            stats.descriptor_ready = table_stats.descriptor_ready;
+            stats.bda_geometry_fetch_enabled =
+                table_stats.bda_geometry_fetch_enabled;
+            stats.descriptor_indexed_geometry_fetch_enabled =
+                table_stats.descriptor_indexed_geometry_fetch_enabled;
+            stats.instance_count = table_stats.instance_count;
+            stats.geometry_count = table_stats.geometry_count;
+            stats.material_count = table_stats.material_count;
+            stats.texture_count = table_stats.texture_count;
+            stats.texture_capacity = table_stats.texture_capacity;
+            stats.texture_overflow_count = table_stats.texture_overflow_count;
+            stats.geometry_descriptor_capacity =
+                table_stats.geometry_descriptor_capacity;
+            stats.geometry_overflow_count = table_stats.geometry_overflow_count;
+            stats.instance_buffer_bytes = table_stats.instance_buffer_bytes;
+            stats.geometry_buffer_bytes = table_stats.geometry_buffer_bytes;
+            stats.material_buffer_bytes = table_stats.material_buffer_bytes;
+            stats.last_failure_reason = table_stats.last_failure_reason;
             return stats;
         }
 
@@ -1451,8 +1579,9 @@ namespace NexAur {
 
         bool initFrameContexts() {
             const VulkanResourceContext context = createResourceContext();
-            const bool ray_query_enabled =
-                device_context.getRayTracingCapabilities().ray_query_enabled;
+            const VulkanRayTracingCapabilities& ray_tracing_capabilities =
+                device_context.getRayTracingCapabilities();
+            const bool ray_query_enabled = ray_tracing_capabilities.ray_query_enabled;
             const VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout =
                 ray_query_enabled ?
                 descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::RayTracingScene) :
@@ -1460,6 +1589,18 @@ namespace NexAur {
             if (ray_query_enabled && ray_tracing_scene_descriptor_set_layout == VK_NULL_HANDLE) {
                 NX_CORE_ERROR("Failed to create the Ray Query scene descriptor set layout.");
                 return false;
+            }
+            const bool reflection_shading_enabled =
+                ray_query_enabled && ray_tracing_capabilities.supportsReflectionShading();
+            const VkDescriptorSetLayout ray_tracing_shading_scene_descriptor_set_layout =
+                reflection_shading_enabled ?
+                descriptor_layout_cache.getRayTracingShadingSceneLayout(
+                    ray_tracing_capabilities.reflection_texture_capacity,
+                    ray_tracing_capabilities.reflection_geometry_descriptor_capacity) :
+                VK_NULL_HANDLE;
+            if (reflection_shading_enabled &&
+                ray_tracing_shading_scene_descriptor_set_layout == VK_NULL_HANDLE) {
+                NX_CORE_WARN("RT reflection shading tables are unavailable: descriptor layout creation failed.");
             }
             for (uint32_t frame_index = 0;
                  frame_index < static_cast<uint32_t>(frame_contexts.size());
@@ -1469,7 +1610,14 @@ namespace NexAur {
                         descriptor_layout_cache,
                         descriptor_allocator,
                         frame_index,
-                        ray_tracing_scene_descriptor_set_layout)) {
+                        ray_tracing_scene_descriptor_set_layout,
+                        ray_tracing_shading_scene_descriptor_set_layout,
+                        reflection_shading_enabled ?
+                            ray_tracing_capabilities.reflection_texture_capacity :
+                            0u,
+                        reflection_shading_enabled ?
+                            ray_tracing_capabilities.reflection_geometry_descriptor_capacity :
+                            0u)) {
                     cleanupFrameContexts();
                     return false;
                 }
@@ -1638,6 +1786,7 @@ namespace NexAur {
             if (!VulkanDiagnosticsCollector::checkVk(
                     vkResetFences(device.device, 1, &frame_fence),
                     "vkResetFences(renderer frame context)")) {
+                frame_context.discardRayQueryGpuTiming();
                 return;
             }
 
@@ -1660,6 +1809,7 @@ namespace NexAur {
                         &submit_info,
                         frame_fence),
                     "vkQueueSubmit(renderer frame context)")) {
+                frame_context.discardRayQueryGpuTiming();
                 return;
             }
             const uint64_t submission_serial = retirement_queue.markSubmitted();
@@ -1730,6 +1880,7 @@ namespace NexAur {
                 return false;
             }
             picking_manager.beginFrameRecording(frame_context.getFrameIndex());
+            frame_context.discardRayQueryGpuTiming();
 
             const VkCommandBuffer command_buffer = frame_context.getCommandBuffer();
             if (!VulkanDiagnosticsCollector::checkVk(vkResetCommandBuffer(command_buffer, 0), "vkResetCommandBuffer")) {
@@ -1742,6 +1893,8 @@ namespace NexAur {
             if (!VulkanDiagnosticsCollector::checkVk(vkBeginCommandBuffer(command_buffer, &begin_info), "vkBeginCommandBuffer")) {
                 return false;
             }
+            frame_context.getRayTracingShadingTable().recordShaderReadBarrier(
+                command_buffer);
 
             VulkanPassGraph graph;
             if (!buildFrameRenderGraph(
@@ -1756,10 +1909,12 @@ namespace NexAur {
             }
 
             if (!graph_executor.execute(graph, command_buffer)) {
+                frame_context.discardRayQueryGpuTiming();
                 return false;
             }
 
             if (!VulkanDiagnosticsCollector::checkVk(vkEndCommandBuffer(command_buffer), "vkEndCommandBuffer")) {
+                frame_context.discardRayQueryGpuTiming();
                 return false;
             }
 
@@ -1806,7 +1961,9 @@ namespace NexAur {
             if (feature_plan.rendersSmaa()) {
                 resources.smaa_source = smaa_feature.addSourceImage(graph);
             }
-            if (feature_plan.usesRayQueryDebug() || feature_plan.usesRayQueryShadow()) {
+            if (feature_plan.usesRayQueryDebug() ||
+                feature_plan.usesRayQueryShadow() ||
+                feature_plan.usesRayQueryAo()) {
                 const VulkanAccelerationStructure* tlas =
                     tlas_manager.get(frame_context.getFrameIndex());
                 if (tlas == nullptr) {
@@ -1874,12 +2031,19 @@ namespace NexAur {
                  frame_descriptor_set,
                  frame_index,
                  &feature_plan](VkCommandBuffer target_command_buffer) {
+                    VulkanFrameContext& timing_frame =
+                        frame_contexts[frame_index];
+                    const bool timing_started =
+                        (feature_plan.usesRayQueryDebug() ||
+                         feature_plan.usesRayQueryShadow()) &&
+                        timing_frame.beginRayQueryGpuTiming(
+                            target_command_buffer);
                     VulkanForwardPassRenderOptions options = forwardAfterSkyboxOptions();
                     options.ray_tracing_scene_descriptor_set =
                         frame_contexts[frame_index].getRayTracingSceneDescriptorSet();
                     options.ray_query_debug = feature_plan.usesRayQueryDebug();
                     options.ray_query_shadow = feature_plan.usesRayQueryShadow();
-                    return forward_pass.record(
+                    const bool recorded = forward_pass.record(
                         target_command_buffer,
                         scene_target,
                         draw_list,
@@ -1887,20 +2051,38 @@ namespace NexAur {
                         resolveEnvironmentDescriptorSet(draw_list),
                         resolveReflectionProbeDescriptorSet(draw_list),
                         options);
+                    if (timing_started) {
+                        if (!recorded ||
+                            !timing_frame.endRayQueryGpuTiming(
+                                target_command_buffer)) {
+                            timing_frame.discardRayQueryGpuTiming();
+                        }
+                    }
+                    return recorded;
                 };
             callbacks.add_ao =
-                [this, &draw_list, scene_target, &render_settings, frame_index](
+                [this,
+                 &draw_list,
+                 scene_target,
+                 &render_settings,
+                 &feature_plan,
+                 &frame_context,
+                 frame_index](
                     VulkanPassGraph& target_graph,
                     VulkanGraphImageHandle depth,
                     VulkanGraphImageHandle raw,
-                    VulkanGraphImageHandle blurred) {
+                    VulkanGraphImageHandle blurred,
+                    VulkanGraphAccelerationStructureHandle ray_query_scene) {
                     return ao_feature.addPasses(
                         target_graph,
                         depth,
+                        ray_query_scene,
                         VulkanAoFeatureGraphResources{ raw, blurred },
                         scene_target.depth_view,
                         draw_list.view,
                         render_settings.ao,
+                        feature_plan.getAoTechnique(),
+                        frame_context.getRayTracingSceneDescriptorSet(),
                         frame_index);
                 };
             callbacks.add_ssr =

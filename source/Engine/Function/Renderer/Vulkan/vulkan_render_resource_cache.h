@@ -11,6 +11,7 @@
 
 #include "Core/Base.h"
 #include "Function/Resource/asset_handle.h"
+#include "Function/Resource/texture_types.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_environment_resource.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_model_resource.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_texture_resource.h"
@@ -66,6 +67,14 @@ namespace NexAur {
             const std::vector<float>& rgba_pixels,
             const VulkanEnvironmentResourceBuildSettings& settings);
         VulkanTextureResource* getFallbackWhiteTexture() const { return m_fallback_white_texture.get(); }
+        VulkanRayTracingFallbackTextures getRayTracingFallbackTextures() const {
+            VulkanRayTracingFallbackTextures textures;
+            textures.white = m_fallback_white_texture.get();
+            textures.black = m_fallback_black_texture.get();
+            textures.flat_normal = m_fallback_flat_normal_texture.get();
+            textures.metallic_roughness = m_fallback_metallic_roughness_texture.get();
+            return textures;
+        }
         VulkanMaterialResource* getFallbackMaterial() const { return m_fallback_material.get(); }
         VulkanEnvironmentResource* getFallbackEnvironment() const { return m_fallback_environment.get(); }
         size_t getModelCount() const { return m_model_cache.size(); }
@@ -91,7 +100,15 @@ namespace NexAur {
     private:
         bool createUploadCommandPool(const VulkanResourceContext& context);
         bool resolveDescriptorLayouts();
-        bool createFallbackTexture();
+        bool createFallbackTextures();
+        bool createFallbackTexture(
+            std::unique_ptr<VulkanTextureResource>& resource,
+            uint8_t red,
+            uint8_t green,
+            uint8_t blue,
+            uint8_t alpha,
+            TextureColorSpace color_space,
+            const char* debug_name);
         bool createFallbackMaterial(AssetManager& asset_manager);
         bool createFallbackEnvironment();
         uint64_t allocateModelGeneration();
@@ -121,6 +138,9 @@ namespace NexAur {
         std::unordered_map<AssetHandle, CachedMaterialResource> m_material_cache;
         std::unordered_map<AssetHandle, std::unique_ptr<VulkanEnvironmentResource>> m_environment_cache;
         std::unique_ptr<VulkanTextureResource> m_fallback_white_texture;
+        std::unique_ptr<VulkanTextureResource> m_fallback_black_texture;
+        std::unique_ptr<VulkanTextureResource> m_fallback_flat_normal_texture;
+        std::unique_ptr<VulkanTextureResource> m_fallback_metallic_roughness_texture;
         std::unique_ptr<VulkanMaterialResource> m_fallback_material;
         std::unique_ptr<VulkanEnvironmentResource> m_fallback_environment;
         uint64_t m_next_model_generation = 1;

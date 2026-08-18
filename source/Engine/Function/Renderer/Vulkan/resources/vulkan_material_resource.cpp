@@ -86,6 +86,40 @@ namespace NexAur {
         m_descriptor_allocator = context.descriptor_allocator;
         m_debug_name = material_asset.getDebugName();
 
+        m_ray_tracing_shading_data = {};
+        m_ray_tracing_shading_data.record.base_color_factor =
+            material_asset.getBaseColorFactor();
+        m_ray_tracing_shading_data.record.emissive_factor_normal_scale = glm::vec4{
+            material_asset.getEmissiveFactor() * material_asset.getEmissiveStrength(),
+            material_asset.getNormalScale()
+        };
+        m_ray_tracing_shading_data.record.metallic_roughness_alpha_flags = glm::vec4{
+            material_asset.getMetallicFactor(),
+            material_asset.getRoughnessFactor(),
+            material_asset.getAlphaCutoff(),
+            alphaModeToFloat(material_asset.getAlphaMode())
+        };
+        m_ray_tracing_shading_data.base_color = textures.base_color;
+        m_ray_tracing_shading_data.normal = textures.normal;
+        m_ray_tracing_shading_data.metallic = textures.metallic;
+        m_ray_tracing_shading_data.roughness = textures.roughness;
+        m_ray_tracing_shading_data.metallic_roughness = textures.metallic_roughness;
+        m_ray_tracing_shading_data.ao = textures.ao;
+        m_ray_tracing_shading_data.emissive = textures.emissive;
+        m_ray_tracing_shading_data.generation = material_asset.getGeneration();
+        m_ray_tracing_shading_data.double_sided = material_asset.isDoubleSided();
+        m_ray_tracing_shading_data.ray_tracing_opaque =
+            material_asset.getAlphaMode() == MaterialAlphaMode::Opaque;
+        m_ray_tracing_shading_data.texture_flags =
+            (material_asset.hasBaseColorTexture() ? kVulkanRtMaterialBaseColorTextureBit : 0u) |
+            (material_asset.hasNormalTexture() ? kVulkanRtMaterialNormalTextureBit : 0u) |
+            (material_asset.hasMetallicTexture() ? kVulkanRtMaterialMetallicTextureBit : 0u) |
+            (material_asset.hasRoughnessTexture() ? kVulkanRtMaterialRoughnessTextureBit : 0u) |
+            (material_asset.usesPackedMetallicRoughness() ?
+                kVulkanRtMaterialPackedMetallicRoughnessTextureBit : 0u) |
+            (material_asset.hasAOTexture() ? kVulkanRtMaterialAoTextureBit : 0u) |
+            (material_asset.hasEmissiveTexture() ? kVulkanRtMaterialEmissiveTextureBit : 0u);
+
         VulkanMaterialConstants constants;
         constants.base_color_factor = material_asset.getBaseColorFactor();
         constants.emissive_factor_normal_scale = glm::vec4{
@@ -193,6 +227,7 @@ namespace NexAur {
         m_descriptor_set = VK_NULL_HANDLE;
         m_material_buffer = VK_NULL_HANDLE;
         m_material_allocation = VK_NULL_HANDLE;
+        m_ray_tracing_shading_data = {};
     }
 
     void VulkanMaterialResource::moveFrom(VulkanMaterialResource&& other) noexcept {
@@ -204,6 +239,7 @@ namespace NexAur {
         m_descriptor_set = other.m_descriptor_set;
         m_material_buffer = other.m_material_buffer;
         m_material_allocation = other.m_material_allocation;
+        m_ray_tracing_shading_data = other.m_ray_tracing_shading_data;
 
         other.m_allocator = VK_NULL_HANDLE;
         other.m_device = VK_NULL_HANDLE;
@@ -212,5 +248,6 @@ namespace NexAur {
         other.m_descriptor_set = VK_NULL_HANDLE;
         other.m_material_buffer = VK_NULL_HANDLE;
         other.m_material_allocation = VK_NULL_HANDLE;
+        other.m_ray_tracing_shading_data = {};
     }
 } // namespace NexAur

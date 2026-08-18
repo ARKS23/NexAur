@@ -2,6 +2,7 @@
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 
 #include <cstring>
+#include <algorithm>
 #include <vector>
 
 namespace NexAur {
@@ -44,6 +45,45 @@ namespace NexAur {
     bool VulkanRayTracingCapabilities::supportsRayQuery() const {
         return acceleration_structure && ray_query && buffer_device_address &&
                deferred_host_operations;
+    }
+
+    uint32_t chooseVulkanReflectionTextureCapacity(
+        uint32_t max_descriptor_set_sampled_images,
+        uint32_t max_per_stage_descriptor_sampled_images,
+        uint32_t requested_capacity) {
+        constexpr uint32_t kFallbackTextureSlotCount = 4;
+        if (requested_capacity < kFallbackTextureSlotCount) {
+            return 0;
+        }
+
+        const uint32_t available = std::min(
+            max_descriptor_set_sampled_images,
+            max_per_stage_descriptor_sampled_images);
+        if (available < kFallbackTextureSlotCount) {
+            return 0;
+        }
+        return std::min(available, requested_capacity);
+    }
+
+    uint32_t chooseVulkanReflectionGeometryDescriptorCapacity(
+        uint32_t max_descriptor_set_storage_buffers,
+        uint32_t max_per_stage_descriptor_storage_buffers,
+        uint32_t requested_capacity) {
+        constexpr uint32_t kTableStorageBufferCount = 3;
+        constexpr uint32_t kGeometryBufferArrayCount = 2;
+        constexpr uint32_t kMinimumCapacity = 2;
+        const uint32_t available = std::min(
+            max_descriptor_set_storage_buffers,
+            max_per_stage_descriptor_storage_buffers);
+        if (available <= kTableStorageBufferCount || requested_capacity < kMinimumCapacity) {
+            return 0;
+        }
+
+        const uint32_t array_capacity =
+            (available - kTableStorageBufferCount) / kGeometryBufferArrayCount;
+        return array_capacity >= kMinimumCapacity ?
+            std::min(array_capacity, requested_capacity) :
+            0;
     }
 
     VulkanRayTracingDeviceSupport queryVulkanRayTracingDeviceSupport(
@@ -109,6 +149,10 @@ namespace NexAur {
         ray_tracing_pipeline_features.sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
 
+        VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features{};
+        descriptor_indexing_features.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+
         VkPhysicalDeviceFeatures2 features{};
         features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         features.pNext = &buffer_device_address_features;
@@ -123,7 +167,9 @@ namespace NexAur {
         }
         if (support.ray_tracing_pipeline_extension) {
             *chain_tail = &ray_tracing_pipeline_features;
+            chain_tail = &ray_tracing_pipeline_features.pNext;
         }
+        *chain_tail = &descriptor_indexing_features;
         vkGetPhysicalDeviceFeatures2(physical_device, &features);
 
         support.buffer_device_address_feature =
@@ -133,6 +179,12 @@ namespace NexAur {
         support.ray_query_feature = ray_query_features.rayQuery == VK_TRUE;
         support.ray_tracing_pipeline_feature =
             ray_tracing_pipeline_features.rayTracingPipeline == VK_TRUE;
+        support.runtime_descriptor_array_feature =
+            descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE;
+        support.shader_sampled_image_array_non_uniform_indexing_feature =
+            descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing == VK_TRUE;
+        support.shader_storage_buffer_array_non_uniform_indexing_feature =
+            descriptor_indexing_features.shaderStorageBufferArrayNonUniformIndexing == VK_TRUE;
 
         if (support.acceleration_structure_extension) {
             VkPhysicalDeviceAccelerationStructurePropertiesKHR acceleration_structure_properties{};
@@ -149,6 +201,18 @@ namespace NexAur {
             support.max_geometry_count = acceleration_structure_properties.maxGeometryCount;
             support.max_instance_count = acceleration_structure_properties.maxInstanceCount;
         }
+
+        VkPhysicalDeviceProperties2 properties{};
+        properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        vkGetPhysicalDeviceProperties2(physical_device, &properties);
+        support.max_descriptor_set_sampled_images =
+            properties.properties.limits.maxDescriptorSetSampledImages;
+        support.max_per_stage_descriptor_sampled_images =
+            properties.properties.limits.maxPerStageDescriptorSampledImages;
+        support.max_descriptor_set_storage_buffers =
+            properties.properties.limits.maxDescriptorSetStorageBuffers;
+        support.max_per_stage_descriptor_storage_buffers =
+            properties.properties.limits.maxPerStageDescriptorStorageBuffers;
 
         support.query_succeeded = true;
         return support;
@@ -179,6 +243,20 @@ namespace NexAur {
             capabilities.acceleration_structure &&
             capabilities.buffer_device_address &&
             capabilities.deferred_host_operations;
+        capabilities.reflection_texture_capacity =
+            chooseVulkanReflectionTextureCapacity(
+                support.max_descriptor_set_sampled_images,
+                support.max_per_stage_descriptor_sampled_images);
+        capabilities.reflection_geometry_descriptor_capacity =
+            chooseVulkanReflectionGeometryDescriptorCapacity(
+                support.max_descriptor_set_storage_buffers,
+                support.max_per_stage_descriptor_storage_buffers);
+        capabilities.reflection_shading =
+            capabilities.reflection_texture_capacity > 0 &&
+            capabilities.reflection_geometry_descriptor_capacity > 0 &&
+            support.runtime_descriptor_array_feature &&
+            support.shader_sampled_image_array_non_uniform_indexing_feature &&
+            support.shader_storage_buffer_array_non_uniform_indexing_feature;
         capabilities.min_scratch_alignment = support.min_scratch_alignment;
         capabilities.max_geometry_count = support.max_geometry_count;
         capabilities.max_instance_count = support.max_instance_count;

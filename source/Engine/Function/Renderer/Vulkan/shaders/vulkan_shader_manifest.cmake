@@ -13,6 +13,8 @@ set(NEXAUR_VULKAN_SHADER_PROGRAMS
     "BloomComposite|bloom/vulkan_bloom_composite.hlsl|vs_6_0|VSMain|vulkan_bloom_composite.vert.spv|ps_6_0|PSMain|vulkan_bloom_composite.frag.spv"
     "Ssao|ao/vulkan_ssao.hlsl|vs_6_0|VSMain|vulkan_ssao.vert.spv|ps_6_0|PSMain|vulkan_ssao.frag.spv"
     "AoBlur|ao/vulkan_ao_blur.hlsl|vs_6_0|VSMain|vulkan_ao_blur.vert.spv|ps_6_0|PSMain|vulkan_ao_blur.frag.spv"
+    "RayQueryAo|ao/vulkan_rtao.hlsl|vs_6_0|VSMain|vulkan_rtao.vert.spv|ps_6_5|PSMain|vulkan_rtao.frag.spv"
+    "RayQueryAoFilter|ao/vulkan_rtao_filter.hlsl|vs_6_0|VSMain|vulkan_rtao_filter.vert.spv|ps_6_0|PSMain|vulkan_rtao_filter.frag.spv"
     "SsrTrace|reflection/vulkan_ssr_trace.hlsl|vs_6_0|VSMain|vulkan_ssr_trace.vert.spv|ps_6_0|PSMain|vulkan_ssr_trace.frag.spv"
     "SmaaEdge|post/vulkan_smaa_edge.hlsl|vs_6_0|VSMain|vulkan_smaa_edge.vert.spv|ps_6_0|PSMain|vulkan_smaa_edge.frag.spv"
     "SmaaBlend|post/vulkan_smaa_blend.hlsl|vs_6_0|VSMain|vulkan_smaa_blend.vert.spv|ps_6_0|PSMain|vulkan_smaa_blend.frag.spv"

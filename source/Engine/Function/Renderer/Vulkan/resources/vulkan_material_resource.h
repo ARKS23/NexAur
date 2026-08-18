@@ -8,6 +8,7 @@
 
 #include "Core/Base.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_table.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
 namespace NexAur {
@@ -47,6 +48,21 @@ namespace NexAur {
         }
     };
 
+    struct VulkanMaterialShadingData {
+        GpuRtMaterialRecord record;
+        const VulkanTextureResource* base_color = nullptr;
+        const VulkanTextureResource* normal = nullptr;
+        const VulkanTextureResource* metallic = nullptr;
+        const VulkanTextureResource* roughness = nullptr;
+        const VulkanTextureResource* metallic_roughness = nullptr;
+        const VulkanTextureResource* ao = nullptr;
+        const VulkanTextureResource* emissive = nullptr;
+        uint32_t texture_flags = 0;
+        uint64_t generation = 0;
+        bool double_sided = false;
+        bool ray_tracing_opaque = true;
+    };
+
     class VulkanMaterialResource {
     public:
         VulkanMaterialResource() = default;
@@ -71,6 +87,13 @@ namespace NexAur {
 
         const std::string& getDebugName() const { return m_debug_name; }
         VkDescriptorSet getDescriptorSet() const { return m_descriptor_set; }
+        uint64_t getGeneration() const { return m_ray_tracing_shading_data.generation; }
+        bool isRayTracingOpaque() const {
+            return m_ray_tracing_shading_data.ray_tracing_opaque;
+        }
+        VulkanMaterialShadingData getRayTracingShadingData() const {
+            return m_ray_tracing_shading_data;
+        }
 
     private:
         void moveFrom(VulkanMaterialResource&& other) noexcept;
@@ -84,5 +107,6 @@ namespace NexAur {
         VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
         VkBuffer m_material_buffer = VK_NULL_HANDLE;
         VmaAllocation m_material_allocation = VK_NULL_HANDLE;
+        VulkanMaterialShadingData m_ray_tracing_shading_data;
     };
 } // namespace NexAur

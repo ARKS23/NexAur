@@ -145,7 +145,8 @@ namespace NexAur {
             context.gpu_allocator->isBufferDeviceAddressEnabled();
         const VkBufferUsageFlags ray_tracing_usage = device_address_enabled ?
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT :
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT :
             0;
 
         VulkanOwnedBufferCreateInfo vertex_buffer_info;

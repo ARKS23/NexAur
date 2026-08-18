@@ -19,11 +19,13 @@ namespace NexAur {
 
         std::vector<VkDescriptorPoolSize> descriptorPoolSizes(
             uint32_t max_sets,
-            bool acceleration_structure_enabled) {
-            std::vector<VkDescriptorPoolSize> pool_sizes{
-                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, max_sets * 2 },
-                { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, max_sets },
-                { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_sets * 8 },
+            bool acceleration_structure_enabled,
+            uint32_t sampled_image_descriptors_per_set,
+            uint32_t storage_buffer_descriptors_per_set) {
+        std::vector<VkDescriptorPoolSize> pool_sizes{
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, max_sets * 2 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, max_sets * storage_buffer_descriptors_per_set },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_sets * sampled_image_descriptors_per_set },
                 { VK_DESCRIPTOR_TYPE_SAMPLER, max_sets * 4 },
                 { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, max_sets * 4 }
             };
@@ -43,7 +45,9 @@ namespace NexAur {
 
     bool VulkanDescriptorAllocator::init(
         VkDevice device,
-        bool acceleration_structure_enabled) {
+        bool acceleration_structure_enabled,
+        uint32_t sampled_image_descriptors_per_set,
+        uint32_t storage_buffer_descriptors_per_set) {
         shutdown();
 
         if (device == VK_NULL_HANDLE) {
@@ -54,6 +58,10 @@ namespace NexAur {
         m_device = device;
         m_next_pool_set_count = 128;
         m_acceleration_structure_enabled = acceleration_structure_enabled;
+        m_sampled_image_descriptors_per_set =
+            std::max(8u, sampled_image_descriptors_per_set);
+        m_storage_buffer_descriptors_per_set =
+            std::max(4u, storage_buffer_descriptors_per_set);
         return true;
     }
 
@@ -69,6 +77,8 @@ namespace NexAur {
         m_pools.clear();
         m_next_pool_set_count = 128;
         m_acceleration_structure_enabled = false;
+        m_sampled_image_descriptors_per_set = 8;
+        m_storage_buffer_descriptors_per_set = 4;
         m_device = VK_NULL_HANDLE;
     }
 
@@ -108,7 +118,9 @@ namespace NexAur {
     VkDescriptorPool VulkanDescriptorAllocator::createPool(uint32_t max_sets) const {
         const std::vector<VkDescriptorPoolSize> pool_sizes = descriptorPoolSizes(
             max_sets,
-            m_acceleration_structure_enabled);
+            m_acceleration_structure_enabled,
+            m_sampled_image_descriptors_per_set,
+            m_storage_buffer_descriptors_per_set);
 
         VkDescriptorPoolCreateInfo pool_info{};
         pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -22,6 +23,8 @@
 
 #include "Core/Log/log_system.h"
 #include "Function/Resource/mesh.h"
+#include "Function/Resource/material_asset.h"
+#include "Function/Resource/texture_asset.h"
 #include "Function/Renderer/data/render_settings.h"
 #include "Function/Renderer/data/render_context.h"
 #include "Function/Renderer/data/render_data.h"
@@ -43,11 +46,14 @@
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
+#include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_table.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_static_mesh_blas_cache.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_tlas_manager.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_resource.h"
 #include "Function/Renderer/Vulkan/reflection_probe_residency.h"
 #include "Function/Renderer/Vulkan/resources/vulkan_mesh_resource.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_material_resource.h"
+#include "Function/Renderer/Vulkan/resources/vulkan_texture_resource.h"
 #include "Function/Renderer/Vulkan/upload/vulkan_upload_manager.h"
 #include "Function/Renderer/Vulkan/vulkan_resource_context.h"
 
@@ -820,11 +826,31 @@ int runFrameFeaturePlanSmoke() {
         "Frame feature plan should select the available viewport output route.");
     expect(
         default_plan.rendersAo() &&
+            default_plan.getAoTechnique() == NexAur::VulkanAoTechnique::ScreenSpace &&
             !default_plan.rendersSsr() &&
             default_plan.rendersBloom() &&
             default_plan.rendersSmaa() &&
             !default_plan.usesRayQueryShadow(),
         "Frame feature plan did not preserve default feature enable decisions.");
+
+    settings.ao.mode = NexAur::RenderAoMode::RayQuery;
+    const NexAur::VulkanRenderFeaturePlan unavailable_rtao_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        unavailable_rtao_plan.rendersAo() &&
+            unavailable_rtao_plan.getAoTechnique() ==
+                NexAur::VulkanAoTechnique::ScreenSpace &&
+            !unavailable_rtao_plan.usesRayQueryAo(),
+        "Unavailable RTAO should fall back to the mutually exclusive SSAO path.");
+    available.ray_query_ao = true;
+    const NexAur::VulkanRenderFeaturePlan rtao_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, available);
+    expect(
+        rtao_plan.rendersAo() &&
+            rtao_plan.usesRayQueryAo() &&
+            rtao_plan.getAoTechnique() == NexAur::VulkanAoTechnique::RayQuery,
+        "Ready RTAO should replace SSAO in the frame feature plan.");
+    settings.ao.mode = NexAur::RenderAoMode::ScreenSpace;
 
     settings.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::RayQuery;
     const NexAur::VulkanRenderFeaturePlan unavailable_ray_query_shadow_plan =
@@ -989,7 +1015,8 @@ int runFrameFeaturePlanSmoke() {
             NexAur::VulkanPassGraph&,
             NexAur::VulkanGraphImageHandle,
             NexAur::VulkanGraphImageHandle,
-            NexAur::VulkanGraphImageHandle) {
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphAccelerationStructureHandle) {
             ++ao_calls;
             return true;
         };
@@ -1076,6 +1103,25 @@ int runFrameFeaturePlanSmoke() {
             makeResources(),
             viewport_callbacks),
         "Frame graph builder rejected a ready directional Ray Query shadow resource.");
+
+    NexAur::VulkanPassGraph rtao_graph;
+    expect(
+        graph_builder.build(
+            rtao_graph,
+            rtao_plan,
+            makeResources(),
+            viewport_callbacks),
+        "Frame graph builder rejected a ready RTAO resource set.");
+    NexAur::VulkanFrameGraphResources missing_rtao_resources = makeResources();
+    missing_rtao_resources.ray_query_scene = {};
+    NexAur::VulkanPassGraph missing_rtao_graph;
+    expect(
+        !graph_builder.build(
+            missing_rtao_graph,
+            rtao_plan,
+            missing_rtao_resources,
+            viewport_callbacks),
+        "RTAO frame graph should require an imported TLAS resource.");
 
     ao_calls = 0;
     ssr_calls = 0;
@@ -1724,10 +1770,14 @@ int runRenderSettingsSmoke() {
     settings.anti_aliasing.smaa_max_search_steps = 6u;
     settings.anti_aliasing.smaa_blend_strength = 0.55f;
     settings.ao.enabled = true;
+    settings.ao.mode = NexAur::RenderAoMode::RayQuery;
     settings.ao.radius = 1.4f;
     settings.ao.intensity = 0.7f;
     settings.ao.bias = 0.03f;
     settings.ao.power = 1.35f;
+    settings.ao.ray_count = 7u;
+    settings.ao.filter_depth_threshold = 0.65f;
+    settings.ao.filter_normal_threshold = 0.9f;
     settings.ao.blur_enabled = false;
     settings.ao.half_resolution = false;
     settings.ssr.enabled = true;
@@ -1871,10 +1921,14 @@ int runRenderSettingsSmoke() {
         "RenderSettings smoke failed: lighting calibration settings did not reach the read packet.");
     expect(
         first_ao.enabled &&
+        first_ao.mode == NexAur::RenderAoMode::RayQuery &&
         nearlyEqual(first_ao.radius, 1.4f) &&
         nearlyEqual(first_ao.intensity, 0.7f) &&
         nearlyEqual(first_ao.bias, 0.03f) &&
         nearlyEqual(first_ao.power, 1.35f) &&
+        first_ao.ray_count == 7u &&
+        nearlyEqual(first_ao.filter_depth_threshold, 0.65f) &&
+        nearlyEqual(first_ao.filter_normal_threshold, 0.9f) &&
         !first_ao.blur_enabled &&
         !first_ao.half_resolution,
         "RenderSettings smoke failed: AO settings did not reach the read packet.");
@@ -1967,10 +2021,14 @@ int runRenderSettingsSmoke() {
 
     NexAur::applyRenderLightingPreset(settings, NexAur::RenderLightingPreset::Cornell);
     settings.ao.enabled = false;
+    settings.ao.mode = NexAur::RenderAoMode::ScreenSpace;
     settings.ao.radius = 0.8f;
     settings.ao.intensity = 0.25f;
     settings.ao.bias = 0.01f;
     settings.ao.power = 2.0f;
+    settings.ao.ray_count = 2u;
+    settings.ao.filter_depth_threshold = 0.25f;
+    settings.ao.filter_normal_threshold = 0.7f;
     settings.ao.blur_enabled = true;
     settings.ao.half_resolution = true;
     settings.ssr.enabled = false;
@@ -2131,10 +2189,14 @@ int runRenderSettingsSmoke() {
         "RenderSettings smoke failed: Cornell lighting preset did not reach the read packet.");
     expect(
         !second_ao.enabled &&
+        second_ao.mode == NexAur::RenderAoMode::ScreenSpace &&
         nearlyEqual(second_ao.radius, 0.8f) &&
         nearlyEqual(second_ao.intensity, 0.25f) &&
         nearlyEqual(second_ao.bias, 0.01f) &&
         nearlyEqual(second_ao.power, 2.0f) &&
+        second_ao.ray_count == 2u &&
+        nearlyEqual(second_ao.filter_depth_threshold, 0.25f) &&
+        nearlyEqual(second_ao.filter_normal_threshold, 0.7f) &&
         second_ao.blur_enabled &&
         second_ao.half_resolution,
         "RenderSettings smoke failed: updated AO settings did not reach the read packet.");
@@ -2351,9 +2413,16 @@ int runRayTracingCapabilitiesSmoke() {
     complete_support.acceleration_structure_feature = true;
     complete_support.ray_query_feature = true;
     complete_support.ray_tracing_pipeline_feature = true;
+    complete_support.runtime_descriptor_array_feature = true;
+    complete_support.shader_sampled_image_array_non_uniform_indexing_feature = true;
+    complete_support.shader_storage_buffer_array_non_uniform_indexing_feature = true;
     complete_support.min_scratch_alignment = 256;
     complete_support.max_geometry_count = 4096;
     complete_support.max_instance_count = 8192;
+    complete_support.max_descriptor_set_sampled_images = 1024;
+    complete_support.max_per_stage_descriptor_sampled_images = 1024;
+    complete_support.max_descriptor_set_storage_buffers = 1024;
+    complete_support.max_per_stage_descriptor_storage_buffers = 1024;
 
     bool success = true;
     std::string failure;
@@ -2370,6 +2439,9 @@ int runRayTracingCapabilitiesSmoke() {
         automatic_capabilities.supportsRayQuery() &&
         automatic_capabilities.ray_query_enabled &&
         automatic_capabilities.ray_tracing_pipeline &&
+        automatic_capabilities.supportsReflectionShading() &&
+        automatic_capabilities.reflection_texture_capacity == 256u &&
+        automatic_capabilities.reflection_geometry_descriptor_capacity == 256u &&
         automatic_capabilities.unavailable_reason.empty(),
         "Ray tracing capability smoke failed: complete Auto capability was not enabled.");
     expect(
@@ -2446,6 +2518,27 @@ int runRayTracingCapabilitiesSmoke() {
         ray_query_only_capabilities.ray_query_enabled &&
         !ray_query_only_capabilities.ray_tracing_pipeline,
         "Ray tracing capability smoke failed: Ray Query incorrectly required the full RT pipeline.");
+
+    NexAur::VulkanRayTracingDeviceSupport no_reflection_descriptor_support =
+        complete_support;
+    no_reflection_descriptor_support
+        .shader_sampled_image_array_non_uniform_indexing_feature = false;
+    const NexAur::VulkanRayTracingCapabilities no_reflection_descriptor_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(no_reflection_descriptor_support);
+    expect(
+        no_reflection_descriptor_capabilities.ray_query_enabled &&
+        !no_reflection_descriptor_capabilities.supportsReflectionShading(),
+        "Ray tracing capability smoke failed: reflection descriptor indexing was not isolated.");
+
+    NexAur::VulkanRayTracingDeviceSupport no_runtime_descriptor_array_support =
+        complete_support;
+    no_runtime_descriptor_array_support.runtime_descriptor_array_feature = false;
+    const NexAur::VulkanRayTracingCapabilities no_runtime_descriptor_array_capabilities =
+        NexAur::negotiateVulkanRayTracingCapabilities(no_runtime_descriptor_array_support);
+    expect(
+        no_runtime_descriptor_array_capabilities.ray_query_enabled &&
+        !no_runtime_descriptor_array_capabilities.supportsReflectionShading(),
+        "Ray tracing capability smoke failed: runtime descriptor arrays were not isolated.");
 
     NexAur::VulkanRayTracingDeviceSupport failed_query_support;
     failed_query_support.query_failure_reason = "Synthetic capability query failure.";
@@ -2639,6 +2732,20 @@ int runStaticMeshBlasCacheContractSmoke() {
         stats.acceleration_structure_bytes == 0 &&
         stats.last_failure_reason == "None",
         "Static mesh BLAS contract failed: default cache diagnostics are invalid.");
+    expect(
+        NexAur::shouldCompactVulkanAccelerationStructure(8192, 4096, 1024) &&
+        !NexAur::shouldCompactVulkanAccelerationStructure(4096, 4096, 0) &&
+        !NexAur::shouldCompactVulkanAccelerationStructure(4096, 3072, 2048) &&
+        !NexAur::shouldCompactVulkanAccelerationStructure(4096, 0, 0),
+        "Static mesh BLAS contract failed: compaction threshold is incorrect.");
+
+    NexAur::VulkanStaticMeshBlasCacheConfig config;
+    expect(
+        config.valid() &&
+        config.enable_compaction &&
+        config.memory_budget_bytes > 0 &&
+        config.inactive_frame_retention > 0,
+        "Static mesh BLAS contract failed: default cache policy is invalid.");
 
     if (!success) {
         std::cerr << failure << std::endl;
@@ -2679,6 +2786,36 @@ int runTlasInstanceContractSmoke() {
         nearlyEqual(matrix.matrix[2][3], 6.0f),
         "TLAS instance contract failed: GLM transform conversion is incorrect.");
 
+    expect(
+        NexAur::growVulkanTlasInstanceCapacity(0, 0) == 0 &&
+        NexAur::growVulkanTlasInstanceCapacity(1, 0) == 1 &&
+        NexAur::growVulkanTlasInstanceCapacity(3, 1) == 4 &&
+        NexAur::growVulkanTlasInstanceCapacity(5, 4) == 8 &&
+        NexAur::growVulkanTlasInstanceCapacity(3, 8) == 8,
+        "TLAS instance contract failed: capacity growth is incorrect.");
+
+    NexAur::VulkanTlasBuildState previous_state;
+    expect(
+        NexAur::chooseVulkanTlasBuildMode(previous_state, 3, 10, 20) ==
+            NexAur::VulkanTlasBuildMode::Build,
+        "TLAS instance contract failed: an uninitialized slot did not rebuild.");
+    previous_state.ready = true;
+    previous_state.update_capable = true;
+    previous_state.instance_count = 3;
+    previous_state.instance_capacity = 4;
+    previous_state.topology_hash = 10;
+    previous_state.content_hash = 20;
+    expect(
+        NexAur::chooseVulkanTlasBuildMode(previous_state, 3, 10, 20) ==
+            NexAur::VulkanTlasBuildMode::Reuse &&
+        NexAur::chooseVulkanTlasBuildMode(previous_state, 3, 10, 21) ==
+            NexAur::VulkanTlasBuildMode::Update &&
+        NexAur::chooseVulkanTlasBuildMode(previous_state, 3, 11, 21) ==
+            NexAur::VulkanTlasBuildMode::Build &&
+        NexAur::chooseVulkanTlasBuildMode(previous_state, 5, 10, 21) ==
+            NexAur::VulkanTlasBuildMode::Build,
+        "TLAS instance contract failed: build/update/reuse selection is incorrect.");
+
     NexAur::VulkanTlasManager manager;
     const NexAur::VulkanTlasBuildStats stats = manager.getStats();
     expect(
@@ -2686,6 +2823,7 @@ int runTlasInstanceContractSmoke() {
         !stats.ready &&
         stats.source_instance_count == 0 &&
         stats.built_instance_count == 0 &&
+        stats.skipped_material_count == 0 &&
         stats.last_failure_reason == "None",
         "TLAS instance contract failed: default manager diagnostics are invalid.");
 
@@ -2695,6 +2833,77 @@ int runTlasInstanceContractSmoke() {
     }
 
     std::cout << "TLAS instance contract smoke passed." << std::endl;
+    return 0;
+}
+
+int runRayTracingSceneTableContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!success) {
+            return;
+        }
+        success = expectGameplay(condition, message, failure);
+    };
+
+    expect(
+        NexAur::kVulkanRtInvalidTableIndex == 0u &&
+        NexAur::kVulkanRtFallbackWhiteTextureIndex == 0u &&
+        NexAur::kVulkanRtFallbackBlackTextureIndex == 1u &&
+        NexAur::kVulkanRtFallbackFlatNormalTextureIndex == 2u &&
+        NexAur::kVulkanRtFallbackMetallicRoughnessTextureIndex == 3u &&
+        NexAur::kVulkanRtFallbackTextureSlotCount == 4u,
+        "RT scene table contract failed: fallback texture slots are not stable.");
+    expect(
+        NexAur::getVulkanRtInstanceTableIndex(0u) == 1u &&
+        NexAur::getVulkanRtInstanceTableIndex(5u) == 6u &&
+        NexAur::getVulkanRtInstanceTableIndex(
+            NexAur::kVulkanRtMaxInstanceCustomIndex - 1u) ==
+                NexAur::kVulkanRtMaxInstanceCustomIndex &&
+        NexAur::getVulkanRtInstanceTableIndex(
+            NexAur::kVulkanRtMaxInstanceCustomIndex) ==
+                NexAur::kVulkanRtInvalidTableIndex,
+        "RT scene table contract failed: instanceCustomIndex mapping is incorrect.");
+    expect(
+        NexAur::chooseVulkanReflectionTextureCapacity(3u, 3u) == 0u &&
+        NexAur::chooseVulkanReflectionTextureCapacity(64u, 128u) == 64u &&
+        NexAur::chooseVulkanReflectionTextureCapacity(1024u, 1024u) == 256u &&
+        NexAur::chooseVulkanReflectionGeometryDescriptorCapacity(6u, 6u) == 0u &&
+        NexAur::chooseVulkanReflectionGeometryDescriptorCapacity(7u, 7u) == 2u &&
+        NexAur::chooseVulkanReflectionGeometryDescriptorCapacity(1024u, 1024u) == 256u,
+        "RT scene table contract failed: descriptor capacity negotiation is incorrect.");
+
+    uint32_t index_offset = 99u;
+    expect(
+        NexAur::isVulkanRtTrianglePrimitiveInBounds(0u, 3u) &&
+        NexAur::isVulkanRtTrianglePrimitiveInBounds(1u, 6u) &&
+        !NexAur::isVulkanRtTrianglePrimitiveInBounds(2u, 6u) &&
+        !NexAur::isVulkanRtTrianglePrimitiveInBounds(0u, 4u) &&
+        NexAur::getVulkanRtTriangleIndexOffset(1u, 6u, index_offset) &&
+        index_offset == 3u &&
+        !NexAur::getVulkanRtTriangleIndexOffset(2u, 6u, index_offset) &&
+        index_offset == 0u,
+        "RT scene table contract failed: triangle index bounds are incorrect.");
+
+    NexAur::VulkanRayTracingSceneTableStats stats;
+    expect(
+        !stats.initialized &&
+        !stats.ready &&
+        !stats.descriptor_ready &&
+        !stats.bda_geometry_fetch_enabled &&
+        !stats.descriptor_indexed_geometry_fetch_enabled &&
+        stats.instance_count == 0u &&
+        stats.texture_overflow_count == 0u &&
+        stats.geometry_overflow_count == 0u &&
+        stats.last_failure_reason == "None",
+        "RT scene table contract failed: default diagnostics are invalid.");
+
+    if (!success) {
+        std::cerr << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Ray tracing scene table contract smoke passed." << std::endl;
     return 0;
 }
 
@@ -3239,11 +3448,17 @@ int runRayTracingSceneDeviceSmoke() {
     NexAur::VulkanDescriptorLayoutCache descriptor_layout_cache;
     NexAur::VulkanDescriptorAllocator descriptor_allocator;
     NexAur::VulkanRayTracingSceneResource ray_tracing_scene_resource;
+    NexAur::VulkanRayTracingSceneShadingTable ray_tracing_scene_table;
     NexAur::VulkanMeshResource first_generation_mesh;
     NexAur::VulkanMeshResource second_generation_mesh;
     NexAur::VulkanMeshResource batched_mesh;
     NexAur::VulkanMeshResource non_triangle_mesh;
     NexAur::VulkanMeshResource empty_mesh_resource;
+    NexAur::VulkanTextureResource fallback_white_texture;
+    NexAur::VulkanTextureResource fallback_black_texture;
+    NexAur::VulkanTextureResource fallback_flat_normal_texture;
+    NexAur::VulkanTextureResource fallback_metallic_roughness_texture;
+    NexAur::VulkanMaterialResource masked_material;
     VkCommandPool upload_context_pool = VK_NULL_HANDLE;
 
     NexAur::VulkanResourceContext resource_context;
@@ -3259,6 +3474,7 @@ int runRayTracingSceneDeviceSmoke() {
 
     auto cleanup = [&]() {
         ray_tracing_scene_resource.shutdown();
+        ray_tracing_scene_table.shutdown();
         tlas_manager.shutdown();
         blas_cache.shutdown();
         empty_mesh_resource.reset();
@@ -3266,6 +3482,11 @@ int runRayTracingSceneDeviceSmoke() {
         batched_mesh.reset();
         second_generation_mesh.reset();
         first_generation_mesh.reset();
+        masked_material.reset();
+        fallback_metallic_roughness_texture.reset();
+        fallback_flat_normal_texture.reset();
+        fallback_black_texture.reset();
+        fallback_white_texture.reset();
         upload_manager.shutdown();
         if (upload_context_pool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(
@@ -3288,7 +3509,14 @@ int runRayTracingSceneDeviceSmoke() {
 
     const bool descriptor_context_ready =
         descriptor_layout_cache.init(device_context.getDevice()) &&
-        descriptor_allocator.init(device_context.getDevice(), true);
+        descriptor_allocator.init(
+            device_context.getDevice(),
+            true,
+            capabilities.supportsReflectionShading() ?
+                capabilities.reflection_texture_capacity : 8u,
+            capabilities.supportsReflectionShading() ?
+                3u + capabilities.reflection_geometry_descriptor_capacity * 2u :
+                4u);
     const VkDescriptorSetLayout ray_tracing_scene_layout = descriptor_context_ready ?
         descriptor_layout_cache.getBuiltinLayout(
             NexAur::VulkanDescriptorSetLayoutId::RayTracingScene) :
@@ -3306,6 +3534,8 @@ int runRayTracingSceneDeviceSmoke() {
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     pool_info.queueFamilyIndex = device_context.getGraphicsQueueFamily();
+    NexAur::VulkanStaticMeshBlasCacheConfig blas_cache_config;
+    blas_cache_config.minimum_compaction_savings = 1;
     if (vkCreateCommandPool(
             device_context.getDevice(),
             &pool_info,
@@ -3315,7 +3545,8 @@ int runRayTracingSceneDeviceSmoke() {
         !blas_cache.init(
             resource_context,
             device_context.getRayTracingFunctions(),
-            capabilities.min_scratch_alignment) ||
+            capabilities.min_scratch_alignment,
+            blas_cache_config) ||
         !tlas_manager.init(
             resource_context,
             device_context.getRayTracingFunctions(),
@@ -3379,6 +3610,22 @@ int runRayTracingSceneDeviceSmoke() {
         }
     };
 
+    if (capabilities.supportsReflectionShading()) {
+        const VkDescriptorSetLayout shading_layout =
+            descriptor_layout_cache.getRayTracingShadingSceneLayout(
+                capabilities.reflection_texture_capacity,
+                capabilities.reflection_geometry_descriptor_capacity);
+        expect(
+            shading_layout != VK_NULL_HANDLE &&
+            ray_tracing_scene_table.init(
+                resource_context,
+                descriptor_allocator,
+                shading_layout,
+                capabilities.reflection_texture_capacity,
+                capabilities.reflection_geometry_descriptor_capacity),
+            "RT scene table device smoke table initialization failed.");
+    }
+
     expect(
         !empty_mesh_resource.create(upload_context, empty_mesh, empty_key),
         "empty mesh was accepted for GPU upload.");
@@ -3436,6 +3683,93 @@ int runRayTracingSceneDeviceSmoke() {
             "mesh uploads did not complete before the timeout.");
     }
 
+    if (success && capabilities.supportsReflectionShading()) {
+        const auto create_fallback_texture =
+            [&](NexAur::VulkanTextureResource& resource,
+                uint8_t red,
+                uint8_t green,
+                uint8_t blue,
+                NexAur::TextureColorSpace color_space,
+                const char* name) {
+                const std::shared_ptr<NexAur::TextureAsset> asset =
+                    std::make_shared<NexAur::TextureAsset>(
+                        1u,
+                        1u,
+                        NexAur::TexturePixelFormat::RGBA8,
+                        color_space,
+                        std::vector<uint8_t>{ red, green, blue, 255 },
+                        name != nullptr ? name : "RTTestFallbackTexture");
+                return asset && asset->isLoaded() &&
+                       resource.create(upload_context, *asset);
+            };
+        expect(
+            create_fallback_texture(
+                fallback_white_texture,
+                255,
+                255,
+                255,
+                NexAur::TextureColorSpace::SRGB,
+                "RTTestFallbackWhite") &&
+            create_fallback_texture(
+                fallback_black_texture,
+                0,
+                0,
+                0,
+                NexAur::TextureColorSpace::SRGB,
+                "RTTestFallbackBlack") &&
+            create_fallback_texture(
+                fallback_flat_normal_texture,
+                128,
+                128,
+                255,
+                NexAur::TextureColorSpace::Linear,
+                "RTTestFallbackFlatNormal") &&
+            create_fallback_texture(
+                fallback_metallic_roughness_texture,
+                0,
+                255,
+                0,
+                NexAur::TextureColorSpace::Linear,
+                "RTTestFallbackMetallicRoughness"),
+            "RT scene table device smoke could not create fallback textures.");
+        if (success) {
+            expect(
+                upload_manager.waitUntilReady(fallback_white_texture.getUploadTicket()) &&
+                upload_manager.waitUntilReady(fallback_black_texture.getUploadTicket()) &&
+                upload_manager.waitUntilReady(fallback_flat_normal_texture.getUploadTicket()) &&
+                upload_manager.waitUntilReady(
+                    fallback_metallic_roughness_texture.getUploadTicket()),
+                "RT scene table device smoke fallback texture uploads failed.");
+        }
+        if (success) {
+            NexAur::MaterialImportData masked_import;
+            masked_import.name = "RTTestMaskedMaterial";
+            masked_import.alpha_mode = NexAur::MaterialAlphaMode::Mask;
+            const NexAur::MaterialAsset masked_asset(masked_import);
+            NexAur::VulkanMaterialTextureSet masked_textures;
+            masked_textures.base_color = &fallback_white_texture;
+            masked_textures.normal = &fallback_flat_normal_texture;
+            masked_textures.metallic = &fallback_white_texture;
+            masked_textures.roughness = &fallback_white_texture;
+            masked_textures.metallic_roughness =
+                &fallback_metallic_roughness_texture;
+            masked_textures.ao = &fallback_white_texture;
+            masked_textures.emissive = &fallback_black_texture;
+            NexAur::VulkanMaterialResourceCreateContext masked_context;
+            masked_context.upload_context = upload_context;
+            masked_context.descriptor_allocator = &descriptor_allocator;
+            masked_context.descriptor_set_layout =
+                descriptor_layout_cache.getBuiltinLayout(
+                    NexAur::VulkanDescriptorSetLayoutId::Material);
+            expect(
+                masked_material.create(
+                    masked_context,
+                    masked_asset,
+                    masked_textures),
+                "RT scene table device smoke could not create masked material.");
+        }
+    }
+
     if (success) {
         const std::array<const NexAur::VulkanMeshResource*, 3> duplicate_instances{
             &first_generation_mesh,
@@ -3454,6 +3788,12 @@ int runRayTracingSceneDeviceSmoke() {
             stats.ready_entry_count == 2 &&
             stats.build_count == 2 &&
             stats.acceleration_structure_bytes > 0 &&
+            stats.memory_budget_bytes >= stats.acceleration_structure_bytes &&
+            stats.compaction_enabled &&
+            stats.failed_compaction_count == 0 &&
+            stats.scratch_capacity_bytes > 0 &&
+            (!stats.gpu_timing_supported ||
+             stats.gpu_timing_sample_count > 0) &&
             blas != nullptr &&
             blas->getDeviceAddress() != 0 &&
             blas_cache.find(batched_mesh) != nullptr,
@@ -3511,7 +3851,7 @@ int runRayTracingSceneDeviceSmoke() {
     }
 
     if (success) {
-        std::vector<NexAur::VulkanMeshDrawItem> tlas_items(4);
+        std::vector<NexAur::VulkanMeshDrawItem> tlas_items(5);
         tlas_items[0].mesh = &second_generation_mesh;
         tlas_items[0].transform = glm::translate(
             glm::mat4{ 1.0f },
@@ -3532,29 +3872,115 @@ int runRayTracingSceneDeviceSmoke() {
             glm::mat4{ 1.0f },
             glm::vec3{ 0.75f, 1.5f, 2.0f });
         tlas_items[3].mesh = &non_triangle_mesh;
+        tlas_items[4].mesh = &batched_mesh;
+        tlas_items[4].material = &masked_material;
 
         expect(
             tlas_manager.buildFrame(0, tlas_items, blas_cache),
             "initial TLAS build failed.");
         const NexAur::VulkanTlasBuildStats initial_tlas_stats =
             tlas_manager.getStats();
+        const VkDeviceAddress initial_tlas_address =
+            tlas_manager.get(0) != nullptr ?
+                tlas_manager.get(0)->getDeviceAddress() : 0;
+        const uint64_t initial_blas_build_count =
+            blas_cache.getStats().build_count;
+        const std::span<const NexAur::VulkanRayTracingInstanceRecord>
+            accepted_instances = tlas_manager.getAcceptedInstanceRecords(0);
         expect(
             initial_tlas_stats.ready &&
-            initial_tlas_stats.source_instance_count == 4 &&
+            initial_tlas_stats.source_instance_count == 5 &&
             initial_tlas_stats.built_instance_count == 3 &&
             initial_tlas_stats.skipped_blas_count == 1 &&
             initial_tlas_stats.skipped_transform_count == 0 &&
+            initial_tlas_stats.skipped_material_count == 1 &&
             initial_tlas_stats.build_count == 1 &&
+            initial_tlas_stats.rebuild_count == 1 &&
+            initial_tlas_stats.update_count == 0 &&
+            initial_tlas_stats.instance_capacity >= 3 &&
+            initial_tlas_stats.instance_buffer_capacity_bytes >=
+                initial_tlas_stats.instance_buffer_bytes &&
+            initial_tlas_stats.scratch_capacity_bytes > 0 &&
+            (!initial_tlas_stats.gpu_timing_supported ||
+             initial_tlas_stats.gpu_timing_sample_count > 0) &&
+            initial_tlas_stats.last_build_mode == "Build" &&
             initial_tlas_stats.instance_buffer_bytes > 0 &&
             initial_tlas_stats.acceleration_structure_bytes > 0 &&
             tlas_manager.get(0) != nullptr &&
             tlas_manager.get(0)->getDeviceAddress() != 0,
             "TLAS did not contain the current valid opaque instances.");
         expect(
+            accepted_instances.size() == 3u &&
+            accepted_instances[0].mesh == &second_generation_mesh &&
+            accepted_instances[1].mesh == &second_generation_mesh &&
+            accepted_instances[2].mesh == &batched_mesh &&
+            accepted_instances[0].material == nullptr &&
+            accepted_instances[0].entity_id == -1,
+            "TLAS canonical accepted-instance list did not preserve valid draw ordering.");
+        expect(
             ray_tracing_scene_resource.update(tlas_manager.get(0)) &&
             ray_tracing_scene_resource.isReady() &&
             ray_tracing_scene_resource.getDescriptorSet() != VK_NULL_HANDLE,
             "TLAS descriptor update failed for the first frame slot.");
+        if (capabilities.supportsReflectionShading()) {
+            NexAur::VulkanRayTracingFallbackTextures fallback_textures;
+            fallback_textures.white = &fallback_white_texture;
+            fallback_textures.black = &fallback_black_texture;
+            fallback_textures.flat_normal = &fallback_flat_normal_texture;
+            fallback_textures.metallic_roughness =
+                &fallback_metallic_roughness_texture;
+            expect(
+                ray_tracing_scene_table.update(
+                    tlas_manager.get(0),
+                    tlas_manager.getAcceptedInstanceRecords(0),
+                    fallback_textures) &&
+                ray_tracing_scene_table.isReady() &&
+                ray_tracing_scene_table.getDescriptorSet() != VK_NULL_HANDLE &&
+                ray_tracing_scene_table.getStats().instance_count == 4u &&
+                ray_tracing_scene_table.getStats().geometry_count == 3u &&
+                ray_tracing_scene_table.getStats().material_count == 1u &&
+                ray_tracing_scene_table.getStats().texture_count == 4u &&
+                ray_tracing_scene_table.getStats().texture_overflow_count == 0u &&
+                ray_tracing_scene_table.getStats().geometry_overflow_count == 0u &&
+                ray_tracing_scene_table.getStats()
+                    .descriptor_indexed_geometry_fetch_enabled,
+                "RT scene shading table update or descriptor population failed.");
+        }
+
+        expect(
+            tlas_manager.buildFrame(0, tlas_items, blas_cache),
+            "unchanged TLAS reuse failed.");
+        const NexAur::VulkanTlasBuildStats reused_tlas_stats =
+            tlas_manager.getStats();
+        expect(
+            reused_tlas_stats.ready &&
+            reused_tlas_stats.build_count == 1 &&
+            reused_tlas_stats.reuse_count == 1 &&
+            reused_tlas_stats.last_build_mode == "Reuse" &&
+            tlas_manager.get(0) != nullptr &&
+            tlas_manager.get(0)->getDeviceAddress() == initial_tlas_address &&
+            blas_cache.getStats().build_count == initial_blas_build_count,
+            "unchanged TLAS instances triggered GPU or BLAS rebuild work.");
+
+        std::vector<NexAur::VulkanMeshDrawItem> transformed_items = tlas_items;
+        transformed_items[0].transform = glm::translate(
+            transformed_items[0].transform,
+            glm::vec3{ 0.5f, 0.0f, 0.0f });
+        expect(
+            tlas_manager.buildFrame(0, transformed_items, blas_cache),
+            "transform-only TLAS update failed.");
+        const NexAur::VulkanTlasBuildStats updated_tlas_stats =
+            tlas_manager.getStats();
+        expect(
+            updated_tlas_stats.ready &&
+            updated_tlas_stats.build_count == 2 &&
+            updated_tlas_stats.update_count == 1 &&
+            updated_tlas_stats.reuse_count == 1 &&
+            updated_tlas_stats.last_build_mode == "Update" &&
+            tlas_manager.get(0) != nullptr &&
+            tlas_manager.get(0)->getDeviceAddress() == initial_tlas_address &&
+            blas_cache.getStats().build_count == initial_blas_build_count,
+            "transform-only update recreated TLAS storage or rebuilt BLAS.");
 
         const std::array<NexAur::VulkanMeshDrawItem, 1> moved_item{
             tlas_items[1]
@@ -3569,7 +3995,8 @@ int runRayTracingSceneDeviceSmoke() {
             moved_tlas_stats.source_instance_count == 1 &&
             moved_tlas_stats.built_instance_count == 1 &&
             moved_tlas_stats.skipped_blas_count == 0 &&
-            moved_tlas_stats.build_count == 2 &&
+            moved_tlas_stats.build_count == 3 &&
+            moved_tlas_stats.rebuild_count == 2 &&
             tlas_manager.get(1) != nullptr,
             "TLAS did not rebuild from the changed current draw list.");
         expect(
@@ -3581,9 +4008,17 @@ int runRayTracingSceneDeviceSmoke() {
         expect(
             tlas_manager.buildFrame(0, empty_items, blas_cache) &&
             !tlas_manager.get(0) &&
+            tlas_manager.getAcceptedInstanceRecords(0).empty() &&
             !tlas_manager.getStats().ready &&
             tlas_manager.getStats().source_instance_count == 0,
             "empty scene retained a stale TLAS instance set.");
+        if (capabilities.supportsReflectionShading()) {
+            ray_tracing_scene_table.clear();
+            expect(
+                !ray_tracing_scene_table.isReady() &&
+                ray_tracing_scene_table.getDescriptorSet() == VK_NULL_HANDLE,
+                "empty scene retained a stale RT scene shading table descriptor.");
+        }
         expect(
             !ray_tracing_scene_resource.update(tlas_manager.get(0)) &&
             !ray_tracing_scene_resource.isReady() &&
@@ -3593,7 +4028,25 @@ int runRayTracingSceneDeviceSmoke() {
 
     if (success) {
         const uint64_t retirement_serial = retirement_queue.markSubmitted();
-        blas_cache.clear();
+        const std::array<const NexAur::VulkanMeshResource*, 0> no_meshes{};
+        for (uint64_t frame = 0;
+             frame < NexAur::VulkanStaticMeshBlasCacheConfig{}
+                         .inactive_frame_retention;
+             ++frame) {
+            if (!blas_cache.prepare(no_meshes)) {
+                success = false;
+                failure = "inactive BLAS cache eviction failed.";
+                break;
+            }
+        }
+        const NexAur::VulkanStaticMeshBlasCacheStats eviction_stats =
+            blas_cache.getStats();
+        expect(
+            eviction_stats.entry_count == 0 &&
+            eviction_stats.eviction_count >= 3 &&
+            eviction_stats.retired_entry_count >= 2 &&
+            eviction_stats.retired_bytes > 0,
+            "inactive BLAS entries did not retire through the cache budget policy.");
         non_triangle_mesh.reset();
         batched_mesh.reset();
         second_generation_mesh.reset();
@@ -3640,6 +4093,7 @@ namespace {
         { "--acceleration-structure-contract", runAccelerationStructureContractSmoke },
         { "--static-mesh-blas-cache-contract", runStaticMeshBlasCacheContractSmoke },
         { "--tlas-instance-contract", runTlasInstanceContractSmoke },
+        { "--ray-tracing-scene-table-contract", runRayTracingSceneTableContractSmoke },
         { "--ray-tracing-device-auto", runRayTracingDeviceAutoSmoke },
         { "--ray-tracing-device-disabled", runRayTracingDeviceDisabledSmoke },
         { "--ray-tracing-device-force-disabled", runRayTracingDeviceForceDisabledSmoke },

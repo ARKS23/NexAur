@@ -7,6 +7,8 @@ add_executable(NexAurRendererTests
     renderer_tests.cpp
     ../../Engine/Core/UUID.cpp
     ../../Engine/Core/Log/log_system.cpp
+    ../../Engine/Function/Resource/material_asset.cpp
+    ../../Engine/Function/Resource/texture_asset.cpp
 )
 
 target_compile_features(NexAurRendererTests PRIVATE cxx_std_20)
@@ -44,3 +46,4 @@ nexaur_add_renderer_test(DeviceAddressBufferContract "--device-address-buffer-co
 nexaur_add_renderer_test(AccelerationStructureContract "--acceleration-structure-contract")
 nexaur_add_renderer_test(StaticMeshBlasCacheContract "--static-mesh-blas-cache-contract")
 nexaur_add_renderer_test(TlasInstanceContract "--tlas-instance-contract")
+nexaur_add_renderer_test(RayTracingSceneTableContract "--ray-tracing-scene-table-contract")

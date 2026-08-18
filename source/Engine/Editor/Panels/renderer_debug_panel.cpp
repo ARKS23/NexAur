@@ -276,6 +276,17 @@ namespace NexAur {
         drawExtent("  Size", snapshot.ao.width, snapshot.ao.height);
         drawKeyValue("  Color Format", snapshot.ao.color_format.c_str());
         drawKeyValue("  Half Resolution", boolToText(snapshot.ao.half_resolution));
+        drawKeyValue("  Requested Method", snapshot.ao.requested_mode.c_str());
+        drawKeyValue("  Active Technique", snapshot.ao.active_technique.c_str());
+        drawKeyValue("  RTAO Available", boolToText(snapshot.ao.ray_query_available));
+        drawKeyValue("  RTAO Active", boolToText(snapshot.ao.ray_query_active));
+        drawKeyValue("  RTAO Fallback", snapshot.ao.fallback_reason.c_str());
+        drawKeyValue("  RTAO Ray Count", snapshot.ao.ray_count);
+        ImGui::Text("  Filter Depth: %.2f", snapshot.ao.filter_depth_threshold);
+        ImGui::Text("  Filter Normal: %.2f", snapshot.ao.filter_normal_threshold);
+        drawKeyValue(
+            "  Spatial Filter",
+            boolToText(snapshot.ao.spatial_filter_enabled));
 
         ImGui::Spacing();
         ImGui::TextUnformatted("SSR Target");
@@ -348,6 +359,15 @@ namespace NexAur {
         ImGui::Text(
             "Ray Query Shadow Direction Bias: %.4f",
             snapshot.effects.ray_query_shadow_direction_bias);
+        drawKeyValue(
+            "Ray Query GPU Timing",
+            boolToText(snapshot.effects.ray_query_gpu_timing_supported));
+        drawKeyValue64(
+            "Ray Query GPU Samples",
+            snapshot.effects.ray_query_gpu_sample_count);
+        ImGui::Text(
+            "Ray Query Forward GPU: %.3f ms",
+            snapshot.effects.ray_query_forward_gpu_ms);
         drawKeyValue("Point Shadows", boolToText(snapshot.effects.point_shadow_enabled));
         drawKeyValue("Rect Shadows", boolToText(snapshot.effects.rect_shadow_enabled));
         drawKeyValue("Contact Shadows", boolToText(snapshot.effects.contact_shadow_enabled));
@@ -400,6 +420,45 @@ namespace NexAur {
             "Failed Builds",
             snapshot.resources.static_mesh_blas_failed_build_count);
         drawKeyValue64("AS Bytes", snapshot.resources.static_mesh_blas_bytes);
+        drawKeyValue64(
+            "Memory Budget",
+            snapshot.resources.static_mesh_blas_memory_budget_bytes);
+        drawKeyValue(
+            "Compaction",
+            boolToText(snapshot.resources.static_mesh_blas_compaction_enabled));
+        drawKeyValue64(
+            "Compacted",
+            snapshot.resources.static_mesh_blas_compaction_count);
+        drawKeyValue64(
+            "Compaction Failures",
+            snapshot.resources.static_mesh_blas_failed_compaction_count);
+        drawKeyValue64(
+            "Compaction Saved Bytes",
+            snapshot.resources.static_mesh_blas_compaction_saved_bytes);
+        drawKeyValue64(
+            "Evictions",
+            snapshot.resources.static_mesh_blas_eviction_count);
+        drawKeyValue64(
+            "Retired Entries",
+            snapshot.resources.static_mesh_blas_retired_entry_count);
+        drawKeyValue64(
+            "Retired Bytes",
+            snapshot.resources.static_mesh_blas_retired_bytes);
+        drawKeyValue64(
+            "Scratch Capacity",
+            snapshot.resources.static_mesh_blas_scratch_capacity_bytes);
+        drawKeyValue(
+            "GPU Timing",
+            boolToText(snapshot.resources.static_mesh_blas_gpu_timing_supported));
+        drawKeyValue64(
+            "GPU Samples",
+            snapshot.resources.static_mesh_blas_gpu_timing_sample_count);
+        ImGui::Text(
+            "Build GPU: %.3f ms",
+            snapshot.resources.static_mesh_blas_build_gpu_ms);
+        ImGui::Text(
+            "Compaction GPU: %.3f ms",
+            snapshot.resources.static_mesh_blas_compaction_gpu_ms);
         drawKeyValue(
             "Last Failure",
             snapshot.resources.static_mesh_blas_last_failure.c_str());
@@ -414,12 +473,80 @@ namespace NexAur {
         drawKeyValue(
             "Skipped Transforms",
             snapshot.resources.tlas_skipped_transform_count);
+        drawKeyValue(
+            "Skipped Materials",
+            snapshot.resources.tlas_skipped_material_count);
         drawKeyValue64("Builds", snapshot.resources.tlas_build_count);
+        drawKeyValue64("Rebuilds", snapshot.resources.tlas_rebuild_count);
+        drawKeyValue64("Updates", snapshot.resources.tlas_update_count);
+        drawKeyValue64("Reuses", snapshot.resources.tlas_reuse_count);
+        drawKeyValue64("Allocations", snapshot.resources.tlas_allocation_count);
+        drawKeyValue(
+            "Last Mode",
+            snapshot.resources.tlas_last_build_mode.c_str());
+        drawKeyValue("Instance Capacity", snapshot.resources.tlas_instance_capacity);
         drawKeyValue64(
             "Instance Bytes",
             snapshot.resources.tlas_instance_buffer_bytes);
+        drawKeyValue64(
+            "Instance Capacity Bytes",
+            snapshot.resources.tlas_instance_buffer_capacity_bytes);
         drawKeyValue64("TLAS Bytes", snapshot.resources.tlas_bytes);
+        drawKeyValue64(
+            "Scratch Capacity",
+            snapshot.resources.tlas_scratch_capacity_bytes);
+        drawKeyValue(
+            "GPU Timing",
+            boolToText(snapshot.resources.tlas_gpu_timing_supported));
+        drawKeyValue64(
+            "GPU Samples",
+            snapshot.resources.tlas_gpu_timing_sample_count);
+        ImGui::Text(
+            "Build GPU: %.3f ms",
+            snapshot.resources.tlas_build_gpu_ms);
         drawKeyValue("Last Failure", snapshot.resources.tlas_last_failure.c_str());
+        ImGui::SeparatorText("RT Scene Table");
+        drawKeyValue(
+            "Capability",
+            boolToText(snapshot.ray_tracing_scene_table.capability_supported));
+        drawKeyValue(
+            "Initialized",
+            boolToText(snapshot.ray_tracing_scene_table.initialized));
+        drawKeyValue("Ready", boolToText(snapshot.ray_tracing_scene_table.ready));
+        drawKeyValue(
+            "Descriptor Ready",
+            boolToText(snapshot.ray_tracing_scene_table.descriptor_ready));
+        drawKeyValue(
+            "BDA Geometry",
+            boolToText(snapshot.ray_tracing_scene_table.bda_geometry_fetch_enabled));
+        drawKeyValue(
+            "Descriptor Geometry",
+            boolToText(
+                snapshot.ray_tracing_scene_table
+                    .descriptor_indexed_geometry_fetch_enabled));
+        drawKeyValue("Instances", snapshot.ray_tracing_scene_table.instance_count);
+        drawKeyValue("Geometries", snapshot.ray_tracing_scene_table.geometry_count);
+        drawKeyValue("Materials", snapshot.ray_tracing_scene_table.material_count);
+        ImGui::Text(
+            "Textures: %u / %u, overflow %u",
+            snapshot.ray_tracing_scene_table.texture_count,
+            snapshot.ray_tracing_scene_table.texture_capacity,
+            snapshot.ray_tracing_scene_table.texture_overflow_count);
+        ImGui::Text(
+            "Geometry Descriptors: %u, overflow %u",
+            snapshot.ray_tracing_scene_table.geometry_descriptor_capacity,
+            snapshot.ray_tracing_scene_table.geometry_overflow_count);
+        ImGui::Text(
+            "Table Bytes: %llu instance / %llu geometry / %llu material",
+            static_cast<unsigned long long>(
+                snapshot.ray_tracing_scene_table.instance_buffer_bytes),
+            static_cast<unsigned long long>(
+                snapshot.ray_tracing_scene_table.geometry_buffer_bytes),
+            static_cast<unsigned long long>(
+                snapshot.ray_tracing_scene_table.material_buffer_bytes));
+        drawKeyValue(
+            "Table Failure",
+            snapshot.ray_tracing_scene_table.last_failure_reason.c_str());
         ImGui::Text(
             "GPU Submitted Serial: %llu",
             static_cast<unsigned long long>(snapshot.resources.gpu_submitted_serial));

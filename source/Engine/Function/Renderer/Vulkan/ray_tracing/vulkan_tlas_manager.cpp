@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -15,27 +14,47 @@
 
 namespace NexAur {
     namespace {
-        constexpr uint32_t kInstanceCustomIndexMask = 0x00ffffffu;
-
         struct TlasInstanceBuild {
             VkAccelerationStructureInstanceKHR instance{};
             const VulkanAccelerationStructure* acceleration_structure = nullptr;
         };
 
-        bool isFiniteAffineTransform(const glm::mat4& transform) {
-            for (int column = 0; column < 4; ++column) {
-                for (int row = 0; row < 4; ++row) {
-                    if (!std::isfinite(transform[column][row])) {
-                        return false;
-                    }
-                }
-            }
+        constexpr uint64_t kFnvOffsetBasis = 14695981039346656037ull;
+        constexpr uint64_t kFnvPrime = 1099511628211ull;
 
-            constexpr float epsilon = 0.0001f;
-            return std::abs(transform[0][3]) <= epsilon &&
-                   std::abs(transform[1][3]) <= epsilon &&
-                   std::abs(transform[2][3]) <= epsilon &&
-                   std::abs(transform[3][3] - 1.0f) <= epsilon;
+        void hashBytes(
+            uint64_t& hash,
+            const void* data,
+            size_t size) {
+            const auto* bytes = static_cast<const uint8_t*>(data);
+            for (size_t index = 0; index < size; ++index) {
+                hash ^= bytes[index];
+                hash *= kFnvPrime;
+            }
+        }
+
+        std::pair<uint64_t, uint64_t> hashTlasInstances(
+            std::span<const VkAccelerationStructureInstanceKHR> instances) {
+            uint64_t topology_hash = kFnvOffsetBasis;
+            uint64_t content_hash = kFnvOffsetBasis;
+            for (const VkAccelerationStructureInstanceKHR& instance : instances) {
+                hashBytes(
+                    topology_hash,
+                    &instance.accelerationStructureReference,
+                    sizeof(instance.accelerationStructureReference));
+                const uint32_t topology_values[] = {
+                    instance.instanceCustomIndex,
+                    instance.mask,
+                    instance.instanceShaderBindingTableRecordOffset,
+                    instance.flags
+                };
+                hashBytes(
+                    topology_hash,
+                    topology_values,
+                    sizeof(topology_values));
+                hashBytes(content_hash, &instance, sizeof(instance));
+            }
+            return { topology_hash, content_hash };
         }
 
         void recordTlasDependency(
@@ -74,7 +93,8 @@ namespace NexAur {
             VkDeviceSize instance_buffer_size,
             VulkanAccelerationStructure& acceleration_structure,
             VkAccelerationStructureBuildGeometryInfoKHR build_info,
-            const VkAccelerationStructureBuildRangeInfoKHR& build_range) {
+            const VkAccelerationStructureBuildRangeInfoKHR& build_range,
+            VulkanGpuTimestampQuery& gpu_timestamp_query) {
             VkCommandBuffer command_buffer = VK_NULL_HANDLE;
             VkFence fence = VK_NULL_HANDLE;
             auto cleanup = [&]() {
@@ -104,7 +124,6 @@ namespace NexAur {
                 cleanup();
                 return false;
             }
-
             VkCommandBufferBeginInfo begin_info{};
             begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -114,6 +133,8 @@ namespace NexAur {
                 cleanup();
                 return false;
             }
+            const bool timing_recorded =
+                gpu_timestamp_query.begin(command_buffer);
 
             const VulkanGraphBufferTransitionPlan instance_transition =
                 VulkanGraphStatePlanner::planBufferTransition(
@@ -151,21 +172,29 @@ namespace NexAur {
                     build_info,
                     std::span<const VkAccelerationStructureBuildRangeInfoKHR>(&build_range, 1),
                     build_info.scratchData.deviceAddress)) {
+                if (timing_recorded) {
+                    gpu_timestamp_query.discard();
+                }
                 cleanup();
                 return false;
             }
-
             recordTlasDependency(
                 command_buffer,
                 VulkanGraphAccelerationStructureUsage::RayQueryShaderRead);
+            if (timing_recorded &&
+                !gpu_timestamp_query.end(command_buffer)) {
+                gpu_timestamp_query.discard();
+            }
 
             if (!VulkanDiagnosticsCollector::checkVk(
                     vkEndCommandBuffer(command_buffer),
                     "vkEndCommandBuffer(TLAS)")) {
+                if (timing_recorded) {
+                    gpu_timestamp_query.discard();
+                }
                 cleanup();
                 return false;
             }
-
             VkFenceCreateInfo fence_info{};
             fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             if (!VulkanDiagnosticsCollector::checkVk(
@@ -175,6 +204,9 @@ namespace NexAur {
                         nullptr,
                         &fence),
                     "vkCreateFence(TLAS)")) {
+                if (timing_recorded) {
+                    gpu_timestamp_query.discard();
+                }
                 cleanup();
                 return false;
             }
@@ -198,10 +230,64 @@ namespace NexAur {
                     VK_TRUE,
                     UINT64_MAX),
                 "vkWaitForFences(TLAS)");
+            if (completed && timing_recorded) {
+                gpu_timestamp_query.resolve();
+            } else if (!submitted && timing_recorded) {
+                gpu_timestamp_query.discard();
+            }
             cleanup();
             return completed;
         }
     } // namespace
+
+    uint32_t growVulkanTlasInstanceCapacity(
+        uint32_t required_count,
+        uint32_t current_capacity) {
+        if (required_count == 0) {
+            return 0;
+        }
+
+        uint32_t capacity = std::max(1u, current_capacity);
+        while (capacity < required_count) {
+            if (capacity > std::numeric_limits<uint32_t>::max() / 2u) {
+                return required_count;
+            }
+            capacity *= 2u;
+        }
+        return capacity;
+    }
+
+    VulkanTlasBuildMode chooseVulkanTlasBuildMode(
+        const VulkanTlasBuildState& previous,
+        uint32_t instance_count,
+        uint64_t topology_hash,
+        uint64_t content_hash) {
+        if (previous.ready &&
+            previous.instance_count == instance_count &&
+            previous.content_hash == content_hash) {
+            return VulkanTlasBuildMode::Reuse;
+        }
+        if (previous.ready &&
+            previous.update_capable &&
+            previous.instance_count == instance_count &&
+            previous.instance_capacity >= instance_count &&
+            previous.topology_hash == topology_hash) {
+            return VulkanTlasBuildMode::Update;
+        }
+        return VulkanTlasBuildMode::Build;
+    }
+
+    const char* vulkanTlasBuildModeName(VulkanTlasBuildMode mode) {
+        switch (mode) {
+        case VulkanTlasBuildMode::Build:
+            return "Build";
+        case VulkanTlasBuildMode::Update:
+            return "Update";
+        case VulkanTlasBuildMode::Reuse:
+            return "Reuse";
+        }
+        return "Unknown";
+    }
 
     VkTransformMatrixKHR toVulkanTransformMatrix(const glm::mat4& transform) {
         VkTransformMatrixKHR result{};
@@ -243,8 +329,16 @@ namespace NexAur {
             m_stats.last_failure_reason = "TLAS command pool creation failed.";
             return false;
         }
+        if (!m_gpu_timestamp_query.init(
+                context.physical_device,
+                context.device,
+                context.graphics_queue_family)) {
+            NX_CORE_WARN("TLAS GPU timing is unavailable.");
+        }
         m_stats = {};
         m_stats.initialized = true;
+        m_stats.gpu_timing_supported =
+            m_gpu_timestamp_query.isSupported();
         m_stats.last_failure_reason = "None";
         m_initialized = true;
         return true;
@@ -262,6 +356,7 @@ namespace NexAur {
 
     void VulkanTlasManager::shutdown() {
         clear();
+        m_gpu_timestamp_query.shutdown();
         if (m_context.device != VK_NULL_HANDLE &&
             m_command_pool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(m_context.device, m_command_pool, nullptr);
@@ -285,80 +380,119 @@ namespace NexAur {
         }
 
         FrameSlot& slot = m_frame_slots[frame_index];
-        slot.ready = false;
-        slot.instance_count = 0;
         m_stats.ready = false;
         m_stats.frame_index = frame_index;
-        m_stats.source_instance_count = static_cast<uint32_t>(
-            std::min<size_t>(opaque_items.size(), std::numeric_limits<uint32_t>::max()));
+        VulkanRayTracingInstanceBuildStats instance_build_stats;
+        slot.accepted_instances = buildVulkanRayTracingInstanceRecords(
+            opaque_items,
+            blas_cache,
+            &instance_build_stats);
+        if (slot.accepted_instances.size() > kVulkanRtMaxInstanceCustomIndex) {
+            const size_t overflow_count =
+                slot.accepted_instances.size() - kVulkanRtMaxInstanceCustomIndex;
+            slot.accepted_instances.resize(kVulkanRtMaxInstanceCustomIndex);
+            instance_build_stats.skipped_transform_count += static_cast<uint32_t>(
+                std::min<size_t>(
+                    overflow_count,
+                    std::numeric_limits<uint32_t>::max() -
+                        instance_build_stats.skipped_transform_count));
+        }
+        m_stats.source_instance_count = instance_build_stats.source_instance_count;
         m_stats.built_instance_count = 0;
-        m_stats.skipped_blas_count = 0;
-        m_stats.skipped_transform_count = 0;
+        m_stats.skipped_blas_count = instance_build_stats.skipped_blas_count;
+        m_stats.skipped_transform_count = instance_build_stats.skipped_transform_count;
+        m_stats.skipped_material_count = instance_build_stats.skipped_material_count;
         m_stats.instance_buffer_bytes = 0;
+        m_stats.instance_buffer_capacity_bytes = 0;
         m_stats.acceleration_structure_bytes = 0;
+        m_stats.scratch_capacity_bytes = m_scratch_buffer.getCapacity();
+        m_stats.instance_capacity = 0;
+        m_stats.last_build_mode = "None";
+        m_stats.last_failure_reason = "None";
 
         std::vector<TlasInstanceBuild> instances;
-        instances.reserve(opaque_items.size());
-        for (const VulkanMeshDrawItem& item : opaque_items) {
-            if (item.mesh == nullptr) {
-                ++m_stats.skipped_blas_count;
-                continue;
-            }
-
-            const VulkanAccelerationStructure* blas = blas_cache.find(*item.mesh);
-            if (blas == nullptr || !blas->isReady()) {
-                ++m_stats.skipped_blas_count;
-                continue;
-            }
-            if (!isFiniteAffineTransform(item.transform)) {
-                ++m_stats.skipped_transform_count;
-                continue;
-            }
-            if (instances.size() >= kInstanceCustomIndexMask) {
-                ++m_stats.skipped_transform_count;
-                continue;
-            }
-
+        instances.reserve(slot.accepted_instances.size());
+        for (size_t record_index = 0;
+             record_index < slot.accepted_instances.size();
+             ++record_index) {
+            const VulkanRayTracingInstanceRecord& record =
+                slot.accepted_instances[record_index];
             TlasInstanceBuild instance_build;
-            instance_build.acceleration_structure = blas;
-            instance_build.instance.transform = toVulkanTransformMatrix(item.transform);
+            instance_build.acceleration_structure = record.blas;
+            instance_build.instance.transform = toVulkanTransformMatrix(record.transform);
             instance_build.instance.instanceCustomIndex =
-                static_cast<uint32_t>(instances.size());
+                getVulkanRtInstanceTableIndex(static_cast<uint32_t>(record_index));
             instance_build.instance.mask = 0xffu;
             instance_build.instance.instanceShaderBindingTableRecordOffset = 0;
             instance_build.instance.flags =
                 VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
             instance_build.instance.accelerationStructureReference =
-                blas->getDeviceAddress();
+                record.blas->getDeviceAddress();
             instances.push_back(instance_build);
         }
 
         if (instances.empty()) {
+            resetSlot(slot);
             return true;
         }
 
+        std::vector<VkAccelerationStructureInstanceKHR> instance_data;
+        instance_data.reserve(instances.size());
+        for (const TlasInstanceBuild& instance : instances) {
+            instance_data.push_back(instance.instance);
+        }
+        const auto [topology_hash, content_hash] =
+            hashTlasInstances(instance_data);
+        VulkanTlasBuildMode build_mode = chooseVulkanTlasBuildMode(
+            slot.buildState(),
+            static_cast<uint32_t>(instance_data.size()),
+            topology_hash,
+            content_hash);
+
         const VkDeviceSize instance_buffer_size =
-            static_cast<VkDeviceSize>(instances.size() *
+            static_cast<VkDeviceSize>(instance_data.size() *
                                       sizeof(VkAccelerationStructureInstanceKHR));
+        if (build_mode == VulkanTlasBuildMode::Reuse) {
+            slot.ready = true;
+            m_stats.ready = true;
+            m_stats.built_instance_count = slot.instance_count;
+            m_stats.instance_buffer_bytes = instance_buffer_size;
+            m_stats.instance_buffer_capacity_bytes =
+                slot.instance_buffer.getSize();
+            m_stats.acceleration_structure_bytes =
+                slot.acceleration_structure.getSize();
+            m_stats.scratch_capacity_bytes = m_scratch_buffer.getCapacity();
+            m_stats.instance_capacity = slot.instance_capacity;
+            m_stats.last_build_mode = vulkanTlasBuildModeName(build_mode);
+            ++m_stats.reuse_count;
+            return true;
+        }
+
+        const uint32_t instance_capacity = growVulkanTlasInstanceCapacity(
+            static_cast<uint32_t>(instance_data.size()),
+            slot.instance_capacity);
+        if (instance_capacity == 0) {
+            setFailure("TLAS instance capacity growth failed.");
+            resetSlot(slot);
+            return false;
+        }
+        const VkDeviceSize instance_buffer_capacity_size =
+            static_cast<VkDeviceSize>(instance_capacity) *
+            sizeof(VkAccelerationStructureInstanceKHR);
+        slot.ready = false;
         if (!ensureInstanceBuffer(
                 slot,
-                instance_buffer_size,
+                instance_buffer_capacity_size,
                 "TLAS instance buffer")) {
             setFailure("TLAS instance buffer allocation failed.");
             resetSlot(slot);
             return false;
         }
-
         void* mapped_data = nullptr;
         if (!slot.instance_buffer.map(mapped_data) || mapped_data == nullptr) {
             setFailure("TLAS instance buffer mapping failed.");
             resetSlot(slot);
             return false;
-        }
-        std::vector<VkAccelerationStructureInstanceKHR> instance_data;
-        instance_data.reserve(instances.size());
-        for (const TlasInstanceBuild& instance : instances) {
-            instance_data.push_back(instance.instance);
         }
         std::memcpy(
             mapped_data,
@@ -376,7 +510,9 @@ namespace NexAur {
         build_info.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
         build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-        build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        build_info.flags =
+            VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR |
+            VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
         build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         build_info.geometryCount = 1;
 
@@ -394,7 +530,7 @@ namespace NexAur {
         build_info.pGeometries = &geometry;
 
         const std::array<uint32_t, 1> primitive_counts{
-            static_cast<uint32_t>(instances.size())
+            instance_capacity
         };
         VulkanAccelerationStructureBuildSizes build_sizes;
         if (!queryVulkanAccelerationStructureBuildSizes(
@@ -408,12 +544,13 @@ namespace NexAur {
             resetSlot(slot);
             return false;
         }
-
         VulkanAccelerationStructure replacement;
         VulkanAccelerationStructure* target = &slot.acceleration_structure;
+        bool allocated_replacement = false;
         if (!slot.acceleration_structure.isReady() ||
             slot.acceleration_structure.getSize() <
                 build_sizes.acceleration_structure_size) {
+            build_mode = VulkanTlasBuildMode::Build;
             VulkanAccelerationStructureCreateInfo create_info;
             create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
             create_info.size = build_sizes.acceleration_structure_size;
@@ -428,11 +565,25 @@ namespace NexAur {
                 return false;
             }
             target = &replacement;
+            allocated_replacement = true;
+        }
+        if (build_mode == VulkanTlasBuildMode::Update &&
+            build_sizes.update_scratch_size > 0) {
+            build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
+            build_info.srcAccelerationStructure = target->get();
+        } else {
+            build_mode = VulkanTlasBuildMode::Build;
+            build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+            build_info.srcAccelerationStructure = VK_NULL_HANDLE;
         }
 
+        const VkDeviceSize required_scratch_size =
+            build_mode == VulkanTlasBuildMode::Update ?
+                build_sizes.update_scratch_size :
+                build_sizes.build_scratch_size;
         if (!m_scratch_buffer.ensureCapacity(
                 *m_context.gpu_allocator,
-                build_sizes.build_scratch_size,
+                required_scratch_size,
                 m_scratch_alignment,
                 "TLAS build scratch")) {
             setFailure("TLAS scratch buffer allocation failed.");
@@ -444,7 +595,9 @@ namespace NexAur {
         build_info.dstAccelerationStructure = target->get();
 
         VkAccelerationStructureBuildRangeInfoKHR build_range{};
-        build_range.primitiveCount = static_cast<uint32_t>(instances.size());
+        build_range.primitiveCount = static_cast<uint32_t>(instance_data.size());
+        const uint64_t timing_sample_count =
+            m_gpu_timestamp_query.getStats().sample_count;
         if (!submitTlasBuild(
                 m_context,
                 m_command_pool,
@@ -452,7 +605,8 @@ namespace NexAur {
                 instance_buffer_size,
                 *target,
                 build_info,
-                build_range)) {
+                build_range,
+                m_gpu_timestamp_query)) {
             setFailure("TLAS build submission failed.");
             resetSlot(slot);
             return false;
@@ -461,13 +615,36 @@ namespace NexAur {
         if (target == &replacement) {
             slot.acceleration_structure = std::move(replacement);
         }
-        slot.instance_count = static_cast<uint32_t>(instances.size());
+        slot.instance_count = static_cast<uint32_t>(instance_data.size());
+        slot.instance_capacity = instance_capacity;
+        slot.topology_hash = topology_hash;
+        slot.content_hash = content_hash;
+        slot.update_capable = true;
         slot.ready = true;
         m_stats.ready = true;
         m_stats.built_instance_count = slot.instance_count;
         m_stats.instance_buffer_bytes = instance_buffer_size;
+        m_stats.instance_buffer_capacity_bytes =
+            slot.instance_buffer.getSize();
         m_stats.acceleration_structure_bytes = slot.acceleration_structure.getSize();
+        m_stats.scratch_capacity_bytes = m_scratch_buffer.getCapacity();
+        m_stats.instance_capacity = slot.instance_capacity;
+        m_stats.last_build_mode = vulkanTlasBuildModeName(build_mode);
+        const VulkanGpuTimestampQueryStats timing_stats =
+            m_gpu_timestamp_query.getStats();
+        m_stats.gpu_timing_supported = timing_stats.supported;
+        if (timing_stats.sample_count > timing_sample_count) {
+            m_stats.last_build_gpu_ms = timing_stats.last_duration_ms;
+        }
         ++m_stats.build_count;
+        if (build_mode == VulkanTlasBuildMode::Update) {
+            ++m_stats.update_count;
+        } else {
+            ++m_stats.rebuild_count;
+        }
+        if (allocated_replacement) {
+            ++m_stats.allocation_count;
+        }
         return true;
     }
 
@@ -481,9 +658,25 @@ namespace NexAur {
             &slot.acceleration_structure : nullptr;
     }
 
+    std::span<const VulkanRayTracingInstanceRecord>
+    VulkanTlasManager::getAcceptedInstanceRecords(uint32_t frame_index) const {
+        if (frame_index >= m_frame_slots.size()) {
+            return {};
+        }
+        const FrameSlot& slot = m_frame_slots[frame_index];
+        return slot.ready ?
+            std::span<const VulkanRayTracingInstanceRecord>(slot.accepted_instances) :
+            std::span<const VulkanRayTracingInstanceRecord>{};
+    }
+
     VulkanTlasBuildStats VulkanTlasManager::getStats() const {
         VulkanTlasBuildStats stats = m_stats;
         stats.initialized = m_initialized;
+        stats.gpu_timing_supported =
+            m_gpu_timestamp_query.isSupported();
+        stats.gpu_timing_sample_count =
+            m_gpu_timestamp_query.getStats().sample_count;
+        stats.scratch_capacity_bytes = m_scratch_buffer.getCapacity();
         return stats;
     }
 
@@ -534,6 +727,11 @@ namespace NexAur {
     void VulkanTlasManager::resetSlot(FrameSlot& slot) {
         slot.ready = false;
         slot.instance_count = 0;
+        slot.instance_capacity = 0;
+        slot.topology_hash = 0;
+        slot.content_hash = 0;
+        slot.update_capable = false;
+        slot.accepted_instances.clear();
         slot.acceleration_structure.reset();
         slot.instance_buffer.reset();
     }

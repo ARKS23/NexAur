@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
@@ -16,6 +18,7 @@ namespace NexAur {
         VkDevice device = VK_NULL_HANDLE;
         VkFormat color_format = VK_FORMAT_UNDEFINED;
         VkDescriptorSetLayout input_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE;
         VulkanDescriptorAllocator* descriptor_allocator = nullptr;
         VulkanPipelineCache* pipeline_cache = nullptr;
 
@@ -65,6 +68,17 @@ namespace NexAur {
             VkCommandBuffer command_buffer,
             const VulkanAoRenderTarget& target,
             const RenderAoSettings& settings);
+        bool recordRtao(
+            VkCommandBuffer command_buffer,
+            const VulkanAoRenderTarget& target,
+            const VulkanRenderView& view,
+            const RenderAoSettings& settings,
+            VkDescriptorSet ray_tracing_scene_descriptor_set);
+        bool recordRtaoFilter(
+            VkCommandBuffer command_buffer,
+            const VulkanAoRenderTarget& target,
+            const VulkanRenderView& view,
+            const RenderAoSettings& settings);
 
         bool isReady() const {
             return m_ssao_pipeline != VK_NULL_HANDLE &&
@@ -74,6 +88,14 @@ namespace NexAur {
                    m_depth_descriptor_set != VK_NULL_HANDLE &&
                    m_raw_descriptor_set != VK_NULL_HANDLE;
         }
+        bool isRayQueryReady() const {
+            return isReady() &&
+                   m_rtao_pipeline != VK_NULL_HANDLE &&
+                   m_rtao_filter_pipeline != VK_NULL_HANDLE &&
+                   m_rtao_pipeline_layout != VK_NULL_HANDLE &&
+                   m_rtao_filter_pipeline_layout != VK_NULL_HANDLE &&
+                   m_ray_tracing_scene_descriptor_set_layout != VK_NULL_HANDLE;
+        }
 
     private:
         bool createPipelines();
@@ -81,6 +103,7 @@ namespace NexAur {
             VulkanShaderProgramId shader_program,
             const VkPushConstantRange& push_constant_range,
             const char* debug_name,
+            const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts,
             VkPipeline& pipeline,
             VkPipelineLayout& pipeline_layout);
         bool allocateDescriptorSets();
@@ -93,6 +116,7 @@ namespace NexAur {
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
         VkDescriptorSetLayout m_input_descriptor_set_layout = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_ray_tracing_scene_descriptor_set_layout = VK_NULL_HANDLE;
         VulkanDescriptorAllocator* m_descriptor_allocator = nullptr;
         VulkanPipelineCache* m_pipeline_cache = nullptr;
 
@@ -107,5 +131,9 @@ namespace NexAur {
         VkPipeline m_ssao_pipeline = VK_NULL_HANDLE;
         VkPipelineLayout m_blur_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_blur_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout m_rtao_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline m_rtao_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout m_rtao_filter_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline m_rtao_filter_pipeline = VK_NULL_HANDLE;
     };
 } // namespace NexAur

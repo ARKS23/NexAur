@@ -127,6 +127,15 @@ namespace NexAur {
         uint32_t height = 0;
         std::string color_format = "None";
         bool half_resolution = false;
+        std::string requested_mode = "Screen Space";
+        std::string active_technique = "Disabled";
+        bool ray_query_available = false;
+        bool ray_query_active = false;
+        std::string fallback_reason = "None";
+        uint32_t ray_count = 0;
+        float filter_depth_threshold = 0.0f;
+        float filter_normal_threshold = 0.0f;
+        bool spatial_filter_enabled = false;
     };
 
     struct RendererDebugSsrStats {
@@ -183,6 +192,9 @@ namespace NexAur {
         float ray_query_shadow_max_distance = 35.0f;
         float ray_query_shadow_normal_bias = 0.02f;
         float ray_query_shadow_direction_bias = 0.01f;
+        bool ray_query_gpu_timing_supported = false;
+        uint64_t ray_query_gpu_sample_count = 0;
+        double ray_query_forward_gpu_ms = 0.0;
         bool point_shadow_enabled = false;
         bool rect_shadow_enabled = false;
         bool contact_shadow_enabled = false;
@@ -225,6 +237,19 @@ namespace NexAur {
         uint64_t static_mesh_blas_cache_hit_count = 0;
         uint64_t static_mesh_blas_failed_build_count = 0;
         uint64_t static_mesh_blas_bytes = 0;
+        uint64_t static_mesh_blas_memory_budget_bytes = 0;
+        uint64_t static_mesh_blas_compaction_count = 0;
+        uint64_t static_mesh_blas_failed_compaction_count = 0;
+        uint64_t static_mesh_blas_compaction_saved_bytes = 0;
+        uint64_t static_mesh_blas_eviction_count = 0;
+        uint64_t static_mesh_blas_retired_entry_count = 0;
+        uint64_t static_mesh_blas_retired_bytes = 0;
+        uint64_t static_mesh_blas_scratch_capacity_bytes = 0;
+        bool static_mesh_blas_compaction_enabled = false;
+        bool static_mesh_blas_gpu_timing_supported = false;
+        uint64_t static_mesh_blas_gpu_timing_sample_count = 0;
+        double static_mesh_blas_build_gpu_ms = 0.0;
+        double static_mesh_blas_compaction_gpu_ms = 0.0;
         std::string static_mesh_blas_last_failure = "None";
         bool tlas_manager_ready = false;
         bool tlas_ready = false;
@@ -232,9 +257,21 @@ namespace NexAur {
         uint32_t tlas_built_instance_count = 0;
         uint32_t tlas_skipped_blas_count = 0;
         uint32_t tlas_skipped_transform_count = 0;
+        uint32_t tlas_skipped_material_count = 0;
         uint64_t tlas_build_count = 0;
+        uint64_t tlas_rebuild_count = 0;
+        uint64_t tlas_update_count = 0;
+        uint64_t tlas_reuse_count = 0;
+        uint64_t tlas_allocation_count = 0;
         uint64_t tlas_instance_buffer_bytes = 0;
+        uint64_t tlas_instance_buffer_capacity_bytes = 0;
         uint64_t tlas_bytes = 0;
+        uint64_t tlas_scratch_capacity_bytes = 0;
+        uint32_t tlas_instance_capacity = 0;
+        bool tlas_gpu_timing_supported = false;
+        uint64_t tlas_gpu_timing_sample_count = 0;
+        double tlas_build_gpu_ms = 0.0;
+        std::string tlas_last_build_mode = "None";
         std::string tlas_last_failure = "None";
         size_t material_count = 0;
         uint64_t gpu_submitted_serial = 0;
@@ -281,6 +318,27 @@ namespace NexAur {
         int reflection_probe_last_captured_entity_id = -1;
     };
 
+    struct RendererDebugRayTracingSceneTableStats {
+        bool capability_supported = false;
+        bool initialized = false;
+        bool ready = false;
+        bool descriptor_ready = false;
+        bool bda_geometry_fetch_enabled = false;
+        bool descriptor_indexed_geometry_fetch_enabled = false;
+        uint32_t instance_count = 0;
+        uint32_t geometry_count = 0;
+        uint32_t material_count = 0;
+        uint32_t texture_count = 0;
+        uint32_t texture_capacity = 0;
+        uint32_t texture_overflow_count = 0;
+        uint32_t geometry_descriptor_capacity = 0;
+        uint32_t geometry_overflow_count = 0;
+        uint64_t instance_buffer_bytes = 0;
+        uint64_t geometry_buffer_bytes = 0;
+        uint64_t material_buffer_bytes = 0;
+        std::string last_failure_reason = "None";
+    };
+
     struct RendererDebugSnapshot {
         RendererDebugBackendStats backend;
         RendererDebugFrameStats frame;
@@ -298,6 +356,7 @@ namespace NexAur {
         RendererDebugSmaaStats smaa;
         RendererDebugEffectsStats effects;
         RendererDebugResourceStats resources;
+        RendererDebugRayTracingSceneTableStats ray_tracing_scene_table;
     };
 
     class NEXAUR_API RendererDebugService {

@@ -64,6 +64,21 @@ namespace NexAur {
         SMAA = 1
     };
 
+    enum class RenderAoMode : uint32_t {
+        ScreenSpace = 0,
+        RayQuery = 1
+    };
+
+    inline const char* renderAoModeName(RenderAoMode mode) {
+        switch (mode) {
+        case RenderAoMode::RayQuery:
+            return "Ray Query";
+        case RenderAoMode::ScreenSpace:
+        default:
+            return "Screen Space";
+        }
+    }
+
     enum class RenderEffectDebugView : uint32_t {
         FinalLit = 0,
         HdrSceneColor = 1,
@@ -124,10 +139,14 @@ namespace NexAur {
 
     struct RenderAoSettings {
         bool enabled = true;
+        RenderAoMode mode = RenderAoMode::ScreenSpace;
         float radius = 1.2f;
         float intensity = 0.6f;
         float bias = 0.025f;
         float power = 1.2f;
+        uint32_t ray_count = 4;
+        float filter_depth_threshold = 0.4f;
+        float filter_normal_threshold = 0.8f;
         bool blur_enabled = true;
         bool half_resolution = true;
     };
