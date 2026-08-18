@@ -216,17 +216,28 @@ set(NEXAUR_VULKAN_SHADER_TABLE_ENTRIES)
 foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     string(REPLACE "|" ";" shader_fields "${shader_program}")
     list(LENGTH shader_fields shader_field_count)
-    if(NOT shader_field_count EQUAL 8)
+    if(NOT shader_field_count EQUAL 8 AND NOT shader_field_count EQUAL 11)
         message(FATAL_ERROR "Invalid Vulkan shader manifest record: ${shader_program}")
     endif()
 
     list(GET shader_fields 0 program_id)
     list(GET shader_fields 1 source_file)
+    list(GET shader_fields 2 vertex_profile)
     list(GET shader_fields 3 vertex_entry)
     list(GET shader_fields 4 vertex_output)
     list(GET shader_fields 5 fragment_profile)
     list(GET shader_fields 6 fragment_entry)
     list(GET shader_fields 7 fragment_output)
+
+    if(shader_field_count EQUAL 11)
+        list(GET shader_fields 8 compute_profile)
+        list(GET shader_fields 9 compute_entry)
+        list(GET shader_fields 10 compute_output)
+    else()
+        set(compute_profile "NONE")
+        set(compute_entry "NONE")
+        set(compute_output "NONE")
+    endif()
 
     list(APPEND NEXAUR_ENGINE_VULKAN_SHADER_FILES
         "${NEXAUR_VULKAN_SHADER_SOURCE_DIR}/${source_file}")
@@ -241,8 +252,26 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
         set(fragment_entry_literal "\"${fragment_entry}\"")
         set(has_fragment_stage "true")
     endif()
+    if(vertex_profile STREQUAL "NONE")
+        set(vertex_file_literal "nullptr")
+        set(vertex_entry_literal "nullptr")
+        set(has_vertex_stage "false")
+    else()
+        set(vertex_file_literal "\"${vertex_output}\"")
+        set(vertex_entry_literal "\"${vertex_entry}\"")
+        set(has_vertex_stage "true")
+    endif()
+    if(compute_profile STREQUAL "NONE")
+        set(compute_file_literal "nullptr")
+        set(compute_entry_literal "nullptr")
+        set(has_compute_stage "false")
+    else()
+        set(compute_file_literal "\"${compute_output}\"")
+        set(compute_entry_literal "\"${compute_entry}\"")
+        set(has_compute_stage "true")
+    endif()
     string(APPEND NEXAUR_VULKAN_SHADER_TABLE_ENTRIES
-        "            VulkanShaderManifestEntry{ \"${vertex_output}\", ${fragment_file_literal}, \"${vertex_entry}\", ${fragment_entry_literal}, ${has_fragment_stage} },\n")
+        "            VulkanShaderManifestEntry{ ${vertex_file_literal}, ${fragment_file_literal}, ${vertex_entry_literal}, ${fragment_entry_literal}, ${compute_file_literal}, ${compute_entry_literal}, ${has_vertex_stage}, ${has_fragment_stage}, ${has_compute_stage} },\n")
 endforeach()
 list(REMOVE_DUPLICATES NEXAUR_ENGINE_VULKAN_SHADER_FILES)
 
@@ -308,6 +337,10 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/features/vulkan_ao_feature.cpp
     Function/Renderer/Vulkan/features/vulkan_ssr_feature.h
     Function/Renderer/Vulkan/features/vulkan_ssr_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_reflection_history.h
+    Function/Renderer/Vulkan/features/vulkan_reflection_history.cpp
+    Function/Renderer/Vulkan/features/vulkan_reflection_surface_feature.h
+    Function/Renderer/Vulkan/features/vulkan_reflection_surface_feature.cpp
     Function/Renderer/Vulkan/features/vulkan_bloom_feature.h
     Function/Renderer/Vulkan/features/vulkan_bloom_feature.cpp
     Function/Renderer/Vulkan/features/vulkan_smaa_feature.h
@@ -416,6 +449,10 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/targets/vulkan_scene_color_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_ssr_target.h
     Function/Renderer/Vulkan/targets/vulkan_ssr_target.cpp
+    Function/Renderer/Vulkan/targets/vulkan_reflection_surface_target.h
+    Function/Renderer/Vulkan/targets/vulkan_reflection_surface_target.cpp
+    Function/Renderer/Vulkan/targets/vulkan_reflection_history_target.h
+    Function/Renderer/Vulkan/targets/vulkan_reflection_history_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_smaa_target.h
     Function/Renderer/Vulkan/targets/vulkan_smaa_target.cpp
     Function/Renderer/Vulkan/targets/vulkan_shadow_map_target.h
@@ -607,6 +644,7 @@ endfunction()
 set(NEXAUR_VULKAN_SHADER_OUTPUTS)
 foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     string(REPLACE "|" ";" shader_fields "${shader_program}")
+    list(LENGTH shader_fields shader_field_count)
     list(GET shader_fields 0 program_id)
     list(GET shader_fields 1 source_file)
     list(GET shader_fields 2 vertex_profile)
@@ -615,7 +653,15 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     list(GET shader_fields 5 fragment_profile)
     list(GET shader_fields 6 fragment_entry)
     list(GET shader_fields 7 fragment_output)
-
+    if(shader_field_count EQUAL 11)
+        list(GET shader_fields 8 compute_profile)
+        list(GET shader_fields 9 compute_entry)
+        list(GET shader_fields 10 compute_output)
+    else()
+        set(compute_profile "NONE")
+        set(compute_entry "NONE")
+        set(compute_output "NONE")
+    endif()
     set(shader_compile_options)
     if(program_id STREQUAL "ForwardRayQuery")
         set(shader_compile_options
@@ -625,18 +671,28 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
         set(shader_compile_options
             -DNEXAUR_ENABLE_RAY_QUERY_SHADOW=1
             -fspv-extension=SPV_KHR_ray_query)
+    elseif(program_id STREQUAL "ForwardRayQueryShadowMrt")
+        set(shader_compile_options
+            -DNEXAUR_ENABLE_RAY_QUERY_SHADOW=1
+            -DNEXAUR_FORWARD_MRT=1
+            -fspv-extension=SPV_KHR_ray_query)
     elseif(program_id STREQUAL "RayQueryAo")
         set(shader_compile_options
             -fspv-extension=SPV_KHR_ray_query)
+    elseif(program_id STREQUAL "ForwardMrt")
+        set(shader_compile_options
+            -DNEXAUR_FORWARD_MRT=1)
     endif()
 
-    nexaur_add_vulkan_hlsl_output(
-        NEXAUR_VULKAN_SHADER_OUTPUTS
-        "${source_file}"
-        "${vertex_profile}"
-        "${vertex_entry}"
-        "${vertex_output}"
-        ${shader_compile_options})
+    if(NOT vertex_profile STREQUAL "NONE")
+        nexaur_add_vulkan_hlsl_output(
+            NEXAUR_VULKAN_SHADER_OUTPUTS
+            "${source_file}"
+            "${vertex_profile}"
+            "${vertex_entry}"
+            "${vertex_output}"
+            ${shader_compile_options})
+    endif()
     if(NOT fragment_profile STREQUAL "NONE")
         nexaur_add_vulkan_hlsl_output(
             NEXAUR_VULKAN_SHADER_OUTPUTS
@@ -644,6 +700,15 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
             "${fragment_profile}"
             "${fragment_entry}"
             "${fragment_output}"
+            ${shader_compile_options})
+    endif()
+    if(NOT compute_profile STREQUAL "NONE")
+        nexaur_add_vulkan_hlsl_output(
+            NEXAUR_VULKAN_SHADER_OUTPUTS
+            "${source_file}"
+            "${compute_profile}"
+            "${compute_entry}"
+            "${compute_output}"
             ${shader_compile_options})
     endif()
 endforeach()

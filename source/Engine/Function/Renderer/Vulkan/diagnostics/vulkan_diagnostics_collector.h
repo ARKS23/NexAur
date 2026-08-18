@@ -36,6 +36,8 @@ namespace NexAur {
         static bool requireFeature(VkBool32 supported, const char* feature_name);
 
         static VkFormat findHdrSceneColorFormat(VkPhysicalDevice physical_device);
+        static VkFormat findReflectionSurfaceFormat(VkPhysicalDevice physical_device);
+        static VkFormat findMotionVectorFormat(VkPhysicalDevice physical_device);
         static VkFormat findAoFormat(VkPhysicalDevice physical_device);
         static VkFormat findSmaaMaskFormat(VkPhysicalDevice physical_device);
     };

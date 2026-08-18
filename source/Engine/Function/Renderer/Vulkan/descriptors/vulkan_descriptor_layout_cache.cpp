@@ -108,6 +108,14 @@ namespace NexAur {
             return desc;
         }
 
+        VulkanDescriptorSetLayoutDesc reflectionStorageImageDescriptorLayoutDesc() {
+            VulkanDescriptorSetLayoutDesc desc;
+            desc.bindings = {
+                { 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT }
+            };
+            return desc;
+        }
+
         VulkanDescriptorSetLayoutDesc rayTracingShadingSceneDescriptorLayoutDesc(
             uint32_t texture_capacity,
             uint32_t geometry_descriptor_capacity) {
@@ -205,6 +213,8 @@ namespace NexAur {
                 return getOrCreateLayout(aoInputDescriptorLayoutDesc());
             case VulkanDescriptorSetLayoutId::RayTracingScene:
                 return getOrCreateLayout(rayTracingSceneDescriptorLayoutDesc());
+            case VulkanDescriptorSetLayoutId::ReflectionStorageImage:
+                return getOrCreateLayout(reflectionStorageImageDescriptorLayoutDesc());
             default:
                 NX_CORE_ERROR("Unknown Vulkan descriptor set layout id.");
                 return VK_NULL_HANDLE;

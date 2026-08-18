@@ -10,25 +10,19 @@
 
 #include <array>
 #include <cstddef>
-#include <cmath>
-#include <glm/gtc/matrix_inverse.hpp>
 
 namespace NexAur {
     namespace {
         struct VulkanForwardPushConstants {
             glm::mat4 model{ 1.0f };
-            glm::mat4 normal_matrix{ 1.0f };
+            std::array<glm::vec4, 3> previous_model_rows{
+                glm::vec4{ 0.0f },
+                glm::vec4{ 0.0f },
+                glm::vec4{ 0.0f }
+            };
         };
 
         static_assert(sizeof(VulkanForwardPushConstants) <= 128, "Forward pass push constants exceed Vulkan minimum limit.");
-
-        glm::mat4 buildNormalMatrix(const glm::mat4& model) {
-            if (std::abs(glm::determinant(model)) <= 0.000001f) {
-                return glm::mat4{ 1.0f };
-            }
-
-            return glm::transpose(glm::inverse(model));
-        }
 
         bool checkVk(VkResult result, const char* operation) {
             if (result == VK_SUCCESS) {
@@ -126,6 +120,9 @@ namespace NexAur {
         m_device = context.device;
         m_color_format = context.color_format;
         m_swapchain_color_format = context.swapchain_color_format;
+        m_reflection_surface_format = context.reflection_surface_format;
+        m_fallback_specular_format = context.fallback_specular_format;
+        m_motion_vector_format = context.motion_vector_format;
         m_extent = context.extent;
         m_frame_descriptor_set_layout = context.frame_descriptor_set_layout;
         m_material_descriptor_set_layout = context.material_descriptor_set_layout;
@@ -156,6 +153,9 @@ namespace NexAur {
 
         m_color_format = VK_FORMAT_UNDEFINED;
         m_swapchain_color_format = VK_FORMAT_UNDEFINED;
+        m_reflection_surface_format = VK_FORMAT_UNDEFINED;
+        m_fallback_specular_format = VK_FORMAT_UNDEFINED;
+        m_motion_vector_format = VK_FORMAT_UNDEFINED;
         m_depth_format = VK_FORMAT_UNDEFINED;
         m_extent = {};
         m_frame_descriptor_set_layout = VK_NULL_HANDLE;
@@ -258,13 +258,25 @@ namespace NexAur {
             return false;
         }
 
-        VkRenderingAttachmentInfo color_attachment{};
-        color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        color_attachment.imageView = target.color_view;
-        color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        color_attachment.loadOp = options.color_load_op;
-        color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        color_attachment.clearValue = options.color_clear_value;
+        std::array<VkRenderingAttachmentInfo, 1 + kVulkanAuxiliaryColorAttachmentCount>
+            color_attachments{};
+        color_attachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachments[0].imageView = target.color_view;
+        color_attachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color_attachments[0].loadOp = options.color_load_op;
+        color_attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachments[0].clearValue = options.color_clear_value;
+        for (uint32_t index = 0;
+             index < target.auxiliary_color_attachment_count;
+             ++index) {
+            VkRenderingAttachmentInfo& attachment = color_attachments[index + 1u];
+            attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            attachment.imageView = target.auxiliary_color_views[index];
+            attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            attachment.loadOp = options.auxiliary_color_load_op;
+            attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            attachment.clearValue = options.auxiliary_color_clear_value;
+        }
 
         VkRenderingAttachmentInfo depth_attachment{};
         depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -279,11 +291,8 @@ namespace NexAur {
         rendering_info.renderArea.offset = { 0, 0 };
         rendering_info.renderArea.extent = target.extent;
         rendering_info.layerCount = 1;
-        rendering_info.colorAttachmentCount = 1;
-        rendering_info.pColorAttachments = &color_attachment;
+        rendering_info.pColorAttachments = color_attachments.data();
         rendering_info.pDepthAttachment = &depth_attachment;
-
-        vkCmdBeginRendering(command_buffer, &rendering_info);
 
         VkViewport viewport{};
         viewport.x = 0.0f;
@@ -310,12 +319,41 @@ namespace NexAur {
             isRayQueryShadowReady();
         const bool use_ray_query_pipeline =
             use_ray_query_debug || use_ray_query_shadow;
+        const bool use_ray_query_shadow_mrt =
+            use_ray_query_shadow &&
+            target.auxiliary_color_attachment_count == kVulkanAuxiliaryColorAttachmentCount &&
+            isRayQueryShadowMrtReady();
+        const bool use_mrt_pipeline =
+            target.auxiliary_color_attachment_count == kVulkanAuxiliaryColorAttachmentCount &&
+            ((use_ray_query_shadow_mrt) ||
+             (!use_ray_query_pipeline &&
+              m_mrt_pipeline != VK_NULL_HANDLE &&
+              m_mrt_pipeline_layout != VK_NULL_HANDLE));
+        if (target.auxiliary_color_attachment_count > 0 &&
+            !use_mrt_pipeline &&
+            !use_ray_query_debug &&
+            !use_ray_query_shadow) {
+            NX_CORE_ERROR(
+                "VulkanForwardPass received MRT attachments without a compatible raster pipeline.");
+            return false;
+        }
+        rendering_info.colorAttachmentCount = use_mrt_pipeline ?
+            1u + kVulkanAuxiliaryColorAttachmentCount : 1u;
+
+        vkCmdBeginRendering(command_buffer, &rendering_info);
+
         const VkPipeline pipeline = use_ray_query_debug ?
             m_ray_query_pipeline :
-            (use_ray_query_shadow ? m_ray_query_shadow_pipeline : m_pipeline);
+            (use_ray_query_shadow ?
+             (use_ray_query_shadow_mrt ? m_ray_query_shadow_mrt_pipeline :
+              m_ray_query_shadow_pipeline) :
+             (use_mrt_pipeline ? m_mrt_pipeline : m_pipeline));
         const VkPipelineLayout pipeline_layout = use_ray_query_debug ?
             m_ray_query_pipeline_layout :
-            (use_ray_query_shadow ? m_ray_query_shadow_pipeline_layout : m_pipeline_layout);
+            (use_ray_query_shadow ?
+             (use_ray_query_shadow_mrt ? m_ray_query_shadow_mrt_pipeline_layout :
+              m_ray_query_shadow_pipeline_layout) :
+             (use_mrt_pipeline ? m_mrt_pipeline_layout : m_pipeline_layout));
         if (pipeline != VK_NULL_HANDLE &&
             pipeline_layout != VK_NULL_HANDLE &&
             frame_descriptor_set != VK_NULL_HANDLE &&
@@ -378,7 +416,13 @@ namespace NexAur {
 
                 VulkanForwardPushConstants push_constants;
                 push_constants.model = item.transform;
-                push_constants.normal_matrix = buildNormalMatrix(item.transform);
+                for (uint32_t row = 0; row < 3; ++row) {
+                    push_constants.previous_model_rows[row] = glm::vec4(
+                        item.previous_transform[0][row],
+                        item.previous_transform[1][row],
+                        item.previous_transform[2][row],
+                        item.previous_transform[3][row]);
+                }
                 vkCmdPushConstants(
                     command_buffer,
                     pipeline_layout,
@@ -502,6 +546,28 @@ namespace NexAur {
         m_pipeline = pipeline_state.pipeline;
         m_pipeline_layout = pipeline_state.layout;
 
+        if (m_reflection_surface_format != VK_FORMAT_UNDEFINED &&
+            m_fallback_specular_format != VK_FORMAT_UNDEFINED &&
+            m_motion_vector_format != VK_FORMAT_UNDEFINED) {
+            VulkanGraphicsPipelineDesc mrt_desc = desc;
+            mrt_desc.debug_name = "ForwardMrt";
+            mrt_desc.shader_program = VulkanShaderProgramId::ForwardMrt;
+            mrt_desc.color_attachment_formats = {
+                m_color_format,
+                m_reflection_surface_format,
+                m_fallback_specular_format,
+                m_motion_vector_format
+            };
+            const VulkanGraphicsPipelineState mrt_pipeline_state =
+                m_pipeline_cache->getOrCreateGraphicsPipeline(mrt_desc);
+            if (!mrt_pipeline_state.valid()) {
+                NX_CORE_ERROR("Failed to create Forward MRT pipeline.");
+                return false;
+            }
+            m_mrt_pipeline = mrt_pipeline_state.pipeline;
+            m_mrt_pipeline_layout = mrt_pipeline_state.layout;
+        }
+
         if (m_ray_query_enabled) {
             VulkanGraphicsPipelineDesc ray_query_desc = desc;
             ray_query_desc.debug_name = "ForwardRayQueryDebug";
@@ -532,6 +598,26 @@ namespace NexAur {
                 NX_CORE_WARN(
                     "Forward Ray Query shadow pipeline is unavailable; CSM / PCSS fallback remains active.");
             }
+
+            VulkanGraphicsPipelineDesc ray_query_shadow_mrt_desc = ray_query_shadow_desc;
+            ray_query_shadow_mrt_desc.debug_name = "ForwardRayQueryShadowMrt";
+            ray_query_shadow_mrt_desc.shader_program =
+                VulkanShaderProgramId::ForwardRayQueryShadowMrt;
+            ray_query_shadow_mrt_desc.color_attachment_formats = {
+                m_color_format,
+                m_reflection_surface_format,
+                m_fallback_specular_format,
+                m_motion_vector_format
+            };
+            const VulkanGraphicsPipelineState ray_query_shadow_mrt_pipeline_state =
+                m_pipeline_cache->getOrCreateGraphicsPipeline(ray_query_shadow_mrt_desc);
+            if (ray_query_shadow_mrt_pipeline_state.valid()) {
+                m_ray_query_shadow_mrt_pipeline = ray_query_shadow_mrt_pipeline_state.pipeline;
+                m_ray_query_shadow_mrt_pipeline_layout = ray_query_shadow_mrt_pipeline_state.layout;
+            } else {
+                NX_CORE_WARN(
+                    "Forward Ray Query shadow MRT pipeline is unavailable; reflection surface writes will be skipped on the Ray Query shadow path.");
+            }
         }
 
         return true;
@@ -544,9 +630,13 @@ namespace NexAur {
     void VulkanForwardPass::cleanupPipeline() {
         m_pipeline = VK_NULL_HANDLE;
         m_pipeline_layout = VK_NULL_HANDLE;
+        m_mrt_pipeline = VK_NULL_HANDLE;
+        m_mrt_pipeline_layout = VK_NULL_HANDLE;
         m_ray_query_pipeline = VK_NULL_HANDLE;
         m_ray_query_pipeline_layout = VK_NULL_HANDLE;
         m_ray_query_shadow_pipeline = VK_NULL_HANDLE;
         m_ray_query_shadow_pipeline_layout = VK_NULL_HANDLE;
+        m_ray_query_shadow_mrt_pipeline = VK_NULL_HANDLE;
+        m_ray_query_shadow_mrt_pipeline_layout = VK_NULL_HANDLE;
     }
 } // namespace NexAur

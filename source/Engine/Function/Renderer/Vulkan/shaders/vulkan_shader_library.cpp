@@ -101,10 +101,18 @@ namespace NexAur {
 
         program.vertex_entry = manifest_entry->vertex_entry;
         program.fragment_entry = manifest_entry->fragment_entry;
+        program.compute_entry = manifest_entry->compute_entry;
+        program.has_vertex_stage = manifest_entry->has_vertex_stage;
         program.has_fragment_stage = manifest_entry->has_fragment_stage;
-        program.vertex_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_VERTEX_BIT);
+        program.has_compute_stage = manifest_entry->has_compute_stage;
+        if (program.has_vertex_stage) {
+            program.vertex_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_VERTEX_BIT);
+        }
         if (program.has_fragment_stage) {
             program.fragment_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_FRAGMENT_BIT);
+        }
+        if (program.has_compute_stage) {
+            program.compute_module = getOrCreateShaderModule(program_id, VK_SHADER_STAGE_COMPUTE_BIT);
         }
         return program;
     }
@@ -125,8 +133,19 @@ namespace NexAur {
             findVulkanShaderManifestEntry(program_id);
         const char* file_name = nullptr;
         if (manifest_entry) {
-            file_name = stage == VK_SHADER_STAGE_VERTEX_BIT ?
-                manifest_entry->vertex_file : manifest_entry->fragment_file;
+            switch (stage) {
+                case VK_SHADER_STAGE_VERTEX_BIT:
+                    file_name = manifest_entry->vertex_file;
+                    break;
+                case VK_SHADER_STAGE_FRAGMENT_BIT:
+                    file_name = manifest_entry->fragment_file;
+                    break;
+                case VK_SHADER_STAGE_COMPUTE_BIT:
+                    file_name = manifest_entry->compute_file;
+                    break;
+                default:
+                    break;
+            }
         }
         if (!file_name) {
             NX_CORE_ERROR("Vulkan shader program does not define the requested stage.");

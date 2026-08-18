@@ -12,15 +12,26 @@ namespace NexAur {
     struct VulkanShaderProgram {
         VkShaderModule vertex_module = VK_NULL_HANDLE;
         VkShaderModule fragment_module = VK_NULL_HANDLE;
+        VkShaderModule compute_module = VK_NULL_HANDLE;
         const char* vertex_entry = "VSMain";
         const char* fragment_entry = "PSMain";
+        const char* compute_entry = "CSMain";
+        bool has_vertex_stage = true;
         bool has_fragment_stage = true;
+        bool has_compute_stage = false;
 
-        bool valid() const {
-            return vertex_module != VK_NULL_HANDLE &&
+        bool validForGraphics() const {
+            return has_vertex_stage &&
+                   vertex_module != VK_NULL_HANDLE &&
                    vertex_entry != nullptr &&
                    (!has_fragment_stage ||
                     (fragment_module != VK_NULL_HANDLE && fragment_entry != nullptr));
+        }
+
+        bool validForCompute() const {
+            return has_compute_stage &&
+                   compute_module != VK_NULL_HANDLE &&
+                   compute_entry != nullptr;
         }
     };
 

@@ -117,10 +117,10 @@ namespace NexAur {
         VkFormat findFormat(
             VkPhysicalDevice physical_device,
             const VkFormat* candidates,
-            size_t candidate_count) {
-            constexpr VkFormatFeatureFlags required_features =
+            size_t candidate_count,
+            VkFormatFeatureFlags required_features =
                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
-                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
 
             for (size_t index = 0; index < candidate_count; ++index) {
                 VkFormatProperties properties{};
@@ -138,6 +138,27 @@ namespace NexAur {
         constexpr std::array<VkFormat, 2> candidates{
             VK_FORMAT_R16G16B16A16_SFLOAT,
             VK_FORMAT_B10G11R11_UFLOAT_PACK32
+        };
+        return findFormat(physical_device, candidates.data(), candidates.size());
+    }
+
+    VkFormat VulkanDiagnosticsCollector::findReflectionSurfaceFormat(VkPhysicalDevice physical_device) {
+        constexpr std::array<VkFormat, 1> candidates{
+            VK_FORMAT_R16G16B16A16_SFLOAT
+        };
+        return findFormat(
+            physical_device,
+            candidates.data(),
+            candidates.size(),
+            VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+                VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+    }
+
+    VkFormat VulkanDiagnosticsCollector::findMotionVectorFormat(VkPhysicalDevice physical_device) {
+        constexpr std::array<VkFormat, 2> candidates{
+            VK_FORMAT_R16G16_SFLOAT,
+            VK_FORMAT_R32G32_SFLOAT
         };
         return findFormat(physical_device, candidates.data(), candidates.size());
     }

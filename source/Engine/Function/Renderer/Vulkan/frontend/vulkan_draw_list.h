@@ -18,6 +18,7 @@ namespace NexAur {
         const VulkanMeshResource* mesh = nullptr;
         const VulkanMaterialResource* material = nullptr;
         glm::mat4 transform{ 1.0f };
+        glm::mat4 previous_transform{ 1.0f };
         int entity_id = -1;
         uint64_t sort_key = 0;
     };
@@ -40,6 +41,9 @@ namespace NexAur {
 
     struct VulkanDrawList {
         VulkanRenderView view;
+        glm::mat4 previous_view_projection{ 1.0f };
+        bool reflection_history_valid = false;
+        bool reflection_history_reset = true;
 
         RenderFrameDirectionalLight directional_light;
         std::vector<RenderFramePointLight> point_lights;

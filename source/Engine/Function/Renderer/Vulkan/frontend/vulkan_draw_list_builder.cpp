@@ -91,6 +91,7 @@ namespace NexAur {
                         asset_manager,
                         resolved_material_asset);
                     draw_item.transform = object.transform;
+                    draw_item.previous_transform = object.transform;
                     draw_item.entity_id = object.entity_id;
                     draw_item.sort_key = buildSortKey(object.model_asset, mesh_index, resolved_material_asset);
                     draw_items.push_back(draw_item);

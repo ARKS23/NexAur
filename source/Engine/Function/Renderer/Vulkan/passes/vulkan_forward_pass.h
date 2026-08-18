@@ -19,6 +19,9 @@ namespace NexAur {
         const VulkanGpuAllocator* gpu_allocator = nullptr;
         VkFormat color_format = VK_FORMAT_UNDEFINED;
         VkFormat swapchain_color_format = VK_FORMAT_UNDEFINED;
+        VkFormat reflection_surface_format = VK_FORMAT_UNDEFINED;
+        VkFormat fallback_specular_format = VK_FORMAT_UNDEFINED;
+        VkFormat motion_vector_format = VK_FORMAT_UNDEFINED;
         VkExtent2D extent{};
         std::vector<VkImage> color_images;
         VkDescriptorSetLayout frame_descriptor_set_layout = VK_NULL_HANDLE;
@@ -35,6 +38,9 @@ namespace NexAur {
                    gpu_allocator->isInitialized() &&
                    color_format != VK_FORMAT_UNDEFINED &&
                    swapchain_color_format != VK_FORMAT_UNDEFINED &&
+                   reflection_surface_format != VK_FORMAT_UNDEFINED &&
+                   fallback_specular_format != VK_FORMAT_UNDEFINED &&
+                   motion_vector_format != VK_FORMAT_UNDEFINED &&
                    extent.width > 0 &&
                    extent.height > 0 &&
                    !color_images.empty() &&
@@ -51,6 +57,8 @@ namespace NexAur {
         VkAttachmentLoadOp color_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
         VkAttachmentLoadOp depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
         VkClearValue color_clear_value{};
+        VkAttachmentLoadOp auxiliary_color_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        VkClearValue auxiliary_color_clear_value{};
         VkClearValue depth_clear_value{};
         VkDescriptorSet ray_tracing_scene_descriptor_set = VK_NULL_HANDLE;
         bool ray_query_debug = false;
@@ -113,6 +121,10 @@ namespace NexAur {
             return m_ray_query_shadow_pipeline != VK_NULL_HANDLE &&
                    m_ray_query_shadow_pipeline_layout != VK_NULL_HANDLE;
         }
+        bool isRayQueryShadowMrtReady() const {
+            return m_ray_query_shadow_mrt_pipeline != VK_NULL_HANDLE &&
+                   m_ray_query_shadow_mrt_pipeline_layout != VK_NULL_HANDLE;
+        }
 
     private:
         bool createImageViews(const VulkanForwardPassSwapchainContext& context);
@@ -126,6 +138,9 @@ namespace NexAur {
         VkDevice m_device = VK_NULL_HANDLE;
         VkFormat m_color_format = VK_FORMAT_UNDEFINED;
         VkFormat m_swapchain_color_format = VK_FORMAT_UNDEFINED;
+        VkFormat m_reflection_surface_format = VK_FORMAT_UNDEFINED;
+        VkFormat m_fallback_specular_format = VK_FORMAT_UNDEFINED;
+        VkFormat m_motion_vector_format = VK_FORMAT_UNDEFINED;
         VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
         VkExtent2D m_extent{};
         std::vector<VkImageView> m_color_image_views;
@@ -138,9 +153,13 @@ namespace NexAur {
         VulkanPipelineCache* m_pipeline_cache = nullptr;
         VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout m_mrt_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline m_mrt_pipeline = VK_NULL_HANDLE;
         VkPipelineLayout m_ray_query_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_ray_query_pipeline = VK_NULL_HANDLE;
         VkPipelineLayout m_ray_query_shadow_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline m_ray_query_shadow_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout m_ray_query_shadow_mrt_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline m_ray_query_shadow_mrt_pipeline = VK_NULL_HANDLE;
     };
 } // namespace NexAur

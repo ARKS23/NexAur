@@ -16,6 +16,8 @@ namespace NexAur {
                ssr_hit_mask.valid() &&
                final_color.valid() &&
                swapchain_color.valid() &&
+               (!reflection.anyValid() || reflection.valid()) &&
+               (!forward_writes_reflection_surface || reflection.valid()) &&
                (!(plan.usesRayQueryDebug() ||
                   plan.usesRayQueryShadow() ||
                   plan.usesRayQueryAo()) ||
@@ -89,6 +91,9 @@ namespace NexAur {
         }
 
         VulkanGraphPassBuilder forward_pass = graph.addPass("ForwardScene");
+        const bool has_reflection_surface =
+            resources.forward_writes_reflection_surface &&
+            resources.reflection.valid();
         if (plan.usesRayQueryDebug() || plan.usesRayQueryShadow()) {
             forward_pass.readAccelerationStructure(
                 resources.ray_query_scene,
@@ -101,6 +106,24 @@ namespace NexAur {
             .readWriteImage(resources.scene_color, VulkanGraphImageUsage::ColorAttachment)
             .writeImage(resources.scene_depth, VulkanGraphImageUsage::DepthStencilAttachment)
             .execute(callbacks.record_forward);
+        if (has_reflection_surface) {
+            forward_pass
+                .writeImage(
+                    resources.reflection.reflection_surface,
+                    VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(
+                    resources.reflection.fallback_specular,
+                    VulkanGraphImageUsage::ColorAttachment)
+                .writeImage(
+                    resources.reflection.motion_vector,
+                    VulkanGraphImageUsage::ColorAttachment);
+            if (!callbacks.add_reflection_preparation ||
+                !callbacks.add_reflection_preparation(
+                    graph,
+                    resources.reflection)) {
+                return false;
+            }
+        }
 
         if (plan.rendersAo() &&
             !callbacks.add_ao(

@@ -162,6 +162,14 @@ namespace NexAur {
         float intensity = 1.0f;
     };
 
+    struct RenderRayTracedReflectionSettings {
+        bool enabled = false;
+        bool half_resolution = true;
+        float max_distance = 30.0f;
+        float max_roughness = 0.85f;
+        float normal_bias = 0.02f;
+    };
+
     struct RenderPostProcessSettings {
         RenderToneMappingMode tone_mapping_mode = RenderToneMappingMode::ACES;
         float exposure = 0.85f;
@@ -281,6 +289,7 @@ namespace NexAur {
         RenderAntiAliasingSettings anti_aliasing;
         RenderAoSettings ao;
         RenderSsrSettings ssr;
+        RenderRayTracedReflectionSettings ray_traced_reflection;
         RenderIblDebugSettings ibl_debug;
         RenderEffectDebugSettings effects_debug;
         RenderShadowSettings shadow;

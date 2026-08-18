@@ -16,7 +16,8 @@ namespace NexAur {
         BloomDualInput,
         Environment,
         AoInput,
-        RayTracingScene
+        RayTracingScene,
+        ReflectionStorageImage
     };
 
     struct VulkanDescriptorBindingDesc {

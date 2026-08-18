@@ -154,6 +154,21 @@ namespace NexAur {
         float intensity = 1.0f;
     };
 
+    struct RendererDebugReflectionStats {
+        bool enabled = false;
+        bool ready = false;
+        bool valid = false;
+        bool pending_reset = true;
+        uint32_t read_index = 0;
+        uint32_t write_index = 1;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        uint64_t surface_generation = 0;
+        std::string surface_format = "None";
+        std::string motion_vector_format = "None";
+        std::string reset_reason = "First frame";
+    };
+
     struct RendererDebugSmaaStats {
         bool enabled = false;
         bool ready = false;
@@ -353,6 +368,7 @@ namespace NexAur {
         RendererDebugBloomStats bloom;
         RendererDebugAoStats ao;
         RendererDebugSsrStats ssr;
+        RendererDebugReflectionStats reflection;
         RendererDebugSmaaStats smaa;
         RendererDebugEffectsStats effects;
         RendererDebugResourceStats resources;

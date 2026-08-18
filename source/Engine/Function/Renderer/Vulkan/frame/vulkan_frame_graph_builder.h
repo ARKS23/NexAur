@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include "Core/Base.h"
+#include "Function/Renderer/Vulkan/features/vulkan_reflection_surface_feature.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_render_feature_plan.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_resource.h"
 
@@ -17,6 +18,8 @@ namespace NexAur {
         VulkanGraphImageHandle rect_shadow_depth;
         VulkanGraphImageHandle scene_color;
         VulkanGraphImageHandle scene_depth;
+        VulkanReflectionSurfaceFeatureGraphResources reflection;
+        bool forward_writes_reflection_surface = false;
         VulkanGraphImageHandle ao_raw;
         VulkanGraphImageHandle ao_blurred;
         VulkanGraphImageHandle ssr_raw_reflection;
@@ -44,6 +47,9 @@ namespace NexAur {
             VulkanGraphImageHandle,
             VulkanGraphImageHandle,
             VulkanGraphImageHandle)>;
+        using AddReflectionPreparationPass = std::function<bool(
+            VulkanPassGraph&,
+            const VulkanReflectionSurfaceFeatureGraphResources&)>;
         using AddDebugDrawPass = std::function<bool(
             VulkanPassGraph&,
             VulkanGraphImageHandle,
@@ -71,6 +77,7 @@ namespace NexAur {
         AddImagePass add_rect_shadow;
         AddImagePass add_skybox;
         RecordPass record_forward;
+        AddReflectionPreparationPass add_reflection_preparation;
         AddAoPass add_ao;
         AddSsrPass add_ssr;
         AddDebugDrawPass add_debug_draw;

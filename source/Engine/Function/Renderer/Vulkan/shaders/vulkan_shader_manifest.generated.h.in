@@ -14,7 +14,11 @@ namespace NexAur {
         const char* fragment_file = nullptr;
         const char* vertex_entry = nullptr;
         const char* fragment_entry = nullptr;
+        const char* compute_file = nullptr;
+        const char* compute_entry = nullptr;
+        bool has_vertex_stage = false;
         bool has_fragment_stage = false;
+        bool has_compute_stage = false;
     };
 
     inline constexpr std::array<VulkanShaderManifestEntry, @NEXAUR_VULKAN_SHADER_PROGRAM_COUNT@>

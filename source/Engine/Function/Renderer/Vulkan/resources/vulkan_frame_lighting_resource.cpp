@@ -21,6 +21,7 @@ namespace NexAur {
 
         struct VulkanGpuFrameGlobals {
             glm::mat4 view_projection{ 1.0f };
+            glm::mat4 previous_view_projection{ 1.0f };
             std::array<glm::mat4, kMaxRenderShadowCascadeCount> shadow_light_view_projections{
                 glm::mat4{ 1.0f },
                 glm::mat4{ 1.0f },
@@ -201,6 +202,7 @@ namespace NexAur {
 
         VulkanGpuFrameGlobals frame_globals;
         frame_globals.view_projection = draw_list.view.view_projection_matrix;
+        frame_globals.previous_view_projection = draw_list.previous_view_projection;
         frame_globals.view_matrix = draw_list.view.view_matrix;
         for (uint32_t index = 0; index < kMaxRenderShadowCascadeCount; ++index) {
             frame_globals.shadow_light_view_projections[index] = shadow_frame.light_view_projections[index];

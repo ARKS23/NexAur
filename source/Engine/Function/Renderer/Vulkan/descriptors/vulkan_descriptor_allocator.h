@@ -30,7 +30,8 @@ namespace NexAur {
             VkDevice device,
             bool acceleration_structure_enabled = false,
             uint32_t sampled_image_descriptors_per_set = 8,
-            uint32_t storage_buffer_descriptors_per_set = 4);
+            uint32_t storage_buffer_descriptors_per_set = 4,
+            uint32_t storage_image_descriptors_per_set = 4);
         void shutdown();
 
         VulkanDescriptorSetAllocation allocate(VkDescriptorSetLayout layout);
@@ -50,5 +51,6 @@ namespace NexAur {
         bool m_acceleration_structure_enabled = false;
         uint32_t m_sampled_image_descriptors_per_set = 8;
         uint32_t m_storage_buffer_descriptors_per_set = 4;
+        uint32_t m_storage_image_descriptors_per_set = 4;
     };
 } // namespace NexAur

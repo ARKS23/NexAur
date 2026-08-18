@@ -37,6 +37,7 @@
 #include "Function/Renderer/Vulkan/core/vulkan_device_context.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
+#include "Function/Renderer/Vulkan/features/vulkan_reflection_history.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_constants.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h"
@@ -44,6 +45,7 @@
 #include "Function/Renderer/Vulkan/frontend/vulkan_render_data_translator.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_graph_state_planner.h"
 #include "Function/Renderer/Vulkan/graph/vulkan_pass_graph.h"
+#include "Function/Renderer/Vulkan/pipeline/vulkan_pipeline_types.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_acceleration_structure.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_capabilities.h"
 #include "Function/Renderer/Vulkan/ray_tracing/vulkan_ray_tracing_scene_table.h"
@@ -366,7 +368,7 @@ int runRenderGraphStatePlannerSmoke() {
         VkPipelineStageFlags2 stage;
     };
 
-    constexpr std::array<UsageExpectation, 5> kUsageExpectations{
+    constexpr std::array<UsageExpectation, 8> kUsageExpectations{
         UsageExpectation{
             NexAur::VulkanGraphImageUsage::ColorAttachment,
             NexAur::VulkanGraphAccessType::Write,
@@ -389,6 +391,27 @@ int runRenderGraphStatePlannerSmoke() {
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             VK_ACCESS_2_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::ComputeShaderRead,
+            NexAur::VulkanGraphAccessType::Read,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::ComputeStorageWrite,
+            NexAur::VulkanGraphAccessType::Write,
+            VK_IMAGE_LAYOUT_GENERAL,
+            VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        },
+        UsageExpectation{
+            NexAur::VulkanGraphImageUsage::ComputeStorageReadWrite,
+            NexAur::VulkanGraphAccessType::ReadWrite,
+            VK_IMAGE_LAYOUT_GENERAL,
+            VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
         },
         UsageExpectation{
             NexAur::VulkanGraphImageUsage::TransferSource,
@@ -613,6 +636,34 @@ int runRenderGraphStatePlannerSmoke() {
         !shader_read_to_shader_read.requires_barrier,
         "RenderGraph planner emitted a barrier for read-only access with an unchanged layout.");
 
+    const NexAur::VulkanGraphImageState compute_storage_write =
+        NexAur::VulkanGraphStatePlanner::stateForUsage(
+            NexAur::VulkanGraphImageUsage::ComputeStorageWrite,
+            NexAur::VulkanGraphAccessType::Write,
+            color_range);
+    const NexAur::VulkanGraphImageState compute_storage_read =
+        NexAur::VulkanGraphStatePlanner::stateForUsage(
+            NexAur::VulkanGraphImageUsage::ComputeShaderRead,
+            NexAur::VulkanGraphAccessType::Read,
+            color_range);
+    const NexAur::VulkanGraphImageTransitionPlan compute_write_to_read =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(
+            compute_storage_write,
+            compute_storage_read);
+    expect(
+        compute_write_to_read.requires_barrier &&
+            compute_write_to_read.source.stage == VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT &&
+            compute_write_to_read.destination.stage == VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        "RenderGraph planner skipped compute storage write -> sampled read synchronization.");
+    const NexAur::VulkanGraphImageTransitionPlan compute_write_to_fragment =
+        NexAur::VulkanGraphStatePlanner::planImageTransition(
+            compute_storage_write,
+            color_read);
+    expect(
+        compute_write_to_fragment.requires_barrier &&
+            compute_write_to_fragment.destination.stage == VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        "RenderGraph planner skipped compute storage write -> fragment read synchronization.");
+
     const NexAur::VulkanGraphImageState color_read_write =
         NexAur::VulkanGraphStatePlanner::stateForUsage(
             NexAur::VulkanGraphImageUsage::ColorAttachment,
@@ -752,6 +803,15 @@ int runRenderGraphAccelerationStructurePlannerSmoke() {
             tlas_to_fragment.destination.access ==
                 VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
         "RenderGraph AS planner skipped AS build write -> fragment read synchronization.");
+
+    const NexAur::VulkanGraphAccelerationStructureState compute_ray_query_read =
+        NexAur::VulkanGraphStatePlanner::stateForAccelerationStructureUsage(
+            NexAur::VulkanGraphAccelerationStructureUsage::ComputeRayQueryShaderRead,
+            NexAur::VulkanGraphAccessType::Read);
+    expect(
+        compute_ray_query_read.stage == VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT &&
+            compute_ray_query_read.access == VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+        "RenderGraph AS planner produced an invalid compute Ray Query read state.");
 
     const NexAur::VulkanGraphAccelerationStructureTransitionPlan read_to_read =
         NexAur::VulkanGraphStatePlanner::planAccelerationStructureTransition(
@@ -976,7 +1036,7 @@ int runFrameFeaturePlanSmoke() {
             fallback_plan.getDebugSettings().view == NexAur::RenderEffectDebugView::FinalLit,
         "Feature plan should resolve unavailable SSR debug output to direct final-lit output.");
 
-    auto makeResources = []() {
+    auto makeResources = [](bool include_reflection = false) {
         NexAur::VulkanFrameGraphResources resources;
         uint32_t index = 0;
         resources.directional_shadow_depth.index = index++;
@@ -992,6 +1052,24 @@ int runFrameFeaturePlanSmoke() {
         resources.swapchain_color.index = index++;
         resources.smaa_source.index = index++;
         resources.ray_query_scene.index = index++;
+        if (include_reflection) {
+            resources.forward_writes_reflection_surface = true;
+            resources.reflection.reflection_surface.index = index++;
+            resources.reflection.fallback_specular.index = index++;
+            resources.reflection.motion_vector.index = index++;
+            resources.reflection.raw_reflection.index = index++;
+            resources.reflection.hit_distance.index = index++;
+            resources.reflection.filtered_radiance_read.index = index++;
+            resources.reflection.filtered_radiance_write.index = index++;
+            resources.reflection.moments_read.index = index++;
+            resources.reflection.moments_write.index = index++;
+            resources.reflection.history_length_read.index = index++;
+            resources.reflection.history_length_write.index = index++;
+            resources.reflection.depth_read.index = index++;
+            resources.reflection.depth_write.index = index++;
+            resources.reflection.surface_read.index = index++;
+            resources.reflection.surface_write.index = index++;
+        }
         return resources;
     };
     auto makeCallbacks = [](
@@ -1095,6 +1173,27 @@ int runFrameFeaturePlanSmoke() {
             smaa_calls == 1,
         "Frame graph builder did not follow the feature plan for viewport output.");
 
+    int reflection_preparation_calls = 0;
+    NexAur::VulkanFrameGraphCallbacks reflection_callbacks = viewport_callbacks;
+    reflection_callbacks.add_reflection_preparation =
+        [&reflection_preparation_calls](
+            NexAur::VulkanPassGraph&,
+            const NexAur::VulkanReflectionSurfaceFeatureGraphResources& resources) {
+            ++reflection_preparation_calls;
+            return resources.valid();
+        };
+    NexAur::VulkanPassGraph reflection_graph;
+    expect(
+        graph_builder.build(
+            reflection_graph,
+            default_plan,
+            makeResources(true),
+            reflection_callbacks),
+        "Frame graph builder rejected reflection surface resources.");
+    expect(
+        reflection_preparation_calls == 1,
+        "Frame graph builder did not schedule reflection preparation after ForwardScene.");
+
     NexAur::VulkanPassGraph ray_query_shadow_graph;
     expect(
         graph_builder.build(
@@ -1164,6 +1263,152 @@ int runFrameFeaturePlanSmoke() {
     }
 
     std::cout << "Frame feature plan smoke passed." << std::endl;
+    return 0;
+}
+
+int runReflectionHistoryContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!condition && success) {
+            failure = message;
+        }
+        success = success && condition;
+    };
+
+    NexAur::VulkanReflectionHistoryKey previous;
+    previous.scene_id = 7;
+    previous.frame_serial = 41;
+    previous.surface_generation = 2;
+    previous.tlas_generation = 3;
+    previous.settings_signature = 11;
+    previous.viewport_width = 1280;
+    previous.viewport_height = 720;
+    previous.output_route = NexAur::VulkanFrameOutputRoute::Viewport;
+    previous.reflection_enabled = true;
+    previous.half_resolution = true;
+
+    NexAur::VulkanReflectionHistoryKey current = previous;
+    current.frame_serial = 42;
+    const NexAur::VulkanReflectionHistoryDecision first_decision =
+        NexAur::decideVulkanReflectionHistoryReset(false, previous, current, false);
+    expect(
+        first_decision.reset &&
+            std::string_view(first_decision.reason) == std::string_view("First frame"),
+        "Reflection history contract missed the first-frame reset.");
+    expect(
+        NexAur::decideVulkanReflectionHistoryReset(true, previous, current, false).reset == false,
+        "Reflection history contract rejected a continuous frame.");
+
+    current.scene_id = 8;
+    expect(
+        NexAur::decideVulkanReflectionHistoryReset(true, previous, current, false).reason ==
+            std::string_view("Scene changed"),
+        "Reflection history contract missed a scene reset.");
+    current = previous;
+    current.frame_serial = 44;
+    expect(
+        NexAur::decideVulkanReflectionHistoryReset(true, previous, current, false).reason ==
+            std::string_view("Frame serial discontinuity"),
+        "Reflection history contract missed a frame discontinuity reset.");
+    current = previous;
+    current.frame_serial = 42;
+    current.viewport_width = 1920;
+    expect(
+        NexAur::decideVulkanReflectionHistoryReset(true, previous, current, false).reason ==
+            std::string_view("Viewport extent changed"),
+        "Reflection history contract missed a viewport reset.");
+    current = previous;
+    current.frame_serial = 42;
+    expect(
+        NexAur::decideVulkanReflectionHistoryReset(true, previous, current, true).reason ==
+            std::string_view("Camera cut or teleport"),
+        "Reflection history contract missed a camera cut reset.");
+
+    NexAur::RenderRayTracedReflectionSettings settings;
+    const uint64_t default_signature =
+        NexAur::hashVulkanReflectionSettings(settings);
+    settings.max_distance += 1.0f;
+    expect(
+        default_signature != NexAur::hashVulkanReflectionSettings(settings),
+        "Reflection settings signature ignored a sampling parameter.");
+
+    NexAur::VulkanComputePipelineDesc compute_desc;
+    compute_desc.shader_program = NexAur::VulkanShaderProgramId::ReflectionHistoryClear;
+    VkPushConstantRange compute_push_range{};
+    compute_push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    compute_push_range.size = 32;
+    compute_desc.push_constant_ranges.push_back(compute_push_range);
+    NexAur::VulkanComputePipelineDesc compute_copy = compute_desc;
+    expect(
+        compute_desc == compute_copy &&
+            NexAur::VulkanComputePipelineDescHash{}(compute_desc) ==
+                NexAur::VulkanComputePipelineDescHash{}(compute_copy),
+        "Compute pipeline cache contract rejected identical descriptors.");
+    compute_copy.push_constant_ranges[0].size = 16;
+    expect(
+        compute_desc != compute_copy,
+        "Compute pipeline cache contract ignored push constant range changes.");
+
+    NexAur::VulkanGraphicsPipelineDesc mrt_desc;
+    mrt_desc.shader_program = NexAur::VulkanShaderProgramId::ForwardMrt;
+    mrt_desc.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    mrt_desc.color_attachment_formats = {
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R16G16_SFLOAT
+    };
+    mrt_desc.depth_format = VK_FORMAT_D32_SFLOAT;
+    NexAur::VulkanGraphicsPipelineDesc mrt_copy = mrt_desc;
+    expect(
+        mrt_desc == mrt_copy &&
+            NexAur::VulkanGraphicsPipelineDescHash{}(mrt_desc) ==
+                NexAur::VulkanGraphicsPipelineDescHash{}(mrt_copy),
+        "MRT pipeline cache contract rejected identical attachment formats.");
+    mrt_copy.color_attachment_formats[3] = VK_FORMAT_R32G32_SFLOAT;
+    expect(
+        mrt_desc != mrt_copy,
+        "MRT pipeline cache contract ignored motion vector format changes.");
+
+    NexAur::VulkanReflectionHistoryState history;
+    NexAur::VulkanDrawList first_draw;
+    first_draw.view.viewport_width = 1280;
+    first_draw.view.viewport_height = 720;
+    first_draw.view.view_projection_matrix = glm::mat4{ 1.0f };
+    first_draw.view.camera_position = glm::vec3{ 0.0f };
+    NexAur::VulkanMeshDrawItem first_item;
+    first_item.entity_id = 12;
+    first_item.transform = glm::mat4{ 1.0f };
+    first_draw.opaque_items.push_back(first_item);
+    history.prepareFrame(first_draw, previous);
+    expect(
+        first_draw.reflection_history_reset &&
+            !first_draw.reflection_history_valid &&
+            first_draw.opaque_items[0].previous_transform == first_item.transform,
+        "Reflection history first-frame transform contract is invalid.");
+    history.onFrameSubmitted();
+
+    NexAur::VulkanDrawList second_draw = first_draw;
+    second_draw.view.camera_position = glm::vec3{ 0.5f, 0.0f, 0.0f };
+    second_draw.opaque_items[0].transform = glm::translate(
+        glm::mat4{ 1.0f },
+        glm::vec3{ 1.0f, 0.0f, 0.0f });
+    NexAur::VulkanReflectionHistoryKey second_key = previous;
+    second_key.frame_serial = 42;
+    history.prepareFrame(second_draw, second_key);
+    expect(
+        second_draw.reflection_history_valid &&
+            !second_draw.reflection_history_reset &&
+            second_draw.opaque_items[0].previous_transform == first_item.transform,
+        "Reflection history did not preserve the last submitted object transform.");
+
+    if (!success) {
+        std::cerr << "Reflection history contract smoke failed: " << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Reflection history contract smoke passed." << std::endl;
     return 0;
 }
 
@@ -4085,6 +4330,7 @@ namespace {
         { "--render-graph-state-planner", runRenderGraphStatePlannerSmoke },
         { "--render-graph-as-planner", runRenderGraphAccelerationStructurePlannerSmoke },
         { "--frame-feature-plan", runFrameFeaturePlanSmoke },
+        { "--reflection-history-contract", runReflectionHistoryContractSmoke },
         { "--retirement-queue", runRetirementQueueSmoke },
         { "--frame-context", runFrameContextSmoke },
         { "--async-transfer-state", runAsyncTransferStateSmoke },

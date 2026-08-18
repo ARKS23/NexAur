@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：RT-10.0 已完成；下一工作包为 RT-10.1
+状态：RT-10.1 已完成；下一工作包为 RT-10.2
 
 ## 1. 文档目的
 
@@ -998,4 +998,27 @@ Focused verification completed:
 - RT-capable Vulkan device smoke with validation enabled, including table descriptor population and fallback texture resources.
 - Ray Query disabled and force-disabled device smoke.
 
-The next package remains RT-10.1: reflection surface data, compute pipeline support, and history resources. No reflection trace shader is part of RT-10.0.
+## RT-10.1 Implementation Notes (2026-08-18)
+
+RT-10.1 is implemented as a surface, compute, and temporal-history foundation. It does not add a reflection trace shader, denoiser, or composite pass.
+
+Implemented:
+
+- Added compute-only shader manifest records, compute pipeline descriptors/cache entries, and a storage-image descriptor layout.
+- Added explicit RenderGraph compute sampled, storage read/write, and compute Ray Query access states.
+- Added Forward MRT outputs for reflection surface data, fallback specular radiance, and motion vectors.
+- Added a dedicated Ray Query shadow MRT variant. Ray Query debug remains color-only, and the graph only declares surface writes when the selected Forward pipeline actually has the matching attachments.
+- Added owned reflection surface and ping-pong history targets with resize generation tracking.
+- Added history reset decisions for scene changes, frame discontinuity, viewport/output changes, reflection mode/settings changes, TLAS rebuild generation, resize generation, and camera teleport.
+- Previous camera and object transforms advance only after a successful queue submission. Record or submit failure leaves temporal state unchanged.
+- Reflection probe capture continues to use the color-only Forward path.
+- Added reflection history diagnostics and focused contract tests for compute graph states, pipeline descriptor hashing, MRT resources, reset decisions, and transform history.
+
+Focused verification completed:
+
+- `NexAurRendererVulkan` and `NexAurRendererTests` Debug builds.
+- RenderGraph state planner, AS planner, frame feature plan, and reflection history contract tests.
+- Ray Query force-disabled device smoke.
+- `spirv-val --target-env vulkan1.3` for Forward MRT, Ray Query shadow MRT, and history clear compute shaders.
+
+The next package remains RT-10.2: Ray Query reflection trace and hit shading. No reflection trace shader is part of RT-10.1.

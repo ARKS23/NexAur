@@ -1,8 +1,10 @@
 # ProgramId|source|vertex profile|vertex entry|vertex output|fragment profile|fragment entry|fragment output
 set(NEXAUR_VULKAN_SHADER_PROGRAMS
     "Forward|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward.vert.spv|ps_6_0|PSMain|vulkan_forward.frag.spv"
+    "ForwardMrt|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward_mrt.vert.spv|ps_6_0|PSMain|vulkan_forward_mrt.frag.spv"
     "ForwardRayQuery|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward_ray_query.vert.spv|ps_6_5|PSMain|vulkan_forward_ray_query.frag.spv"
     "ForwardRayQueryShadow|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward_ray_query_shadow.vert.spv|ps_6_5|PSMain|vulkan_forward_ray_query_shadow.frag.spv"
+    "ForwardRayQueryShadowMrt|vulkan_forward.hlsl|vs_6_0|VSMain|vulkan_forward_ray_query_shadow_mrt.vert.spv|ps_6_5|PSMain|vulkan_forward_ray_query_shadow_mrt.frag.spv"
     "ObjectId|vulkan_object_id.hlsl|vs_6_0|VSMain|vulkan_object_id.vert.spv|ps_6_0|PSMain|vulkan_object_id.frag.spv"
     "Skybox|vulkan_skybox.hlsl|vs_6_0|VSMain|vulkan_skybox.vert.spv|ps_6_0|PSMain|vulkan_skybox.frag.spv"
     "ShadowDepth|vulkan_shadow_depth.hlsl|vs_6_0|VSMain|vulkan_shadow_depth.vert.spv|NONE|NONE|NONE"
@@ -16,6 +18,7 @@ set(NEXAUR_VULKAN_SHADER_PROGRAMS
     "RayQueryAo|ao/vulkan_rtao.hlsl|vs_6_0|VSMain|vulkan_rtao.vert.spv|ps_6_5|PSMain|vulkan_rtao.frag.spv"
     "RayQueryAoFilter|ao/vulkan_rtao_filter.hlsl|vs_6_0|VSMain|vulkan_rtao_filter.vert.spv|ps_6_0|PSMain|vulkan_rtao_filter.frag.spv"
     "SsrTrace|reflection/vulkan_ssr_trace.hlsl|vs_6_0|VSMain|vulkan_ssr_trace.vert.spv|ps_6_0|PSMain|vulkan_ssr_trace.frag.spv"
+    "ReflectionHistoryClear|reflection/vulkan_reflection_history_clear.hlsl|NONE|NONE|NONE|NONE|NONE|NONE|cs_6_0|CSMain|vulkan_reflection_history_clear.comp.spv"
     "SmaaEdge|post/vulkan_smaa_edge.hlsl|vs_6_0|VSMain|vulkan_smaa_edge.vert.spv|ps_6_0|PSMain|vulkan_smaa_edge.frag.spv"
     "SmaaBlend|post/vulkan_smaa_blend.hlsl|vs_6_0|VSMain|vulkan_smaa_blend.vert.spv|ps_6_0|PSMain|vulkan_smaa_blend.frag.spv"
     "SmaaNeighborhood|post/vulkan_smaa_neighborhood.hlsl|vs_6_0|VSMain|vulkan_smaa_neighborhood.vert.spv|ps_6_0|PSMain|vulkan_smaa_neighborhood.frag.spv"

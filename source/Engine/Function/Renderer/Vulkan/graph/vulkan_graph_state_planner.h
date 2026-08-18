@@ -92,6 +92,30 @@ namespace NexAur {
                         access_type,
                         subresource_range
                     };
+                case VulkanGraphImageUsage::ComputeShaderRead:
+                    return {
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_2_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        access_type,
+                        subresource_range
+                    };
+                case VulkanGraphImageUsage::ComputeStorageWrite:
+                    return {
+                        VK_IMAGE_LAYOUT_GENERAL,
+                        VK_ACCESS_2_SHADER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        access_type,
+                        subresource_range
+                    };
+                case VulkanGraphImageUsage::ComputeStorageReadWrite:
+                    return {
+                        VK_IMAGE_LAYOUT_GENERAL,
+                        VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        access_type,
+                        subresource_range
+                    };
                 case VulkanGraphImageUsage::TransferSource:
                     return {
                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -238,6 +262,12 @@ namespace NexAur {
                     return {
                         VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
                         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                        access_type
+                    };
+                case VulkanGraphAccelerationStructureUsage::ComputeRayQueryShaderRead:
+                    return {
+                        VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         access_type
                     };
             }

@@ -21,11 +21,13 @@ namespace NexAur {
             uint32_t max_sets,
             bool acceleration_structure_enabled,
             uint32_t sampled_image_descriptors_per_set,
-            uint32_t storage_buffer_descriptors_per_set) {
-        std::vector<VkDescriptorPoolSize> pool_sizes{
+            uint32_t storage_buffer_descriptors_per_set,
+            uint32_t storage_image_descriptors_per_set) {
+            std::vector<VkDescriptorPoolSize> pool_sizes{
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, max_sets * 2 },
             { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, max_sets * storage_buffer_descriptors_per_set },
             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_sets * sampled_image_descriptors_per_set },
+                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, max_sets * storage_image_descriptors_per_set },
                 { VK_DESCRIPTOR_TYPE_SAMPLER, max_sets * 4 },
                 { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, max_sets * 4 }
             };
@@ -47,7 +49,8 @@ namespace NexAur {
         VkDevice device,
         bool acceleration_structure_enabled,
         uint32_t sampled_image_descriptors_per_set,
-        uint32_t storage_buffer_descriptors_per_set) {
+        uint32_t storage_buffer_descriptors_per_set,
+        uint32_t storage_image_descriptors_per_set) {
         shutdown();
 
         if (device == VK_NULL_HANDLE) {
@@ -62,6 +65,8 @@ namespace NexAur {
             std::max(8u, sampled_image_descriptors_per_set);
         m_storage_buffer_descriptors_per_set =
             std::max(4u, storage_buffer_descriptors_per_set);
+        m_storage_image_descriptors_per_set =
+            std::max(4u, storage_image_descriptors_per_set);
         return true;
     }
 
@@ -79,6 +84,7 @@ namespace NexAur {
         m_acceleration_structure_enabled = false;
         m_sampled_image_descriptors_per_set = 8;
         m_storage_buffer_descriptors_per_set = 4;
+        m_storage_image_descriptors_per_set = 4;
         m_device = VK_NULL_HANDLE;
     }
 
@@ -120,7 +126,8 @@ namespace NexAur {
             max_sets,
             m_acceleration_structure_enabled,
             m_sampled_image_descriptors_per_set,
-            m_storage_buffer_descriptors_per_set);
+            m_storage_buffer_descriptors_per_set,
+            m_storage_image_descriptors_per_set);
 
         VkDescriptorPoolCreateInfo pool_info{};
         pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;

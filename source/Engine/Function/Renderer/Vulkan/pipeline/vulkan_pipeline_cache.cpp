@@ -117,12 +117,21 @@ namespace NexAur {
                     vkDestroyPipelineLayout(m_device, state.layout, nullptr);
                 }
             }
+            for (auto& [_, state] : m_compute_pipelines) {
+                if (state.pipeline != VK_NULL_HANDLE) {
+                    vkDestroyPipeline(m_device, state.pipeline, nullptr);
+                }
+                if (state.layout != VK_NULL_HANDLE) {
+                    vkDestroyPipelineLayout(m_device, state.layout, nullptr);
+                }
+            }
             if (m_pipeline_cache != VK_NULL_HANDLE) {
                 vkDestroyPipelineCache(m_device, m_pipeline_cache, nullptr);
             }
         }
 
         m_graphics_pipelines.clear();
+        m_compute_pipelines.clear();
         m_pipeline_cache = VK_NULL_HANDLE;
         m_shader_library = nullptr;
         m_device = VK_NULL_HANDLE;
@@ -148,6 +157,27 @@ namespace NexAur {
         return state;
     }
 
+    VulkanComputePipelineState VulkanPipelineCache::getOrCreateComputePipeline(
+        const VulkanComputePipelineDesc& desc) {
+        if (!isInitialized()) {
+            NX_CORE_ERROR("VulkanPipelineCache is not initialized.");
+            return {};
+        }
+
+        auto cached_it = m_compute_pipelines.find(desc);
+        if (cached_it != m_compute_pipelines.end()) {
+            return cached_it->second;
+        }
+
+        VulkanComputePipelineState state = createComputePipeline(desc);
+        if (!state.valid()) {
+            return {};
+        }
+
+        m_compute_pipelines.emplace(desc, state);
+        return state;
+    }
+
     bool VulkanPipelineCache::createNativePipelineCache() {
         VkPipelineCacheCreateInfo cache_info{};
         cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -163,7 +193,7 @@ namespace NexAur {
         }
 
         VulkanShaderProgram shader_program = m_shader_library->getProgram(desc.shader_program);
-        if (!shader_program.valid()) {
+        if (!shader_program.validForGraphics()) {
             NX_CORE_ERROR("Failed to resolve shader program for pipeline: {}", desc.debug_name);
             return {};
         }
@@ -239,9 +269,16 @@ namespace NexAur {
 
         VkPipelineColorBlendStateCreateInfo color_blend{};
         color_blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        const bool has_color_attachment = desc.color_format != VK_FORMAT_UNDEFINED;
-        color_blend.attachmentCount = has_color_attachment ? 1u : 0u;
-        color_blend.pAttachments = has_color_attachment ? &color_blend_attachment : nullptr;
+        std::vector<VkFormat> color_formats = desc.color_attachment_formats;
+        if (color_formats.empty() && desc.color_format != VK_FORMAT_UNDEFINED) {
+            color_formats.push_back(desc.color_format);
+        }
+        std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachments(
+            color_formats.size(),
+            color_blend_attachment);
+        color_blend.attachmentCount = static_cast<uint32_t>(color_blend_attachments.size());
+        color_blend.pAttachments = color_blend_attachments.empty() ?
+            nullptr : color_blend_attachments.data();
 
         const std::array<VkDynamicState, 2> dynamic_states{
             VK_DYNAMIC_STATE_VIEWPORT,
@@ -267,8 +304,9 @@ namespace NexAur {
 
         VkPipelineRenderingCreateInfo rendering_info{};
         rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-        rendering_info.colorAttachmentCount = has_color_attachment ? 1u : 0u;
-        rendering_info.pColorAttachmentFormats = has_color_attachment ? &desc.color_format : nullptr;
+        rendering_info.colorAttachmentCount = static_cast<uint32_t>(color_formats.size());
+        rendering_info.pColorAttachmentFormats = color_formats.empty() ?
+            nullptr : color_formats.data();
         rendering_info.depthAttachmentFormat = desc.depth_format;
 
         VkGraphicsPipelineCreateInfo pipeline_info{};
@@ -289,6 +327,72 @@ namespace NexAur {
         if (!checkVk(
                 vkCreateGraphicsPipelines(m_device, m_pipeline_cache, 1, &pipeline_info, nullptr, &state.pipeline),
                 "vkCreateGraphicsPipelines(graphics pipeline cache)")) {
+            vkDestroyPipelineLayout(m_device, state.layout, nullptr);
+            return {};
+        }
+
+        return state;
+    }
+
+    VulkanComputePipelineState VulkanPipelineCache::createComputePipeline(
+        const VulkanComputePipelineDesc& desc) {
+        if (!desc.valid()) {
+            NX_CORE_ERROR("Invalid Vulkan compute pipeline desc: {}", desc.debug_name);
+            return {};
+        }
+
+        VulkanShaderProgram shader_program = m_shader_library->getProgram(desc.shader_program);
+        if (!shader_program.validForCompute()) {
+            NX_CORE_ERROR("Failed to resolve compute shader program for pipeline: {}", desc.debug_name);
+            return {};
+        }
+
+        VkPipelineLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_info.setLayoutCount = static_cast<uint32_t>(desc.descriptor_set_layouts.size());
+        layout_info.pSetLayouts = desc.descriptor_set_layouts.empty() ?
+            nullptr : desc.descriptor_set_layouts.data();
+        layout_info.pushConstantRangeCount = static_cast<uint32_t>(desc.push_constant_ranges.size());
+        layout_info.pPushConstantRanges = desc.push_constant_ranges.empty() ?
+            nullptr : desc.push_constant_ranges.data();
+
+        VulkanComputePipelineState state;
+        if (!checkVk(
+                vkCreatePipelineLayout(m_device, &layout_info, nullptr, &state.layout),
+                "vkCreatePipelineLayout(compute pipeline cache)")) {
+            return {};
+        }
+
+        VkSpecializationInfo specialization_info{};
+        if (!desc.specialization_entries.empty()) {
+            specialization_info.mapEntryCount =
+                static_cast<uint32_t>(desc.specialization_entries.size());
+            specialization_info.pMapEntries = desc.specialization_entries.data();
+            specialization_info.dataSize = desc.specialization_data.size();
+            specialization_info.pData = desc.specialization_data.data();
+        }
+
+        VkPipelineShaderStageCreateInfo shader_stage{};
+        shader_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shader_stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        shader_stage.module = shader_program.compute_module;
+        shader_stage.pName = shader_program.compute_entry;
+        shader_stage.pSpecializationInfo = desc.specialization_entries.empty() ?
+            nullptr : &specialization_info;
+
+        VkComputePipelineCreateInfo pipeline_info{};
+        pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipeline_info.stage = shader_stage;
+        pipeline_info.layout = state.layout;
+        if (!checkVk(
+                vkCreateComputePipelines(
+                    m_device,
+                    m_pipeline_cache,
+                    1,
+                    &pipeline_info,
+                    nullptr,
+                    &state.pipeline),
+                "vkCreateComputePipelines(compute pipeline cache)")) {
             vkDestroyPipelineLayout(m_device, state.layout, nullptr);
             return {};
         }

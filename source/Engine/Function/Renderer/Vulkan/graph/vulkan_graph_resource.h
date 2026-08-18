@@ -19,6 +19,9 @@ namespace NexAur {
         ColorAttachment,
         DepthStencilAttachment,
         ShaderRead,
+        ComputeShaderRead,
+        ComputeStorageWrite,
+        ComputeStorageReadWrite,
         TransferSource,
         Present
     };
@@ -31,7 +34,8 @@ namespace NexAur {
     enum class VulkanGraphAccelerationStructureUsage {
         BuildInput,
         BuildWrite,
-        RayQueryShaderRead
+        RayQueryShaderRead,
+        ComputeRayQueryShaderRead
     };
 
     struct VulkanGraphImageHandle {

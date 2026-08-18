@@ -14,11 +14,12 @@ struct VSOutput {
     float3 world_tangent : TEXCOORD3;
     float3 world_bitangent : TEXCOORD4;
     float view_depth : TEXCOORD5;
+    float4 previous_position : TEXCOORD6;
 };
 
 struct PushConstants {
     float4x4 model;
-    float4x4 normal_matrix;
+    float4 previous_model_rows[3];
 };
 
 [[vk::push_constant]]
@@ -26,6 +27,7 @@ PushConstants g_push_constants;
 
 struct FrameGlobals {
     float4x4 view_projection;
+    float4x4 previous_view_projection;
     float4x4 shadow_light_view_projection[4];
     float4 camera_position_environment_intensity;
     float4 directional_direction_intensity;
@@ -56,6 +58,22 @@ struct FrameGlobals {
     float4 reflection_probe_params; // x: enabled, y: box projection, z: probe prefilter max lod, w: reserved
     float4 reflection_probe_diffuse_params; // x: enabled, y: intensity, zw: reserved
 };
+
+float3x3 BuildNormalMatrix(float3x3 model_matrix) {
+    const float3 column0 = cross(model_matrix[1], model_matrix[2]);
+    const float3 column1 = cross(model_matrix[2], model_matrix[0]);
+    const float3 column2 = cross(model_matrix[0], model_matrix[1]);
+    const float determinant = dot(model_matrix[0], column0);
+    if (abs(determinant) <= 0.000001f) {
+        return model_matrix;
+    }
+
+    float3x3 normal_matrix;
+    normal_matrix[0] = column0 / determinant;
+    normal_matrix[1] = column1 / determinant;
+    normal_matrix[2] = column2 / determinant;
+    return normal_matrix;
+}
 
 struct PointLightData {
     float4 position_intensity;
@@ -181,8 +199,16 @@ VSOutput VSMain(VSInput input) {
     VSOutput output;
     float4 world_position = mul(g_push_constants.model, float4(input.position, 1.0f));
     float3x3 model_matrix = (float3x3)g_push_constants.model;
-    float3x3 normal_matrix = (float3x3)g_push_constants.normal_matrix;
+    float3x3 normal_matrix = BuildNormalMatrix(model_matrix);
     output.position = mul(g_frame.view_projection, world_position);
+    const float4 object_position = float4(input.position, 1.0f);
+    const float3 previous_world_position = float3(
+        dot(g_push_constants.previous_model_rows[0], object_position),
+        dot(g_push_constants.previous_model_rows[1], object_position),
+        dot(g_push_constants.previous_model_rows[2], object_position));
+    output.previous_position = mul(
+        g_frame.previous_view_projection,
+        float4(previous_world_position, 1.0f));
     output.world_position = world_position.xyz;
     output.world_normal = normalize(mul(normal_matrix, input.normal));
     output.world_tangent = mul(model_matrix, input.tangent);
@@ -324,6 +350,47 @@ float EvaluateSsrSurfaceMask(NxMaterialSample material, float3 view_dir) {
     return saturate(smoothness_weight * Luminance(fresnel) * dielectric_boost);
 }
 
+#if defined(NEXAUR_FORWARD_MRT)
+struct ForwardMrtOutput {
+    float4 scene_color : SV_Target0;
+    float4 reflection_surface : SV_Target1;
+    float4 fallback_specular : SV_Target2;
+    float2 motion_vector : SV_Target3;
+};
+
+float2 EncodeSurfaceNormal(float3 normal) {
+    const float3 safe_normal = normalize(normal);
+    const float denominator = max(abs(safe_normal.x) + abs(safe_normal.y) + abs(safe_normal.z), 0.00001f);
+    float2 encoded = safe_normal.xy / denominator;
+    if (safe_normal.z < 0.0f) {
+        encoded = (1.0f - abs(encoded.yx)) * sign(encoded.xy);
+    }
+    return encoded * 0.5f + 0.5f;
+}
+
+ForwardMrtOutput BuildForwardMrtOutput(
+    float3 scene_color,
+    NxMaterialSample material,
+    NxIblSample ibl,
+    VSOutput input,
+    float3 view_dir,
+    float reflection_mask) {
+    ForwardMrtOutput output;
+    output.scene_color = float4(scene_color, reflection_mask);
+    output.reflection_surface = float4(
+        EncodeSurfaceNormal(material.normal),
+        saturate(material.roughness),
+        reflection_mask);
+    output.fallback_specular = float4(max(ibl.specular, 0.0f), 1.0f);
+    const float current_w = max(abs(input.position.w), 0.00001f);
+    const float previous_w = max(abs(input.previous_position.w), 0.00001f);
+    const float2 current_uv = input.position.xy / current_w * 0.5f + 0.5f;
+    const float2 previous_uv = input.previous_position.xy / previous_w * 0.5f + 0.5f;
+    output.motion_vector = current_uv - previous_uv;
+    return output;
+}
+#endif
+
 float3 EvaluateRectLight(
     NxMaterialSample material,
     float3 world_position,
@@ -364,7 +431,11 @@ float4 PSMain(VSOutput input) : SV_Target0 {
         float4(0.05f, 1.0f, 0.05f, 1.0f);
 }
 #else
+#if defined(NEXAUR_FORWARD_MRT)
+ForwardMrtOutput PSMain(VSOutput input) {
+#else
 float4 PSMain(VSOutput input) : SV_Target0 {
+#endif
     NxMaterialSample material = NxSampleMaterial(input);
     if (g_material.factors.w > 0.5f && g_material.factors.w < 1.5f) {
         clip(material.base_color.a - g_material.factors.z);
@@ -418,16 +489,20 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     const uint ibl_debug_mode = ResolveIblDebugMode();
     if (ibl_debug_mode != 0u) {
-        return float4(
-            EvaluateIblDebugColor(
-                ibl_debug_mode,
-                material,
-                ibl,
-                view_dir,
-                reflection_probe_influence,
-                reflection_probe_specular,
-                reflection_probe_diffuse),
-            EvaluateSsrSurfaceMask(material, view_dir));
+        const float reflection_mask = EvaluateSsrSurfaceMask(material, view_dir);
+        const float3 debug_color = EvaluateIblDebugColor(
+            ibl_debug_mode,
+            material,
+            ibl,
+            view_dir,
+            reflection_probe_influence,
+            reflection_probe_specular,
+            reflection_probe_diffuse);
+#if defined(NEXAUR_FORWARD_MRT)
+        return BuildForwardMrtOutput(debug_color, material, ibl, input, view_dir, reflection_mask);
+#else
+        return float4(debug_color, reflection_mask);
+#endif
     }
 
     float3 lit_color = ibl.diffuse + ibl.specular;
@@ -498,6 +573,17 @@ float4 PSMain(VSOutput input) : SV_Target0 {
 
     lit_color = NxApplyCascadeDebugOverlay(lit_color, input.view_depth);
 
-    return float4(lit_color + material.emissive, EvaluateSsrSurfaceMask(material, view_dir));
+    const float reflection_mask = EvaluateSsrSurfaceMask(material, view_dir);
+#if defined(NEXAUR_FORWARD_MRT)
+    return BuildForwardMrtOutput(
+        lit_color + material.emissive,
+        material,
+        ibl,
+        input,
+        view_dir,
+        reflection_mask);
+#else
+    return float4(lit_color + material.emissive, reflection_mask);
+#endif
 }
 #endif

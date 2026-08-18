@@ -15,6 +15,7 @@
 #include "Function/Renderer/Vulkan/features/vulkan_ao_feature.h"
 #include "Function/Renderer/Vulkan/features/vulkan_bloom_feature.h"
 #include "Function/Renderer/Vulkan/features/vulkan_post_process_feature.h"
+#include "Function/Renderer/Vulkan/features/vulkan_reflection_surface_feature.h"
 #include "Function/Renderer/Vulkan/features/vulkan_shadow_feature.h"
 #include "Function/Renderer/Vulkan/features/vulkan_smaa_feature.h"
 #include "Function/Renderer/Vulkan/features/vulkan_ssr_feature.h"
@@ -195,8 +196,25 @@ namespace NexAur {
                     createResourceContext(),
                     descriptor_layout_cache,
                     descriptor_allocator,
-                    *asset_manager) ||
-                !createSwapchain()) {
+                    *asset_manager)) {
+                shutdown();
+                return false;
+            }
+
+            reflection_surface_format =
+                VulkanDiagnosticsCollector::findReflectionSurfaceFormat(
+                    physical_device.physical_device);
+            motion_vector_format =
+                VulkanDiagnosticsCollector::findMotionVectorFormat(
+                    physical_device.physical_device);
+            if (reflection_surface_format == VK_FORMAT_UNDEFINED ||
+                motion_vector_format == VK_FORMAT_UNDEFINED) {
+                NX_CORE_ERROR(
+                    "VulkanRendererSystem failed to find reflection surface or motion vector formats.");
+                shutdown();
+                return false;
+            }
+            if (!createSwapchain()) {
                 shutdown();
                 return false;
             }
@@ -244,6 +262,14 @@ namespace NexAur {
             if (!scene_color_target.init(
                     createResourceContext(),
                     scene_color_format,
+                    surface_width,
+                    surface_height) ||
+                !reflection_surface_feature.init(
+                    feature_context,
+                    reflection_surface_format,
+                    reflection_surface_format,
+                    motion_vector_format,
+                    reflection_surface_format,
                     surface_width,
                     surface_height) ||
                 !ao_feature.init(
@@ -334,6 +360,7 @@ namespace NexAur {
             reflection_probe_manager.shutdown();
             picking_manager.shutdown();
             shadow_feature.shutdown();
+            reflection_surface_feature.shutdown();
             scene_color_target.shutdown();
             viewport_target.shutdown();
             forward_pass.shutdown();
@@ -354,6 +381,8 @@ namespace NexAur {
             ao_format = VK_FORMAT_UNDEFINED;
             ssr_hit_mask_format = VK_FORMAT_UNDEFINED;
             smaa_mask_format = VK_FORMAT_UNDEFINED;
+            reflection_surface_format = VK_FORMAT_UNDEFINED;
+            motion_vector_format = VK_FORMAT_UNDEFINED;
             asset_manager = nullptr;
             initialized = false;
         }
@@ -434,6 +463,17 @@ namespace NexAur {
                     frame_context.clearRayTracingShadingTable();
                 }
             }
+            const VulkanRenderFeaturePlan feature_plan =
+                buildRenderFeaturePlan(
+                    prepared_frame.scene.render_settings,
+                    frame_context.hasRayTracingScene());
+            if (reflection_surface_feature.isReady()) {
+                reflection_surface_feature.prepareHistory(
+                    prepared_frame.draw_list,
+                    buildReflectionHistoryKey(
+                        prepared_frame.scene,
+                        feature_plan));
+            }
             const VulkanReflectionProbeCaptureCallbacks capture_callbacks =
                 createReflectionProbeCaptureCallbacks(frame_context);
             reflection_probe_manager.processFrame(
@@ -454,10 +494,6 @@ namespace NexAur {
                 return;
             }
 
-            const VulkanRenderFeaturePlan feature_plan =
-                buildRenderFeaturePlan(
-                    prepared_frame.scene.render_settings,
-                    frame_context.hasRayTracingScene());
             last_output_route = feature_plan.getOutputRoute();
             drawFrame(prepared_frame, feature_plan, frame_context);
             updateDebugSnapshot(
@@ -486,6 +522,7 @@ namespace NexAur {
             imgui_renderer.releaseViewportTexture();
             const bool viewport_resized = viewport_target.resize(width, height);
             const bool scene_color_resized = scene_color_target.resize(width, height);
+            const bool reflection_resized = reflection_surface_feature.resize(width, height);
             const bool ao_resized =
                 ao_feature.resize(width, height, RenderSettings().ao.half_resolution);
             const bool bloom_resized =
@@ -495,12 +532,13 @@ namespace NexAur {
             const bool picking_resized = picking_manager.resize(width, height);
             if (!viewport_resized ||
                 !scene_color_resized ||
+                !reflection_resized ||
                 !ao_resized ||
                 !bloom_resized ||
                 !ssr_resized ||
                 !smaa_resized ||
                 !picking_resized) {
-                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, AO, bloom, SSR, SMAA, or picking target.");
+                NX_CORE_ERROR("VulkanRendererSystem failed to resize viewport, HDR scene color, reflection, AO, bloom, SSR, SMAA, or picking target.");
                 return;
             }
             if (imgui_renderer.isInitialized()) {
@@ -626,6 +664,30 @@ namespace NexAur {
             context.ray_query_enabled =
                 device_context.getRayTracingCapabilities().ray_query_enabled;
             return context;
+        }
+
+        VulkanReflectionHistoryKey buildReflectionHistoryKey(
+            const RenderSceneFrame& scene_frame,
+            const VulkanRenderFeaturePlan& feature_plan) const {
+            VulkanReflectionHistoryKey key;
+            key.scene_id = scene_frame.scene_id;
+            key.frame_serial = scene_frame.frame_serial;
+            key.output_route = feature_plan.getOutputRoute();
+            key.reflection_enabled =
+                scene_frame.render_settings.ray_traced_reflection.enabled;
+            key.half_resolution =
+                scene_frame.render_settings.ray_traced_reflection.half_resolution;
+            key.surface_generation = reflection_surface_feature.getSurfaceGeneration();
+            key.tlas_generation = tlas_manager.getStats().rebuild_count;
+            key.settings_signature = hashVulkanReflectionSettings(
+                scene_frame.render_settings.ray_traced_reflection);
+
+            const VkExtent2D extent = reflection_surface_feature.getHistoryTarget().getExtent();
+            key.viewport_width = extent.width > 0 ?
+                extent.width : scene_frame.view.viewport_width;
+            key.viewport_height = extent.height > 0 ?
+                extent.height : scene_frame.view.viewport_height;
+            return key;
         }
 
         void prepareStaticMeshBlas(const VulkanDrawList& draw_list) {
@@ -894,6 +956,8 @@ namespace NexAur {
             snapshot.ssr = ssr_feature.buildDebugStats(
                 scene_frame.render_settings.ssr,
                 feature_plan.rendersSsr());
+            snapshot.reflection = buildReflectionDebugStats(
+                scene_frame.render_settings.ray_traced_reflection);
             snapshot.smaa = smaa_feature.buildDebugStats(
                 scene_frame.render_settings.anti_aliasing,
                 feature_plan.rendersSmaa());
@@ -1062,6 +1126,28 @@ namespace NexAur {
 
         RendererDebugPickingTargetStats buildPickingTargetDebugStats() const {
             return picking_manager.buildDebugStats();
+        }
+
+        RendererDebugReflectionStats buildReflectionDebugStats(
+            const RenderRayTracedReflectionSettings& settings) const {
+            const VulkanReflectionHistoryDebugStats history_stats =
+                reflection_surface_feature.buildDebugStats();
+            RendererDebugReflectionStats stats;
+            stats.enabled = settings.enabled;
+            stats.ready = history_stats.ready;
+            stats.valid = history_stats.valid;
+            stats.pending_reset = history_stats.pending_reset;
+            stats.read_index = history_stats.read_index;
+            stats.write_index = history_stats.write_index;
+            stats.width = history_stats.width;
+            stats.height = history_stats.height;
+            stats.surface_generation = history_stats.surface_generation;
+            stats.surface_format = VulkanDiagnosticsCollector::vkFormatToString(
+                reflection_surface_feature.getSurfaceTarget().getReflectionSurfaceFormat());
+            stats.motion_vector_format = VulkanDiagnosticsCollector::vkFormatToString(
+                reflection_surface_feature.getSurfaceTarget().getMotionVectorFormat());
+            stats.reset_reason = history_stats.reset_reason;
+            return stats;
         }
 
         RendererDebugEffectsStats buildEffectsDebugStats(
@@ -1498,6 +1584,9 @@ namespace NexAur {
             pass_context.gpu_allocator = &gpu_allocator;
             pass_context.color_format = scene_color_format;
             pass_context.swapchain_color_format = swapchain.image_format;
+            pass_context.reflection_surface_format = reflection_surface_format;
+            pass_context.fallback_specular_format = reflection_surface_format;
+            pass_context.motion_vector_format = motion_vector_format;
             pass_context.extent = swapchain.extent;
             pass_context.color_images = swapchain_images;
             pass_context.frame_descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(VulkanDescriptorSetLayoutId::FrameGlobal);
@@ -1821,6 +1910,7 @@ namespace NexAur {
             picking_manager.onFrameSubmitted(
                 frame_context.getFrameIndex(),
                 submission_serial);
+            reflection_surface_feature.onFrameSubmitted();
             current_frame_index =
                 (current_frame_index + 1u) %
                 static_cast<uint32_t>(frame_contexts.size());
@@ -1943,6 +2033,11 @@ namespace NexAur {
             const VulkanSsrFeatureGraphResources ssr_resources =
                 ssr_feature.addGraphResources(graph);
             VulkanFrameGraphResources resources;
+            resources.reflection = reflection_surface_feature.addGraphResources(graph);
+            resources.forward_writes_reflection_surface =
+                !feature_plan.usesRayQueryDebug() &&
+                (!feature_plan.usesRayQueryShadow() ||
+                 forward_pass.isRayQueryShadowMrtReady());
             resources.directional_shadow_depth = shadow_resources.directional_depth;
             resources.point_shadow_depth = shadow_resources.point_depth;
             resources.rect_shadow_depth = shadow_resources.rect_depth;
@@ -2059,6 +2154,15 @@ namespace NexAur {
                         }
                     }
                     return recorded;
+                };
+            callbacks.add_reflection_preparation =
+                [this, frame_index](
+                    VulkanPassGraph& target_graph,
+                    const VulkanReflectionSurfaceFeatureGraphResources& reflection_resources) {
+                    return reflection_surface_feature.addPreparationPass(
+                        target_graph,
+                        reflection_resources,
+                        frame_index);
                 };
             callbacks.add_ao =
                 [this,
@@ -2377,6 +2481,7 @@ namespace NexAur {
             target.depth_view = depth_source.depth_view;
             target.depth_format = depth_source.depth_format;
             target.extent = scene_color_target.getExtent();
+            reflection_surface_feature.getSurfaceTarget().applyToRenderTarget(target);
             return target;
         }
 
@@ -2389,6 +2494,7 @@ namespace NexAur {
             target.depth_view = depth_source.depth_view;
             target.depth_format = depth_source.depth_format;
             target.extent = scene_color_target.getExtent();
+            reflection_surface_feature.getSurfaceTarget().applyToRenderTarget(target);
             return target;
         }
 
@@ -2504,6 +2610,8 @@ namespace NexAur {
         VkFormat ao_format = VK_FORMAT_UNDEFINED;
         VkFormat ssr_hit_mask_format = VK_FORMAT_UNDEFINED;
         VkFormat smaa_mask_format = VK_FORMAT_UNDEFINED;
+        VkFormat reflection_surface_format = VK_FORMAT_UNDEFINED;
+        VkFormat motion_vector_format = VK_FORMAT_UNDEFINED;
 
         std::array<VulkanFrameContext, kVulkanFramesInFlight> frame_contexts;
         VulkanSwapchainImageFlightTracker swapchain_image_flights;
@@ -2530,6 +2638,7 @@ namespace NexAur {
         VulkanBloomFeature bloom_feature;
         VulkanSmaaFeature smaa_feature;
         VulkanShadowFeature shadow_feature;
+        VulkanReflectionSurfaceFeature reflection_surface_feature;
         VulkanPostProcessFeature post_process_feature;
         VulkanDebugDrawPass debug_draw_pass;
         VulkanSkyboxPass skybox_pass;
