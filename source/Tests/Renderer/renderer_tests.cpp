@@ -38,6 +38,7 @@
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_allocator.h"
 #include "Function/Renderer/Vulkan/descriptors/vulkan_descriptor_layout_cache.h"
 #include "Function/Renderer/Vulkan/features/vulkan_reflection_history.h"
+#include "Function/Renderer/Vulkan/features/vulkan_ray_traced_reflection_feature.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_constants.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_flight_tracker.h"
 #include "Function/Renderer/Vulkan/frame/vulkan_frame_graph_builder.h"
@@ -1194,6 +1195,96 @@ int runFrameFeaturePlanSmoke() {
         reflection_preparation_calls == 1,
         "Frame graph builder did not schedule reflection preparation after ForwardScene.");
 
+    NexAur::RenderSettings ray_traced_reflection_settings;
+    ray_traced_reflection_settings.ray_traced_reflection.enabled = true;
+    NexAur::VulkanRenderFeatureAvailability ray_traced_reflection_availability =
+        available;
+    ray_traced_reflection_availability.ray_traced_reflection = true;
+    ray_traced_reflection_availability.ray_query_shadow_mrt = true;
+    const NexAur::VulkanRenderFeaturePlan ray_traced_reflection_plan =
+        NexAur::VulkanRenderFeaturePlan::build(
+            ray_traced_reflection_settings,
+            ray_traced_reflection_availability);
+    int ray_traced_reflection_calls = 0;
+    NexAur::VulkanFrameGraphCallbacks ray_traced_reflection_callbacks =
+        reflection_callbacks;
+    ray_traced_reflection_callbacks.add_ray_traced_reflection =
+        [&ray_traced_reflection_calls](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle scene_depth,
+            NexAur::VulkanGraphImageHandle ssr_hit_mask,
+            NexAur::VulkanGraphAccelerationStructureHandle ray_query_scene,
+            const NexAur::VulkanReflectionSurfaceFeatureGraphResources& resources) {
+            ++ray_traced_reflection_calls;
+            return scene_depth.valid() &&
+                   ssr_hit_mask.valid() &&
+                   ray_query_scene.valid() &&
+                   resources.valid();
+        };
+    NexAur::VulkanPassGraph ray_traced_reflection_graph;
+    expect(
+        graph_builder.build(
+            ray_traced_reflection_graph,
+            ray_traced_reflection_plan,
+            makeResources(true),
+            ray_traced_reflection_callbacks) &&
+            ray_traced_reflection_calls == 1,
+        "Frame graph builder did not schedule the Ray Query reflection trace.");
+
+    NexAur::RenderSettings ray_traced_reflection_debug_settings;
+    ray_traced_reflection_debug_settings.effects_debug.view =
+        NexAur::RenderEffectDebugView::RayTracedReflectionRaw;
+    const NexAur::VulkanRenderFeaturePlan ray_traced_reflection_debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(
+            ray_traced_reflection_debug_settings,
+            ray_traced_reflection_availability);
+    const NexAur::VulkanFrameGraphResources ray_traced_reflection_debug_resources =
+        makeResources(true);
+    bool ray_traced_reflection_debug_routed = false;
+    NexAur::VulkanFrameGraphCallbacks ray_traced_reflection_debug_callbacks =
+        ray_traced_reflection_callbacks;
+    ray_traced_reflection_debug_callbacks.add_post_process =
+        [&ray_traced_reflection_debug_routed,
+         &ray_traced_reflection_debug_resources](
+            NexAur::VulkanPassGraph&,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle,
+            NexAur::VulkanGraphImageHandle reflection_debug,
+            NexAur::VulkanGraphImageHandle hit_distance_debug) {
+            ray_traced_reflection_debug_routed =
+                reflection_debug.index ==
+                    ray_traced_reflection_debug_resources
+                        .reflection.raw_reflection.index &&
+                hit_distance_debug.index ==
+                    ray_traced_reflection_debug_resources
+                        .reflection.hit_distance.index;
+            return true;
+        };
+    NexAur::VulkanPassGraph ray_traced_reflection_debug_graph;
+    expect(
+        graph_builder.build(
+            ray_traced_reflection_debug_graph,
+            ray_traced_reflection_debug_plan,
+            ray_traced_reflection_debug_resources,
+            ray_traced_reflection_debug_callbacks) &&
+            ray_traced_reflection_debug_routed,
+        "RT reflection debug resources were not routed through the shared debug slots.");
+
+    NexAur::VulkanFrameGraphResources missing_reflection_tlas =
+        makeResources(true);
+    missing_reflection_tlas.ray_query_scene = {};
+    NexAur::VulkanPassGraph missing_reflection_tlas_graph;
+    expect(
+        !graph_builder.build(
+            missing_reflection_tlas_graph,
+            ray_traced_reflection_plan,
+            missing_reflection_tlas,
+            ray_traced_reflection_callbacks),
+        "Ray-traced reflection frame graph should require an imported TLAS resource.");
+
     NexAur::VulkanPassGraph ray_query_shadow_graph;
     expect(
         graph_builder.build(
@@ -1409,6 +1500,189 @@ int runReflectionHistoryContractSmoke() {
     }
 
     std::cout << "Reflection history contract smoke passed." << std::endl;
+    return 0;
+}
+
+int runRayTracedReflectionContractSmoke() {
+    bool success = true;
+    std::string failure;
+    auto expect = [&](bool condition, const std::string& message) {
+        if (!condition && success) {
+            failure = message;
+        }
+        success = success && condition;
+    };
+
+    const VkExtent2D half_extent =
+        NexAur::getVulkanRayTracedReflectionExtent(1920u, 1080u, true);
+    const VkExtent2D full_extent =
+        NexAur::getVulkanRayTracedReflectionExtent(1920u, 1080u, false);
+    const VkExtent2D minimum_extent =
+        NexAur::getVulkanRayTracedReflectionExtent(1u, 1u, true);
+    expect(
+        half_extent.width == 960u && half_extent.height == 540u &&
+            full_extent.width == 1920u && full_extent.height == 1080u &&
+            minimum_extent.width == 1u && minimum_extent.height == 1u,
+        "RT reflection half/full output extent contract is invalid.");
+
+    const std::array<glm::vec3, 7> reflection_surface_normals{
+        glm::vec3{ 0.0f, 0.0f, 1.0f },
+        glm::vec3{ 0.0f, 0.0f, -1.0f },
+        glm::vec3{ 1.0f, 0.0f, 0.0f },
+        glm::vec3{ -1.0f, 0.0f, 0.0f },
+        glm::normalize(glm::vec3{ 0.0f, -1.0f, -1.0f }),
+        glm::normalize(glm::vec3{ 1.0f, -2.0f, -3.0f }),
+        glm::normalize(glm::vec3{ -4.0f, 2.0f, 1.0f })
+    };
+    for (const glm::vec3& normal : reflection_surface_normals) {
+        const glm::vec3 decoded =
+            NexAur::decodeVulkanReflectionSurfaceNormal(
+                NexAur::encodeVulkanReflectionSurfaceNormal(normal));
+        expect(
+            glm::dot(normal, decoded) > 0.9999f,
+            "RT reflection surface-normal octahedral round trip is invalid.");
+    }
+    expect(
+        NexAur::encodeVulkanReflectionSurfaceNormal(
+            glm::vec3{ 0.0f, 0.0f, -1.0f }) == glm::vec2{ 1.0f },
+        "RT reflection negative-Z normal lost its octahedral hemisphere.");
+
+    const glm::uvec2 first_source =
+        NexAur::mapVulkanRayTracedReflectionSourcePixel(
+            { 0u, 0u },
+            full_extent,
+            half_extent);
+    const glm::uvec2 last_source =
+        NexAur::mapVulkanRayTracedReflectionSourcePixel(
+            { half_extent.width - 1u, half_extent.height - 1u },
+            full_extent,
+            half_extent);
+    expect(
+        first_source == glm::uvec2{ 1u, 1u } &&
+            last_source == glm::uvec2{ 1919u, 1079u },
+        "RT reflection output-to-source pixel mapping is unstable.");
+
+    const glm::vec3 interpolated =
+        NexAur::interpolateVulkanRayTracingTriangleAttribute(
+            { 0.0f, 0.0f, 0.0f },
+            { 1.0f, 0.0f, 0.0f },
+            { 0.0f, 1.0f, 0.0f },
+            { 0.25f, 0.5f });
+    expect(
+        nearlyEqualVec3(interpolated, { 0.25f, 0.5f, 0.0f }),
+        "RT reflection triangle barycentric reconstruction is invalid.");
+
+    const glm::vec3 identity_normal =
+        NexAur::transformVulkanRayTracingHitNormal(
+            glm::mat4{ 1.0f },
+            { 1.0f, 0.0f, 0.0f });
+    const glm::mat4 rotation = glm::rotate(
+        glm::mat4{ 1.0f },
+        glm::radians(90.0f),
+        glm::vec3{ 0.0f, 0.0f, 1.0f });
+    const glm::vec3 rotated_normal =
+        NexAur::transformVulkanRayTracingHitNormal(
+            rotation,
+            { 1.0f, 0.0f, 0.0f });
+    const glm::mat4 non_uniform_scale = glm::scale(
+        glm::mat4{ 1.0f },
+        glm::vec3{ 2.0f, 1.0f, 0.5f });
+    const glm::vec3 scaled_normal =
+        NexAur::transformVulkanRayTracingHitNormal(
+            non_uniform_scale,
+            glm::normalize(glm::vec3{ 1.0f }));
+    const glm::mat4 mirrored_scale = glm::scale(
+        glm::mat4{ 1.0f },
+        glm::vec3{ -1.0f, 1.0f, 1.0f });
+    const glm::vec3 mirrored_normal =
+        NexAur::transformVulkanRayTracingHitNormal(
+            mirrored_scale,
+            { 1.0f, 0.0f, 0.0f });
+    expect(
+        nearlyEqualVec3(identity_normal, { 1.0f, 0.0f, 0.0f }) &&
+            nearlyEqualVec3(rotated_normal, { 0.0f, 1.0f, 0.0f }) &&
+            nearlyEqualVec3(
+                scaled_normal,
+                glm::normalize(glm::vec3{ 0.5f, 1.0f, 2.0f })) &&
+            nearlyEqualVec3(mirrored_normal, { -1.0f, 0.0f, 0.0f }),
+        "RT reflection hit normal transform failed an identity, rotation, non-uniform, or mirrored case.");
+
+    NexAur::RenderRayTracedReflectionSettings reflection_settings;
+    const glm::vec4 eligible_surface{ 0.5f, 0.5f, 0.4f, 1.0f };
+    expect(
+        NexAur::isVulkanRayTracedReflectionTraceEligible(
+            0.5f,
+            eligible_surface,
+            0.0f,
+            reflection_settings,
+            true) &&
+            !NexAur::isVulkanRayTracedReflectionTraceEligible(
+                1.0f,
+                eligible_surface,
+                0.0f,
+                reflection_settings,
+                true) &&
+            !NexAur::isVulkanRayTracedReflectionTraceEligible(
+                0.5f,
+                glm::vec4{ 0.5f, 0.5f, 0.9f, 1.0f },
+                0.0f,
+                reflection_settings,
+                true) &&
+            !NexAur::isVulkanRayTracedReflectionTraceEligible(
+                0.5f,
+                eligible_surface,
+                0.5f,
+                reflection_settings,
+                true) &&
+            NexAur::isVulkanRayTracedReflectionTraceEligible(
+                0.5f,
+                eligible_surface,
+                0.5f,
+                reflection_settings,
+                false),
+        "RT reflection dispatch eligibility contract is invalid.");
+
+    NexAur::RenderSettings settings;
+    settings.ray_traced_reflection.enabled = true;
+    NexAur::VulkanRenderFeatureAvailability availability;
+    const NexAur::VulkanRenderFeaturePlan unavailable_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, availability);
+    expect(
+        !unavailable_plan.rendersRayTracedReflection(),
+        "RT reflection should fall back when its runtime path is unavailable.");
+
+    availability.ray_traced_reflection = true;
+    availability.ray_query_shadow = true;
+    const NexAur::VulkanRenderFeaturePlan reflection_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, availability);
+    expect(
+        reflection_plan.rendersRayTracedReflection() &&
+            !reflection_plan.usesRayQueryShadow(),
+        "RT reflection plan did not select trace or isolate a missing MRT shadow variant.");
+    availability.ray_query_shadow_mrt = true;
+    const NexAur::VulkanRenderFeaturePlan reflection_shadow_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, availability);
+    expect(
+        reflection_shadow_plan.rendersRayTracedReflection() &&
+            reflection_shadow_plan.usesRayQueryShadow(),
+        "RT reflection plan rejected a ready Ray Query shadow MRT variant.");
+
+    settings = NexAur::RenderSettings{};
+    settings.effects_debug.view =
+        NexAur::RenderEffectDebugView::RayTracedReflectionInstance;
+    const NexAur::VulkanRenderFeaturePlan debug_plan =
+        NexAur::VulkanRenderFeaturePlan::build(settings, availability);
+    expect(
+        debug_plan.rendersRayTracedReflection(),
+        "RT reflection debug view should force the trace path.");
+
+    if (!success) {
+        std::cerr << "Ray-traced reflection contract smoke failed: "
+                  << failure << std::endl;
+        return 1;
+    }
+
+    std::cout << "Ray-traced reflection contract smoke passed." << std::endl;
     return 0;
 }
 
@@ -4331,6 +4605,7 @@ namespace {
         { "--render-graph-as-planner", runRenderGraphAccelerationStructurePlannerSmoke },
         { "--frame-feature-plan", runFrameFeaturePlanSmoke },
         { "--reflection-history-contract", runReflectionHistoryContractSmoke },
+        { "--ray-traced-reflection-contract", runRayTracedReflectionContractSmoke },
         { "--retirement-queue", runRetirementQueueSmoke },
         { "--frame-context", runFrameContextSmoke },
         { "--async-transfer-state", runAsyncTransferStateSmoke },

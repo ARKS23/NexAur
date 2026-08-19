@@ -110,6 +110,7 @@ namespace NexAur {
             const RenderPostProcessSettings& post_process_settings,
             const RenderAoSettings& ao_settings,
             const RenderSsrSettings& ssr_settings,
+            const RenderRayTracedReflectionSettings& ray_traced_reflection_settings,
             const RenderEffectDebugSettings& debug_settings,
             bool isolate_forward_debug);
 

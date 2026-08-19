@@ -104,10 +104,15 @@ namespace NexAur {
             uint32_t width,
             uint32_t height);
         bool resize(uint32_t width, uint32_t height);
+        bool prepareHistoryTarget(
+            uint32_t width,
+            uint32_t height,
+            bool half_resolution);
         void shutdown();
 
         bool isReady() const;
         uint64_t getSurfaceGeneration() const { return m_surface_generation; }
+        bool isHistoryHalfResolution() const { return m_history_half_resolution; }
         VulkanReflectionSurfaceTarget& getSurfaceTarget() { return m_surface_target; }
         const VulkanReflectionSurfaceTarget& getSurfaceTarget() const { return m_surface_target; }
         VulkanReflectionHistoryTarget& getHistoryTarget() { return m_history_target; }
@@ -134,7 +139,8 @@ namespace NexAur {
         };
         static_assert(sizeof(ReflectionHistoryClearPushConstants) == 32);
 
-        static constexpr uint32_t kClearDescriptorCount = 3;
+        static constexpr uint32_t kClearDescriptorCount =
+            static_cast<uint32_t>(VulkanReflectionHistoryImage::Count);
 
         bool createClearPipeline();
         bool allocateClearDescriptors();
@@ -161,6 +167,7 @@ namespace NexAur {
             std::array<VulkanDescriptorSetAllocation, kClearDescriptorCount>,
             kVulkanFramesInFlight> m_clear_descriptor_allocations;
         uint64_t m_surface_generation = 0;
+        bool m_history_half_resolution = false;
         bool m_frame_active = false;
         bool m_history_write_scheduled = false;
     };

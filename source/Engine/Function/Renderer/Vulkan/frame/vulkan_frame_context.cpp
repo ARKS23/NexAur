@@ -38,6 +38,14 @@ namespace NexAur {
                 "Frame {} GPU timestamp profiling is unavailable.",
                 frame_index);
         }
+        if (!m_ray_traced_reflection_gpu_timestamp.init(
+                context.physical_device,
+                context.device,
+                context.graphics_queue_family)) {
+            NX_CORE_WARN(
+                "Frame {} RT reflection GPU timestamp profiling is unavailable.",
+                frame_index);
+        }
         if (!createCommandResources(context.graphics_queue_family) ||
             !createSyncObjects() ||
             !m_lighting_resource.init(
@@ -73,6 +81,7 @@ namespace NexAur {
     }
 
     void VulkanFrameContext::shutdown() {
+        m_ray_traced_reflection_gpu_timestamp.shutdown();
         m_ray_query_gpu_timestamp.shutdown();
         m_debug_draw_buffer.shutdown();
         m_ray_tracing_scene_table.shutdown();
@@ -98,6 +107,7 @@ namespace NexAur {
         m_fence = VK_NULL_HANDLE;
         m_frame_index = 0;
         m_ray_query_timing_submission_serial = 0;
+        m_ray_traced_reflection_timing_submission_serial = 0;
         m_flight_state.reset();
         m_ready = false;
     }
@@ -110,6 +120,9 @@ namespace NexAur {
         const uint64_t completed_serial = m_flight_state.getSubmissionSerial();
         if (m_ray_query_gpu_timestamp.resolve()) {
             m_ray_query_timing_submission_serial = completed_serial;
+        }
+        if (m_ray_traced_reflection_gpu_timestamp.resolve()) {
+            m_ray_traced_reflection_timing_submission_serial = completed_serial;
         }
         m_flight_state.markCompleted();
     }
@@ -128,6 +141,20 @@ namespace NexAur {
         m_ray_query_gpu_timestamp.discard();
     }
 
+    bool VulkanFrameContext::beginRayTracedReflectionGpuTiming(
+        VkCommandBuffer command_buffer) {
+        return m_ray_traced_reflection_gpu_timestamp.begin(command_buffer);
+    }
+
+    bool VulkanFrameContext::endRayTracedReflectionGpuTiming(
+        VkCommandBuffer command_buffer) {
+        return m_ray_traced_reflection_gpu_timestamp.end(command_buffer);
+    }
+
+    void VulkanFrameContext::discardRayTracedReflectionGpuTiming() {
+        m_ray_traced_reflection_gpu_timestamp.discard();
+    }
+
     VulkanFrameGpuTimingStats VulkanFrameContext::getGpuTimingStats() const {
         const VulkanGpuTimestampQueryStats timestamp_stats =
             m_ray_query_gpu_timestamp.getStats();
@@ -136,6 +163,15 @@ namespace NexAur {
         stats.ray_query_sample_count = timestamp_stats.sample_count;
         stats.ray_query_submission_serial = m_ray_query_timing_submission_serial;
         stats.ray_query_forward_ms = timestamp_stats.last_duration_ms;
+        const VulkanGpuTimestampQueryStats reflection_timestamp_stats =
+            m_ray_traced_reflection_gpu_timestamp.getStats();
+        stats.ray_traced_reflection_supported = reflection_timestamp_stats.supported;
+        stats.ray_traced_reflection_sample_count =
+            reflection_timestamp_stats.sample_count;
+        stats.ray_traced_reflection_submission_serial =
+            m_ray_traced_reflection_timing_submission_serial;
+        stats.ray_traced_reflection_ms =
+            reflection_timestamp_stats.last_duration_ms;
         return stats;
     }
 

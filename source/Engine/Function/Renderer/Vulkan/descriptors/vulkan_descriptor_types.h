@@ -17,7 +17,8 @@ namespace NexAur {
         Environment,
         AoInput,
         RayTracingScene,
-        ReflectionStorageImage
+        ReflectionStorageImage,
+        RayTracedReflectionTrace
     };
 
     struct VulkanDescriptorBindingDesc {

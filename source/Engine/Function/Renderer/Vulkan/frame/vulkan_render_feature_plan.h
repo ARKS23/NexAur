@@ -4,6 +4,8 @@
 #include "Function/Renderer/data/render_settings.h"
 
 namespace NexAur {
+    bool isVulkanRayTracedReflectionDebugView(RenderEffectDebugView view);
+
     enum class VulkanFrameOutputRoute {
         Viewport,
         DirectSwapchain
@@ -39,7 +41,9 @@ namespace NexAur {
         bool rect_shadow = false;
         bool ray_query = false;
         bool ray_query_shadow = false;
+        bool ray_query_shadow_mrt = false;
         bool ray_query_ao = false;
+        bool ray_traced_reflection = false;
     };
 
     // A frame plan is a value snapshot. It has no mutating API so graph
@@ -66,6 +70,9 @@ namespace NexAur {
         bool usesRayQueryAo() const { return m_ao_technique == VulkanAoTechnique::RayQuery; }
         bool rendersAo() const { return m_ao_technique != VulkanAoTechnique::Disabled; }
         bool rendersSsr() const { return m_render_ssr; }
+        bool rendersRayTracedReflection() const {
+            return m_render_ray_traced_reflection;
+        }
         bool rendersBloom() const { return m_render_bloom; }
         bool rendersSmaa() const { return m_render_smaa; }
 
@@ -79,6 +86,7 @@ namespace NexAur {
             bool use_ray_query_shadow,
             VulkanAoTechnique ao_technique,
             bool render_ssr,
+            bool render_ray_traced_reflection,
             bool render_bloom,
             bool render_smaa);
 
@@ -91,6 +99,7 @@ namespace NexAur {
         const bool m_use_ray_query_shadow;
         const VulkanAoTechnique m_ao_technique;
         const bool m_render_ssr;
+        const bool m_render_ray_traced_reflection;
         const bool m_render_bloom;
         const bool m_render_smaa;
     };

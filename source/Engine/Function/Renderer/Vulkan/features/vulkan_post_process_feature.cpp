@@ -91,6 +91,7 @@ namespace NexAur {
         const RenderPostProcessSettings& post_process_settings,
         const RenderAoSettings& ao_settings,
         const RenderSsrSettings& ssr_settings,
+        const RenderRayTracedReflectionSettings& ray_traced_reflection_settings,
         const RenderEffectDebugSettings& debug_settings,
         bool isolate_forward_debug,
         uint32_t frame_index) {
@@ -118,13 +119,14 @@ namespace NexAur {
             .readImage(ssr_raw_reflection, VulkanGraphImageUsage::ShaderRead)
             .readImage(ssr_hit_mask, VulkanGraphImageUsage::ShaderRead)
             .writeImage(output_color, VulkanGraphImageUsage::ColorAttachment)
-            .execute([frame_pass, target, post_process_settings, ao_settings, ssr_settings, debug_settings, isolate_forward_debug](VkCommandBuffer command_buffer) {
+            .execute([frame_pass, target, post_process_settings, ao_settings, ssr_settings, ray_traced_reflection_settings, debug_settings, isolate_forward_debug](VkCommandBuffer command_buffer) {
                 return frame_pass->record(
                     command_buffer,
                     target,
                     post_process_settings,
                     ao_settings,
                     ssr_settings,
+                    ray_traced_reflection_settings,
                     debug_settings,
                     isolate_forward_debug);
             });

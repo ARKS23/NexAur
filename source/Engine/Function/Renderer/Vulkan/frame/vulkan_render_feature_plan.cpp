@@ -62,9 +62,21 @@ namespace NexAur {
             if (isRayQueryDebugView(requested_view) && !availability.ray_query) {
                 return RenderEffectDebugView::FinalLit;
             }
+            if (isVulkanRayTracedReflectionDebugView(requested_view) &&
+                !availability.ray_traced_reflection) {
+                return RenderEffectDebugView::FinalLit;
+            }
             return requested_view;
         }
     } // namespace
+
+    bool isVulkanRayTracedReflectionDebugView(RenderEffectDebugView view) {
+        return view == RenderEffectDebugView::RayTracedReflectionRaw ||
+               view == RenderEffectDebugView::RayTracedReflectionConfidence ||
+               view == RenderEffectDebugView::RayTracedReflectionHitDistance ||
+               view == RenderEffectDebugView::RayTracedReflectionInstance ||
+               view == RenderEffectDebugView::RayTracedReflectionPrimitive;
+    }
 
     VulkanRenderFeaturePlan VulkanRenderFeaturePlan::build(
         const RenderSettings& settings,
@@ -72,17 +84,24 @@ namespace NexAur {
         RenderEffectDebugSettings debug_settings = settings.effects_debug;
         debug_settings.view = resolveDebugView(debug_settings.view, availability);
         const RenderEffectDebugView debug_view = debug_settings.view;
+        const bool ray_traced_reflection_debug =
+            isVulkanRayTracedReflectionDebugView(debug_view);
         const bool isolate_forward_debug =
             (settings.ibl_debug.mode != RenderIblDebugMode::FinalLit &&
              debug_view == RenderEffectDebugView::FinalLit) ||
             isRayQueryDebugView(debug_view);
+        const bool render_ray_traced_reflection =
+            !isolate_forward_debug &&
+            availability.ray_traced_reflection &&
+            (settings.ray_traced_reflection.enabled || ray_traced_reflection_debug);
         const bool use_ray_query_shadow =
             settings.shadow.enabled &&
             settings.ray_query_shadow.mode != RenderRayQueryShadowMode::Disabled &&
             !isolate_forward_debug &&
             debug_view == RenderEffectDebugView::FinalLit &&
             !settings.shadow.cascade_debug_overlay &&
-            availability.ray_query_shadow;
+            availability.ray_query_shadow &&
+            (!render_ray_traced_reflection || availability.ray_query_shadow_mrt);
 
         const bool final_bloom_output =
             debug_view == RenderEffectDebugView::FinalLit ||
@@ -99,6 +118,7 @@ namespace NexAur {
              isBloomDebugView(debug_view));
         const bool render_ao =
             !isolate_forward_debug &&
+            !ray_traced_reflection_debug &&
             availability.ao &&
             (settings.ao.enabled || isAoDebugView(debug_view));
         VulkanAoTechnique ao_technique = VulkanAoTechnique::Disabled;
@@ -135,6 +155,7 @@ namespace NexAur {
             use_ray_query_shadow,
             ao_technique,
             render_ssr,
+            render_ray_traced_reflection,
             render_bloom,
             render_smaa);
     }
@@ -148,6 +169,7 @@ namespace NexAur {
         bool use_ray_query_shadow,
         VulkanAoTechnique ao_technique,
         bool render_ssr,
+        bool render_ray_traced_reflection,
         bool render_bloom,
         bool render_smaa)
         : m_output_route(output_route),
@@ -158,6 +180,7 @@ namespace NexAur {
           m_use_ray_query_shadow(use_ray_query_shadow),
           m_ao_technique(ao_technique),
           m_render_ssr(render_ssr),
+          m_render_ray_traced_reflection(render_ray_traced_reflection),
           m_render_bloom(render_bloom),
           m_render_smaa(render_smaa) {}
 } // namespace NexAur

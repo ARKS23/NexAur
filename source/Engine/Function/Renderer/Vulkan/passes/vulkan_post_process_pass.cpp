@@ -39,7 +39,7 @@ namespace NexAur {
             uint32_t ssr_enabled = 0;
             float ssr_intensity = 1.0f;
             float ssr_roughness_fade = 0.65f;
-            float _padding1 = 0.0f;
+            float ray_traced_reflection_max_distance = 30.0f;
         };
 
         static_assert(
@@ -73,6 +73,7 @@ namespace NexAur {
             const RenderPostProcessSettings& post_process_settings,
             const RenderAoSettings& ao_settings,
             const RenderSsrSettings& ssr_settings,
+            const RenderRayTracedReflectionSettings& ray_traced_reflection_settings,
             const RenderEffectDebugSettings& debug_settings,
             bool isolate_forward_debug,
             uint32_t shadow_layer_count,
@@ -125,6 +126,12 @@ namespace NexAur {
             constants.ssr_intensity = sanitizeRange(ssr_settings.intensity, 1.0f, 0.0f, 4.0f);
             constants.ssr_roughness_fade =
                 sanitizeRange(ssr_settings.roughness_fade, 0.65f, 0.0f, 1.0f);
+            constants.ray_traced_reflection_max_distance =
+                sanitizeRange(
+                    ray_traced_reflection_settings.max_distance,
+                    30.0f,
+                    0.1f,
+                    1000.0f);
             return constants;
         }
     } // namespace
@@ -257,6 +264,7 @@ namespace NexAur {
         const RenderPostProcessSettings& post_process_settings,
         const RenderAoSettings& ao_settings,
         const RenderSsrSettings& ssr_settings,
+        const RenderRayTracedReflectionSettings& ray_traced_reflection_settings,
         const RenderEffectDebugSettings& debug_settings,
         bool isolate_forward_debug) {
         if (command_buffer == VK_NULL_HANDLE || !target.valid()) {
@@ -319,6 +327,7 @@ namespace NexAur {
             post_process_settings,
             ao_settings,
             ssr_settings,
+            ray_traced_reflection_settings,
             debug_settings,
             isolate_forward_debug,
             m_current_input.shadow_layer_count,

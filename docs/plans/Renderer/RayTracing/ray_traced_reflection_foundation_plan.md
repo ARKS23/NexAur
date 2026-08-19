@@ -2,7 +2,7 @@
 
 日期：2026-08-17
 
-状态：RT-10.1 已完成；下一工作包为 RT-10.2
+状态：RT-10.2 已完成；下一工作包为 RT-10.3
 
 ## 1. 文档目的
 
@@ -1021,4 +1021,35 @@ Focused verification completed:
 - Ray Query force-disabled device smoke.
 - `spirv-val --target-env vulkan1.3` for Forward MRT, Ray Query shadow MRT, and history clear compute shaders.
 
-The next package remains RT-10.2: Ray Query reflection trace and hit shading. No reflection trace shader is part of RT-10.1.
+## RT-10.2 Implementation Notes (2026-08-19)
+
+RT-10.2 is implemented as an independent Ray Query reflection trace and hit-shading feature. RT-10.3 denoising and RT-10.4 hybrid composite remain outside this package.
+
+Implemented:
+
+- Added `VulkanRayTracedReflectionFeature` with a compute trace pipeline and per-frame trace descriptors.
+- Added half/full-resolution dispatch with deterministic output-to-source pixel mapping.
+- Skips valid SSR hits and invalid/rough surfaces before issuing a reflection ray.
+- Reconstructs the world ray from depth and the Forward reflection-surface octahedral normal.
+- Uses sign-not-zero octahedral encoding so axis-aligned lower-hemisphere normals preserve their hemisphere; CPU round-trip tests cover the edge cases.
+- Uses inline `VK_KHR_ray_query` and reconstructs committed instance, primitive, barycentric, transform, vertex, geometry, and material data.
+- Uses the descriptor-indexed static opaque geometry and material tables from RT-10.0, including bounds checks and fallback texture slots.
+- Evaluates a single-bounce hit with material factors, base color, normal, metallic/roughness, AO, emissive, and global IBL lighting.
+- Writes raw radiance/confidence and hit distance to `rgba16f` storage images. The explicit shader image format matches the Vulkan history targets.
+- Routes RT raw, confidence, hit distance, instance, and primitive debug views through the existing post-process debug slots; normal PostProcess ownership is unchanged.
+- Adds FeaturePlan fallback gating, independent RT trace GPU timing, reflection debug settings, and renderer diagnostics.
+- Keeps SSR-first behavior and leaves RT miss output at zero confidence for the later Probe/IBL composite stage.
+
+Focused verification completed:
+
+- `NexAurVulkanShaders`, `NexAurRendererTests`, and the affected Debug renderer targets build successfully.
+- `spirv-val --target-env vulkan1.3` passes for the history clear, RT trace, and post-process shaders.
+- RT trace SPIR-V contains `RayQueryKHR`, descriptor-indexing capabilities, non-uniform table access, committed hit reconstruction, and `Rgba16f` storage images.
+- Focused RenderGraph, FeaturePlan, reflection history, RT reflection contract, and scene-table tests pass.
+- Ray Query Auto and force-disabled device smokes pass.
+- A fixed four-frame RT reflection smoke on the RT-capable device reports `active=true`, `dispatches=3`, and `table_ready=true`; Vulkan validation reports no new VUID or recording/descriptor errors. Existing graphics pipeline performance warnings are unchanged.
+
+Known package boundary:
+
+- Raw RT output is available through debug views and diagnostics, but RT-10.3 temporal/spatial denoising and RT-10.4 SSR/RT/Probe/IBL compositing are not implemented yet.
+- The default renderer setting remains RT reflection disabled, so the existing Raster/SSR baseline is preserved.

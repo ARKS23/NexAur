@@ -20,8 +20,11 @@ namespace NexAur {
                (!forward_writes_reflection_surface || reflection.valid()) &&
                (!(plan.usesRayQueryDebug() ||
                   plan.usesRayQueryShadow() ||
-                  plan.usesRayQueryAo()) ||
+                  plan.usesRayQueryAo() ||
+                  plan.rendersRayTracedReflection()) ||
                 ray_query_scene.valid()) &&
+               (!plan.rendersRayTracedReflection() ||
+                (forward_writes_reflection_surface && reflection.valid())) &&
                (!plan.rendersSmaa() || smaa_source.valid());
     }
 
@@ -143,6 +146,16 @@ namespace NexAur {
                 resources.ssr_hit_mask)) {
             return false;
         }
+        if (plan.rendersRayTracedReflection() &&
+            (!callbacks.add_ray_traced_reflection ||
+             !callbacks.add_ray_traced_reflection(
+                 graph,
+                 resources.scene_depth,
+                 resources.ssr_hit_mask,
+                 resources.ray_query_scene,
+                 resources.reflection))) {
+            return false;
+        }
         if (!callbacks.add_debug_draw(graph, resources.scene_color, resources.scene_depth) ||
             !callbacks.add_object_id(graph)) {
             return false;
@@ -198,6 +211,9 @@ namespace NexAur {
 
         const VulkanGraphImageHandle post_process_output =
             plan.rendersSmaa() ? resources.smaa_source : resources.final_color;
+        const bool ray_traced_reflection_debug =
+            isVulkanRayTracedReflectionDebugView(
+                plan.getPostProcessDebugSettings().view);
         if (!callbacks.add_post_process(
                 graph,
                 post_process_input,
@@ -205,8 +221,10 @@ namespace NexAur {
                 resources.scene_depth,
                 resources.ao_raw,
                 resources.ao_blurred,
-                resources.ssr_raw_reflection,
-                resources.ssr_hit_mask)) {
+                ray_traced_reflection_debug ?
+                    resources.reflection.raw_reflection : resources.ssr_raw_reflection,
+                ray_traced_reflection_debug ?
+                    resources.reflection.hit_distance : resources.ssr_hit_mask)) {
             return false;
         }
         if (plan.rendersSmaa() &&

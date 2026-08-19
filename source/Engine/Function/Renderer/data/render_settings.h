@@ -101,7 +101,12 @@ namespace NexAur {
         SsrRaySteps = 18,
         SsrRawReflection = 19,
         SsrSurfaceMask = 20,
-        RayQueryVisibility = 21
+        RayQueryVisibility = 21,
+        RayTracedReflectionRaw = 22,
+        RayTracedReflectionConfidence = 23,
+        RayTracedReflectionHitDistance = 24,
+        RayTracedReflectionInstance = 25,
+        RayTracedReflectionPrimitive = 26
     };
 
     enum class RenderLightingPreset : uint32_t {

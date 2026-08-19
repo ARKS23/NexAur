@@ -341,6 +341,8 @@ set(NEXAUR_RENDERER_VULKAN_FILES
     Function/Renderer/Vulkan/features/vulkan_reflection_history.cpp
     Function/Renderer/Vulkan/features/vulkan_reflection_surface_feature.h
     Function/Renderer/Vulkan/features/vulkan_reflection_surface_feature.cpp
+    Function/Renderer/Vulkan/features/vulkan_ray_traced_reflection_feature.h
+    Function/Renderer/Vulkan/features/vulkan_ray_traced_reflection_feature.cpp
     Function/Renderer/Vulkan/features/vulkan_bloom_feature.h
     Function/Renderer/Vulkan/features/vulkan_bloom_feature.cpp
     Function/Renderer/Vulkan/features/vulkan_smaa_feature.h
@@ -679,6 +681,10 @@ foreach(shader_program IN LISTS NEXAUR_VULKAN_SHADER_PROGRAMS)
     elseif(program_id STREQUAL "RayQueryAo")
         set(shader_compile_options
             -fspv-extension=SPV_KHR_ray_query)
+    elseif(program_id STREQUAL "RayTracedReflectionTrace")
+        set(shader_compile_options
+            -fspv-extension=SPV_KHR_ray_query
+            -fspv-extension=SPV_EXT_descriptor_indexing)
     elseif(program_id STREQUAL "ForwardMrt")
         set(shader_compile_options
             -DNEXAUR_FORWARD_MRT=1)

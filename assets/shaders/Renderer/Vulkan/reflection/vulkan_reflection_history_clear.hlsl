@@ -1,4 +1,5 @@
 [[vk::binding(0, 0)]]
+[[vk::image_format("rgba16f")]]
 RWTexture2D<float4> g_target;
 
 struct ReflectionHistoryClearPushConstants {

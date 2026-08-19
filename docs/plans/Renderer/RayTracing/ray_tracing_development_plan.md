@@ -1077,3 +1077,12 @@ NexAur 当前 Renderer 能支持硬件光追开发，但正确起点是 Ray Quer
 推荐先完成 Renderer 的 access model、synchronization2、canonical frame、backend responsibility 和 common resource primitive，再依次落地 capability、device-address buffer、BLAS、TLAS、graph synchronization 和 descriptor。第一个合入的视觉功能应是带 CSM / PCSS fallback 的 Directional Ray Query Shadow。
 
 这条路线能复用现有 Forward、SSR、Reflection Probe 和 IBL，同时把风险集中在可验证的小工作包中。等 AS 生命周期、scene table、history 和 denoiser 成熟后，再进入 RT Reflection 和 Full Ray Tracing Pipeline。
+
+## RT-10.2 Status (2026-08-19)
+
+RT-10.2 Ray Query Reflection Trace and Hit Shading is complete. The implementation is tracked in the [RT-10 foundation plan](ray_traced_reflection_foundation_plan.md).
+
+- Compute Ray Query trace, committed-hit reconstruction, static opaque material/texture lookup, raw radiance, confidence, and hit distance are implemented.
+- RT reflection is capability-gated and falls back without blocking Raster, SSR, Probe, or IBL startup paths.
+- Focused CPU contracts, SPIR-V validation, RT-capable Auto/force-disabled device smoke, and a fixed-frame active dispatch smoke passed.
+- The next package is RT-10.3 spatial/temporal denoising; RT-10.4 will own hybrid composite and final fallback weighting.

@@ -10,6 +10,20 @@
 #include <algorithm>
 
 namespace NexAur {
+    namespace {
+        VkExtent2D reflectionHistoryExtent(
+            uint32_t width,
+            uint32_t height,
+            bool half_resolution) {
+            width = std::max(1u, width);
+            height = std::max(1u, height);
+            return {
+                half_resolution ? std::max(1u, width / 2u) : width,
+                half_resolution ? std::max(1u, height / 2u) : height
+            };
+        }
+    } // namespace
+
     VulkanReflectionSurfaceFeature::~VulkanReflectionSurfaceFeature() {
         shutdown();
     }
@@ -51,12 +65,48 @@ namespace NexAur {
     }
 
     bool VulkanReflectionSurfaceFeature::resize(uint32_t width, uint32_t height) {
+        const VkExtent2D history_extent = reflectionHistoryExtent(
+            width,
+            height,
+            m_history_half_resolution);
         if (!m_context.valid() ||
             !m_surface_target.resize(width, height) ||
-            !m_history_target.resize(width, height)) {
+            !m_history_target.resize(history_extent.width, history_extent.height)) {
             return false;
         }
 
+        ++m_surface_generation;
+        m_history_state.reset();
+        m_frame_active = false;
+        m_history_write_scheduled = false;
+        return true;
+    }
+
+    bool VulkanReflectionSurfaceFeature::prepareHistoryTarget(
+        uint32_t width,
+        uint32_t height,
+        bool half_resolution) {
+        if (!m_context.valid() || !m_history_target.isReady()) {
+            return false;
+        }
+
+        const VkExtent2D expected_extent = reflectionHistoryExtent(
+            width,
+            height,
+            half_resolution);
+        const VkExtent2D current_extent = m_history_target.getExtent();
+        if (current_extent.width == expected_extent.width &&
+            current_extent.height == expected_extent.height &&
+            m_history_half_resolution == half_resolution) {
+            return true;
+        }
+
+        if (vkDeviceWaitIdle(m_context.resources.device) != VK_SUCCESS ||
+            !m_history_target.resize(expected_extent.width, expected_extent.height)) {
+            return false;
+        }
+
+        m_history_half_resolution = half_resolution;
         ++m_surface_generation;
         m_history_state.reset();
         m_frame_active = false;
@@ -74,6 +124,7 @@ namespace NexAur {
         m_history_target.shutdown();
         m_surface_target.shutdown();
         m_surface_generation = 0;
+        m_history_half_resolution = false;
         m_context = {};
     }
 
@@ -371,7 +422,11 @@ namespace NexAur {
 
         const std::array<const VulkanImageViewState*, kClearDescriptorCount> shader_targets{
             raw,
+            hit_distance,
             filtered,
+            moments,
+            history_length,
+            depth,
             surface
         };
         for (uint32_t index = 0; index < kClearDescriptorCount; ++index) {
@@ -409,27 +464,6 @@ namespace NexAur {
                 sizeof(constants),
                 &constants);
             vkCmdDispatch(command_buffer, group_count_x, group_count_y, 1);
-        }
-
-        VkClearColorValue clear_value{};
-        VkImageSubresourceRange range{};
-        range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        range.levelCount = 1;
-        range.layerCount = 1;
-        const std::array<const VulkanImageViewState*, 4> clear_targets{
-            hit_distance,
-            moments,
-            history_length,
-            depth
-        };
-        for (const VulkanImageViewState* target : clear_targets) {
-            vkCmdClearColorImage(
-                command_buffer,
-                target->image,
-                VK_IMAGE_LAYOUT_GENERAL,
-                &clear_value,
-                1,
-                &range);
         }
         return true;
     }

@@ -358,12 +358,18 @@ struct ForwardMrtOutput {
     float2 motion_vector : SV_Target3;
 };
 
+float2 SignNotZero(float2 value) {
+    return float2(
+        value.x >= 0.0f ? 1.0f : -1.0f,
+        value.y >= 0.0f ? 1.0f : -1.0f);
+}
+
 float2 EncodeSurfaceNormal(float3 normal) {
     const float3 safe_normal = normalize(normal);
     const float denominator = max(abs(safe_normal.x) + abs(safe_normal.y) + abs(safe_normal.z), 0.00001f);
     float2 encoded = safe_normal.xy / denominator;
     if (safe_normal.z < 0.0f) {
-        encoded = (1.0f - abs(encoded.yx)) * sign(encoded.xy);
+        encoded = (1.0f - abs(encoded.yx)) * SignNotZero(encoded.xy);
     }
     return encoded * 0.5f + 0.5f;
 }

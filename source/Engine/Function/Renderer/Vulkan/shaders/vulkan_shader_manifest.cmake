@@ -19,6 +19,7 @@ set(NEXAUR_VULKAN_SHADER_PROGRAMS
     "RayQueryAoFilter|ao/vulkan_rtao_filter.hlsl|vs_6_0|VSMain|vulkan_rtao_filter.vert.spv|ps_6_0|PSMain|vulkan_rtao_filter.frag.spv"
     "SsrTrace|reflection/vulkan_ssr_trace.hlsl|vs_6_0|VSMain|vulkan_ssr_trace.vert.spv|ps_6_0|PSMain|vulkan_ssr_trace.frag.spv"
     "ReflectionHistoryClear|reflection/vulkan_reflection_history_clear.hlsl|NONE|NONE|NONE|NONE|NONE|NONE|cs_6_0|CSMain|vulkan_reflection_history_clear.comp.spv"
+    "RayTracedReflectionTrace|reflection/vulkan_ray_traced_reflection_trace.hlsl|NONE|NONE|NONE|NONE|NONE|NONE|cs_6_5|CSMain|vulkan_ray_traced_reflection_trace.comp.spv"
     "SmaaEdge|post/vulkan_smaa_edge.hlsl|vs_6_0|VSMain|vulkan_smaa_edge.vert.spv|ps_6_0|PSMain|vulkan_smaa_edge.frag.spv"
     "SmaaBlend|post/vulkan_smaa_blend.hlsl|vs_6_0|VSMain|vulkan_smaa_blend.vert.spv|ps_6_0|PSMain|vulkan_smaa_blend.frag.spv"
     "SmaaNeighborhood|post/vulkan_smaa_neighborhood.hlsl|vs_6_0|VSMain|vulkan_smaa_neighborhood.vert.spv|ps_6_0|PSMain|vulkan_smaa_neighborhood.frag.spv"

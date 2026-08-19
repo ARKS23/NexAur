@@ -274,6 +274,16 @@ namespace NexAur {
                 return RenderEffectDebugView::SsrSurfaceMask;
             case 21:
                 return RenderEffectDebugView::RayQueryVisibility;
+            case 22:
+                return RenderEffectDebugView::RayTracedReflectionRaw;
+            case 23:
+                return RenderEffectDebugView::RayTracedReflectionConfidence;
+            case 24:
+                return RenderEffectDebugView::RayTracedReflectionHitDistance;
+            case 25:
+                return RenderEffectDebugView::RayTracedReflectionInstance;
+            case 26:
+                return RenderEffectDebugView::RayTracedReflectionPrimitive;
             case 0:
             default:
                 return RenderEffectDebugView::FinalLit;
@@ -313,6 +323,7 @@ namespace NexAur {
         drawAntiAliasingSection(settings, changed);
         drawAoSection(settings, changed);
         drawSsrSection(settings, changed);
+        drawRayTracedReflectionSection(settings, changed);
         drawIblDebugSection(settings, changed);
         drawShadowSection(settings, changed);
         drawRayQueryShadowSection(settings, changed);
@@ -395,7 +406,12 @@ namespace NexAur {
                 "SSR Ray Steps",
                 "SSR Raw Reflection",
                 "SSR Surface Mask",
-                "Ray Query Visibility"
+                "Ray Query Visibility",
+                "RT Reflection Raw",
+                "RT Reflection Confidence",
+                "RT Reflection Hit Distance",
+                "RT Reflection Instance",
+                "RT Reflection Primitive"
             };
 
             int index = effectDebugViewToIndex(settings.effects_debug.view);
@@ -892,6 +908,58 @@ namespace NexAur {
         });
 
         if (!settings.ssr.enabled) {
+            ImGui::EndDisabled();
+        }
+    }
+
+    void RenderSettingsPanel::drawRayTracedReflectionSection(
+        RenderSettings& settings,
+        bool& changed) {
+        if (!EditorWidgets::sectionHeader("Ray-Traced Reflection")) {
+            return;
+        }
+
+        EditorWidgets::propertyRow("Enabled", [&]() {
+            changed |= ImGui::Checkbox(
+                "##RayTracedReflectionEnabled",
+                &settings.ray_traced_reflection.enabled);
+        });
+        if (!settings.ray_traced_reflection.enabled) {
+            ImGui::BeginDisabled();
+        }
+        EditorWidgets::propertyRow("Half Resolution", [&]() {
+            changed |= ImGui::Checkbox(
+                "##RayTracedReflectionHalfResolution",
+                &settings.ray_traced_reflection.half_resolution);
+        });
+        EditorWidgets::propertyRow("Max Distance", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RayTracedReflectionMaxDistance",
+                &settings.ray_traced_reflection.max_distance,
+                1.0f,
+                200.0f,
+                "%.1f");
+        });
+        EditorWidgets::propertyRow("Max Roughness", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RayTracedReflectionMaxRoughness",
+                &settings.ray_traced_reflection.max_roughness,
+                0.04f,
+                1.0f,
+                "%.2f");
+        });
+        EditorWidgets::propertyRow("Normal Bias", [&]() {
+            setControlWidth();
+            changed |= ImGui::SliderFloat(
+                "##RayTracedReflectionNormalBias",
+                &settings.ray_traced_reflection.normal_bias,
+                0.0f,
+                0.25f,
+                "%.4f");
+        });
+        if (!settings.ray_traced_reflection.enabled) {
             ImGui::EndDisabled();
         }
     }

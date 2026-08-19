@@ -70,6 +70,11 @@ static const uint EFFECT_DEBUG_SSR_RAY_STEPS = 18u;
 static const uint EFFECT_DEBUG_SSR_RAW_REFLECTION = 19u;
 static const uint EFFECT_DEBUG_SSR_SURFACE_MASK = 20u;
 static const uint EFFECT_DEBUG_RAY_QUERY_VISIBILITY = 21u;
+static const uint EFFECT_DEBUG_RT_REFLECTION_RAW = 22u;
+static const uint EFFECT_DEBUG_RT_REFLECTION_CONFIDENCE = 23u;
+static const uint EFFECT_DEBUG_RT_REFLECTION_HIT_DISTANCE = 24u;
+static const uint EFFECT_DEBUG_RT_REFLECTION_INSTANCE = 25u;
+static const uint EFFECT_DEBUG_RT_REFLECTION_PRIMITIVE = 26u;
 
 struct PostProcessPushConstants {
     float exposure;
@@ -98,7 +103,7 @@ struct PostProcessPushConstants {
     uint ssr_enabled;
     float ssr_intensity;
     float ssr_roughness_fade;
-    float _padding1;
+    float ray_traced_reflection_max_distance;
 };
 
 [[vk::push_constant]]
@@ -207,6 +212,43 @@ float4 sampleSsrRawReflectionDebug(FullscreenVSOutput input) {
 float4 sampleSsrSurfaceMaskDebug(FullscreenVSOutput input) {
     const float surface_mask = saturate(g_hdr_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f).a);
     return float4(encodeOutputColor(float3(surface_mask, surface_mask, surface_mask)), 1.0f);
+}
+
+float4 sampleRayTracedReflectionRawDebug(FullscreenVSOutput input) {
+    const float4 reflection = g_ssr_raw_reflection_debug.SampleLevel(
+        g_ssr_debug_sampler,
+        input.uv,
+        0.0f);
+    const float3 radiance = max(reflection.rgb, 0.0f);
+    return float4(
+        encodeOutputColor(radiance / (radiance + float3(1.0f, 1.0f, 1.0f))),
+        1.0f);
+}
+
+float4 sampleRayTracedReflectionConfidenceDebug(FullscreenVSOutput input) {
+    const float confidence = saturate(g_ssr_raw_reflection_debug.SampleLevel(
+        g_ssr_debug_sampler,
+        input.uv,
+        0.0f).a);
+    return float4(encodeOutputColor(confidence.xxx), 1.0f);
+}
+
+float4 sampleRayTracedReflectionHitDistanceDebug(FullscreenVSOutput input) {
+    const float distance = max(g_ssr_hit_mask_debug.SampleLevel(
+        g_ssr_debug_sampler,
+        input.uv,
+        0.0f).r, 0.0f);
+    const float normalized_distance = saturate(
+        distance / max(g_post_process.ray_traced_reflection_max_distance, 0.0001f));
+    return float4(encodeOutputColor(normalized_distance.xxx), 1.0f);
+}
+
+float4 sampleRayTracedReflectionIdentifierDebug(FullscreenVSOutput input) {
+    const float3 color = saturate(g_ssr_raw_reflection_debug.SampleLevel(
+        g_ssr_debug_sampler,
+        input.uv,
+        0.0f).rgb);
+    return float4(encodeOutputColor(color), 1.0f);
 }
 
 float3 mapHdrDebugColor(float3 color) {
@@ -350,6 +392,19 @@ float4 PSMain(FullscreenVSOutput input) : SV_Target0 {
     }
     if (g_post_process.effect_debug_view == EFFECT_DEBUG_SSR_SURFACE_MASK) {
         return sampleSsrSurfaceMaskDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_RT_REFLECTION_RAW) {
+        return sampleRayTracedReflectionRawDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_RT_REFLECTION_CONFIDENCE) {
+        return sampleRayTracedReflectionConfidenceDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_RT_REFLECTION_HIT_DISTANCE) {
+        return sampleRayTracedReflectionHitDistanceDebug(input);
+    }
+    if (g_post_process.effect_debug_view == EFFECT_DEBUG_RT_REFLECTION_INSTANCE ||
+        g_post_process.effect_debug_view == EFFECT_DEBUG_RT_REFLECTION_PRIMITIVE) {
+        return sampleRayTracedReflectionIdentifierDebug(input);
     }
 
     float4 hdr_color = g_hdr_scene_color.SampleLevel(g_scene_sampler, input.uv, 0.0f);

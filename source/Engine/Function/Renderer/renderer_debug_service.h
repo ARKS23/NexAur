@@ -156,6 +156,8 @@ namespace NexAur {
 
     struct RendererDebugReflectionStats {
         bool enabled = false;
+        bool available = false;
+        bool active = false;
         bool ready = false;
         bool valid = false;
         bool pending_reset = true;
@@ -164,9 +166,18 @@ namespace NexAur {
         uint32_t width = 0;
         uint32_t height = 0;
         uint64_t surface_generation = 0;
+        uint64_t dispatch_count = 0;
         std::string surface_format = "None";
         std::string motion_vector_format = "None";
+        std::string fallback_reason = "None";
         std::string reset_reason = "First frame";
+        bool half_resolution = true;
+        float max_distance = 30.0f;
+        float max_roughness = 0.85f;
+        float normal_bias = 0.02f;
+        bool gpu_timing_supported = false;
+        uint64_t gpu_sample_count = 0;
+        double trace_gpu_ms = 0.0;
     };
 
     struct RendererDebugSmaaStats {

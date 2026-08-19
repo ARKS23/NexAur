@@ -50,6 +50,12 @@ namespace NexAur {
         using AddReflectionPreparationPass = std::function<bool(
             VulkanPassGraph&,
             const VulkanReflectionSurfaceFeatureGraphResources&)>;
+        using AddRayTracedReflectionPass = std::function<bool(
+            VulkanPassGraph&,
+            VulkanGraphImageHandle,
+            VulkanGraphImageHandle,
+            VulkanGraphAccelerationStructureHandle,
+            const VulkanReflectionSurfaceFeatureGraphResources&)>;
         using AddDebugDrawPass = std::function<bool(
             VulkanPassGraph&,
             VulkanGraphImageHandle,
@@ -80,6 +86,7 @@ namespace NexAur {
         AddReflectionPreparationPass add_reflection_preparation;
         AddAoPass add_ao;
         AddSsrPass add_ssr;
+        AddRayTracedReflectionPass add_ray_traced_reflection;
         AddDebugDrawPass add_debug_draw;
         std::function<bool(VulkanPassGraph&)> add_object_id;
         AddBloomPass add_bloom;

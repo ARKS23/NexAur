@@ -113,6 +113,10 @@ namespace NexAur {
         VkImageLayout getDepthImageLayout() const { return m_depth_image.getLayout(); }
         void setDepthImageLayout(VkImageLayout layout) { m_depth_image.setLayout(layout); }
         VkFormat getDepthFormat() const { return m_depth_format; }
+        bool isMrtReady() const {
+            return m_mrt_pipeline != VK_NULL_HANDLE &&
+                   m_mrt_pipeline_layout != VK_NULL_HANDLE;
+        }
         bool isRayQueryReady() const {
             return m_ray_query_pipeline != VK_NULL_HANDLE &&
                    m_ray_query_pipeline_layout != VK_NULL_HANDLE;

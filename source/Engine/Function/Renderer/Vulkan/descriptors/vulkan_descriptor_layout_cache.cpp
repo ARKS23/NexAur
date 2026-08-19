@@ -80,12 +80,14 @@ namespace NexAur {
 
         VulkanDescriptorSetLayoutDesc environmentDescriptorLayoutDesc() {
             VulkanDescriptorSetLayoutDesc desc;
+            constexpr VkShaderStageFlags kEnvironmentStages =
+                VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
             desc.bindings = {
-                { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
-                { 1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
-                { 2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
-                { 3, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT },
-                { 4, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT }
+                { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, kEnvironmentStages },
+                { 1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, kEnvironmentStages },
+                { 2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, kEnvironmentStages },
+                { 3, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, kEnvironmentStages },
+                { 4, VK_DESCRIPTOR_TYPE_SAMPLER, 1, kEnvironmentStages }
             };
             return desc;
         }
@@ -112,6 +114,18 @@ namespace NexAur {
             VulkanDescriptorSetLayoutDesc desc;
             desc.bindings = {
                 { 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT }
+            };
+            return desc;
+        }
+
+        VulkanDescriptorSetLayoutDesc rayTracedReflectionTraceDescriptorLayoutDesc() {
+            VulkanDescriptorSetLayoutDesc desc;
+            desc.bindings = {
+                { 0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+                { 1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+                { 2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+                { 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+                { 4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT }
             };
             return desc;
         }
@@ -215,6 +229,8 @@ namespace NexAur {
                 return getOrCreateLayout(rayTracingSceneDescriptorLayoutDesc());
             case VulkanDescriptorSetLayoutId::ReflectionStorageImage:
                 return getOrCreateLayout(reflectionStorageImageDescriptorLayoutDesc());
+            case VulkanDescriptorSetLayoutId::RayTracedReflectionTrace:
+                return getOrCreateLayout(rayTracedReflectionTraceDescriptorLayoutDesc());
             default:
                 NX_CORE_ERROR("Unknown Vulkan descriptor set layout id.");
                 return VK_NULL_HANDLE;

@@ -25,6 +25,10 @@ namespace NexAur {
         uint64_t ray_query_sample_count = 0;
         uint64_t ray_query_submission_serial = 0;
         double ray_query_forward_ms = 0.0;
+        bool ray_traced_reflection_supported = false;
+        uint64_t ray_traced_reflection_sample_count = 0;
+        uint64_t ray_traced_reflection_submission_serial = 0;
+        double ray_traced_reflection_ms = 0.0;
     };
 
     class VulkanFrameContext final {
@@ -52,6 +56,9 @@ namespace NexAur {
         bool beginRayQueryGpuTiming(VkCommandBuffer command_buffer);
         bool endRayQueryGpuTiming(VkCommandBuffer command_buffer);
         void discardRayQueryGpuTiming();
+        bool beginRayTracedReflectionGpuTiming(VkCommandBuffer command_buffer);
+        bool endRayTracedReflectionGpuTiming(VkCommandBuffer command_buffer);
+        void discardRayTracedReflectionGpuTiming();
         VulkanFrameGpuTimingStats getGpuTimingStats() const;
 
         bool isReady() const { return m_ready; }
@@ -118,8 +125,10 @@ namespace NexAur {
         VulkanRayTracingSceneShadingTable m_ray_tracing_scene_table;
         VulkanDebugDrawBuffer m_debug_draw_buffer;
         VulkanGpuTimestampQuery m_ray_query_gpu_timestamp;
+        VulkanGpuTimestampQuery m_ray_traced_reflection_gpu_timestamp;
         VulkanFrameSlotState m_flight_state;
         uint64_t m_ray_query_timing_submission_serial = 0;
+        uint64_t m_ray_traced_reflection_timing_submission_serial = 0;
         uint32_t m_frame_index = 0;
         bool m_ready = false;
     };

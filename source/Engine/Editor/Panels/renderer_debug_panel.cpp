@@ -304,6 +304,31 @@ namespace NexAur {
         ImGui::Text("  Intensity: %.2f", snapshot.ssr.intensity);
 
         ImGui::Spacing();
+        ImGui::TextUnformatted("Ray-Traced Reflection Target");
+        drawKeyValue("  Enabled", boolToText(snapshot.reflection.enabled));
+        drawKeyValue("  Available", boolToText(snapshot.reflection.available));
+        drawKeyValue("  Active", boolToText(snapshot.reflection.active));
+        drawKeyValue("  Ready", boolToText(snapshot.reflection.ready));
+        drawExtent(
+            "  Trace Size",
+            snapshot.reflection.width,
+            snapshot.reflection.height);
+        drawKeyValue(
+            "  Half Resolution",
+            boolToText(snapshot.reflection.half_resolution));
+        drawKeyValue("  Surface Format", snapshot.reflection.surface_format.c_str());
+        drawKeyValue("  Fallback", snapshot.reflection.fallback_reason.c_str());
+        drawKeyValue64("  Dispatch Count", snapshot.reflection.dispatch_count);
+        ImGui::Text("  Max Distance: %.1f", snapshot.reflection.max_distance);
+        ImGui::Text("  Max Roughness: %.2f", snapshot.reflection.max_roughness);
+        ImGui::Text("  Normal Bias: %.4f", snapshot.reflection.normal_bias);
+        drawKeyValue(
+            "  GPU Timing",
+            boolToText(snapshot.reflection.gpu_timing_supported));
+        drawKeyValue64("  GPU Samples", snapshot.reflection.gpu_sample_count);
+        ImGui::Text("  Trace GPU: %.3f ms", snapshot.reflection.trace_gpu_ms);
+
+        ImGui::Spacing();
         ImGui::TextUnformatted("SMAA Target");
         drawKeyValue("  Enabled", boolToText(snapshot.smaa.enabled));
         drawKeyValue("  Ready", boolToText(snapshot.smaa.ready));
