@@ -1,8 +1,11 @@
 # NexAur Renderer Rebuild Baseline
 
+> 文档分类：历史方案 / 实施记录（2026-10-18 整理）。RR-00 起点与 RR-02 阶段的验证快照。layout-only planner 等缺口已在后续重构中处理。
+> 正文保留当时的 API、路径、分支和测试命令；当前入口与后续工作见[计划索引](../README.md)。
+
 日期：2026-08-11
 
-状态：RR-00 Baseline Established
+状态：历史基线快照，包含 RR-00 起点和 RR-02 同步验证记录；不代表当前 Renderer 缺口。
 
 基线起点：`4728370 docs(renderer): add ray tracing development plan`
 

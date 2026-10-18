@@ -1,5 +1,8 @@
 # NexAur Runtime / Scene / Game Demo Foundation Plan
 
+> 文档分类：历史方案 / 实施记录（2026-10-18 整理）。Runtime、Scene 和 Gameplay foundation 的阶段记录。
+> 正文保留当时的 API、路径、分支和测试命令；当前入口与后续工作见[计划索引](README.md)。
+
 日期：2026-06-26
 
 ## 1. 文档目标

@@ -1,5 +1,8 @@
 # NexAur glTF / GLB Runtime Import Development Plan
 
+> 文档分类：历史方案 / 实施记录（2026-10-18 整理）。PR-L1～PR-L6 导入器迁移记录；tinygltf 已是 glTF/GLB 默认主路径。
+> 正文保留当时的 API、路径、分支和测试命令；当前入口与后续工作见[计划索引](../README.md)。
+
 日期：2026-06-29
 分支：`vulkanRenderer`
 

@@ -1,19 +1,28 @@
 # NexAur 资产清单
 
-本清单记录当前会被主线或 Sandbox 使用的资产边界。新增资源时优先更新这里，避免旧 demo 资源重新混入运行时路径。
+最后核对：2026-10-18。本文区分当前 Vulkan 主线、Sandbox 样例与保留的旧资产。
 
-## Runtime 必需
+## Vulkan Shader
 
-这些资产由 Engine/Renderer 主线直接加载，缺失会影响当前场景渲染：
+当前构建输入为 [shaders/Renderer/Vulkan](shaders/Renderer/Vulkan) 下的 HLSL/HLSLI，包括 Forward、Shadow、AO、SSR/RT Reflection、Bloom、PostProcess、SMAA 和公共 include。
 
-- `assets/shaders/pbr/`
-- `assets/shaders/shadow/`
-- `assets/shaders/skybox/`
+[Shader manifest](../source/Engine/Function/Renderer/Vulkan/shaders/vulkan_shader_manifest.cmake)驱动 DXC 编译。运行时加载 executable 同目录 `shaders/Renderer/Vulkan/` 中的 SPIR-V；不要仅复制 HLSL 源文件作为运行产物。编译输出规则见[构建说明](../docs/development/build_and_test.md)。
+
+## 默认环境图
+
+[SceneFactory](../source/Engine/Function/Scene/scene_factory.cpp)优先使用：
+
+- `assets/textures/HDR/2k.hdr`
+
+不存在时回退到：
+
 - `assets/textures/HDR/warm_restaurant_8k.hdr`
 
-## Sandbox 必需
+它们是默认场景样例使用的环境图，不是任意场景都必须依赖的固定资产。若两者均缺失，需要自行配置环境资产。
 
-这些资产用于 Sandbox 的 PBR 材质测试：
+## Sandbox 材质样例
+
+Sandbox 的材质测试会使用以下 PBR 贴图目录：
 
 - `assets/textures/PBR/gold/`
 - `assets/textures/PBR/rusted_iron/`
@@ -21,32 +30,29 @@
 - `assets/textures/PBR/plastic/`
 - `assets/textures/PBR/wall/`
 
-## Sandbox 可选
+## 可选本地模型
 
-- `assets/models/DamagedHelmet/`
-
-`assets/models/` 当前在 `.gitignore` 中保持忽略，避免把较大的本地样例模型和版权不明资产直接纳入仓库。Sandbox 会在模型缺失时自动跳过该样例；如果需要测试模型加载，请把 `DamagedHelmet.gltf` 及其同目录贴图放回：
+`assets/models/` 被 Git 忽略，不随仓库分发。DamagedHelmet 样例的约定路径是：
 
 ```text
 assets/models/DamagedHelmet/DamagedHelmet.gltf
 ```
 
-## 已清理的 legacy/demo 资产
+同时需要模型引用的 buffer 和贴图。Sandbox 和相应测试会检查本地模型是否存在；缺失时跳过可选验证。仓库不在此清单中重新分发第三方模型或声明其许可。
 
-以下资源只服务旧 `Scene` demo 或未被主线引用，已从仓库中移除：
+## 保留的旧 Shader
 
-- `assets/shaders/container.*`
-- `assets/shaders/phong/`
-- `assets/shaders/floor/`
-- `assets/shaders/lightCube/`
-- `assets/textures/container/`
-- `assets/textures/wood/`
-- `assets/textures/skybox/`
-- `assets/textures/HDR/bryanston_park_sunrise_4k.hdr`
-- `assets/textures/HDR/qwantani_dusk_2_puresky_8k.hdr`
+以下 GLSL 目录仍存在于仓库，但不在当前 Vulkan Shader manifest 和构建主线中：
+
+- `assets/shaders/pbr/`
+- `assets/shaders/shadow/`
+- `assets/shaders/skybox/`
+
+它们作为旧实现参考保留，不应列为当前 Vulkan runtime 必需资产。本次文档整理不删除这些文件。
 
 ## 维护规则
 
-- Runtime 代码不要直接依赖 `assets/models/` 下的忽略文件，除非调用方能优雅处理缺失。
-- HDR 环境图默认只保留一个主线样例；额外 HDR 建议放在本地素材库或单独下载包。
-- 如果后续需要恢复旧 demo，可新建明确的 sample/legacy 包，不要把它混回 Engine 主线资产目录。
+- 新 Shader 在统一 manifest 中登记；新增资产同时说明使用者、路径和缺失行为。
+- CPU 资产身份和解码由 Resource 管理，GPU 资源由 Renderer 管理。
+- 默认 Runtime 不应无条件依赖 Git 忽略的本地模型。
+- 额外大体积素材可放本地素材库，提交前确认分发权限。

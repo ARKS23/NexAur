@@ -1,5 +1,8 @@
 # NexAur Editor Material Editing Design Plan
 
+> 文档分类：后续设计参考（2026-10-18 核对）。Primitive 创建、slot override、runtime material instance 和基础贴图 Import/Clear 已有实现；独立 .nxmat、完整 Undo/Redo 与后续 UX 仍未完成。
+> 下文包含最初设计与分阶段验收目标，当前行为见[编辑器架构](../../architecture/EditorSystem/Editor.md)，总体入口见[计划索引](../README.md)。
+
 日期：2026-07-03
 
 ## 1. 文档定位
@@ -548,6 +551,8 @@ Editor Command: Create Primitive
 - SSR 测试墙可以通过 Inspector 调成镜面材质。
 
 ### PR-EM3：Texture Slot Editing
+
+当前状态：基础槽位显示、Import/Clear 已在 PropertiesPanel 实现；本节验收清单不代表本次已重新执行完整回归。
 
 目标：
 

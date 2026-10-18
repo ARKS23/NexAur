@@ -1,4 +1,4 @@
-## 命名规则
+# 命名规则
 ### 1. 通用命名规则
 - 文件命名需要有描述性，少用缩写
 ```C++
@@ -43,7 +43,7 @@ enum UrlTableErrors { ...
 ```
 
 ### 4. 变量命名
-- 变量 (包括函数参数) 和数据成员名一律小写, 单词之间用下划线连接. 类的成员变量以下划线结尾, 但结构体的就不用, 如:`a_local_variable`, `a_struct_data_member`, `a_class_data_member_`.
+- 变量（包括函数参数）使用小写下划线命名。类成员使用 `m_` 前缀，静态类成员使用 `s_` 前缀；结构体字段不加前缀，不要求结尾下划线。
 
 #### 普通变量命名
 ```C++
@@ -65,14 +65,14 @@ RuntimeGlobalContext g_runtime_global_context;
 class TableInfo {
   ...
  private:
-  string m_table_name;  // 好 - 后加下划线.
-  string m_tablename_;   // 好.
+  string m_table_name;
+  string m_display_name;
   static Pool<TableInfo>* s_pool;  // 好.
 };
 ```
 
 #### 结构体变量
-不管是静态的还是非静态的, 结构体数据成员都可以和普通变量一样, 不用像类那样接下划线:
+结构体数据成员和普通变量一样使用小写下划线命名，不加类成员前缀：
 ```C++
 struct UrlTableProperties {
   string name;
@@ -87,25 +87,24 @@ struct UrlTableProperties {
 const int kDaysInAWeek = 7;
 ```
 
-### 用作全局常量的用`下环线 + 大写`的形式
+### 用作全局常量的用`下划线 + 大写`的形式
 ```C++
 constexpr int MAX_NUM = 100;
 ```
 
 ### 函数命名
-- 常规函数使用大小写混合(驼峰式命名), 取值和设值函数则要求与变量名匹配: `MyExcitingFunction()`, `MyExcitingMethod()`, `my_exciting_member_variable()`, `set_my_exciting_member_variable()`.
-- 本项目要求函数采用小**写开头的驼峰式命名**
+- 本项目函数采用小写开头的驼峰式命名，取值和设值函数也遵循该规则，如 `getViewMatrix()`、`setViewMatrix()`。
 ```C++
 setViewMatrix();
 setProjectionMatrix();
 ```
 
 ### 枚举命名
-- 枚举命名大写开头的驼峰式命名，枚举成员按照驼峰式命名
+- 枚举类型和枚举成员均使用大写开头的驼峰式命名。
 ```C++
 enum class KeyType {
-    mouseButton,
-    keyButton
+    MouseButton,
+    KeyButton
 };
 ```
 

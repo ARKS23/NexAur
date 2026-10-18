@@ -1,51 +1,59 @@
 # NexAur
-本项目用于学习和研究游戏引擎开发, NexAur是长期开发和维护的个人小型游戏引擎项目。(有时间就开发 = =。。)
 
-## 代码风格
-- [代码风格文档](./docs/CodingGuideLines/CodingGuideLines.md)
+NexAur 是用于学习和研究游戏引擎开发的个人 C++20 项目，包含模块化运行时、ECS 场景、Vulkan 渲染器和内置编辑器。
 
-## 进度
-###  日志系统：v1版本全局日志系统开发完成(后续再升级)
-![](./docs/architecture/images/log_1.png)
+## 文档入口
 
-###  输入系统: v1版本轮询模式事件系统设计完成
-- [输入系统文档](./docs/architecture/InputSystem/Input.md)
+- [文档导航与当前进度](docs/README.md)
+- [构建、运行与测试](docs/development/build_and_test.md)
+- [整体架构](docs/architecture/Architecture.md)
+- [Vulkan 渲染架构](docs/architecture/RendererSystem/Renderer.md)
+- [开发计划索引](docs/plans/README.md)
+- [编码规范](docs/CodingGuideLines/CodingGuideLines.md)
+- [资产清单](assets/asset_manifest.md)
 
-### 渲染模块：Vulkan 主线渲染器开发中
-- 当前主渲染后端已切换到 Vulkan 1.3，OpenGL 路径不再作为主线维护。
-- 已完成基础渲染链路：swapchain、viewport target、pass graph、forward scene、object picking、debug draw、ImGui composite。
-- 已接入画面基础：HDR scene color、ACES tone mapping、exposure、Physically Based Bloom、PBR metallic-roughness material、IBL、skybox。
-- 阴影系统已支持 directional shadow、PCF / Poisson PCF、CSM、PCSS / contact hardening。
-- glTF 2.0 / GLB 模型主导入路径已切换到 tinygltf，Assimp 作为非 glTF fallback / 后续离线工具边界保留。
-![](./docs/architecture/images/scenev2.png)
+## 当前能力
 
-### 事件系统: v1版本总线事件派发结构编写完成
-- [事件系统文档](./docs/architecture/EventSystem/EventSystem.md)
+| 领域 | 已实现 |
+| --- | --- |
+| 引擎基础 | 模块依赖排序、生命周期与服务注册、日志、窗口、输入快照与 InputAction |
+| 场景与运行时 | EnTT ECS、JSON 场景保存/加载、基础玩法系统、碰撞触发器、运行时相机、HUD、miniaudio 音频 |
+| 资源 | CPU/GPU 资源分离、tinygltf 导入 glTF/GLB、Assimp 补充导入、PBR 材质及运行时材质实例 |
+| Vulkan 渲染 | Forward PBR、HDR/ACES、IBL、方向光/点光/矩形光阴影、SSAO、SSR、Reflection Probe、Bloom、SMAA |
+| 编辑器 | Dockspace、SceneView/GameView、Hierarchy、Inspector、Project、Console、渲染设置与诊断、拾取和 Gizmo |
+| 可选光追 | BLAS/TLAS、Ray Query 方向光阴影、RTAO，以及 RT 反射原始输出 |
 
-###  编辑器：开发中
-- 视口面板，场景层级面板，实体属性面板正在开发中
-![](./docs/architecture/images/editor_1.png)
+当前开发重点为 [RT 反射](docs/plans/Renderer/RayTracing/ray_traced_reflection_foundation_plan.md)：RT-10.0～RT-10.2 已实现，下一工作包为 RT-10.3 时空降噪，随后是 RT-10.4 混合反射合成。RT 反射默认关闭，原始结果通过调试视图查看；完整 Path Tracer 尚未实现。
+
+编辑器的 SceneView/GameView 已区分相机来源，但 Play/Pause/Stop 按钮尚未接入完整运行生命周期。
 
 ## 技术栈
-![C++](https://img.shields.io/badge/Language-C%2B%2B20-00599C?style=flat-square&logo=c%2B%2B)
-![CMake](https://img.shields.io/badge/Build-CMake-064F8C?style=flat-square&logo=cmake)
-![Vulkan](https://img.shields.io/badge/Renderer-Vulkan%201.3-AC162C?style=flat-square&logo=vulkan)
-![vcpkg](https://img.shields.io/badge/Deps-vcpkg-2F74C0?style=flat-square)
 
-- **C++20 / CMake / vcpkg**: 引擎主线使用 C++20，CMake 负责工程组织，第三方依赖统一走 vcpkg。
-- **Vulkan 1.3**: 当前主渲染后端，包含 swapchain、dynamic rendering、pass graph、HDR scene color、PBR、IBL、Bloom、Shadow / CSM / PCSS、debug draw 与 editor viewport 输出。
-- **HLSL + DXC -> SPIR-V**: Vulkan shader 使用 HLSL 编写，由 DXC 编译为 SPIR-V，shader 按 forward、bloom、shadow、common include 等目录组织。
-- **vk-bootstrap / volk / Vulkan Memory Allocator**: 简化 Vulkan instance / device 初始化、函数加载与 GPU 资源内存管理。
-- **GLFW**: 负责窗口创建、Vulkan surface 和键盘 / 鼠标输入接入。
-- **Dear ImGui Docking + ImGuizmo**: 构建编辑器 UI、Dockspace、Scene Viewport、Inspector、Hierarchy、Content Browser、Console、Renderer Debug 与 gizmo 操作。
-- **EnTT**: ECS 基础设施，支撑 Scene、Entity、Component 和 runtime gameplay systems。
-- **glm**: 数学库，用于向量、矩阵、相机、Transform、PBR / Shadow / Physics 等计算。
-- **spdlog / fmt**: 日志与格式化输出，服务于引擎核心、编辑器和调试工具。
-- **tinygltf**: glTF 2.0 / GLB runtime 主导入路径，负责解析几何、节点层级、PBR 材质和贴图引用。
-- **Assimp**: 作为补充导入器 / fallback importer，主要面向非 glTF 格式或后续离线转换工具。
-- **stb_image**: 纹理与 HDR environment 图像解码，服务于材质贴图和 IBL 资源加载。
-- **nlohmann/json**: 场景序列化、配置和轻量数据交换。
-- **miniaudio**: Audio v1 后端，提供轻量音频播放基础能力。
+- **C++20 / CMake / vcpkg**：当前提供 Windows x64 / Visual Studio 2022 构建预设。
+- **Vulkan 1.3 / HLSL / DXC**：使用 dynamic rendering、synchronization2 和 SPIR-V Shader。
+- **vk-bootstrap / volk / Vulkan Memory Allocator**：设备初始化、函数加载与 GPU 内存管理。
+- **GLFW / Dear ImGui Docking / ImGuizmo**：窗口、输入与编辑器交互。
+- **EnTT / glm**：ECS 与数学计算。
+- **tinygltf / Assimp / stb_image**：模型、材质贴图和 HDR 图像导入。
+- **spdlog / fmt / nlohmann-json / miniaudio**：日志、格式化、序列化与音频。
 
+当前构建只支持 vcpkg 依赖路径与 Vulkan 渲染主线；仓库中的 `external/` 和旧 GLSL 资产不代表仍存在可切换的 OpenGL 后端。
 
+## 快速开始
 
+安装 Visual Studio 2022 C++ 工具链、CMake 3.25+、Vulkan SDK 和 vcpkg，并设置 `VCPKG_ROOT` 后，在仓库根目录执行：
+
+```powershell
+cmake --preset msvc-vcpkg
+cmake --build --preset msvc-vcpkg-debug
+./bin/msvc-vcpkg/Debug/Sandbox.exe
+```
+
+依赖、测试选择和常见问题见[构建说明](docs/development/build_and_test.md)。
+
+## 历史截图
+
+以下为开发过程截图，不作为当前渲染质量或 UI 的验收基线。
+
+![场景开发截图](docs/architecture/images/scenev2.png)
+![编辑器开发截图](docs/architecture/images/editor_1.png)

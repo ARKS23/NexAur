@@ -1,5 +1,8 @@
 # Renderer Module Reorganization Plan
 
+> 文档分类：历史方案 / 实施记录（2026-10-18 整理）。Renderer 目录迁移方案；当前文件位置以源码和架构文档为准。
+> 正文保留当时的 API、路径、分支和测试命令；当前入口与后续工作见[计划索引](../README.md)。
+
 ## 1. 背景
 
 D12 之后，NexAur 已经完成旧 OpenGL legacy renderer 的退役：

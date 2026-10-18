@@ -1,45 +1,33 @@
-# Log System
-## 概述
-日志模块用于在开发和调试阶段输出结构化的运行时信息。本模块基于日志库**spdlog**构建，目前是单线程程序，未使用异步日志。
+# 日志系统
 
-## 设计
-- 日志系统采用静态**单例模式**封装，确保在应用程序的任何位置都能直接访问，无需传递上下文。
-- 使用宏进行静态函数封装封装: 如`NX_CORE_INFO`比直接用`NexAur::Log::GetLogger()->info`更方便.
+最后核对：2026-10-18。实现：[log_system.h](../../../source/Engine/Core/Log/log_system.h)、[log_system.cpp](../../../source/Engine/Core/Log/log_system.cpp)。
 
+## 生命周期与存储
 
-## API与用法
-- 必须在使用前进行**初始化**，否则直接使用会崩溃
-```C++
-NexAur::Log::Init();
+CoreModule 调用 `LogSystem::init()` 初始化名为 NEXAUR 的 spdlog logger。独立工具或测试若不走模块启动，需要自行初始化后再使用宏。
+
+日志当前同步写入线程安全的 console sink 和 RecentLogSink。后者保留最近 512 条记录，使用互斥锁保护缓存；这不等于异步日志队列。
+
+依赖通过 vcpkg 的 spdlog 包提供，不使用仓库内旧 external/spdlog 构建。
+
+## API
+
+```cpp
+NexAur::LogSystem::init();
+NX_CORE_INFO("Engine initialized.");
+NX_CORE_WARN("Window resized to: {} x {}", width, height);
 ```
 
-| 级别   |         API             | 说明                    |
-|--------|-------------------------|--------------------------|
-| Trace  | NX_CORE_TRACE(...)      | 极其琐碎的追踪信息       |
-| Info   | NX_CORE_INFO(...)       | 常规状态信息             |
-| Warn   | NX_CORE_WARN(...)       | 警告，程序可继续运行     |
-| Error  | NX_CORE_ERROR(...)      | 错误，可能导致功能异常   |
-| Fatal  | NX_CORE_FATAL(...)      | 致命错误，程序即将崩溃   |
+| 宏 | spdlog 级别 |
+| --- | --- |
+| `NX_CORE_TRACE` | trace |
+| `NX_CORE_INFO` | info |
+| `NX_CORE_WARN` | warn |
+| `NX_CORE_ERROR` | error |
+| `NX_CORE_FATAL` | critical |
 
+NX_CORE_FATAL 只记录 critical 日志，本身不会终止进程。
 
-## 依赖
-- **spdlog**： external/spdlog
+## 编辑器 Console
 
-## 使用示例
-```C++
-// 1. 基础字符串
-NX_CORE_INFO("Engine Initialized successfully.");
-
-// 2. 带参数格式化 
-int width = 1920;
-int height = 1080;
-NX_CORE_WARN("Window resized to: {0} x {1}", width, height);
-
-// 3. 打印自定义对象 (需要重载 operator<<)
-glm::vec3 pos = {1.0f, 2.0f, 3.0f};
-NX_CORE_INFO("Player Position: {0}, {1}, {2}", pos.x, pos.y, pos.z);
-```
-
-## 未来计划
-- 编辑器中实现一个Log Console面板，实时显示日志
-- 随着项目多线程化后修改为异步日志
+[ConsolePanel](../../../source/Engine/Editor/Panels/console_panel.cpp)读取 `LogSystem::getRecentMessages()`，可通过 `clearRecentMessages()` 清空缓存。Console 已实现，不再属于未来 TODO。

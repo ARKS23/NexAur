@@ -2,7 +2,21 @@
 
 日期：2026-08-17
 
-状态：开发中；RT-00 至 RT-09 已完成，下一工作包为 RT-10
+状态：开发中；RT-00～RT-09、RT-10.0～RT-10.2 已完成，下一工作包为 RT-10.3。
+
+## 当前进度口径
+
+最后核对：2026-10-18，依据提交 `695e1d1`。总计划保留路线、约束和历史验证记录；RT-10 子工作包以[反射专项](ray_traced_reflection_foundation_plan.md)为准，文档总入口见[计划索引](../../README.md)。
+
+| 范围 | 状态 |
+| --- | --- |
+| RT-00～RT-09 | 已完成 Ray Query foundation、方向光阴影、生命周期/性能和 RTAO |
+| RT-10.0～RT-10.2 | 已完成 GPU scene tables、Surface/Compute/History foundation、反射追踪与命中着色 |
+| RT-10.3 | 待完成时空降噪 |
+| RT-10.4 | 待完成 SSR/RT/Probe/IBL 最终合成 |
+| RT-11 | 后续 RT Pipeline/SBT/Path Tracer 阶段 |
+
+当前 raw RT reflection 只接入调试输出，默认关闭，不能把目标反射优先级当成 Final Lit 已有能力。下面的历史验证记录不代表此次文档整理重新执行过测试。
 
 ## 1. 文档目的
 
@@ -93,7 +107,7 @@ SSR 仍负责低成本、与当前屏幕内容一致的近场反射；Ray Tracin
 - `VulkanMeshResource` 已持有 GPU vertex / index buffer；CPU Mesh 也保留标准三角形顶点和 `uint32_t` index 数据。
 - Opaque 与 transparent draw item 已在 frontend 分开。
 - 已有 CSM / PCSS、SSR、Reflection Probe 和 Global IBL，可作为混合渲染 fallback。
-- Descriptor layout cache 已能表达任意 `VkDescriptorType`，但 allocator 和 writer 仍需补充 acceleration structure 支持。
+- Descriptor allocator / writer 已在 RT-06 支持 acceleration structure；RT-10.0 又补充 descriptor-indexed geometry / texture table 绑定。
 
 `VulkanDrawList` 的数据已经足以作为 TLAS instance 的 CPU 输入：
 
@@ -123,14 +137,14 @@ VulkanMeshDrawItem
 | Descriptor allocator | RT-06 已按 capability 条件分配 acceleration structure descriptor pool capacity | 可分配 Ray Query descriptor set；RT-disabled 不创建 AS pool entry |
 | Descriptor writer | RT-06 已支持 `VkWriteDescriptorSetAccelerationStructureKHR` pNext 写入 | 可更新有效 TLAS；BLAS 会在 CPU 侧拒绝 |
 | Shader library | RT-06 已加入 `ForwardRayQuery` manifest、DXC profile 和 `SPV_KHR_ray_query` 编译选项 | 可创建独立 fragment Ray Query variant；RT-disabled 不创建 pipeline |
-| Pipeline cache | 只支持 graphics pipeline | 第一阶段足够；Full RT Pipeline 时必须新增独立 pipeline 类型 |
-| Scene material table | 仍按 draw call 绑定 material | 足够做 shadow visibility，不足以做通用 hit shading |
-| Temporal data | 没有正式 motion vector / history contract | 不足以实现稳定的 RT reflection denoiser |
+| Pipeline cache | RT-10.1 已支持 graphics / compute pipeline | Ray Query compute trace 可用；Full RT Pipeline 仍需独立类型和 SBT |
+| Scene material table | RT-10.0 已有 per-frame instance / geometry / material / texture tables | RT-10.2 可进行 static opaque 命中着色；不是任意材质的完整 RT 支持 |
+| Temporal data | RT-10.1 已有 motion vector、previous transform 和 history/reset contract | RT-10.3 时空降噪仍待实现 |
 | GPU lifetime | AS、backing、instance / scratch replacement 已接入 FrameContext、frame serial、retirement queue 和 deferred destruction | 已解除；descriptor 仍由对应 frame slot 持有和更新 |
 
 ### 3.3 结论
 
-当前 Renderer 已具备 Directional Ray Query Shadow 和 Optional RTAO 两项实际 Ray Query 视觉功能及其稳定运行基础。RT-00 至 RT-09 已完成 capability、device-address resource、BLAS / TLAS、RenderGraph synchronization、descriptor / shader、directional shadow、lifetime、compaction、profiling 和可回退 RTAO；下一步可进入 RT-10 Ray-Traced Reflection Foundation 的 scene shading 前置工作。
+当前 Renderer 已具备 Directional Ray Query Shadow、Optional RTAO，以及 RT-10.2 的 raw reflection trace / hit shading。RT-10.0 scene tables 和 RT-10.1 surface / compute / history foundation 已落地；下一步为 RT-10.3 降噪，随后由 RT-10.4 完成最终混合反射合成。
 
 第一阶段不需要完整 RHI 重写，也不需要完整 Ray Tracing Pipeline。正确做法是在现有 Vulkan backend 内新增窄职责的 Ray Tracing Foundation，并保持 Renderer frontend 和 Raster Pipeline 稳定。
 
@@ -887,21 +901,25 @@ result       = visible or occluded
 
 ### 11.11 RT-10：Ray-Traced Reflection Foundation
 
+状态：部分完成。RT-10.0～RT-10.2 已完成，RT-10.3 / RT-10.4 待完成。
+
 风险：很高。
 
 详细拆分、数据契约、RenderGraph顺序、fallback和验收标准见：
 
 - [RT-10 Ray-Traced Reflection Foundation Development Plan](ray_traced_reflection_foundation_plan.md)
 
-开始条件：完成以下 scene shading 基础：
+已完成的基础与追踪：
 
-- GPU object / instance table。
-- vertex / index address table。
-- material parameter table。
-- bindless 或等价的 texture indexing contract。
-- reflection output storage image。
-- motion vector、history validity 和 temporal reset contract。
-- spatial / temporal denoiser。
+- GPU instance / geometry / material / texture tables。
+- descriptor-indexed vertex / index buffer lookup。
+- Reflection surface、motion vector、history validity / reset 和 compute pipeline。
+- Raw reflection radiance、confidence、hit distance 与调试视图。
+
+待完成：
+
+- RT-10.3 spatial / temporal denoiser。
+- RT-10.4 reflection composite、最终 fallback 权重与视觉验收。
 
 推荐组合：
 
@@ -1070,13 +1088,11 @@ steady-state rebuild count
 9. 多帧并行启用前，AS 资源已接入 deferred destruction 和 FrameContext 生命周期。
 10. Debug snapshot 可以解释当前是否启用 RT、为什么回退、构建了多少 AS 以及主要 GPU 成本。
 
-## 18. 最终结论
+## 18. 当前下一步
 
-NexAur 当前 Renderer 能支持硬件光追开发，但正确起点是 Ray Query Foundation，而不是直接实现 Path Tracer。
+Ray Query foundation、Directional Shadow 和 RTAO 已落地；RT-10.0～RT-10.2 也已完成 scene table、surface/history foundation 和 raw trace。当前应推进 RT-10.3 时空降噪，再处理 RT-10.4 最终合成。
 
-推荐先完成 Renderer 的 access model、synchronization2、canonical frame、backend responsibility 和 common resource primitive，再依次落地 capability、device-address buffer、BLAS、TLAS、graph synchronization 和 descriptor。第一个合入的视觉功能应是带 CSM / PCSS fallback 的 Directional Ray Query Shadow。
-
-这条路线能复用现有 Forward、SSR、Reflection Probe 和 IBL，同时把风险集中在可验证的小工作包中。等 AS 生命周期、scene table、history 和 denoiser 成熟后，再进入 RT Reflection 和 Full Ray Tracing Pipeline。
+继续保留 Raster/SSR/Probe/IBL fallback，并按专项工作包验证资源同步、history reset 和视觉结果。完整 RT Pipeline/SBT/Path Tracer 留在 RT-11，不与当前反射收口混合。
 
 ## RT-10.2 Status (2026-08-19)
 

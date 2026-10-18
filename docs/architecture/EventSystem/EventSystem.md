@@ -1,61 +1,47 @@
 # 事件系统
-## 概述
-NexAur中的事件系统目前采用的是立即模式和责任链模式设计，参考**Hazel**引擎的设计，其主要目的是解耦底层的窗口回调与上层的应用逻辑，并提供一种可靠的机制来管理事件的拦截与消耗。
 
-## 设计
-### 1. 核心类结构：
-所有事件均继承自**Event基类**，基类的方法如下
-- `EventType getEventType()`: 获取事件类型（如 KeyPressed, MouseMoved）。
+最后核对：2026-10-18。当前为同步立即分发和责任链模型，没有通用异步事件总线。
 
-- `int getCategoryFlags()`: 获取分类（如 Input, Keyboard, MouseButton）。
+## 类型与分发器
 
-- `bool handled`: 核心标志位，指示事件是否已被消耗。
+[Event](../../../source/Engine/Core/Events/event.h)提供：
 
-- `string toString()`: 用于 Debug 日志输出。
+- `getEventType()`：具体类型。
+- `getCategoryFlags()` / `isInCategory(...)`：分类。
+- `getName()` / `toString()`：调试名称。
+- `handled`：是否停止向后续模块传播。
 
-- `string getName()`: 获取事件名字用于调试
+EventDispatcher::dispatch 按类型调用 handler，并把 handler 的返回值写入 handled；dispatch 自身返回的是类型是否匹配，二者不可混淆。
 
-- `bool isInCategory(EventCategory category)`: 判断当前事件是否舒徐某个分类
+## 调用链
 
-### 2. 事件分发器
-- 事件分发器用于简化事件类型判断和回调函数执行
-- 它负责把Event基类安全地转换为具体地子类，并调用对应的处理函数
-
-### 3. 数据流向
-```
-WindowSystem callback
+```text
+WindowSystem / GLFW callback
   -> WindowService event callback
   -> Engine::onEvent
+       WindowClose / WindowResize
   -> ModuleManager::dispatchEvent
-  -> UI / Editor / Renderer / Runtime modules
+       按 ModuleStage 降序分发
+       handled 后停止
 ```
 
-## 用法
-- engine.cpp
-```C++
- getRequiredModuleService<WindowService>()
-    ->setEventCallback(NX_BIND_EVENT_FN(Engine::onEvent));
- 
- //...
+Engine 消费 WindowClose 并停止运行；WindowResize 当前继续传递给模块。UI 优先于 Game、Editor、Renderer 和 Runtime 接收事件；同 stage 内按反向初始化顺序处理。
 
+源码：[Engine 入口](../../../source/Engine/engine.cpp)、[ModuleManager](../../../source/Engine/Core/Module/module_manager.cpp)。
 
- void Engine::onEvent(Event& event) {
-        EventDispatcher dispatcher(event);
-        dispatcher.dispatch<WindowCloseEvent>(NX_BIND_EVENT_FN(Engine::onWindowClose));
-        dispatcher.dispatch<WindowResizeEvent>(NX_BIND_EVENT_FN(Engine::onWindowResize));
+## UI 捕获规则
 
-        if (event.handled) {
-            return;
-        }
+[UIModule](../../../source/Engine/Function/UI/ui_module.cpp)先通知 UISystem，再按以下规则拦截：
 
-        if (ModuleManager* module_manager = g_runtime_global_context.getModuleManager()) {
-            module_manager->dispatchEvent(event);
-        }
-    }
+| 情况 | 行为 |
+| --- | --- |
+| ImGui wantsTextInput | 拦截键盘事件 |
+| ImGui wantsCaptureKeyboard，且视口既未聚焦也未悬停 | 拦截键盘事件 |
+| ImGui wantsCaptureMouse，且鼠标不在视口上 | 拦截鼠标事件 |
+| 鼠标悬停视口 | 允许后续模块处理 picking、滚轮等交互 |
 
-```
+这些规则作用于事件链。InputAction 读取的轮询状态不会自动清空，详见[输入系统](../InputSystem/Input.md)。
 
+## 当前范围
 
-## 未来计划
-1. 未来加入音频处理和物理碰撞时补充延迟事件队列。
-2. 加入类似UE的机制，在游戏玩法层引入多播委托机制。
+窗口、键盘、鼠标事件通过该链路派发。Trigger overlap 当前由 Gameplay/Physics 系统直接消费，不应据此推断已有异步物理事件队列或多播委托系统。

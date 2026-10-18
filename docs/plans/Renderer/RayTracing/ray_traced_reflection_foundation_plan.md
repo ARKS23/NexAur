@@ -4,6 +4,20 @@
 
 状态：RT-10.2 已完成；下一工作包为 RT-10.3
 
+## 当前进度口径
+
+最后核对：2026-10-18，依据提交 `695e1d1`。本文区分已实现基础、目标契约和后续验收；文档入口见[计划索引](../../README.md)。
+
+| 工作包 | 状态 |
+| --- | --- |
+| RT-10.0 GPU Scene Shading Tables | 已完成；正式 geometry fetch 使用 descriptor-indexed ByteAddressBuffer |
+| RT-10.1 Surface / Compute / History | 已完成；提供 MRT、compute 和 history/reset 基础 |
+| RT-10.2 Trace / Hit Shading | 已完成；提供 raw radiance/confidence/hit distance 和 debug views |
+| RT-10.3 Spatial / Temporal Denoiser | 待完成 |
+| RT-10.4 Hybrid Composite | 待完成 |
+
+下文的目标帧图和验收清单不是已实现功能列表。当前 RT 反射默认关闭，raw 输出用于调试，尚未进入完整 Final Lit 混合反射。末尾 Implementation Notes 是各提交的历史记录，不代表此次重新测试。
+
 ## 1. 文档目的
 
 本文档将 `RT-10：Ray-Traced Reflection Foundation` 拆分为可独立实现、验证和回退的工作包，定义 NexAur 第一版 Ray-Traced Reflection 的数据契约、Feature 所有权、RenderGraph 顺序、资源生命周期、fallback、诊断和测试标准。
@@ -101,20 +115,18 @@ SSR -> Local Probe -> Global IBL
 - Reflection Probe 和 Global IBL 已构成稳定 fallback。
 - RR-11 / RR-12 已提供 deferred destruction 和 FrameContext 生命周期。
 
-### 3.2 当前硬缺口
+### 3.2 已解除的前置缺口与剩余工作
 
-| 领域 | 当前状态 | RT Reflection 阻塞 |
-|---|---|---|
-| Instance lookup | `instanceCustomIndex` 是临时紧凑序号 | 命中后无法查找 geometry / material |
-| Geometry lookup | mesh 有 device address，但没有 GPU geometry table | 无法按 primitive index 读取三角形 |
-| Material lookup | 每 draw 一个 material descriptor set | 命中 shader 无法随机访问材质 |
-| Texture lookup | 没有 descriptor-indexed texture table | 无法按 hit material 采样纹理 |
-| Surface attributes | Forward 只输出 HDR color + depth，SSR 法线由 depth 重建 | 缺 material normal、roughness 和稳定 reflection mask |
-| Fallback specular | Probe / IBL specular 已混入 final lit color | 无法正确替换 fallback specular，容易重复计算 |
-| Motion vector | 不存在 | 无法稳定 temporal reprojection |
-| History contract | 不存在 | Resize、camera cut、scene reload 后容易读取 stale history |
-| Compute pipeline | Pipeline cache 只支持 graphics | 不支持正式 compute trace / denoiser dispatch |
-| Graph storage image | Image usage 只有 attachment / fragment read / transfer | 无法表达 compute storage read / write hazard |
+| 领域 | 当前状态 | 后续边界 |
+| --- | --- | --- |
+| Instance lookup | RT-10.0 使用 canonical accepted-instance list；索引 0 保留为 fallback | TLAS 与 scene table 必须继续共用同一份列表 |
+| Geometry lookup | descriptor-indexed vertex/index ByteAddressBuffer 表已实现 | buffer-reference probe 被 DXC 否决，不维护第二条生产路径 |
+| Material / texture lookup | per-frame material table、固定容量 texture array 和 fallback slots 已实现 | 当前仅支持 static opaque 范围 |
+| Surface attributes | RT-10.1 Forward MRT 输出 material normal、roughness 和 reflection mask | Probe capture 保留 color-only Forward |
+| Fallback specular | 已有单独 MRT 输出 | RT-10.4 尚未完成正式替换/合成 |
+| Motion vector / history | 已有 previous transform、motion vector、reset/advance 和 ping-pong target | RT-10.3 尚未实现 temporal accumulation 与 rejection |
+| Compute / RenderGraph | 已支持 compute pipeline、storage image 和 compute AS read | 降噪 pass 仍需接入 |
+| Trace / hit shading | RT-10.2 已有 raw radiance、confidence、hit distance 和 debug routing | 尚无 denoised output 和最终 hybrid composite |
 
 ### 3.3 当前可复用但不能直接扩张的模块
 
@@ -247,14 +259,14 @@ struct GpuRtGeometryRecord {
 };
 ```
 
-Geometry fetch 优先复用 buffer device address，并在 RT-10.0 开始时完成 DXC `PhysicalStorageBuffer` shader probe。该 probe 必须证明：
+原始方案要求在 RT-10.0 中验证 DXC `PhysicalStorageBuffer` geometry fetch。实施时 `vk::buffer_reference` probe 被编译器否决，正式路径已固定为 descriptor-indexed `ByteAddressBuffer`；以下保留当时的 probe 验证目标：
 
 - HLSL 可以从 address table 读取 `uint32_t` index 和当前 `Vertex` 字段。
 - SPIR-V capability / extension 与 logical-device feature 匹配。
 - address、stride、index 和 primitive bounds 均有显式校验。
 - Vulkan validation 无 physical-storage-buffer 错误。
 
-如果该路径在目标 DXC / GPU 组合上不稳定，则回退 descriptor-indexed `ByteAddressBuffer` array。禁止同时维护两套生产 geometry lookup；probe 结束后必须在 RT-10.0 内固定一种方案。
+最终选择为 descriptor-indexed `ByteAddressBuffer` array，不同时维护两套生产 geometry lookup。实现细节和当时验证结果见末尾 RT-10.0 Implementation Notes。
 
 ### 6.4 GPU material record
 
@@ -602,6 +614,8 @@ FeaturePlan 统一决定 SSR、RT trace、denoiser和composite是否运行。Gra
 
 ### 12.1 RT-10.0：GPU Scene Shading Tables
 
+状态：已完成，见 RT-10.0 Implementation Notes。
+
 风险：高。
 
 开始条件：RT-08 AS lifetime稳定，mesh / material resource generation可查询。
@@ -635,6 +649,8 @@ FeaturePlan 统一决定 SSR、RT trace、denoiser和composite是否运行。Gra
 
 ### 12.2 RT-10.1：Reflection Surface, Compute and History Foundation
 
+状态：已完成，见 RT-10.1 Implementation Notes。
+
 风险：高。
 
 开始条件：RT-10.0 table contract固定。
@@ -665,6 +681,8 @@ FeaturePlan 统一决定 SSR、RT trace、denoiser和composite是否运行。Gra
 - RenderGraph compute storage planner focused tests。
 
 ### 12.3 RT-10.2：Ray Query Reflection Trace and Hit Shading
+
+状态：已完成，见 RT-10.2 Implementation Notes。
 
 风险：很高。
 
@@ -698,6 +716,8 @@ FeaturePlan 统一决定 SSR、RT trace、denoiser和composite是否运行。Gra
 
 ### 12.4 RT-10.3：Spatial and Temporal Reflection Denoiser
 
+状态：待完成；当前下一工作包。
+
 风险：很高。
 
 开始条件：RT-10.2 raw output和motion vector稳定。
@@ -726,6 +746,8 @@ FeaturePlan 统一决定 SSR、RT trace、denoiser和composite是否运行。Gra
 - Camera pan、object motion、scene reload和resize GPU smoke。
 
 ### 12.5 RT-10.4：Hybrid Composite, Fallback and Diagnostics
+
+状态：待完成；当前 FrameGraph 尚无独立 hybrid composite。
 
 风险：高。
 
@@ -970,11 +992,11 @@ RT-10.0 至 RT-10.4 全部完成后应满足：
 9. Renderer Debug可解释资源容量、active technique、fallback reason、history状态和GPU成本。
 10. Vulkan validation、sync validation、SPIR-V validation和focused tests全部通过。
 
-## 20. 最终建议
+## 20. 当前下一步
 
-RT-10.0 已完成。下一步只启动 `RT-10.1：Reflection Surface / Compute / History`，不要同时提前实现 Trace、Denoiser 或 Composite。
+RT-10.0～RT-10.2 已完成，下一步为 `RT-10.3：Spatial and Temporal Reflection Denoiser`。先验证 raw output、motion vector 与 history reset，再实现 temporal rejection/accumulation 和 spatial filter。
 
-RT-10.0 的首个子任务应是 geometry fetch shader probe与canonical accepted-instance contract。它们分别验证“GPU能否安全读取命中三角形”和“CPU / TLAS / shader是否使用同一索引真相”。这两个条件未固定前，任何反射视觉算法都建立在不可靠的数据基础上。
+RT-10.4 随后建立独立 composite 和最终 fallback 权重。在这两个工作包完成前，继续把 raw/debug 能力与正式 Final Lit 混合反射区分开。
 
 ## RT-10.0 Implementation Notes (2026-08-18)
 

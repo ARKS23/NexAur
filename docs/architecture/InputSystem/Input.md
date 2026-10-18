@@ -1,114 +1,59 @@
 # 输入系统
-## 1.概述
-### 1.1 模块定位
-Input System 是 NexAur 引擎中负责 **输入采集**、**状态管理**与**语义映射** 的基础模块。
 
-### 1.2 设计目标
-- 平台解耦: 对外统一输入接口（目前只有Windows-GLFW）
-- 语义化输入: 避免代码直接依赖平台keyCode
-- 状态与事件分离: 支持**状态查询**也支持**事件驱动**
+最后核对：2026-10-18。输入包含轮询状态和同步事件两条路径；事件分发见[事件系统](../EventSystem/EventSystem.md)。
 
-### 1.3 非目标
-- 不负责事件的分发与订阅管理（由事件系统负责）
+## 状态与动作数据流
 
-## 2. 设计
-### 2.1 架构设计
-```
-[ OS / 硬件 ]
-        ↓
-[ PlatformModule / WindowSystem ]
-        ↓
-[ InputSystemGLFW -> InputState ]
-        ↓
-[ InputService / Event System ]
-        ↓
-[ InputActionModule -> InputActionService ]
-        ↓
-[ Gameplay / GameModule ]
-
-[ Editor / UI can still read InputService directly for tools ]
+```text
+GLFW key / mouse state
+  -> PlatformModule::tick
+  -> InputSystemGLFW::update / InputState
+  -> InputService
+  -> InputActionModule::tick / InputActionSystem
+  -> InputActionService
+  -> GameModule
 ```
 
-### 2.2 输入模型
-#### 1.状态查询
-用于持续行为判断
-- 是否按下某个按键
-- 当前鼠标位置
-- 某个轴的当前值
-#### 2 事件通知
-用于一次性变化响应
-- 当按键按下/抬起
-- 鼠标滚轮滚动
-- 窗口焦点变化
+InputSystemGLFW 每帧刷新已登记的键盘键、鼠标按钮和鼠标位置。InputActionSystem 对照上一帧状态计算 pressed/released，并生成一维/二维轴。Editor 工具仍可直接使用 InputService。
 
-### 2.3 输入状态管理
-输入系统维护下列状态数据,所有状态数据均以 **“当前帧快照”** 的形式存在，并在每帧开始或结束时更新。
-- 键盘按键状态
-- 鼠标按键状态
-- 鼠标位置
+源码：[平台输入实现](../../../source/Engine/Function/Input/input_system_glfw.cpp)、[动作映射](../../../source/Engine/Function/Input/input_action_system.cpp)。
 
-### 2.4 输入语义映射
-避免业务代码直接依赖平台keyCode
-```aiignore
-平台输入（如 GLFW_KEY_W）
-        ↓
-InputAction（如 Move / Jump / Fire）
-```
+## 当前默认绑定
 
-## 3. API与用法
-### 3. 1 状态查询接口
-用于在任意系统中查询当前输入状态：
-- 查询按键是否按下
-- 查询鼠标位置
-- 查询轴值
+| 语义 | 输入 |
+| --- | --- |
+| Move | WASD 二维轴 |
+| Jump | Space |
+| Fire | 鼠标左键 |
+| Pause | Escape |
+| Interact | E |
 
-这些接口**不依赖事件系统**，可直接调用。
+InputActionService 提供 `isHeld`、`wasPressed`、`wasReleased`、`getAxis1D` 和 `getAxis2D`。动作有绑定并不代表所有玩法行为都已经实现。
 
-### 3.2 语义输入接口
+## 使用方式
 
-Gameplay 优先通过 `InputActionService` 查询语义输入：
+模块顶层获取服务，深层系统通过构造参数或函数参数接收依赖：
 
-- `isHeld(action)`：当前帧是否保持按下。
-- `wasPressed(action)`：当前帧是否刚按下。
-- `wasReleased(action)`：当前帧是否刚释放。
-- `getAxis1D(axis)`：查询一维轴。
-- `getAxis2D(axis)`：查询二维轴。
-
-`pressed` / `released` 由 `InputActionSystem` 保存上一帧状态计算，不依赖具体平台事件。
-
-## 4. 使用示例
-
-新代码不要直接访问 `g_runtime_global_context.m_input_system`。模块顶层从 `ModuleRegistry` 获取 `InputService`，深层对象通过构造参数或 setter 接收它。
-
-```C++
-std::shared_ptr<InputService> input_service =
-    context.registry.getService<InputService>();
-
-// 深层对象只保存 InputService，不知道 GLFW 或全局上下文。
-const InputState& input_state = input_service->getState();
-auto [x, y] = input_state.getMousePosition();
-
-// 判断是否按下W
-if (input_state.isKeyPressed(KeyCode::W)) {
-    // ...
-}
-```
-
-Gameplay 示例：
-
-```C++
-std::shared_ptr<InputActionService> input_actions =
-    context.registry.getService<InputActionService>();
-
+```cpp
+auto input_actions = context.registry.getRequiredService<InputActionService>();
 glm::vec2 move = input_actions->getAxis2D(DefaultInputActions::Move);
-
 if (input_actions->wasPressed(DefaultInputActions::Jump)) {
-    // jump
+    // 由玩法系统决定如何处理跳跃。
 }
 ```
 
-## 5. 未来计划
-- 增加可编辑 action binding UI。
-- 增加 action map 保存 / 加载。
-- 增加 gamepad、mouse delta / raw mouse。
-- 目前只支持 Windows/GLFW，后续可扩展跨平台实现。
+编辑器状态查询：
+
+```cpp
+const InputState& state = input_service->getState();
+auto [x, y] = state.getMousePosition();
+const bool forward = state.isKeyPressed(KeyCode::W);
+```
+
+## 与 UI 捕获的边界
+
+UIModule 可以把同步输入事件标为 handled；EditorCamera 还有自身的 focus/hover 和 UI capture 检查。
+
+当前 InputActionSystem 直接读取 InputService 快照，尚无统一的 Editor/Runtime action context 或 ImGui capture 过滤层。因此“事件被 UI 消费”不等于“轮询动作自动被屏蔽”。涉及玩法输入隔离时需分别检查这两条路径。
+
+当前实现后端为 GLFW，仓库构建预设面向 Windows x64。可编辑 binding UI、action map 持久化和手柄映射仍属于后续扩展。验证入口为 `NexAur.InputActionSmoke`。
