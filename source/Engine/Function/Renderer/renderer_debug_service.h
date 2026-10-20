@@ -362,6 +362,14 @@ namespace NexAur {
         uint64_t instance_buffer_bytes = 0;
         uint64_t geometry_buffer_bytes = 0;
         uint64_t material_buffer_bytes = 0;
+        // Cumulative counters for the displayed frame slot; last upload is per update.
+        uint64_t update_count = 0;
+        uint64_t rebuild_count = 0;
+        uint64_t reuse_count = 0;
+        uint64_t buffer_upload_count = 0;
+        uint64_t uploaded_bytes = 0;
+        uint64_t last_uploaded_bytes = 0;
+        uint64_t descriptor_write_count = 0;
         std::string last_failure_reason = "None";
     };
 

@@ -149,22 +149,6 @@ namespace NexAur {
             }
         }
 
-        bool requestsRayTracedReflection(const RenderSettings& settings) {
-            if (settings.ray_traced_reflection.enabled) {
-                return true;
-            }
-            switch (settings.effects_debug.view) {
-            case RenderEffectDebugView::RayTracedReflectionRaw:
-            case RenderEffectDebugView::RayTracedReflectionConfidence:
-            case RenderEffectDebugView::RayTracedReflectionHitDistance:
-            case RenderEffectDebugView::RayTracedReflectionInstance:
-            case RenderEffectDebugView::RayTracedReflectionPrimitive:
-                return true;
-            default:
-                return false;
-            }
-        }
-
         VulkanRayTracedReflectionDebugMode rayTracedReflectionDebugMode(
             RenderEffectDebugView view) {
             switch (view) {
@@ -488,9 +472,17 @@ namespace NexAur {
             if (!resource_cache.processUploads()) {
                 NX_CORE_ERROR("VulkanRendererSystem failed to process asynchronous uploads.");
             }
-            prepareStaticMeshBlas(prepared_frame.draw_list);
-
             VulkanFrameContext& frame_context = frame_contexts[current_frame_index];
+            // Determine demand from initialized pipelines, not the previous
+            // frame's TLAS/table readiness (which would prevent first use).
+            const VulkanRenderFeaturePlan preparation_plan = buildRenderFeaturePlan(
+                prepared_frame.scene.render_settings,
+                tlas_manager.isInitialized(),
+                frame_context.getRayTracingShadingTable().isInitialized());
+            if (preparation_plan.requiresRayTracingScene()) {
+                prepareStaticMeshBlas(prepared_frame.draw_list);
+            }
+
             if (!waitForFrame(frame_context)) {
                 const VulkanRenderFeaturePlan feature_plan =
                     buildRenderFeaturePlan(prepared_frame.scene.render_settings);
@@ -505,20 +497,23 @@ namespace NexAur {
             }
             bool reflection_target_ready = reflection_surface_feature.isReady();
             if (reflection_target_ready &&
-                requestsRayTracedReflection(prepared_frame.scene.render_settings)) {
+                preparation_plan.rendersRayTracedReflection()) {
                 reflection_target_ready = reflection_surface_feature.prepareHistoryTarget(
                     prepared_frame.draw_list.view.viewport_width,
                     prepared_frame.draw_list.view.viewport_height,
                     prepared_frame.scene.render_settings
                         .ray_traced_reflection.half_resolution);
             }
-            prepareTlas(frame_context.getFrameIndex(), prepared_frame.draw_list);
-            const VulkanAccelerationStructure* frame_tlas =
-                tlas_manager.get(frame_context.getFrameIndex());
+            const VulkanAccelerationStructure* frame_tlas = nullptr;
+            if (preparation_plan.requiresRayTracingScene()) {
+                prepareTlas(frame_context.getFrameIndex(), prepared_frame.draw_list);
+                frame_tlas = tlas_manager.get(frame_context.getFrameIndex());
+            }
             frame_context.updateRayTracingScene(
                 frame_tlas);
             if (frame_context.getRayTracingShadingTable().isInitialized()) {
-                if (frame_tlas != nullptr) {
+                if (preparation_plan.rendersRayTracedReflection() &&
+                    reflection_target_ready && frame_tlas != nullptr) {
                     frame_context.updateRayTracingShadingTable(
                         frame_tlas,
                         tlas_manager.getAcceptedInstanceRecords(
@@ -1572,6 +1567,13 @@ namespace NexAur {
             stats.instance_buffer_bytes = table_stats.instance_buffer_bytes;
             stats.geometry_buffer_bytes = table_stats.geometry_buffer_bytes;
             stats.material_buffer_bytes = table_stats.material_buffer_bytes;
+            stats.update_count = table_stats.update_count;
+            stats.rebuild_count = table_stats.rebuild_count;
+            stats.reuse_count = table_stats.reuse_count;
+            stats.buffer_upload_count = table_stats.buffer_upload_count;
+            stats.uploaded_bytes = table_stats.uploaded_bytes;
+            stats.last_uploaded_bytes = table_stats.last_uploaded_bytes;
+            stats.descriptor_write_count = table_stats.descriptor_write_count;
             stats.last_failure_reason = table_stats.last_failure_reason;
             return stats;
         }
@@ -2196,10 +2198,7 @@ namespace NexAur {
             if (feature_plan.rendersSmaa()) {
                 resources.smaa_source = smaa_feature.addSourceImage(graph);
             }
-            if (feature_plan.usesRayQueryDebug() ||
-                feature_plan.usesRayQueryShadow() ||
-                feature_plan.usesRayQueryAo() ||
-                feature_plan.rendersRayTracedReflection()) {
+            if (feature_plan.requiresRayTracingScene()) {
                 const VulkanAccelerationStructure* tlas =
                     tlas_manager.get(frame_context.getFrameIndex());
                 if (tlas == nullptr) {

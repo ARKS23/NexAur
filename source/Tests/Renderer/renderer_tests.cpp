@@ -1037,6 +1037,57 @@ int runFrameFeaturePlanSmoke() {
             fallback_plan.getDebugSettings().view == NexAur::RenderEffectDebugView::FinalLit,
         "Feature plan should resolve unavailable SSR debug output to direct final-lit output.");
 
+    // Preparation uses pipeline availability, before any frame-local TLAS exists.
+    {
+        auto pipelines = available;
+        pipelines.ray_query = true;
+        pipelines.ray_query_shadow = true;
+        pipelines.ray_query_shadow_mrt = true;
+        pipelines.ray_query_ao = true;
+        pipelines.ray_traced_reflection = true;
+        NexAur::RenderSettings demand;
+        demand.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::Disabled;
+        demand.ao.enabled = false;
+        auto plan = [&]() { return NexAur::VulkanRenderFeaturePlan::build(demand, pipelines); };
+        expect(!plan().requiresRayTracingScene(), "Raster-only frame requested RT preparation.");
+        demand.ray_query_shadow.mode = NexAur::RenderRayQueryShadowMode::Auto;
+        expect(plan().requiresRayTracingScene() && !plan().rendersRayTracedReflection(),
+            "Shadow-only frame must request TLAS without shading tables.");
+        demand.shadow.enabled = false;
+        expect(!plan().requiresRayTracingScene(), "Disabled shadows still requested RT preparation.");
+        demand.ao.enabled = true;
+        demand.ao.mode = NexAur::RenderAoMode::RayQuery;
+        expect(plan().requiresRayTracingScene() && !plan().rendersRayTracedReflection(),
+            "RTAO-only frame must request TLAS without shading tables.");
+        demand.ao.enabled = false;
+        demand.effects_debug.view = NexAur::RenderEffectDebugView::AoRaw;
+        expect(plan().requiresRayTracingScene(), "AO debug failed to request its RT resources.");
+        demand.effects_debug.view = NexAur::RenderEffectDebugView::RayQueryVisibility;
+        expect(plan().requiresRayTracingScene() && !plan().rendersRayTracedReflection(),
+            "Visibility debug must request TLAS without shading tables.");
+        for (auto view : {
+                NexAur::RenderEffectDebugView::RayTracedReflectionRaw,
+                NexAur::RenderEffectDebugView::RayTracedReflectionConfidence,
+                NexAur::RenderEffectDebugView::RayTracedReflectionHitDistance,
+                NexAur::RenderEffectDebugView::RayTracedReflectionInstance,
+                NexAur::RenderEffectDebugView::RayTracedReflectionPrimitive }) {
+            demand.effects_debug.view = view;
+            expect(plan().requiresRayTracingScene() && plan().rendersRayTracedReflection(),
+                "Reflection debug failed to request TLAS and shading tables on first use.");
+        }
+        demand.effects_debug.view = NexAur::RenderEffectDebugView::FinalLit;
+        demand.ray_traced_reflection.enabled = true;
+        expect(plan().requiresRayTracingScene() && plan().rendersRayTracedReflection(),
+            "Enabling reflection did not request its first frame's resources.");
+        demand.ibl_debug.mode = NexAur::RenderIblDebugMode::DiffuseIbl;
+        expect(!plan().requiresRayTracingScene(), "Isolated IBL debug requested unused RT resources.");
+        demand.ibl_debug.mode = NexAur::RenderIblDebugMode::FinalLit;
+        demand.shadow.enabled = true;
+        demand.ao.enabled = true;
+        pipelines = {};
+        expect(!plan().requiresRayTracingScene(), "Unsupported RT pipelines requested preparation.");
+    }
+
     auto makeResources = [](bool include_reflection = false) {
         NexAur::VulkanFrameGraphResources resources;
         uint32_t index = 0;
@@ -4464,6 +4515,113 @@ int runRayTracingSceneDeviceSmoke() {
                 ray_tracing_scene_table.getStats()
                     .descriptor_indexed_geometry_fetch_enabled,
                 "RT scene shading table update or descriptor population failed.");
+
+            const auto initial_table_stats = ray_tracing_scene_table.getStats();
+            auto records = std::vector<NexAur::VulkanRayTracingInstanceRecord>(
+                accepted_instances.begin(), accepted_instances.end());
+            auto update_table = [&]() {
+                return ray_tracing_scene_table.update(tlas_manager.get(0), records, fallback_textures);
+            };
+            for (uint32_t frame = 0; frame < 64; ++frame) {
+                expect(update_table(), "Unchanged shading table update failed.");
+            }
+            records[0].transform[3][0] += 5.0f;
+            expect(update_table(), "Transform-only shading table update failed.");
+            expect(
+                ray_tracing_scene_table.getStats().rebuild_count == initial_table_stats.rebuild_count &&
+                ray_tracing_scene_table.getStats().reuse_count == initial_table_stats.reuse_count + 65 &&
+                ray_tracing_scene_table.getStats().buffer_upload_count == initial_table_stats.buffer_upload_count &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == initial_table_stats.descriptor_write_count &&
+                ray_tracing_scene_table.getStats().last_uploaded_bytes == 0,
+                "Static or transform-only scene uploaded tables or rewrote descriptors.");
+
+            const auto read_record = [&]<typename T>(
+                const NexAur::VulkanOwnedBuffer& buffer, size_t index, T& result) {
+                void* data = nullptr;
+                if (!buffer.map(data) || data == nullptr) {
+                    expect(false, "Could not inspect uploaded shading records.");
+                    return;
+                }
+                std::memcpy(&result, static_cast<const char*>(data) + index * sizeof(T), sizeof(T));
+                buffer.unmap();
+            };
+            records[0].entity_id = 42;
+            expect(update_table(), "Entity identity update failed.");
+            NexAur::GpuRtInstanceRecord uploaded_instance;
+            read_record(ray_tracing_scene_table.getInstanceBuffer(), 1, uploaded_instance);
+            expect(uploaded_instance.entity_id == 42 &&
+                ray_tracing_scene_table.getStats().buffer_upload_count == initial_table_stats.buffer_upload_count + 1 &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == initial_table_stats.descriptor_write_count,
+                "Entity identity update did not update only the instance table.");
+            std::swap(records[0], records[1]);
+            expect(update_table(), "Canonical instance reorder failed.");
+            read_record(ray_tracing_scene_table.getInstanceBuffer(), 2, uploaded_instance);
+            expect(uploaded_instance.entity_id == 42, "Instance reordering broke instanceCustomIndex mapping.");
+
+            NexAur::VulkanMaterialResource opaque_material;
+            NexAur::MaterialImportData opaque_import;
+            opaque_import.name = "RTIncrementalMaterial";
+            NexAur::MaterialAsset opaque_asset(opaque_import);
+            NexAur::VulkanMaterialTextureSet textures;
+            textures.base_color = textures.metallic = textures.roughness = textures.ao = &fallback_white_texture;
+            textures.normal = &fallback_flat_normal_texture;
+            textures.metallic_roughness = &fallback_metallic_roughness_texture;
+            textures.emissive = &fallback_black_texture;
+            NexAur::VulkanMaterialResourceCreateContext material_context;
+            material_context.upload_context = upload_context;
+            material_context.descriptor_allocator = &descriptor_allocator;
+            material_context.descriptor_set_layout = descriptor_layout_cache.getBuiltinLayout(
+                NexAur::VulkanDescriptorSetLayoutId::Material);
+            expect(opaque_material.create(material_context, opaque_asset, textures), "Opaque test material creation failed.");
+            records[0].material = &opaque_material;
+            expect(update_table(), "Adding a material failed.");
+            const auto before_material_edit = ray_tracing_scene_table.getStats();
+            opaque_asset.setBaseColorFactor(glm::vec4{ 0.25f, 0.5f, 0.75f, 1.0f });
+            expect(opaque_material.create(material_context, opaque_asset, textures) && update_table(),
+                "Material hot update failed.");
+            NexAur::GpuRtMaterialRecord uploaded_material;
+            read_record(ray_tracing_scene_table.getMaterialBuffer(), 1, uploaded_material);
+            expect(uploaded_material.base_color_factor == opaque_asset.getBaseColorFactor() &&
+                ray_tracing_scene_table.getStats().buffer_upload_count == before_material_edit.buffer_upload_count + 1 &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == before_material_edit.descriptor_write_count,
+                "Material edit did not update only the material table.");
+
+            const auto before_texture_edit = ray_tracing_scene_table.getStats();
+            const NexAur::TextureAsset replacement_texture(
+                1u, 1u, NexAur::TexturePixelFormat::RGBA8, NexAur::TextureColorSpace::SRGB,
+                std::vector<uint8_t>{ 128, 128, 128, 255 }, "RTReplacementFallback");
+            expect(fallback_white_texture.create(upload_context, replacement_texture) &&
+                upload_manager.waitUntilReady(fallback_white_texture.getUploadTicket()) && update_table(),
+                "Texture replacement at the same resource address was not accepted.");
+            expect(ray_tracing_scene_table.getStats().buffer_upload_count == before_texture_edit.buffer_upload_count &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == before_texture_edit.descriptor_write_count + 2,
+                "Texture replacement should refresh images/sampler without uploading unchanged records.");
+
+            // A separate in-flight frame owns an independent table and descriptor set.
+            NexAur::VulkanRayTracingSceneShadingTable second_frame_table;
+            expect(second_frame_table.init(resource_context, descriptor_allocator,
+                descriptor_layout_cache.getRayTracingShadingSceneLayout(
+                    capabilities.reflection_texture_capacity, capabilities.reflection_geometry_descriptor_capacity),
+                capabilities.reflection_texture_capacity, capabilities.reflection_geometry_descriptor_capacity) &&
+                second_frame_table.update(tlas_manager.get(0), accepted_instances, fallback_textures),
+                "Second frame table initialization failed.");
+            expect(second_frame_table.getDescriptorSet() != ray_tracing_scene_table.getDescriptorSet(),
+                "Frame tables shared a descriptor set.");
+            const auto before_clear = ray_tracing_scene_table.getStats();
+            ray_tracing_scene_table.clear();
+            expect(!ray_tracing_scene_table.isReady() &&
+                ray_tracing_scene_table.getDescriptorSet() == VK_NULL_HANDLE && update_table(),
+                "Disabled/re-enabled table retained stale readiness or failed to recover.");
+            expect(ray_tracing_scene_table.getStats().buffer_upload_count == before_clear.buffer_upload_count + 3 &&
+                second_frame_table.getStats().rebuild_count == 1,
+                "Re-enabling a table failed to refresh its own frame slot.");
+            records[0].mesh = &empty_mesh_resource;
+            expect(!update_table() && !ray_tracing_scene_table.isReady() &&
+                ray_tracing_scene_table.getDescriptorSet() == VK_NULL_HANDLE,
+                "Invalid input exposed a stale cached descriptor.");
+            records.assign(accepted_instances.begin(), accepted_instances.end());
+            expect(update_table(), "Table failed to recover after invalid input.");
+            std::cout << "RT table incremental checks: 65 unchanged/transform updates, 0 uploads, 0 descriptor writes." << std::endl;
         }
 
         expect(
@@ -4500,6 +4658,18 @@ int runRayTracingSceneDeviceSmoke() {
             tlas_manager.get(0)->getDeviceAddress() == initial_tlas_address &&
             blas_cache.getStats().build_count == initial_blas_build_count,
             "transform-only update recreated TLAS storage or rebuilt BLAS.");
+        if (capabilities.supportsReflectionShading()) {
+            const NexAur::VulkanRayTracingFallbackTextures fallbacks{
+                &fallback_white_texture, &fallback_black_texture,
+                &fallback_flat_normal_texture, &fallback_metallic_roughness_texture
+            };
+            const auto previous = ray_tracing_scene_table.getStats();
+            expect(ray_tracing_scene_table.update(tlas_manager.get(0),
+                tlas_manager.getAcceptedInstanceRecords(0), fallbacks) &&
+                ray_tracing_scene_table.getStats().reuse_count == previous.reuse_count + 1 &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == previous.descriptor_write_count,
+                "Real TLAS transform update invalidated unchanged shading data.");
+        }
 
         const std::array<NexAur::VulkanMeshDrawItem, 1> moved_item{
             tlas_items[1]
@@ -4522,6 +4692,28 @@ int runRayTracingSceneDeviceSmoke() {
             ray_tracing_scene_resource.update(tlas_manager.get(1)) &&
             ray_tracing_scene_resource.isReady(),
             "TLAS descriptor update failed after frame-slot rebuild.");
+        if (capabilities.supportsReflectionShading()) {
+            const NexAur::VulkanRayTracingFallbackTextures fallbacks{
+                &fallback_white_texture, &fallback_black_texture,
+                &fallback_flat_normal_texture, &fallback_metallic_roughness_texture
+            };
+            const auto previous = ray_tracing_scene_table.getStats();
+            expect(tlas_manager.buildFrame(1, transformed_items, blas_cache) &&
+                ray_tracing_scene_table.update(tlas_manager.get(1),
+                    tlas_manager.getAcceptedInstanceRecords(1), fallbacks) &&
+                ray_tracing_scene_table.getStats().buffer_upload_count == previous.buffer_upload_count &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == previous.descriptor_write_count + 1,
+                "TLAS replacement rewrote shading data instead of only binding 0.");
+            auto reordered_items = transformed_items;
+            std::swap(reordered_items[0], reordered_items[2]);
+            const auto before_reorder = ray_tracing_scene_table.getStats();
+            expect(tlas_manager.buildFrame(1, reordered_items, blas_cache) &&
+                ray_tracing_scene_table.update(tlas_manager.get(1),
+                    tlas_manager.getAcceptedInstanceRecords(1), fallbacks) &&
+                ray_tracing_scene_table.getStats().buffer_upload_count == before_reorder.buffer_upload_count + 1 &&
+                ray_tracing_scene_table.getStats().descriptor_write_count == before_reorder.descriptor_write_count + 2,
+                "Geometry reorder failed to update instance indices and mesh descriptor arrays independently.");
+        }
 
         const std::array<NexAur::VulkanMeshDrawItem, 0> empty_items{};
         expect(

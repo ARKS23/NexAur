@@ -1,6 +1,6 @@
 # Vulkan 渲染架构
 
-最后核对：2026-10-18。当前实现基线为 `695e1d1`，RT-10.2 已完成，后续降噪和最终混合反射合成尚未完成。
+最后核对：2026-10-20。RT-10.2 已完成，并已加入光追资源按需准备和场景表增量更新；后续降噪和最终混合反射合成尚未完成。
 
 ## 外部契约
 
@@ -82,6 +82,16 @@ RenderGraph 已表达 image、buffer 和 acceleration structure 的读写及 sta
 - Reflection history 是跨帧 ping-pong 数据；scene、viewport、camera、settings 等变化可触发 reset。
 - 上一帧 camera/object transform 仅在成功提交后推进。
 - RenderContext 的 CPU 数据包双缓冲与 GPU frames in flight 是不同机制。
+
+## 光追资源准备与场景表缓存
+
+渲染器先用设置和已初始化管线生成准备计划，再用本帧资源就绪状态生成最终 FeaturePlan。Ray Query 阴影、RTAO、Visibility debug 或 RT reflection 请求 BLAS/TLAS；只有 RT reflection（含反射 debug）请求 shading table。关闭消费者后不再遍历、准备对应光追资源，并清除当前帧槽对旧描述符的就绪状态；重新开启时按当前场景恢复。
+
+每个 FrameContext 独立保存场景表输入快照和可复用容器。快照检查 canonical instance 顺序、实体 ID、网格版本与 buffer、材质版本与内容、纹理就绪状态及上传标识；不包含由 TLAS 管理的物体 transform。未变化时复用已有表；变化时分别比较 instance、geometry、material 表，只上传变化的表，并只改写变化的 descriptor binding。TLAS 对象替换仅更新 acceleration structure binding。失败或显式 clear 会使缓存失效，下一次有效更新重新填充。
+
+Renderer Debug 的 **RT Scene Table** 区域显示当前帧槽的累计更新、重建、复用、上传字节数和 descriptor binding 写入次数。输入变化检查仍遍历 accepted instances；这些计数反映减少的资源更新工作，不代表已测得的帧率提升。
+
+CPU 功能需求回归包含在 `NexAur.Renderer.FrameFeaturePlan`。真实 GPU 的场景表增量回归可在项目根目录运行 `./bin/msvc-vcpkg/Debug/NexAurRendererTests.exe --tlas-instance-device`，覆盖静态/位移复用、实例重排、材质与纹理更新、TLAS 替换、独立帧槽及失效恢复；设备缺少相应光追能力时会跳过对应检查。
 
 ## Shader 与构建
 

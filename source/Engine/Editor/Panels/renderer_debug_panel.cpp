@@ -569,6 +569,19 @@ namespace NexAur {
                 snapshot.ray_tracing_scene_table.geometry_buffer_bytes),
             static_cast<unsigned long long>(
                 snapshot.ray_tracing_scene_table.material_buffer_bytes));
+        ImGui::Text(
+            "Frame-slot Updates: %llu, rebuilds %llu, reuses %llu",
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.update_count),
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.rebuild_count),
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.reuse_count));
+        ImGui::Text(
+            "Buffer Uploads: %llu, bytes %llu total / %llu last update",
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.buffer_upload_count),
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.uploaded_bytes),
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.last_uploaded_bytes));
+        ImGui::Text(
+            "Descriptor Binding Writes: %llu",
+            static_cast<unsigned long long>(snapshot.ray_tracing_scene_table.descriptor_write_count));
         drawKeyValue(
             "Table Failure",
             snapshot.ray_tracing_scene_table.last_failure_reason.c_str());

@@ -66,6 +66,12 @@ namespace NexAur {
             return m_debug_settings.view == RenderEffectDebugView::RayQueryVisibility;
         }
         bool usesRayQueryShadow() const { return m_use_ray_query_shadow; }
+        // Can also be queried on a plan built with pipeline availability before
+        // preparing this frame's TLAS. Resource readiness is resolved afterwards.
+        bool requiresRayTracingScene() const {
+            return usesRayQueryDebug() || usesRayQueryShadow() ||
+                   usesRayQueryAo() || rendersRayTracedReflection();
+        }
         VulkanAoTechnique getAoTechnique() const { return m_ao_technique; }
         bool usesRayQueryAo() const { return m_ao_technique == VulkanAoTechnique::RayQuery; }
         bool rendersAo() const { return m_ao_technique != VulkanAoTechnique::Disabled; }

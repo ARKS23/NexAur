@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -68,6 +70,7 @@ namespace NexAur {
         uint32_t material_index = kVulkanRtInvalidTableIndex;
         uint32_t object_flags = 0;
         uint32_t entity_id = 0;
+        bool operator==(const GpuRtInstanceRecord&) const = default;
     };
 
     struct GpuRtGeometryRecord {
@@ -79,6 +82,7 @@ namespace NexAur {
         uint32_t flags = 0;
         uint32_t reserved0 = 0;
         uint32_t reserved1 = 0;
+        bool operator==(const GpuRtGeometryRecord&) const = default;
     };
 
     struct GpuRtMaterialRecord {
@@ -87,6 +91,7 @@ namespace NexAur {
         glm::vec4 metallic_roughness_alpha_flags{ 0.0f, 1.0f, 0.5f, 0.0f };
         glm::uvec4 texture_indices0{ 0u };
         glm::uvec4 texture_indices1{ 0u };
+        bool operator==(const GpuRtMaterialRecord&) const = default;
     };
 
     static_assert(std::is_standard_layout_v<GpuRtInstanceRecord>);
@@ -127,6 +132,13 @@ namespace NexAur {
         uint64_t instance_buffer_bytes = 0;
         uint64_t geometry_buffer_bytes = 0;
         uint64_t material_buffer_bytes = 0;
+        uint64_t update_count = 0;
+        uint64_t rebuild_count = 0;
+        uint64_t reuse_count = 0;
+        uint64_t buffer_upload_count = 0;
+        uint64_t uploaded_bytes = 0;
+        uint64_t last_uploaded_bytes = 0;
+        uint64_t descriptor_write_count = 0;
         std::string last_failure_reason = "None";
     };
 
@@ -161,6 +173,8 @@ namespace NexAur {
         void shutdown();
         void clear();
 
+        // Call only after this frame slot's fence has completed. Cached inputs
+        // are values; only resources in accepted_instances/fallback_textures are read.
         bool update(
             const VulkanAccelerationStructure* acceleration_structure,
             std::span<const VulkanRayTracingInstanceRecord> accepted_instances,
@@ -180,6 +194,60 @@ namespace NexAur {
         const VulkanRayTracingSceneTableStats& getStats() const { return m_stats; }
 
     private:
+        struct TextureSnapshot {
+            const VulkanTextureResource* resource = nullptr;
+            VkImageView view = VK_NULL_HANDLE;
+            VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+            uint64_t upload_id = 0;
+            bool ready = false;
+            bool operator==(const TextureSnapshot&) const = default;
+        };
+
+        struct InstanceSnapshot {
+            const VulkanMeshResource* mesh = nullptr;
+            VulkanMeshResourceKey mesh_key;
+            VkBuffer vertex_buffer = VK_NULL_HANDLE;
+            VkBuffer index_buffer = VK_NULL_HANDLE;
+            uint32_t vertex_count = 0;
+            uint32_t index_count = 0;
+            int entity_id = -1;
+            const VulkanMaterialResource* material = nullptr;
+            uint64_t material_generation = 0;
+            GpuRtMaterialRecord material_record;
+            uint32_t texture_flags = 0;
+            bool material_ready = false;
+            bool double_sided = false;
+            std::array<TextureSnapshot, 7> textures;
+            bool operator==(const InstanceSnapshot&) const = default;
+        };
+
+        // Snapshots own values only; cached resource pointers are never dereferenced.
+        // Transforms live in TLAS and deliberately do not invalidate shading data.
+        struct InputSnapshot {
+            std::vector<InstanceSnapshot> instances;
+            std::array<TextureSnapshot, kVulkanRtFallbackTextureSlotCount> fallbacks;
+            VkSampler sampler = VK_NULL_HANDLE;
+            bool operator==(const InputSnapshot&) const = default;
+        };
+
+        struct TableData {
+            std::vector<GpuRtInstanceRecord> instances;
+            std::vector<GpuRtGeometryRecord> geometries;
+            std::vector<GpuRtMaterialRecord> materials;
+            std::vector<VkDescriptorImageInfo> textures;
+            std::vector<uint64_t> texture_upload_ids;
+            std::vector<VkDescriptorBufferInfo> vertices;
+            std::vector<VkDescriptorBufferInfo> indices;
+            std::vector<VulkanMeshResourceKey> geometry_keys;
+            std::unordered_map<const VulkanMeshResource*, uint32_t> geometry_indices;
+            std::unordered_map<const VulkanMaterialResource*, uint32_t> material_indices;
+            std::unordered_map<const VulkanTextureResource*, uint32_t> texture_indices;
+        };
+
+        static TextureSnapshot snapshotTexture(const VulkanTextureResource* texture);
+        bool captureInputs(
+            std::span<const VulkanRayTracingInstanceRecord> accepted_instances,
+            const VulkanRayTracingFallbackTextures& fallback_textures);
         bool ensureBuffer(
             VulkanOwnedBuffer& buffer,
             VkDeviceSize required_size,
@@ -204,6 +272,14 @@ namespace NexAur {
         uint32_t m_texture_capacity = 0;
         uint32_t m_geometry_descriptor_capacity = 0;
         VulkanRayTracingSceneTableStats m_stats;
+        InputSnapshot m_inputs;
+        InputSnapshot m_pending_inputs;
+        TableData m_data;
+        TableData m_pending_data;
+        std::array<VkDescriptorBufferInfo, 3> m_bound_buffers{};
+        VkAccelerationStructureKHR m_bound_acceleration_structure = VK_NULL_HANDLE;
+        VkSampler m_bound_sampler = VK_NULL_HANDLE;
+        bool m_cache_valid = false;
         bool m_initialized = false;
         bool m_ready = false;
     };

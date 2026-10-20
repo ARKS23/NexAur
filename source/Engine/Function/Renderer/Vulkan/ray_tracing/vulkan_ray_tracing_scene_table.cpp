@@ -51,6 +51,22 @@ namespace NexAur {
             return image_info;
         }
 
+        bool sameDescriptor(const VkDescriptorBufferInfo& lhs, const VkDescriptorBufferInfo& rhs) {
+            return lhs.buffer == rhs.buffer && lhs.offset == rhs.offset && lhs.range == rhs.range;
+        }
+
+        bool sameDescriptor(const VkDescriptorImageInfo& lhs, const VkDescriptorImageInfo& rhs) {
+            return lhs.sampler == rhs.sampler && lhs.imageView == rhs.imageView &&
+                   lhs.imageLayout == rhs.imageLayout;
+        }
+
+        template<typename T>
+        bool sameDescriptors(const std::vector<T>& lhs, const std::vector<T>& rhs) {
+            return lhs.size() == rhs.size() &&
+                std::equal(lhs.begin(), lhs.end(), rhs.begin(),
+                    [](const T& a, const T& b) { return sameDescriptor(a, b); });
+        }
+
     } // namespace
 
     std::vector<VulkanRayTracingInstanceRecord> buildVulkanRayTracingInstanceRecords(
@@ -216,10 +232,19 @@ namespace NexAur {
         m_stats.last_failure_reason = "None";
         m_initialized = false;
         m_ready = false;
+        m_cache_valid = false;
+        m_inputs = {};
+        m_pending_inputs = {};
+        m_data = {};
+        m_pending_data = {};
+        m_bound_buffers = {};
+        m_bound_acceleration_structure = VK_NULL_HANDLE;
+        m_bound_sampler = VK_NULL_HANDLE;
     }
 
     void VulkanRayTracingSceneShadingTable::clear() {
         m_ready = false;
+        m_cache_valid = false;
         m_stats.ready = false;
         m_stats.descriptor_ready = false;
         m_stats.instance_count = 0;
@@ -228,14 +253,79 @@ namespace NexAur {
         m_stats.texture_count = 0;
         m_stats.texture_overflow_count = 0;
         m_stats.geometry_overflow_count = 0;
+        m_stats.instance_buffer_bytes = 0;
+        m_stats.geometry_buffer_bytes = 0;
+        m_stats.material_buffer_bytes = 0;
+        m_stats.last_uploaded_bytes = 0;
         m_stats.last_failure_reason = "None";
+    }
+
+    VulkanRayTracingSceneShadingTable::TextureSnapshot
+    VulkanRayTracingSceneShadingTable::snapshotTexture(const VulkanTextureResource* texture) {
+        TextureSnapshot snapshot;
+        snapshot.resource = texture;
+        snapshot.ready = isReadyTexture(texture);
+        if (snapshot.ready) {
+            snapshot.view = texture->getImageView();
+            snapshot.layout = texture->getImageLayout();
+            snapshot.upload_id = texture->getUploadTicket().getId();
+        }
+        return snapshot;
+    }
+
+    bool VulkanRayTracingSceneShadingTable::captureInputs(
+        std::span<const VulkanRayTracingInstanceRecord> accepted_instances,
+        const VulkanRayTracingFallbackTextures& fallback_textures) {
+        m_pending_inputs.instances.clear();
+        m_pending_inputs.instances.reserve(accepted_instances.size());
+        m_pending_inputs.fallbacks = {
+            snapshotTexture(fallback_textures.white),
+            snapshotTexture(fallback_textures.black),
+            snapshotTexture(fallback_textures.flat_normal),
+            snapshotTexture(fallback_textures.metallic_roughness)
+        };
+        m_pending_inputs.sampler = fallback_textures.white->getSampler();
+        for (const VulkanRayTracingInstanceRecord& instance : accepted_instances) {
+            if (instance.mesh == nullptr || instance.blas == nullptr ||
+                !instance.blas->isReady() || !instance.mesh->isReady() ||
+                !instance.mesh->hasDeviceAddressBuffers()) {
+                setFailure("Canonical instance list contained an invalid geometry record.");
+                return false;
+            }
+            InstanceSnapshot snapshot;
+            snapshot.mesh = instance.mesh;
+            snapshot.mesh_key = instance.mesh->getKey();
+            snapshot.vertex_buffer = instance.mesh->getVertexBuffer();
+            snapshot.index_buffer = instance.mesh->getIndexBuffer();
+            snapshot.vertex_count = instance.mesh->getVertexCount();
+            snapshot.index_count = instance.mesh->getIndexCount();
+            snapshot.entity_id = instance.entity_id;
+            snapshot.material = instance.material;
+            snapshot.material_ready = instance.material != nullptr && instance.material->isReady();
+            if (snapshot.material_ready) {
+                const VulkanMaterialShadingData data = instance.material->getRayTracingShadingData();
+                snapshot.material_generation = data.generation;
+                snapshot.material_record = data.record;
+                snapshot.texture_flags = data.texture_flags;
+                snapshot.double_sided = data.double_sided;
+                snapshot.textures = {
+                    snapshotTexture(data.base_color), snapshotTexture(data.normal),
+                    snapshotTexture(data.metallic), snapshotTexture(data.roughness),
+                    snapshotTexture(data.metallic_roughness), snapshotTexture(data.ao),
+                    snapshotTexture(data.emissive)
+                };
+            }
+            m_pending_inputs.instances.push_back(snapshot);
+        }
+        return true;
     }
 
     bool VulkanRayTracingSceneShadingTable::update(
         const VulkanAccelerationStructure* acceleration_structure,
         std::span<const VulkanRayTracingInstanceRecord> accepted_instances,
         const VulkanRayTracingFallbackTextures& fallback_textures) {
-        clear();
+        ++m_stats.update_count;
+        m_stats.last_uploaded_bytes = 0;
 
         if (!m_initialized ||
             acceleration_structure == nullptr ||
@@ -249,12 +339,52 @@ namespace NexAur {
             return false;
         }
 
-        std::vector<GpuRtInstanceRecord> instance_records(1);
-        std::vector<GpuRtGeometryRecord> geometry_records(1);
-        std::vector<GpuRtMaterialRecord> material_records(1);
-        std::vector<VkDescriptorImageInfo> texture_infos(
+        if (!captureInputs(accepted_instances, fallback_textures)) {
+            return false;
+        }
+        if (m_cache_valid && m_inputs == m_pending_inputs) {
+            // TLAS replacement changes binding 0, not the shading table contents.
+            if (m_bound_acceleration_structure != acceleration_structure->get()) {
+                VulkanDescriptorWriter()
+                    .writeAccelerationStructure(0, acceleration_structure->get())
+                    .update(m_device, m_descriptor_allocation.set);
+                m_bound_acceleration_structure = acceleration_structure->get();
+                ++m_stats.descriptor_write_count;
+            }
+            ++m_stats.reuse_count;
+            return true;
+        }
+
+        m_ready = false;
+        m_stats.ready = false;
+        m_stats.descriptor_ready = false;
+        m_stats.texture_overflow_count = 0;
+        m_stats.geometry_overflow_count = 0;
+        m_stats.last_failure_reason = "None";
+        auto& instance_records = m_pending_data.instances;
+        auto& geometry_records = m_pending_data.geometries;
+        auto& material_records = m_pending_data.materials;
+        auto& texture_infos = m_pending_data.textures;
+        auto& texture_upload_ids = m_pending_data.texture_upload_ids;
+        auto& vertex_buffer_infos = m_pending_data.vertices;
+        auto& index_buffer_infos = m_pending_data.indices;
+        auto& geometry_indices = m_pending_data.geometry_indices;
+        auto& material_indices = m_pending_data.material_indices;
+        auto& texture_indices = m_pending_data.texture_indices;
+        instance_records.assign(1, GpuRtInstanceRecord{});
+        geometry_records.assign(1, GpuRtGeometryRecord{});
+        material_records.assign(1, GpuRtMaterialRecord{});
+        m_pending_data.geometry_keys.assign(1, VulkanMeshResourceKey{});
+        geometry_indices.clear();
+        material_indices.clear();
+        texture_indices.clear();
+        texture_infos.assign(
             m_texture_capacity,
             textureImageInfo(*fallback_textures.white));
+        texture_upload_ids.assign(m_texture_capacity, fallback_textures.white->getUploadTicket().getId());
+        for (uint32_t index = 0; index < kVulkanRtFallbackTextureSlotCount; ++index) {
+            texture_upload_ids[index] = m_pending_inputs.fallbacks[index].upload_id;
+        }
         VkDescriptorBufferInfo fallback_vertex_info{};
         fallback_vertex_info.buffer = m_fallback_vertex_buffer.get();
         fallback_vertex_info.offset = 0;
@@ -263,15 +393,12 @@ namespace NexAur {
         fallback_index_info.buffer = m_fallback_index_buffer.get();
         fallback_index_info.offset = 0;
         fallback_index_info.range = VK_WHOLE_SIZE;
-        std::vector<VkDescriptorBufferInfo> vertex_buffer_infos(
+        vertex_buffer_infos.assign(
             m_geometry_descriptor_capacity,
             fallback_vertex_info);
-        std::vector<VkDescriptorBufferInfo> index_buffer_infos(
+        index_buffer_infos.assign(
             m_geometry_descriptor_capacity,
             fallback_index_info);
-        std::unordered_map<const VulkanMeshResource*, uint32_t> geometry_indices;
-        std::unordered_map<const VulkanMaterialResource*, uint32_t> material_indices;
-        std::unordered_map<const VulkanTextureResource*, uint32_t> texture_indices;
         texture_infos[kVulkanRtFallbackWhiteTextureIndex] =
             textureImageInfo(*fallback_textures.white);
         texture_infos[kVulkanRtFallbackBlackTextureIndex] =
@@ -312,6 +439,7 @@ namespace NexAur {
             const uint32_t index = assigned_texture_count;
             texture_indices.emplace(texture, index);
             texture_infos[index] = textureImageInfo(*texture);
+            texture_upload_ids[index] = texture->getUploadTicket().getId();
             return index;
         };
 
@@ -347,15 +475,6 @@ namespace NexAur {
         };
 
         for (const VulkanRayTracingInstanceRecord& instance : accepted_instances) {
-            if (instance.mesh == nullptr ||
-                instance.blas == nullptr ||
-                !instance.blas->isReady() ||
-                !instance.mesh->isReady() ||
-                !instance.mesh->hasDeviceAddressBuffers()) {
-                setFailure("Canonical instance list contained an invalid geometry record.");
-                return false;
-            }
-
             uint32_t geometry_index = kVulkanRtInvalidTableIndex;
             const auto geometry_it = geometry_indices.find(instance.mesh);
             if (geometry_it != geometry_indices.end()) {
@@ -375,6 +494,7 @@ namespace NexAur {
                 geometry_record.index_count = instance.mesh->getIndexCount();
                 geometry_record.flags = 1u;
                 geometry_records.push_back(geometry_record);
+                m_pending_data.geometry_keys.push_back(instance.mesh->getKey());
                 geometry_indices.emplace(instance.mesh, geometry_index);
                 vertex_buffer_infos[geometry_index].buffer =
                     instance.mesh->getVertexBuffer();
@@ -397,35 +517,78 @@ namespace NexAur {
             static_cast<VkDeviceSize>(geometry_records.size() * sizeof(GpuRtGeometryRecord));
         const VkDeviceSize material_bytes =
             static_cast<VkDeviceSize>(material_records.size() * sizeof(GpuRtMaterialRecord));
-        if (!ensureBuffer(m_instance_buffer, instance_bytes, "RT scene instance table") ||
-            !ensureBuffer(m_geometry_buffer, geometry_bytes, "RT scene geometry table") ||
-            !ensureBuffer(m_material_buffer, material_bytes, "RT scene material table") ||
-            !writeBuffer(m_instance_buffer, instance_records.data(), instance_bytes) ||
-            !writeBuffer(m_geometry_buffer, geometry_records.data(), geometry_bytes) ||
-            !writeBuffer(m_material_buffer, material_records.data(), material_bytes)) {
+        const auto upload_changed = [&]<typename T>(
+            VulkanOwnedBuffer& buffer, const std::vector<T>& records,
+            const std::vector<T>& previous, const char* name) {
+            if (m_cache_valid && records == previous) {
+                return true;
+            }
+            const VkDeviceSize bytes = records.size() * sizeof(T);
+            if (!ensureBuffer(buffer, bytes, name) ||
+                !writeBuffer(buffer, records.data(), bytes)) {
+                return false;
+            }
+            ++m_stats.buffer_upload_count;
+            m_stats.uploaded_bytes += bytes;
+            m_stats.last_uploaded_bytes += bytes;
+            return true;
+        };
+        if (!upload_changed(m_instance_buffer, instance_records, m_data.instances, "RT scene instance table") ||
+            !upload_changed(m_geometry_buffer, geometry_records, m_data.geometries, "RT scene geometry table") ||
+            !upload_changed(m_material_buffer, material_records, m_data.materials, "RT scene material table")) {
             setFailure("Scene shading table buffer allocation or upload failed.");
             return false;
         }
 
-        VkDescriptorBufferInfo instance_info{
-            m_instance_buffer.get(), 0, instance_bytes };
-        VkDescriptorBufferInfo geometry_info{
-            m_geometry_buffer.get(), 0, geometry_bytes };
-        VkDescriptorBufferInfo material_info{
-            m_material_buffer.get(), 0, material_bytes };
-        VkDescriptorImageInfo sampler_info{};
-        sampler_info.sampler = fallback_textures.white->getSampler();
-
-        VulkanDescriptorWriter()
-            .writeAccelerationStructure(0, acceleration_structure->get())
-            .writeBuffer(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, instance_info)
-            .writeBuffer(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, geometry_info)
-            .writeBuffer(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, material_info)
-            .writeImageArray(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, texture_infos)
-            .writeImage(5, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info)
-            .writeBufferArray(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, vertex_buffer_infos)
-            .writeBufferArray(7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, index_buffer_infos)
-            .update(m_device, m_descriptor_allocation.set);
+        const std::array<VkDescriptorBufferInfo, 3> buffer_infos{{
+            { m_instance_buffer.get(), 0, instance_bytes },
+            { m_geometry_buffer.get(), 0, geometry_bytes },
+            { m_material_buffer.get(), 0, material_bytes }
+        }};
+        VulkanDescriptorWriter writer;
+        uint64_t descriptor_writes = 0;
+        if (!m_cache_valid || m_bound_acceleration_structure != acceleration_structure->get()) {
+            writer.writeAccelerationStructure(0, acceleration_structure->get());
+            ++descriptor_writes;
+        }
+        for (uint32_t index = 0; index < buffer_infos.size(); ++index) {
+            if (!m_cache_valid || !sameDescriptor(m_bound_buffers[index], buffer_infos[index])) {
+                writer.writeBuffer(index + 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, buffer_infos[index]);
+                ++descriptor_writes;
+            }
+        }
+        // Recreated resources can reuse Vulkan handle values. Upload identities
+        // and mesh generations still require the corresponding descriptors to refresh.
+        if (!m_cache_valid || !sameDescriptors(texture_infos, m_data.textures) ||
+            texture_upload_ids != m_data.texture_upload_ids) {
+            writer.writeImageArray(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, texture_infos);
+            ++descriptor_writes;
+        }
+        if (!m_cache_valid || m_bound_sampler != m_pending_inputs.sampler ||
+            m_inputs.fallbacks[0].upload_id != m_pending_inputs.fallbacks[0].upload_id) {
+            VkDescriptorImageInfo sampler_info{};
+            sampler_info.sampler = m_pending_inputs.sampler;
+            writer.writeImage(5, VK_DESCRIPTOR_TYPE_SAMPLER, sampler_info);
+            ++descriptor_writes;
+        }
+        const bool geometry_resources_changed = m_pending_data.geometry_keys != m_data.geometry_keys;
+        if (!m_cache_valid || geometry_resources_changed ||
+            !sameDescriptors(vertex_buffer_infos, m_data.vertices)) {
+            writer.writeBufferArray(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, vertex_buffer_infos);
+            ++descriptor_writes;
+        }
+        if (!m_cache_valid || geometry_resources_changed ||
+            !sameDescriptors(index_buffer_infos, m_data.indices)) {
+            writer.writeBufferArray(7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, index_buffer_infos);
+            ++descriptor_writes;
+        }
+        if (descriptor_writes > 0) {
+            writer.update(m_device, m_descriptor_allocation.set);
+        }
+        m_stats.descriptor_write_count += descriptor_writes;
+        m_bound_buffers = buffer_infos;
+        m_bound_acceleration_structure = acceleration_structure->get();
+        m_bound_sampler = m_pending_inputs.sampler;
 
         m_stats.ready = true;
         m_stats.descriptor_ready = true;
@@ -436,6 +599,10 @@ namespace NexAur {
         m_stats.instance_buffer_bytes = instance_bytes;
         m_stats.geometry_buffer_bytes = geometry_bytes;
         m_stats.material_buffer_bytes = material_bytes;
+        ++m_stats.rebuild_count;
+        std::swap(m_inputs, m_pending_inputs);
+        std::swap(m_data, m_pending_data);
+        m_cache_valid = true;
         m_ready = true;
         return true;
     }
@@ -516,6 +683,17 @@ namespace NexAur {
     }
 
     void VulkanRayTracingSceneShadingTable::setFailure(std::string reason) {
+        m_ready = false;
+        m_cache_valid = false;
+        m_stats.ready = false;
+        m_stats.descriptor_ready = false;
+        m_stats.instance_count = 0;
+        m_stats.geometry_count = 0;
+        m_stats.material_count = 0;
+        m_stats.texture_count = 0;
+        m_stats.instance_buffer_bytes = 0;
+        m_stats.geometry_buffer_bytes = 0;
+        m_stats.material_buffer_bytes = 0;
         m_stats.last_failure_reason = std::move(reason);
         NX_CORE_WARN("RT scene shading table unavailable: {}", m_stats.last_failure_reason);
     }
